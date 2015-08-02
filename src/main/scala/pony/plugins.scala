@@ -15,12 +15,14 @@ class MapReveal extends AIPluginRunOnce {
 
 class WalkableRenderer extends AIPlugIn {
   override protected def tickPlugIn(): Unit = {
-    val renderer: Renderer = render.in_!(Color.Red)
+    world.debugger.debugRender { renderer =>
+      renderer.in_!(Color.Red)
 
-    world.map.walkableGrid.all
-    .filter(world.map.walkableGrid.blocked)
-    .foreach { blocked =>
-      renderer.drawCrossedOutOnTile(blocked)
+      world.map.walkableGrid.all
+      .filter(world.map.walkableGrid.blocked)
+      .foreach { blocked =>
+        renderer.drawCrossedOutOnTile(blocked)
+      }
     }
   }
 }

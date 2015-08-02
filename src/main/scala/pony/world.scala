@@ -35,88 +35,88 @@ trait WorldListener {
   def onUnitCreate(unit: bwapi.Unit): Unit = {}
 }
 
+case class Resources(minerals: Int, gas: Int, supply: Int, supplyUsed: Int, supplyTotal: Int)
+
 class DefaultWorld(game: Game) extends WorldListener {
 
-  def isFirstTick = ticks == 0
-
+  // these must be initialized after the first tick. making them lazy solves this
+  lazy val mineralPatches = new MineralAnalyzer(map, myUnits)
+  val map        = new AnalyzedMap(game)
+  val myUnits    = new Units(game)
+  val debugger   = new Debugger(game)
+  val orderQueue = new OrderQueue(game, debugger)
   private var ticks = 0
-
+  def currentResources = {
+    val self = game.self()
+    val total = self.supplyTotal()
+    val used = self.supplyUsed()
+    Resources(self.minerals(), self.gas(), total - used, used, total)
+  }
+  def isFirstTick = ticks == 0
   def tickCount = ticks
-
   def tick(): Unit = {
     debugger.tick()
     myUnits.tick()
   }
-
   def postTick(): Unit = {
     orderQueue.debugAll()
     orderQueue.issueAll()
     ticks += 1
   }
-
-  val map        = new AnalyzedMap(game)
-  val myUnits    = new Units(game)
-  val debugger   = new Debugger(game)
-  val orderQueue = new OrderQueue(game)
-  // these must be initialized after the first tick. making them lazy solves this
-  lazy val mineralPatches = new MineralAnalyzer(map, myUnits)
 }
 
 class Debugger(game: Game) {
+  private val debugging = true
+  private val renderer  = new Renderer(game, Color.Green)
+  def debugRender(whatToDo: Renderer => Any): Unit = {
+    if (debugging) {
+      whatToDo(renderer)
+    }
+  }
   def chat(msg: String): Unit = {
     game.sendText(msg)
   }
-
   def tick() = {
     renderer.in_!(Color.Green)
   }
-
   def revealMap(): Unit = {
     game.setRevealAll()
   }
 
-  private val renderer = new Renderer(game, Color.Green)
-
-  def render = renderer
-
 }
 
 class Units(game: Game) {
-  def firstByType[T : Manifest]: Option[T] = {
-    val lookFor = manifest[T].runtimeClass
-    knownUnits.valuesIterator.find(lookFor.isInstance) .map(_.asInstanceOf[T])
-  }
-
-  def allByType[T : Manifest]: Iterator[T] = {
-    val lookFor = manifest[T].runtimeClass
-    knownUnits.valuesIterator.filter(lookFor.isInstance).map(_.asInstanceOf[T])
-  }
+  private val knownUnits = mutable.HashMap.empty[Long, WrapsUnit]
+  private var initial    = true
+  def all = knownUnits.valuesIterator
 
   import scala.collection.JavaConverters._
 
-  private val knownUnits = mutable.HashMap.empty[Long, WrapsUnit]
-  private var initial    = true
-
-  private def init(): Unit = {
-    game.getMinerals.asScala.foreach {addUnit}
+  def firstByType[T: Manifest]: Option[T] = {
+    val lookFor = manifest[T].runtimeClass
+    knownUnits.valuesIterator.find(lookFor.isInstance).map(_.asInstanceOf[T])
   }
-
+  def allByType[T: Manifest]: Iterator[T] = {
+    val lookFor = manifest[T].runtimeClass
+    knownUnits.valuesIterator.filter(lookFor.isInstance).map(_.asInstanceOf[T])
+  }
   def minerals = knownUnits.valuesIterator.collect { case u: MineralPatch => u }
-
-  private def addUnit(u: bwapi.Unit): Unit = {
-    if (!knownUnits.contains(u.getID)) {
-      val lifted = UnitWrapper.lift(u)
-      info(s"Own unit added: ${lifted}")
-      knownUnits.put(u.getID, lifted)
-    }
-  }
-
   def tick(): Unit = {
     if (initial) {
       initial = false
       init()
     }
     game.self().getUnits.asScala.foreach {addUnit}
+  }
+  private def init(): Unit = {
+    game.getMinerals.asScala.foreach {addUnit}
+  }
+  private def addUnit(u: bwapi.Unit): Unit = {
+    if (!knownUnits.contains(u.getID)) {
+      val lifted = UnitWrapper.lift(u)
+      info(s"Own unit added: ${lifted}")
+      knownUnits.put(u.getID, lifted)
+    }
   }
 }
 
@@ -133,37 +133,29 @@ class Grid2D(val cols: Int, val rows: Int, bitset: collection.Set[Int]) {
     }
     new Grid2D(subCols, subRows, bits)
   }
-
+  def blocked = size - walkable
   def size = cols * rows
   def walkable = bitset.size
-  def blocked = size - walkable
-  def free(p: Point): Boolean = free(p.x, p.y)
-  def free(x: Int, y: Int): Boolean = bitset(x + y * cols)
   def blocked(x: Int, y: Int): Boolean = !free(x, y)
-  def blocked(p: Point): Boolean = !free(p)
-  def all = new Traversable[Point] {
-    override def foreach[U](f: (Point) => U): Unit = {
+  def blocked(p: MapTilePosition): Boolean = !free(p)
+  def free(p: MapTilePosition): Boolean = free(p.x, p.y)
+  def free(x: Int, y: Int): Boolean = bitset(x + y * cols)
+  def all = new Traversable[MapTilePosition] {
+    override def foreach[U](f: (MapTilePosition) => U): Unit = {
       for (x <- 0 until cols; y <- 0 until rows) {
-        f(Point.shared(x, y))
+        f(MapTilePosition.shared(x, y))
       }
     }
   }
 }
 
 class MineralAnalyzer(map: AnalyzedMap, myUnits: Units) {
-  def nearestTo(position: Point) = {
-    if (groups.nonEmpty)
-      Some(groups.minBy(_.center.distanceTo(position)))
-    else
-      None
-  }
-
   val groups = {
     val patchGroups = ArrayBuffer.empty[MineralPatchGroup]
     val pf = new SimplePathFinder(map.walkableGrid)
     myUnits.minerals.foreach { mp =>
       patchGroups.find(g => !g.contains(mp) &&
-                            g.center.distanceTo(mp.position) <= 10 &&
+                            g.center.distanceTo(mp.tilePosition) <= 10 &&
                             pf.directLineOfSight(mp.area, g.center)) match {
         case Some(group) => group.addPatch(mp)
         case None =>
@@ -174,6 +166,12 @@ class MineralAnalyzer(map: AnalyzedMap, myUnits: Units) {
     }
     patchGroups.toSeq
   }
+  def nearestTo(position: MapTilePosition) = {
+    if (groups.nonEmpty)
+      Some(groups.minBy(_.center.distanceTo(position)))
+    else
+      None
+  }
 
   info(
     s"""
@@ -181,33 +179,25 @@ class MineralAnalyzer(map: AnalyzedMap, myUnits: Units) {
      """.stripMargin)
 }
 
-class MineralPatchGroup(val patchId:Int) {
+class MineralPatchGroup(val patchId: Int) {
+  private val myPatches = mutable.HashSet.empty[MineralPatch]
+  private val myCenter  = new LazyVal[MapTilePosition](calcCenter)
+  private val myValue   = new LazyVal[Int](myPatches.foldLeft(0)((acc, mp) => acc + mp.remaining))
   def addPatch(mp: MineralPatch): Unit = {
     myPatches += mp
     myCenter.invalidate()
   }
-
+  override def toString = s"Minerals($value)@$center"
   def center = myCenter.get
   def value = myValue.get
-
-  override def toString = s"Minerals($value)@$center"
-
-  private val myPatches = mutable.HashSet.empty[MineralPatch]
-
   def patches = myPatches.toSet
-
-  private def calcCenter = {
-    val (x,y) = myPatches.foldLeft((0, 0)) {
-      case ((x, y), mp) => (x + mp.position.x, y + mp.position.y)
-    }
-    Point.shared(x / myPatches.size, y / myPatches.size)
-  }
-
-  private val myCenter = new LazyVal[Point](calcCenter)
-
-  private val myValue = new LazyVal[Int](myPatches.foldLeft(0)((acc, mp) => acc + mp.remaining))
-
   def contains(mp: MineralPatch): Boolean = myPatches(mp)
+  private def calcCenter = {
+    val (x, y) = myPatches.foldLeft((0, 0)) {
+      case ((x, y), mp) => (x + mp.tilePosition.x, y + mp.tilePosition.y)
+    }
+    MapTilePosition.shared(x / myPatches.size, y / myPatches.size)
+  }
 }
 
 class AnalyzedMap(game: Game) {

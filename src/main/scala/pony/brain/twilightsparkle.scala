@@ -2,50 +2,73 @@ package pony
 package brain
 
 import bwapi.Color
-import pony.{DefaultWorld, MainBuilding, Order}
+import pony.brain.modules.GatherMinerals
 
 import scala.collection.mutable.ArrayBuffer
 
+abstract class AIModule {
+  def universe: Universe
+  def ordersForTick: Traversable[Order]
+  def onNth: Int = 1
+}
+
 class TwilightSparkle(world: DefaultWorld) {
+  self =>
 
-  private val bases = new Bases(world)
+  private val universe: Universe = new Universe {
+    override def bases: Bases = self.bases
+    override def world: DefaultWorld = self.world
+    override def resources: ResourceManager = self.resources
+    override def units: UnitManager = unitManager
+  }
 
-  def queueOrdersForTick():Unit = {
+  private val bases       = new Bases(world)
+  private val resources   = new ResourceManager(universe)
+  private val aiModules   = List(new GatherMinerals(universe))
+  private val unitManager = new UnitManager(universe)
+
+  def queueOrdersForTick(): Unit = {
     if (world.isFirstTick) {
       bases.findMainBase()
     }
 
     bases.tick()
+    resources.tick()
 
+    val tick = world.tickCount
+
+    aiModules.filter(e => tick == 0 || e.onNth % tick == 0).flatMap(_.ordersForTick).foreach(world.orderQueue.queue_!)
   }
 }
 
-class Bases(world:DefaultWorld) {
+class Bases(world: DefaultWorld) {
+  private val myBases = ArrayBuffer.empty[Base]
   def tick(): Unit = {
-    bases.foreach(_.tick())
+    myBases.foreach(_.tick())
   }
+  def bases = myBases.toSeq
 
-  val bases = ArrayBuffer.empty[Base]
-
-  def findMainBase():Unit = {
-    world.myUnits.firstByType[MainBuilding].foreach {bases += new Base(world, _)}
+  def findMainBase(): Unit = {
+    world.myUnits.firstByType[MainBuilding].foreach {myBases += new Base(world, _)}
   }
 }
 
-class Base(world: DefaultWorld, mainBuilding: MainBuilding) {
+case class Base(world: DefaultWorld, mainBuilding: MainBuilding) {
+  val myMineralGroup = world.mineralPatches.nearestTo(mainBuilding.tilePosition)
   def tick(): Unit = {
-    world.mineralPatches.groups.foreach { mpg =>
-      mpg.patches.foreach { mp =>
-        world.debugger.render.in_!(Color.Green).writeText(mp.position, mpg.patchId)
+    world.debugger.debugRender { renderer =>
+      world.mineralPatches.groups.foreach { mpg =>
+        mpg.patches.foreach { mp =>
+          renderer.in_!(Color.Green).writeText(mp.tilePosition, mpg.patchId)
+        }
       }
     }
   }
 
-  val myPatch = world.mineralPatches.nearestTo(mainBuilding.position)
-
   info(
     s"""
-       |Found base/minerals $mainBuilding: $myPatch
+       |Found base/minerals $mainBuilding: $myMineralGroup
      """.stripMargin)
+  override def toString: String = s"Base@$mainBuilding"
 }
 

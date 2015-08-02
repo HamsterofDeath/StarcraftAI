@@ -43,16 +43,12 @@ trait AIAPI {
 trait AIPlugIn  {
   private var active              = true
   private var myWorld: DefaultWorld = _
-
-  def world = myWorld
-  def render = world.debugger.render
   def debugger = world.debugger
-  def orders = world.orderQueue
-
   def queueOrder(order: Order):Unit = {
     orders.queue_!(order)
   }
-
+  def orders = world.orderQueue
+  def world = myWorld
   def setWorld_!(world: DefaultWorld):Unit = {
     this.myWorld = world
   }
@@ -64,16 +60,14 @@ trait AIPlugIn  {
       tickPlugIn()
     }
   }
-
-  protected def tickPlugIn():Unit
-
   def off_!():Unit = active = false
   def on_!():Unit = active = true
+  protected def tickPlugIn(): Unit
 }
 
 trait AIPluginRunOnce extends AIPlugIn {
-  def runOnce():Unit
   private var executed = false
+  def runOnce(): Unit
   override protected def tickPlugIn(): Unit = {
     if (!executed) {
       executed = true

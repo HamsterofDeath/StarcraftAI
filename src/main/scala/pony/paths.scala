@@ -1,15 +1,13 @@
 package pony
 
-import pony.astar.Node
-
-case class Path(waypoints:Seq[Point])
+case class Path(waypoints: Seq[MapTilePosition])
 
 class SimplePathFinder(baseOn:Grid2D) {
-  def directLineOfSight(a:Area, b:Point):Boolean = {
+  def directLineOfSight(a: Area, b: MapTilePosition): Boolean = {
     a.outline.exists(p => directLineOfSight(p,b))
   }
 
-  def directLineOfSight(a:Point, b:Point):Boolean = {
+  def directLineOfSight(a: MapTilePosition, b: MapTilePosition): Boolean = {
     var startX = a.x
     var startY = a.y
     val endX = b.x
