@@ -40,9 +40,9 @@ case class Resources(minerals: Int, gas: Int, supply: Int, supplyUsed: Int, supp
 class DefaultWorld(game: Game) extends WorldListener {
 
   // these must be initialized after the first tick. making them lazy solves this
-  lazy val mineralPatches = new MineralAnalyzer(map, myUnits)
+  lazy val mineralPatches = new MineralAnalyzer(map, units)
   val map        = new AnalyzedMap(game)
-  val myUnits    = new Units(game)
+  val units      = new Units(game)
   val debugger   = new Debugger(game)
   val orderQueue = new OrderQueue(game, debugger)
   private var ticks = 0
@@ -56,7 +56,7 @@ class DefaultWorld(game: Game) extends WorldListener {
   def tickCount = ticks
   def tick(): Unit = {
     debugger.tick()
-    myUnits.tick()
+    units.tick()
   }
   def postTick(): Unit = {
     orderQueue.debugAll()
@@ -88,18 +88,20 @@ class Debugger(game: Game) {
 class Units(game: Game) {
   private val knownUnits = mutable.HashMap.empty[Long, WrapsUnit]
   private var initial    = true
-  def all = knownUnits.valuesIterator
+  def firstByType[T: Manifest]: Option[T] = {
+    val lookFor = manifest[T].runtimeClass
+    mine.find(lookFor.isInstance).map(_.asInstanceOf[T])
+  }
+  def mine = all.filter(_.nativeUnit.getPlayer == game.self())
 
   import scala.collection.JavaConverters._
 
-  def firstByType[T: Manifest]: Option[T] = {
-    val lookFor = manifest[T].runtimeClass
-    knownUnits.valuesIterator.find(lookFor.isInstance).map(_.asInstanceOf[T])
-  }
+  def all = knownUnits.valuesIterator
   def allByType[T: Manifest]: Iterator[T] = {
     val lookFor = manifest[T].runtimeClass
-    knownUnits.valuesIterator.filter(lookFor.isInstance).map(_.asInstanceOf[T])
+    mine.filter(lookFor.isInstance).map(_.asInstanceOf[T])
   }
+
   def minerals = knownUnits.valuesIterator.collect { case u: MineralPatch => u }
   def tick(): Unit = {
     if (initial) {

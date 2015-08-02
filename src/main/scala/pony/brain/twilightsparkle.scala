@@ -34,10 +34,12 @@ class TwilightSparkle(world: DefaultWorld) {
 
     bases.tick()
     resources.tick()
+    unitManager.tick()
 
     val tick = world.tickCount
 
-    aiModules.filter(e => tick == 0 || e.onNth % tick == 0).flatMap(_.ordersForTick).foreach(world.orderQueue.queue_!)
+    val activeInThisTick = aiModules.filter(e => tick == 0 || tick % e.onNth == 0)
+    activeInThisTick.flatMap(_.ordersForTick).foreach(world.orderQueue.queue_!)
   }
 }
 
@@ -49,7 +51,7 @@ class Bases(world: DefaultWorld) {
   def bases = myBases.toSeq
 
   def findMainBase(): Unit = {
-    world.myUnits.firstByType[MainBuilding].foreach {myBases += new Base(world, _)}
+    world.units.firstByType[MainBuilding].foreach {myBases += new Base(world, _)}
   }
 }
 
