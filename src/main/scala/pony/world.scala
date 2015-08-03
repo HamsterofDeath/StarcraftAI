@@ -97,9 +97,15 @@ class Units(game: Game) {
   import scala.collection.JavaConverters._
 
   def all = knownUnits.valuesIterator
-  def allByType[T: Manifest]: Iterator[T] = {
+
+  def mineByType[T: Manifest]: Iterator[T] = {
     val lookFor = manifest[T].runtimeClass
     mine.filter(lookFor.isInstance).map(_.asInstanceOf[T])
+  }
+
+  def allByType[T: Manifest]: Iterator[T] = {
+    val lookFor = manifest[T].runtimeClass
+    all.filter(lookFor.isInstance).map(_.asInstanceOf[T])
   }
 
   def minerals = knownUnits.valuesIterator.collect { case u: MineralPatch => u }

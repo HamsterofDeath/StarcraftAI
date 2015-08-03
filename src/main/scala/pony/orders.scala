@@ -90,7 +90,7 @@ class OrderQueue(game: Game, debugger: Debugger) {
   }
 
   def issueAll():Unit = {
-    //queue.foreach(_.issueOrderToGame())
+    queue.foreach(_.issueOrderToGame())
     queue.clear()
   }
 }

@@ -3,6 +3,10 @@ package pony
 import bwapi.Game
 
 class Renderer(game: Game, private var color: bwapi.Color) {
+  def drawTextAboveUnit(u: Mobile, text: String): Unit = {
+    game.drawTextMap(u.currentPositionNative.getX, u.currentPositionNative.getY, text)
+  }
+
   def indicateTarget(currentPosition: MapPosition, to: MapTilePosition): Unit = {
     game.drawLineMap(currentPosition.x, currentPosition.y, to.mapX, to.mapY, color)
     drawCircleAroundTile(to)

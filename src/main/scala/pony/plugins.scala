@@ -27,6 +27,18 @@ class WalkableRenderer extends AIPlugIn {
   }
 }
 
+class UnitIdRenderer extends AIPlugIn {
+  override protected def tickPlugIn(): Unit = {
+    world.debugger.debugRender { renderer =>
+      renderer.in_!(Color.Green)
+
+      world.units.mineByType[Mobile].foreach { u =>
+        renderer.drawTextAboveUnit(u, u.unitIdText)
+      }
+    }
+  }
+}
+
 class MainAI extends AIPlugIn {
   lazy val brain = new TwilightSparkle(world)
 

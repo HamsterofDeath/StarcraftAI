@@ -1,11 +1,11 @@
 package pony
 
-import bwapi.{Unit => APIUnit, UnitType}
+import bwapi.{Order, Unit => APIUnit, UnitType}
 
 import scala.collection.immutable.HashMap
 
 trait NiceToString extends WrapsUnit {
-  override def toString = s"${getClass.getSimpleName}"
+  override def toString = s"[$unitIdText] ${getClass.getSimpleName}"
 }
 
 class AnyUnit(val nativeUnit: APIUnit) extends WrapsUnit with NiceToString {
@@ -13,7 +13,19 @@ class AnyUnit(val nativeUnit: APIUnit) extends WrapsUnit with NiceToString {
 }
 
 trait WrapsUnit {
+  val unitId = WrapsUnit.nextId
   def nativeUnit: APIUnit
+  def unitIdText = Integer.toString(unitId, 36)
+}
+
+object WrapsUnit {
+  private var counter = 0
+
+  def nextId = {
+    val ret = counter
+    counter += 1
+    ret
+  }
 }
 
 trait StaticallyPositioned extends WrapsUnit {
@@ -50,17 +62,19 @@ trait ResourceGatherPoint
 trait MainBuilding extends Building with Factory with ResourceGatherPoint with SupplyProvider
 
 trait Mobile extends WrapsUnit {
+  def isMoving = nativeUnit.isMoving
+
   def currentTileNative = currentTile.toNative
+  def currentTile = {
+    val tp = nativeUnit.getTilePosition
+    MapTilePosition.shared(tp.getX, tp.getY)
+  }
   def currentPositionNative = currentPosition.toNative
   def currentPosition = {
     val p = nativeUnit.getPosition
     MapPosition(p.getX, p.getY)
   }
   override def toString = s"${super.toString}@$currentTile"
-  def currentTile = {
-    val tp = nativeUnit.getTilePosition
-    MapTilePosition.shared(tp.getX, tp.getY)
-  }
 }
 
 trait Killable {
@@ -80,8 +94,11 @@ trait GroundUnit extends Killable with Mobile {
 }
 
 trait WorkerUnit extends Killable with Mobile {
+
   def isCarryingMinerals = nativeUnit.isCarryingMinerals
-  def isMining = nativeUnit.isGatheringMinerals
+  def isInMiningProcess = nativeUnit.getOrder == Order.MiningMinerals
+  def isWaitingForMinerals = nativeUnit.getOrder == Order.WaitForMinerals
+  def isMovingToMinerals = nativeUnit.getOrder == Order.MoveToMinerals
 
 }
 
@@ -91,7 +108,9 @@ trait Resource extends BlockingTiles {
   def remaining = nativeUnit.getResources
 }
 
-class MineralPatch(unit: APIUnit) extends AnyUnit(unit) with Resource
+class MineralPatch(unit: APIUnit) extends AnyUnit(unit) with Resource {
+  def isBeingMined = nativeUnit.isBeingGathered
+}
 
 class SCV(unit: APIUnit) extends AnyUnit(unit) with WorkerUnit
 class Probe(unit: APIUnit) extends AnyUnit(unit) with WorkerUnit

@@ -46,7 +46,10 @@ class UnitManager(universe: Universe) {
           return Some(collector)
         }
       }
-      None
+      if (collector.hasAny)
+        Some(collector)
+      else
+        None
     }
     result match {
       case None => new FailedHiringResult[T]
@@ -84,7 +87,7 @@ class UnitCollector[T <: WrapsUnit](request: UnitJobRequests[T]) {
   private val hired                      = new
       mutable.HashMap[UnitRequest[T], mutable.Set[T]] with mutable.MultiMap[UnitRequest[T], T]
   private val remainingAmountsPerRequest = mutable.HashMap.empty ++ request.requests.map { e => e -> e.amount }.toMap
-
+  def hasAny = hired.nonEmpty
   def teamAsMap = hired.toSeq.map { case (k, v) => k -> v.toSet }.toMap
 
   def collect(unit: WrapsUnit) = {
