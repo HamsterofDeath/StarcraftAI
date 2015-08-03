@@ -5,10 +5,13 @@ import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
 class UnitManager(universe: Universe) {
-  private val assignments = mutable.HashMap.empty[WrapsUnit, UnitWithJob]
+  private val assignments = mutable.HashMap.empty[WrapsUnit, UnitWithJob[_ <: WrapsUnit]]
+
   private val byEmployer  = new
-      mutable.HashMap[Employer, mutable.Set[UnitWithJob]] with mutable.MultiMap[Employer, UnitWithJob]
-  def assignJob(employer: Employer, newJob: UnitWithJob): Unit = {
+      mutable.HashMap[Employer[_ <: WrapsUnit], mutable.Set[UnitWithJob[_ <: WrapsUnit]]]
+      with mutable.MultiMap[Employer[_ <: WrapsUnit], UnitWithJob[_ <: WrapsUnit]]
+
+  def assignJob[T <: WrapsUnit](employer: Employer[T], newJob: UnitWithJob[T]): Unit = {
     assignments.get(newJob.unit).foreach { oldJob =>
       val oldAssignment = byEmployer.find(_._2(oldJob))
       oldAssignment.foreach { case (oldEmployer, _) =>
@@ -20,7 +23,7 @@ class UnitManager(universe: Universe) {
     byEmployer.addBinding(employer, newJob)
 
   }
-  def jobOf(unit: WrapsUnit) = assignments(unit)
+  def jobOf[T <: WrapsUnit](unit: T) = assignments(unit).asInstanceOf[UnitWithJob[T]]
 
   def tick(): Unit = {
     val myOwn = universe.world.units.mine.filterNot(assignments.contains).map {new BusyDoingNothing(_, Nobody)}.toSeq
@@ -30,8 +33,8 @@ class UnitManager(universe: Universe) {
     val registerUs = universe.world.units.all.filterNot(assignments.contains).map {new BusyDoingNothing(_, Nobody)}
     assignments ++= registerUs.map(e => e.unit -> e)
   }
-  def request(req: UnitJobRequests) = {
-    def result: Option[UnitCollector] = {
+  def request[T <: WrapsUnit](req: UnitJobRequests[T]) = {
+    def result: Option[UnitCollector[T]] = {
       val available = (allOfEmployer(Nobody) ++ allNotOfEmployer(Nobody)).filter(_.priority < req.priority)
       val collector = new UnitCollector(req)
       available.foreach { candidate =>
@@ -46,39 +49,40 @@ class UnitManager(universe: Universe) {
       None
     }
     result match {
-      case None => FailedHiringResult
+      case None => new FailedHiringResult[T]
       case Some(team) if team.complete => new SuccessfulHiringResult(team.teamAsMap)
       case Some(team) => new PartialHiringResult(team.teamAsMap)
     }
   }
-  private def allOfEmployer(employer: Employer) = byEmployer.getOrElse(employer, Set.empty)
-  private def allNotOfEmployer(employer: Employer) = byEmployer.filter(_._1 != employer).flatMap(_._2)
+  private def allOfEmployer[T <: WrapsUnit](employer: Employer[T]) = byEmployer.getOrElse(employer, Set.empty)
+  private def allNotOfEmployer[T <: WrapsUnit](employer: Employer[T]) = byEmployer.filter(_._1 != employer)
+                                                                        .flatMap(_._2)
 
-  case object Nobody extends Employer(universe.units)
+  case object Nobody extends Employer[WrapsUnit](universe.units)
 }
 
-trait HiringResult {
+trait HiringResult[T <: WrapsUnit] {
   def success: Boolean
-  def hired: Map[UnitRequest, Set[WrapsUnit]]
+  def hired: Map[UnitRequest[T], Set[T]]
   def units = hired.flatMap(_._2)
 }
 
-object FailedHiringResult extends HiringResult {
+class FailedHiringResult[T <: WrapsUnit] extends HiringResult[T] {
   def success = false
   def hired = Map.empty
 }
 
-class SuccessfulHiringResult(override val hired: Map[UnitRequest, Set[WrapsUnit]]) extends HiringResult {
+class SuccessfulHiringResult[T <: WrapsUnit](override val hired: Map[UnitRequest[T], Set[T]]) extends HiringResult[T] {
   def success = true
 }
 
-class PartialHiringResult(override val hired: Map[UnitRequest, Set[WrapsUnit]]) extends HiringResult {
+class PartialHiringResult[T <: WrapsUnit](override val hired: Map[UnitRequest[T], Set[T]]) extends HiringResult[T] {
   def success = false
 }
 
-class UnitCollector(request: UnitJobRequests) {
+class UnitCollector[T <: WrapsUnit](request: UnitJobRequests[T]) {
   private val hired                      = new
-      mutable.HashMap[UnitRequest, mutable.Set[WrapsUnit]] with mutable.MultiMap[UnitRequest, WrapsUnit]
+      mutable.HashMap[UnitRequest[T], mutable.Set[T]] with mutable.MultiMap[UnitRequest[T], T]
   private val remainingAmountsPerRequest = mutable.HashMap.empty ++ request.requests.map { e => e -> e.amount }.toMap
 
   def teamAsMap = hired.toSeq.map { case (k, v) => k -> v.toSet }.toMap
@@ -89,37 +93,38 @@ class UnitCollector(request: UnitJobRequests) {
       case _ => false
     }.foreach { case (req, missing) =>
       remainingAmountsPerRequest.put(req, missing - 1)
-      hired.addBinding(req, unit)
+      // we know the type because we asked req before
+      hired.addBinding(req, unit.asInstanceOf[T])
     }
   }
 
   def complete = remainingAmountsPerRequest.valuesIterator.sum == 0
 
-  def requests(unit: UnitWithJob) = {
+  def requests(unit: UnitWithJob[_ <: WrapsUnit]) = {
     request.wantsUnit(unit.unit)
   }
 }
 
-abstract class Employer(unitManager: UnitManager) {
-  private var employees = ArrayBuffer.empty[WrapsUnit]
+abstract class Employer[T <: WrapsUnit](unitManager: UnitManager) {
+  private var employees = ArrayBuffer.empty[T]
 
   def teamSize = employees.size
 
   def idleUnits = employees.filter(unitManager.jobOf(_).isIdle)
 
-  def hire(result: HiringResult): Unit = {
+  def hire(result: HiringResult[T]): Unit = {
     result.units.foreach(hire)
   }
 
-  def hire(unit: WrapsUnit): Unit = {
+  def hire(unit: T): Unit = {
     employees += unit
   }
 
-  def fire(unit: WrapsUnit): Unit = {
+  def fire(unit: T): Unit = {
     employees -= unit
   }
 
-  def assignJob(job: UnitWithJob): Unit = {
+  def assignJob(job: UnitWithJob[T]): Unit = {
     assert(employees.contains(job.unit))
     unitManager.assignJob(this, job)
   }
@@ -127,44 +132,45 @@ abstract class Employer(unitManager: UnitManager) {
   def current = employees.toSeq
 }
 
-abstract class UnitWithJob(val employer: Employer, val unit: WrapsUnit, val priority: Priority) {
+abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: T, val priority: Priority) {
   def isIdle: Boolean = false
   def ordersForTick: Seq[Order]
   override def toString: String = s"${getClass.getSimpleName} of ${unit} of ${employer}"
 }
 
-class BusyDoingNothing(unit: WrapsUnit, employer: Employer) extends UnitWithJob(employer, unit, Priority.None) {
+class BusyDoingNothing[T <: WrapsUnit](unit: T, employer: Employer[T])
+  extends UnitWithJob(employer, unit, Priority.None) {
   override def isIdle = true
   override def ordersForTick: Seq[Order] = Nil
 }
 
-trait UnitRequest {
+trait UnitRequest[T <: WrapsUnit] {
   def includesByType(unit: WrapsUnit): Boolean = typeOfRequestedUnit.isAssignableFrom(unit.getClass)
 
   def typeOfRequestedUnit: SCUnitType
   def amount: Int
-  def acceptable(unit: WrapsUnit) = true
-  def cherryPicker: Option[(WrapsUnit, WrapsUnit) => WrapsUnit] = None
+  def acceptable(unit: T) = true
+  def cherryPicker: Option[(T, T) => T] = None
 }
 
-case class AnyUnitRequest(typeOfRequestedUnit: SCUnitType, amount: Int) extends UnitRequest
+case class AnyUnitRequest[T <: WrapsUnit](typeOfRequestedUnit: Class[T], amount: Int) extends UnitRequest[T]
 
-case class SpecificUnitRequest(unit: WrapsUnit) extends UnitRequest {
+case class SpecificUnitRequest[T <: WrapsUnit](unit: T) extends UnitRequest[T] {
   override def typeOfRequestedUnit = unit.getClass
   override def amount: Int = 1
 }
 
-case class UnitJobRequests(requests: Seq[UnitRequest], employer: Employer, priority: Priority) {
+case class UnitJobRequests[T <: WrapsUnit](requests: Seq[UnitRequest[T]], employer: Employer[T], priority: Priority) {
   private val types = requests.map(_.typeOfRequestedUnit).toSet
 
   def wantsUnit(unitType: WrapsUnit) = types.exists(_.isAssignableFrom(unitType.getClass))
 }
 
 object UnitJobRequests {
-  def idleOfType(employer: Employer, ofType: SCUnitType, amount: Int = 1) = {
+  def idleOfType[T <: WrapsUnit](employer: Employer[T], ofType: Class[T], amount: Int = 1) = {
     val req = AnyUnitRequest(ofType, amount)
 
-    UnitJobRequests(Seq(req), employer, Priority.Default)
+    UnitJobRequests[T](req.toSeq, employer, Priority.Default)
   }
 
 }
