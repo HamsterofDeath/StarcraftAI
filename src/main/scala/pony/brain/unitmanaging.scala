@@ -27,12 +27,20 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
       assignJob(Nobody, newJob)
     }
 
-    val myOwn = universe.world.units.mine.filterNot(assignments.contains).map {new BusyDoingNothing(_, Nobody)}.toSeq
+    def jobOf[T <: WrapsUnit](unit: T) = {
+      if (unit.isBeingCreated) {
+        new BusyBeingTrained(unit, Nobody)
+      } else {
+        new BusyDoingNothing(unit, Nobody)
+      }
+    }
+
+    val myOwn = universe.world.units.mine.filterNot(assignments.contains).map(jobOf).toSeq
     trace(s"Found ${myOwn.size} new units of player", myOwn.nonEmpty)
     myOwn.foreach(byEmployer.addBinding(Nobody, _))
     assignments ++= myOwn.map(e => e.unit -> e)
 
-    val registerUs = universe.world.units.all.filterNot(assignments.contains).map {new BusyDoingNothing(_, Nobody)}
+    val registerUs = universe.world.units.all.filterNot(assignments.contains).map(jobOf).toSeq
     trace(s"Found ${registerUs.size} new units (not of player)", registerUs.nonEmpty)
     assignments ++= registerUs.map(e => e.unit -> e)
 
@@ -226,6 +234,13 @@ class BusyDoingNothing[T <: WrapsUnit](unit: T, employer: Employer[T])
   override def finished = false
 }
 
+class BusyBeingTrained[T <: WrapsUnit](unit: T, employer: Employer[T])
+  extends UnitWithJob(employer, unit, Priority.Max) {
+  override def isIdle = false
+  override def ordersForTick: Seq[UnitOrder] = Nil
+  override def finished = unit.nativeUnit.getRemainingBuildTime == 0
+}
+
 trait UnitRequest[T <: WrapsUnit] {
   def includesByType(unit: WrapsUnit): Boolean = typeOfRequestedUnit.isAssignableFrom(unit.getClass)
 
@@ -273,14 +288,14 @@ object UnitJobRequests {
 
   }
 
-  def idleOfType[T <: WrapsUnit : Manifest](employer: Employer[T], ofType: Class[T], amount: Int = 1) = {
-    val req = AnyUnitRequest(ofType, amount)
+  def idleOfType[T <: WrapsUnit : Manifest](employer: Employer[T], ofType: Class[_ <: T], amount: Int = 1) = {
+    val req: AnyUnitRequest[T] = AnyUnitRequest(ofType, amount)
 
     UnitJobRequests[T](req.toSeq, employer, Priority.Default)
   }
 
-  def newOfType[T <: WrapsUnit : Manifest](employer: Employer[T], ofType: Class[T], amount: Int = 1) = {
-    val req = BuildUnitRequest(ofType, amount)
+  def newOfType[T <: WrapsUnit : Manifest](employer: Employer[T], ofType: Class[_ <: T], amount: Int = 1) = {
+    val req: BuildUnitRequest[T] = BuildUnitRequest(ofType, amount)
 
     UnitJobRequests[T](req.toSeq, employer, Priority.Default)
   }

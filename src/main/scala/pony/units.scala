@@ -1,6 +1,6 @@
 package pony
 
-import bwapi.{Order, Unit => APIUnit, UnitType}
+import bwapi.{Order, Race, Unit => APIUnit, UnitType}
 
 import scala.collection.immutable.HashMap
 
@@ -16,6 +16,14 @@ trait WrapsUnit {
   val unitId = WrapsUnit.nextId
   def nativeUnit: APIUnit
   def unitIdText = Integer.toString(unitId, 36)
+  def race = {
+    val r = nativeUnit.getType.getRace
+    if (r == Race.Protoss) Protoss
+    else if (r == Race.Terran) Terran
+    else if (r == Race.Zerg) Zerg
+    else Other
+  }
+  def isBeingCreated = nativeUnit.getRemainingBuildTime > 0
 }
 
 object WrapsUnit {
@@ -106,6 +114,11 @@ trait WorkerUnit extends Killable with Mobile {
 
 }
 
+trait TransporterUnit extends AirUnit {
+
+}
+
+
 trait Ignored extends WrapsUnit
 
 trait Resource extends BlockingTiles {
@@ -158,7 +171,9 @@ object Dependencies {
 
 object TypeMapping {
 
-  private val class2UnitType: Map[Class[_ <: WrapsUnit], UnitType] = Map()
+  private val class2UnitType: Map[Class[_ <: WrapsUnit], UnitType] =
+    Map(classOf[SCV] -> UnitType.Terran_SCV,
+      classOf[CommandCenter] -> UnitType.Terran_Command_Center)
 
-  def unitTypeOf[T <: WrapsUnit](c: Class[_ <: T]) =
+  def unitTypeOf[T <: WrapsUnit](c: Class[_ <: T]) = class2UnitType(c)
 }

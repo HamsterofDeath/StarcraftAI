@@ -66,7 +66,8 @@ class GatherMinerals(universe: Universe) extends AIModule(universe) {
     def ordersForTick = {
       val missing = idealNumberOfWorkers - teamSize
       if (missing > 0) {
-        val result = universe.units.request(UnitJobRequests.idleOfType(emp, classOf[WorkerUnit], missing))
+        val workerType = base.mainBuilding.race.workerClass
+        val result = universe.units.request(UnitJobRequests.idleOfType(emp, workerType, missing))
         hire(result)
       }
       idleUnits.foreach { u =>
@@ -120,9 +121,10 @@ class GatherMinerals(universe: Universe) extends AIModule(universe) {
               sendWorkerToPatch
             // keep going while mining has not been started
 
-            case ApproachingMinerals if worker.isWaitingForMinerals && miningTarget.patch.isBeingMined =>
+            case ApproachingMinerals if miningTarget.patch.isBeingMined =>
               // repeat the order to prevent the worker from moving away
               sendWorkerToPatch
+
             case ApproachingMinerals if worker.isWaitingForMinerals || worker.isInMiningProcess =>
               // let the poor worker alone now
               Mining -> Orders.NoUpdate

@@ -9,6 +9,32 @@ class UnitData(in: bwapi.Unit) {
 
 }
 
+sealed trait SCRace {
+  def workerClass: Class[_ <: WorkerUnit]
+  def transporterClass: Class[_ <: TransporterUnit]
+}
+
+case object Terran extends SCRace {
+  override def workerClass: Class[_ <: WorkerUnit] = classOf[SCV]
+  override def transporterClass: Class[_ <: TransporterUnit] = ???
+}
+
+case object Zerg extends SCRace {
+  override def workerClass: Class[_ <: WorkerUnit] = ???
+  override def transporterClass: Class[_ <: TransporterUnit] = ???
+}
+
+case object Protoss extends SCRace {
+  override def workerClass: Class[_ <: WorkerUnit] = ???
+  override def transporterClass: Class[_ <: TransporterUnit] = ???
+}
+
+case object Other extends SCRace {
+  override def workerClass: Class[_ <: WorkerUnit] = ???
+  override def transporterClass: Class[_ <: TransporterUnit] = ???
+}
+
+
 trait WorldListener {
   def onNukeDetect(unit: Position): Unit = {}
 
@@ -92,22 +118,19 @@ class Units(game: Game) {
     val lookFor = manifest[T].runtimeClass
     mine.find(lookFor.isInstance).map(_.asInstanceOf[T])
   }
-  def mine = all.filter(_.nativeUnit.getPlayer == game.self())
-
-  import scala.collection.JavaConverters._
-
-  def all = knownUnits.valuesIterator
-
   def mineByType[T: Manifest]: Iterator[T] = {
     val lookFor = manifest[T].runtimeClass
     mine.filter(lookFor.isInstance).map(_.asInstanceOf[T])
   }
 
+  import scala.collection.JavaConverters._
+
+  def mine = all.filter(_.nativeUnit.getPlayer == game.self())
   def allByType[T: Manifest]: Iterator[T] = {
     val lookFor = manifest[T].runtimeClass
     all.filter(lookFor.isInstance).map(_.asInstanceOf[T])
   }
-
+  def all = knownUnits.valuesIterator
   def minerals = knownUnits.valuesIterator.collect { case u: MineralPatch => u }
   def tick(): Unit = {
     if (initial) {
@@ -145,9 +168,9 @@ class Grid2D(val cols: Int, val rows: Int, bitset: collection.Set[Int]) {
   def size = cols * rows
   def walkable = bitset.size
   def blocked(x: Int, y: Int): Boolean = !free(x, y)
+  def free(x: Int, y: Int): Boolean = bitset(x + y * cols)
   def blocked(p: MapTilePosition): Boolean = !free(p)
   def free(p: MapTilePosition): Boolean = free(p.x, p.y)
-  def free(x: Int, y: Int): Boolean = bitset(x + y * cols)
   def all = new Traversable[MapTilePosition] {
     override def foreach[U](f: (MapTilePosition) => U): Unit = {
       for (x <- 0 until cols; y <- 0 until rows) {
