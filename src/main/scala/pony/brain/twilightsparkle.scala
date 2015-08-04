@@ -2,7 +2,7 @@ package pony
 package brain
 
 import bwapi.Color
-import pony.brain.modules.GatherMinerals
+import pony.brain.modules.{GatherMinerals, ProvideNewUnits}
 
 import scala.collection.mutable.ArrayBuffer
 
@@ -12,12 +12,19 @@ trait HasUniverse {
   def resources = universe.resources
   def world = universe.world
   def bases = universe.bases
+  def currentTick = universe.currentTick
 }
 
 abstract class AIModule[T <: WrapsUnit : Manifest](override val universe: Universe)
   extends Employer[T](universe) with HasUniverse {
   def ordersForTick: Traversable[UnitOrder]
   def onNth: Int = 1
+}
+
+object AIModule {
+  def noop[T <: WrapsUnit : Manifest](universe: Universe) = new AIModule[T](universe) {
+    override def ordersForTick: Traversable[UnitOrder] = Nil
+  }
 }
 
 class TwilightSparkle(world: DefaultWorld) {
@@ -28,11 +35,16 @@ class TwilightSparkle(world: DefaultWorld) {
     override def world: DefaultWorld = self.world
     override def resources: ResourceManager = self.resources
     override def units: UnitManager = unitManager
+    override def currentTick = world.tickCount
   }
 
   private val bases       = new Bases(world)
   private val resources   = new ResourceManager(universe)
-  private val aiModules   = List(new GatherMinerals(universe))
+  private val aiModules   = List(
+    new GatherMinerals(universe),
+    new ProvideNewUnits(universe),
+    AIModule.noop(universe)
+  )
   private val unitManager = new UnitManager(universe)
 
   def queueOrdersForTick(): Unit = {

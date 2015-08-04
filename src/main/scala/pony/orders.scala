@@ -22,7 +22,7 @@ abstract class UnitOrder {
 object Orders {
   case class Train(unit: Factory, trainType: Class[_ <: Mobile]) extends UnitOrder {
     override def issueOrderToGame(): Unit = {
-
+      unit.nativeUnit.train()
     }
 
     override def renderDebug(renderer: Renderer): Unit = {

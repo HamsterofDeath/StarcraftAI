@@ -5,7 +5,7 @@ import bwapi.{Order, Unit => APIUnit, UnitType}
 import scala.collection.immutable.HashMap
 
 trait NiceToString extends WrapsUnit {
-  override def toString = s"[$unitIdText] ${getClass.getSimpleName}"
+  override def toString = s"[$unitIdText] ${getClass.className}"
 }
 
 class AnyUnit(val nativeUnit: APIUnit) extends WrapsUnit with NiceToString {
@@ -53,6 +53,8 @@ trait Factory extends Building {
   def canBuild[T <: Mobile](typeOfUnit: Class[_ <: T]) = {
     Dependencies.builderOf(typeOfUnit).isAssignableFrom(getClass)
   }
+
+  def isProducing = nativeUnit.getOrder == Order.Train
 }
 
 trait SupplyProvider extends Building {
@@ -67,16 +69,16 @@ trait Mobile extends WrapsUnit {
   def isMoving = nativeUnit.isMoving
 
   def currentTileNative = currentTile.toNative
+  def currentTile = {
+    val tp = nativeUnit.getTilePosition
+    MapTilePosition.shared(tp.getX, tp.getY)
+  }
   def currentPositionNative = currentPosition.toNative
   def currentPosition = {
     val p = nativeUnit.getPosition
     MapPosition(p.getX, p.getY)
   }
   override def toString = s"${super.toString}@$currentTile"
-  def currentTile = {
-    val tp = nativeUnit.getTilePosition
-    MapTilePosition.shared(tp.getX, tp.getY)
-  }
 }
 
 trait Killable {
@@ -152,4 +154,11 @@ object Dependencies {
   private val builtBy: Map[Class[_ <: WrapsUnit], Class[_ <: WrapsUnit]] = Map(classOf[SCV] -> classOf[CommandCenter])
 
   def builderOf(unitClass: Class[_ <: WrapsUnit]) = builtBy(unitClass)
+}
+
+object TypeMapping {
+
+  private val class2UnitType: Map[Class[_ <: WrapsUnit], UnitType] = Map()
+
+  def unitTypeOf[T <: WrapsUnit](c: Class[_ <: T]) =
 }

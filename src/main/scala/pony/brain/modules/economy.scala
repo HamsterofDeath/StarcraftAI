@@ -11,6 +11,7 @@ class ProvideNewUnits(universe: Universe) extends AIModule[Factory](universe) {
   override def ordersForTick: Traversable[UnitOrder] = {
     units.failedToProvide.flatMap { reqs =>
       reqs.requests.flatMap { req =>
+        trace(s"Trying to satisfy $req somehow")
         val wantedType = req.typeOfRequestedUnit
         if (classOf[Mobile].isAssignableFrom(wantedType)) {
           val typeFixed = wantedType.asInstanceOf[Class[Mobile]]
@@ -18,12 +19,13 @@ class ProvideNewUnits(universe: Universe) extends AIModule[Factory](universe) {
           1 to wantedAmount flatMap { _ =>
             val builderOf = UnitJobRequests.builderOf(typeFixed, self)
             units.request(builderOf) match {
-              case any: AtLeastOneSuccess[Factory] =>
-                val order = new TrainUnit()
+              case any: ExactlyOneSuccess[Factory] =>
+                hire(any)
+                val order = new TrainUnit(any.onlyOne, typeFixed, self)
                 assignJob(order)
-              case _ => None
+                order.ordersForTick
+              case _ => Nil
             }
-            Nil
           }
         } else {
           Nil
@@ -87,8 +89,8 @@ class GatherMinerals(universe: Universe) extends AIModule(universe) {
       class MinedPatch(val patch: MineralPatch) {
         private val miningTeam = ArrayBuffer.empty[GatherMineralsAtPatch]
         def hasOpenSpot: Boolean = miningTeam.size < estimateRequiredWorkers
-        def estimateRequiredWorkers = 2
         def openSpotCount = estimateRequiredWorkers - miningTeam.size
+        def estimateRequiredWorkers = 2
         def orders = miningTeam.flatMap(_.ordersForTick)
         def addToTeam(worker: WorkerUnit): Unit = {
           val job = new GatherMineralsAtPatch(worker, this)
@@ -148,6 +150,7 @@ class GatherMinerals(universe: Universe) extends AIModule(universe) {
           state = newState
           order.toList.filterNot(_.isNoop)
         }
+        override def finished = false
       }
 
       object MiningOrganization {
