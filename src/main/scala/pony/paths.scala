@@ -1,5 +1,7 @@
 package pony
 
+import pony.brain.Universe
+
 case class Path(waypoints: Seq[MapTilePosition])
 
 class SimplePathFinder(baseOn:Grid2D) {
@@ -65,5 +67,9 @@ class SimplePathFinder(baseOn:Grid2D) {
     }
     true
   }
+}
+
+class ConstructionSiteFinder(universe: Universe) {
+
 }
 

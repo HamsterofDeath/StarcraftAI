@@ -67,23 +67,30 @@ class DefaultWorld(game: Game) extends WorldListener {
 
   // these must be initialized after the first tick. making them lazy solves this
   lazy val mineralPatches = new MineralAnalyzer(map, units)
+
   val map        = new AnalyzedMap(game)
   val units      = new Units(game)
   val debugger   = new Debugger(game)
   val orderQueue = new OrderQueue(game, debugger)
+
   private var ticks = 0
+
   def currentResources = {
     val self = game.self()
     val total = self.supplyTotal()
     val used = self.supplyUsed()
     Resources(self.minerals(), self.gas(), total - used, used, total)
   }
+
   def isFirstTick = ticks == 0
+
   def tickCount = ticks
+
   def tick(): Unit = {
     debugger.tick()
     units.tick()
   }
+
   def postTick(): Unit = {
     orderQueue.debugAll()
     orderQueue.issueAll()
@@ -118,14 +125,14 @@ class Units(game: Game) {
     val lookFor = manifest[T].runtimeClass
     mine.find(lookFor.isInstance).map(_.asInstanceOf[T])
   }
+  def mine = all.filter(_.nativeUnit.getPlayer == game.self())
+
+  import scala.collection.JavaConverters._
+
   def mineByType[T: Manifest]: Iterator[T] = {
     val lookFor = manifest[T].runtimeClass
     mine.filter(lookFor.isInstance).map(_.asInstanceOf[T])
   }
-
-  import scala.collection.JavaConverters._
-
-  def mine = all.filter(_.nativeUnit.getPlayer == game.self())
   def allByType[T: Manifest]: Iterator[T] = {
     val lookFor = manifest[T].runtimeClass
     all.filter(lookFor.isInstance).map(_.asInstanceOf[T])
@@ -168,9 +175,9 @@ class Grid2D(val cols: Int, val rows: Int, bitset: collection.Set[Int]) {
   def size = cols * rows
   def walkable = bitset.size
   def blocked(x: Int, y: Int): Boolean = !free(x, y)
-  def free(x: Int, y: Int): Boolean = bitset(x + y * cols)
   def blocked(p: MapTilePosition): Boolean = !free(p)
   def free(p: MapTilePosition): Boolean = free(p.x, p.y)
+  def free(x: Int, y: Int): Boolean = bitset(x + y * cols)
   def all = new Traversable[MapTilePosition] {
     override def foreach[U](f: (MapTilePosition) => U): Unit = {
       for (x <- 0 until cols; y <- 0 until rows) {

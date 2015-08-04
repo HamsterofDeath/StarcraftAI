@@ -5,6 +5,12 @@ package modules
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
+class ProvideNewSupply(universe: Universe) extends AIModule[WorkerUnit](universe) {
+  override def ordersForTick: Traversable[UnitOrder] = {
+    Nil
+  }
+}
+
 class ProvideNewUnits(universe: Universe) extends AIModule[Factory](universe) {
   self =>
 

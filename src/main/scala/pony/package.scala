@@ -5,7 +5,7 @@ import org.pmw.tinylog.{Configurator, Level}
  * Created by HoD on 01.08.2015.
  */
 package object pony {
-  Configurator.defaultConfig().level(Level.TRACE).activate()
+  Configurator.defaultConfig().level(Level.TRACE).formatPattern("{level}:{message}").activate()
 
   type SCUnitType = Class[_ <: WrapsUnit]
   val tileSize = 32
