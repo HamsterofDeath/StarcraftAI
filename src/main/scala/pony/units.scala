@@ -50,7 +50,9 @@ trait Building extends BlockingTiles {
 }
 
 trait Factory extends Building {
-
+  def canBuild[T <: Mobile](typeOfUnit: Class[_ <: T]) = {
+    Dependencies.builderOf(typeOfUnit).isAssignableFrom(getClass)
+  }
 }
 
 trait SupplyProvider extends Building {
@@ -65,16 +67,16 @@ trait Mobile extends WrapsUnit {
   def isMoving = nativeUnit.isMoving
 
   def currentTileNative = currentTile.toNative
-  def currentTile = {
-    val tp = nativeUnit.getTilePosition
-    MapTilePosition.shared(tp.getX, tp.getY)
-  }
   def currentPositionNative = currentPosition.toNative
   def currentPosition = {
     val p = nativeUnit.getPosition
     MapPosition(p.getX, p.getY)
   }
   override def toString = s"${super.toString}@$currentTile"
+  def currentTile = {
+    val tp = nativeUnit.getTilePosition
+    MapTilePosition.shared(tp.getX, tp.getY)
+  }
 }
 
 trait Killable {
@@ -143,4 +145,11 @@ object UnitWrapper {
     }
 
   }
+}
+
+// this should be a part of bwmirror, but it's missing for some reason
+object Dependencies {
+  private val builtBy: Map[Class[_ <: WrapsUnit], Class[_ <: WrapsUnit]] = Map(classOf[SCV] -> classOf[CommandCenter])
+
+  def builderOf(unitClass: Class[_ <: WrapsUnit]) = builtBy(unitClass)
 }

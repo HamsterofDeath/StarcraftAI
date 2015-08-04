@@ -1,7 +1,7 @@
 package pony
 package brain
 
-class ResourceManager(universe: Universe) {
+class ResourceManager(override val universe: Universe) extends HasUniverse {
   private var currentResources = Resources(0, 0, 0, 0, 0)
   def tick(): Unit = {
     currentResources = universe.world.currentResources

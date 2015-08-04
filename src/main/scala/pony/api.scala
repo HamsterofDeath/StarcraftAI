@@ -44,11 +44,11 @@ trait AIPlugIn  {
   private var active              = true
   private var myWorld: DefaultWorld = _
   def debugger = world.debugger
-  def queueOrder(order: Order):Unit = {
+  def world = myWorld
+  def queueOrder(order: UnitOrder): Unit = {
     orders.queue_!(order)
   }
   def orders = world.orderQueue
-  def world = myWorld
   def setWorld_!(world: DefaultWorld):Unit = {
     this.myWorld = world
   }

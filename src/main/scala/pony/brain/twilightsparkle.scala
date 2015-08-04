@@ -6,9 +6,17 @@ import pony.brain.modules.GatherMinerals
 
 import scala.collection.mutable.ArrayBuffer
 
-abstract class AIModule {
+trait HasUniverse {
   def universe: Universe
-  def ordersForTick: Traversable[Order]
+  def units = universe.units
+  def resources = universe.resources
+  def world = universe.world
+  def bases = universe.bases
+}
+
+abstract class AIModule[T <: WrapsUnit : Manifest](override val universe: Universe)
+  extends Employer[T](universe) with HasUniverse {
+  def ordersForTick: Traversable[UnitOrder]
   def onNth: Int = 1
 }
 

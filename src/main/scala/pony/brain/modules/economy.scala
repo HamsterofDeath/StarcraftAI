@@ -5,7 +5,35 @@ package modules
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
-class GatherMinerals(override val universe: Universe) extends AIModule {
+class ProvideNewUnits(universe: Universe) extends AIModule[Factory](universe) {
+  self =>
+
+  override def ordersForTick: Traversable[UnitOrder] = {
+    units.failedToProvide.flatMap { reqs =>
+      reqs.requests.flatMap { req =>
+        val wantedType = req.typeOfRequestedUnit
+        if (classOf[Mobile].isAssignableFrom(wantedType)) {
+          val typeFixed = wantedType.asInstanceOf[Class[Mobile]]
+          val wantedAmount = req.amount
+          1 to wantedAmount flatMap { _ =>
+            val builderOf = UnitJobRequests.builderOf(typeFixed, self)
+            units.request(builderOf) match {
+              case any: AtLeastOneSuccess[Factory] =>
+                val order = new TrainUnit()
+                assignJob(order)
+              case _ => None
+            }
+            Nil
+          }
+        } else {
+          Nil
+        }
+      }
+    }
+  }
+}
+
+class GatherMinerals(universe: Universe) extends AIModule(universe) {
 
   private val gatheringJobs = ArrayBuffer.empty[GatherAtBase]
 
@@ -30,7 +58,7 @@ class GatherMinerals(override val universe: Universe) extends AIModule {
     gatheringJobs ++= add
   }
 
-  class GatherAtBase(base: Base, minerals: MineralPatchGroup) extends Employer[WorkerUnit](universe.units) {
+  class GatherAtBase(base: Base, minerals: MineralPatchGroup) extends Employer[WorkerUnit](universe) {
     emp =>
 
     def ordersForTick = {
@@ -80,7 +108,7 @@ class GatherMinerals(override val universe: Universe) extends AIModule {
 
         private var state: State = Idle
 
-        override def ordersForTick: Seq[Order] = {
+        override def ordersForTick: Seq[UnitOrder] = {
           def sendWorkerToPatch = ApproachingMinerals -> Orders.Gather(worker, miningTarget.patch)
           val (newState, order) = state match {
             case Idle if worker.isCarryingMinerals =>

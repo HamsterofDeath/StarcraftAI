@@ -4,7 +4,7 @@ import bwapi.{Color, Game}
 
 import scala.collection.mutable.ArrayBuffer
 
-abstract class Order {
+abstract class UnitOrder {
   private var myGame:Game = _
 
   def setGame_!(game: Game):Unit = {
@@ -20,7 +20,17 @@ abstract class Order {
 }
 
 object Orders {
-  case class Move(unit: Mobile, to: MapTilePosition) extends Order {
+  case class Train(unit: Factory, trainType: Class[_ <: Mobile]) extends UnitOrder {
+    override def issueOrderToGame(): Unit = {
+
+    }
+
+    override def renderDebug(renderer: Renderer): Unit = {
+
+    }
+  }
+
+  case class Move(unit: Mobile, to: MapTilePosition) extends UnitOrder {
     override def issueOrderToGame(): Unit = {
       unit.nativeUnit.move(to.toMapPosition.toNative)
     }
@@ -29,7 +39,7 @@ object Orders {
       renderer.indicateTarget(unit.currentPosition, to)
     }
   }
-  case class Gather(unit: WorkerUnit, patch: MineralPatch) extends Order {
+  case class Gather(unit: WorkerUnit, patch: MineralPatch) extends UnitOrder {
     override def issueOrderToGame(): Unit = {
       unit.nativeUnit.gather(patch.nativeUnit)
     }
@@ -38,7 +48,7 @@ object Orders {
       renderer.in_!(Color.Teal).indicateTarget(unit.currentPosition, patch.area)
     }
   }
-  case class MoveToPatch(unit: WorkerUnit, patch: MineralPatch) extends Order {
+  case class MoveToPatch(unit: WorkerUnit, patch: MineralPatch) extends UnitOrder {
     override def issueOrderToGame(): Unit = {
       unit.nativeUnit.move(patch.nativeMapPosition)
     }
@@ -47,7 +57,7 @@ object Orders {
       renderer.in_!(Color.Blue).indicateTarget(unit.currentPosition, patch.area)
     }
   }
-  case class Stop(unit: Mobile) extends Order {
+  case class Stop(unit: Mobile) extends UnitOrder {
     override def issueOrderToGame(): Unit = {
       unit.nativeUnit.stop()
     }
@@ -56,7 +66,7 @@ object Orders {
 
     }
   }
-  case class ReturnMinerals(unit: WorkerUnit, to: MainBuilding) extends Order {
+  case class ReturnMinerals(unit: WorkerUnit, to: MainBuilding) extends UnitOrder {
     override def issueOrderToGame(): Unit = {
       unit.nativeUnit.move(to.nativeMapPosition)
     }
@@ -66,7 +76,7 @@ object Orders {
     }
   }
 
-  case object NoUpdate extends Order {
+  case object NoUpdate extends UnitOrder {
 
     override def isNoop: Boolean = true
 
@@ -76,9 +86,9 @@ object Orders {
 }
 
 class OrderQueue(game: Game, debugger: Debugger) {
-  private val queue = ArrayBuffer.empty[Order]
+  private val queue = ArrayBuffer.empty[UnitOrder]
 
-  def queue_!(order: Order):Unit = {
+  def queue_!(order: UnitOrder): Unit = {
     order.setGame_!(game)
     queue += order
   }
