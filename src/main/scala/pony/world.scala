@@ -158,7 +158,7 @@ class Units(game: Game) {
   }
 }
 
-class Grid2D(val cols: Int, val rows: Int, bitset: collection.Set[Int]) {
+class Grid2D(val cols: Int, val rows: Int, bitSet: collection.Set[Int]) {
   def zoomedOut = {
     val bits = mutable.BitSet.empty
     val subCols = cols / 4
@@ -173,11 +173,11 @@ class Grid2D(val cols: Int, val rows: Int, bitset: collection.Set[Int]) {
   }
   def blocked = size - walkable
   def size = cols * rows
-  def walkable = bitset.size
+  def walkable = bitSet.size
   def blocked(x: Int, y: Int): Boolean = !free(x, y)
   def blocked(p: MapTilePosition): Boolean = !free(p)
   def free(p: MapTilePosition): Boolean = free(p.x, p.y)
-  def free(x: Int, y: Int): Boolean = bitset(x + y * cols)
+  def free(x: Int, y: Int): Boolean = bitSet(x + y * cols)
   def all = new Traversable[MapTilePosition] {
     override def foreach[U](f: (MapTilePosition) => U): Unit = {
       for (x <- 0 until cols; y <- 0 until rows) {
@@ -185,7 +185,16 @@ class Grid2D(val cols: Int, val rows: Int, bitset: collection.Set[Int]) {
       }
     }
   }
+
+  def mutableCopy = new MutableGrid2D(cols, rows, mutable.BitSet.empty ++ bitSet)
 }
+
+class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet) extends Grid2D(cols, rows, bitSet) {
+  def block_!(x: Int, y: Int): Unit = {
+    bitSet += (x + y * cols)
+  }
+}
+
 
 class MineralAnalyzer(map: AnalyzedMap, myUnits: Units) {
   val groups = {

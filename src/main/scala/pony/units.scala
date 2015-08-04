@@ -62,7 +62,7 @@ trait Factory extends Building {
     Dependencies.builderOf(typeOfUnit).isAssignableFrom(getClass)
   }
 
-  def isProducing = nativeUnit.getOrder == Order.Train
+  def isProducing = nativeUnit.getOrder == Order.Train || nativeUnit.getRemainingTrainTime > 0
 }
 
 trait SupplyProvider extends Building {
@@ -77,16 +77,16 @@ trait Mobile extends WrapsUnit {
   def isMoving = nativeUnit.isMoving
 
   def currentTileNative = currentTile.toNative
-  def currentTile = {
-    val tp = nativeUnit.getTilePosition
-    MapTilePosition.shared(tp.getX, tp.getY)
-  }
   def currentPositionNative = currentPosition.toNative
   def currentPosition = {
     val p = nativeUnit.getPosition
     MapPosition(p.getX, p.getY)
   }
   override def toString = s"${super.toString}@$currentTile"
+  def currentTile = {
+    val tp = nativeUnit.getTilePosition
+    MapTilePosition.shared(tp.getX, tp.getY)
+  }
 }
 
 trait Killable {

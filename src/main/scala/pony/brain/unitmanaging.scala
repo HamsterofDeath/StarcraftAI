@@ -6,7 +6,9 @@ import scala.collection.mutable.ArrayBuffer
 
 class UnitManager(override val universe: Universe) extends HasUniverse {
   private val unfulfilledRequests = ArrayBuffer.empty[UnitJobRequests[_ <: WrapsUnit]]
+
   private val assignments = mutable.HashMap.empty[WrapsUnit, UnitWithJob[_ <: WrapsUnit]]
+
   private val byEmployer  = new
       mutable.HashMap[Employer[_ <: WrapsUnit], mutable.Set[UnitWithJob[_ <: WrapsUnit]]]
       with mutable.MultiMap[Employer[_ <: WrapsUnit], UnitWithJob[_ <: WrapsUnit]]
@@ -19,11 +21,10 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
 
     //clean
     val removeUs = assignments.filter { case (_, job) => job.finished }.values.toList
-    trace(s"Cleaning up ${removeUs.size} finished jobs", removeUs.nonEmpty)
+    info(s"Cleaning up ${removeUs.size} finished jobs", removeUs.nonEmpty)
 
     removeUs.foreach { job =>
       val newJob = new BusyDoingNothing(job.unit, Nobody)
-      assignments.put(job.unit, newJob)
       assignJob(Nobody, newJob)
     }
 
@@ -36,12 +37,12 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
     }
 
     val myOwn = universe.world.units.mine.filterNot(assignments.contains).map(jobOf).toSeq
-    trace(s"Found ${myOwn.size} new units of player", myOwn.nonEmpty)
+    info(s"Found ${myOwn.size} new units of player", myOwn.nonEmpty)
     myOwn.foreach(byEmployer.addBinding(Nobody, _))
     assignments ++= myOwn.map(e => e.unit -> e)
 
     val registerUs = universe.world.units.all.filterNot(assignments.contains).map(jobOf).toSeq
-    trace(s"Found ${registerUs.size} new units (not of player)", registerUs.nonEmpty)
+    info(s"Found ${registerUs.size} new units (not of player)", registerUs.nonEmpty)
     assignments ++= registerUs.map(e => e.unit -> e)
 
   }
@@ -79,7 +80,8 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
         None
     }
 
-    val result = hireResult match {
+    val hr = hireResult
+    val result = hr match {
       case None =>
         unfulfilledRequests += req
         new FailedHiringResult[T]

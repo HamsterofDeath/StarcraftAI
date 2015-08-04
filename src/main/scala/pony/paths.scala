@@ -69,7 +69,10 @@ class SimplePathFinder(baseOn:Grid2D) {
   }
 }
 
-class ConstructionSiteFinder(universe: Universe) {
-
+class ConstructionSiteFinder[T <: Building](universe: Universe) {
+  def findSpotFor(building: Class[_ <: T]) = {
+    val necessaryArea = Size.shared(building.toUnitType.tileWidth(), building.toUnitType.tileWidth())
+    val empty = universe.world.map.walkableGridZoomed.mutableCopy
+  }
 }
 
