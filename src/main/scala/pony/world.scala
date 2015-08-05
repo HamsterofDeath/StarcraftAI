@@ -20,12 +20,12 @@ case object Terran extends SCRace {
 }
 
 case object Zerg extends SCRace {
-  override def workerClass: Class[_ <: WorkerUnit] = ???
+  override def workerClass: Class[_ <: WorkerUnit] = classOf[Drone]
   override def transporterClass: Class[_ <: TransporterUnit] = ???
 }
 
 case object Protoss extends SCRace {
-  override def workerClass: Class[_ <: WorkerUnit] = ???
+  override def workerClass: Class[_ <: WorkerUnit] = classOf[Probe]
   override def transporterClass: Class[_ <: TransporterUnit] = ???
 }
 
@@ -129,6 +129,7 @@ class Units(game: Game) {
 
   import scala.collection.JavaConverters._
 
+  def all = knownUnits.valuesIterator
   def mineByType[T: Manifest]: Iterator[T] = {
     val lookFor = manifest[T].runtimeClass
     mine.filter(lookFor.isInstance).map(_.asInstanceOf[T])
@@ -137,7 +138,6 @@ class Units(game: Game) {
     val lookFor = manifest[T].runtimeClass
     all.filter(lookFor.isInstance).map(_.asInstanceOf[T])
   }
-  def all = knownUnits.valuesIterator
   def minerals = knownUnits.valuesIterator.collect { case u: MineralPatch => u }
   def tick(): Unit = {
     if (initial) {
@@ -152,7 +152,7 @@ class Units(game: Game) {
   private def addUnit(u: bwapi.Unit): Unit = {
     if (!knownUnits.contains(u.getID)) {
       val lifted = UnitWrapper.lift(u)
-      info(s"Own unit added: ${lifted}")
+      info(s"Own unit added: $lifted")
       knownUnits.put(u.getID, lifted)
     }
   }
@@ -171,13 +171,13 @@ class Grid2D(val cols: Int, val rows: Int, bitSet: collection.Set[Int]) {
     }
     new Grid2D(subCols, subRows, bits)
   }
+  def free(x: Int, y: Int): Boolean = bitSet(x + y * cols)
   def blocked = size - walkable
   def size = cols * rows
   def walkable = bitSet.size
   def blocked(x: Int, y: Int): Boolean = !free(x, y)
   def blocked(p: MapTilePosition): Boolean = !free(p)
   def free(p: MapTilePosition): Boolean = free(p.x, p.y)
-  def free(x: Int, y: Int): Boolean = bitSet(x + y * cols)
   def all = new Traversable[MapTilePosition] {
     override def foreach[U](f: (MapTilePosition) => U): Unit = {
       for (x <- 0 until cols; y <- 0 until rows) {
