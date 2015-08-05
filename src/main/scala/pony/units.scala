@@ -65,7 +65,7 @@ trait Factory extends Building {
   def isProducing = nativeUnit.getOrder == Order.Train || nativeUnit.getRemainingTrainTime > 0
 }
 
-trait SupplyProvider extends Building {
+trait SupplyProvider {
 
 }
 
@@ -77,16 +77,16 @@ trait Mobile extends WrapsUnit {
   def isMoving = nativeUnit.isMoving
 
   def currentTileNative = currentTile.toNative
+  def currentTile = {
+    val tp = nativeUnit.getTilePosition
+    MapTilePosition.shared(tp.getX, tp.getY)
+  }
   def currentPositionNative = currentPosition.toNative
   def currentPosition = {
     val p = nativeUnit.getPosition
     MapPosition(p.getX, p.getY)
   }
   override def toString = s"${super.toString}@$currentTile"
-  def currentTile = {
-    val tp = nativeUnit.getTilePosition
-    MapTilePosition.shared(tp.getX, tp.getY)
-  }
 }
 
 trait Killable {
@@ -118,16 +118,22 @@ trait TransporterUnit extends AirUnit {
 
 }
 
-
 trait Ignored extends WrapsUnit
 
 trait Resource extends BlockingTiles {
   def remaining = nativeUnit.getResources
 }
 
+trait ImmobileSupplyProvider extends SupplyProvider with Building
+trait MobileSupplyProvider extends SupplyProvider with Mobile
+
 class MineralPatch(unit: APIUnit) extends AnyUnit(unit) with Resource {
   def isBeingMined = nativeUnit.isBeingGathered
 }
+
+class SupplyDepot(unit: APIUnit) extends AnyUnit(unit) with ImmobileSupplyProvider
+class Pylon(unit: APIUnit) extends AnyUnit(unit) with ImmobileSupplyProvider
+class Overlord(unit: APIUnit) extends AnyUnit(unit) with MobileSupplyProvider
 
 class SCV(unit: APIUnit) extends AnyUnit(unit) with WorkerUnit
 class Probe(unit: APIUnit) extends AnyUnit(unit) with WorkerUnit
@@ -173,7 +179,9 @@ object TypeMapping {
 
   private val class2UnitType: Map[Class[_ <: WrapsUnit], UnitType] =
     Map(classOf[SCV] -> UnitType.Terran_SCV,
-      classOf[CommandCenter] -> UnitType.Terran_Command_Center)
+      classOf[SupplyDepot] -> UnitType.Terran_Supply_Depot,
+      classOf[CommandCenter] -> UnitType.Terran_Command_Center,
+      classOf[Irrelevant] -> UnitType.Unknown)
 
   def unitTypeOf[T <: WrapsUnit](c: Class[_ <: T]) = class2UnitType(c)
 }

@@ -134,11 +134,11 @@ class Units(game: Game) {
     val lookFor = manifest[T].runtimeClass
     mine.filter(lookFor.isInstance).map(_.asInstanceOf[T])
   }
+  def minerals = allByType[MineralPatch]
   def allByType[T: Manifest]: Iterator[T] = {
     val lookFor = manifest[T].runtimeClass
     all.filter(lookFor.isInstance).map(_.asInstanceOf[T])
   }
-  def minerals = knownUnits.valuesIterator.collect { case u: MineralPatch => u }
   def tick(): Unit = {
     if (initial) {
       initial = false
@@ -146,9 +146,11 @@ class Units(game: Game) {
     }
     game.self().getUnits.asScala.foreach {addUnit}
   }
+
   private def init(): Unit = {
     game.getMinerals.asScala.foreach {addUnit}
   }
+
   private def addUnit(u: bwapi.Unit): Unit = {
     if (!knownUnits.contains(u.getID)) {
       val lifted = UnitWrapper.lift(u)
@@ -190,6 +192,16 @@ class Grid2D(val cols: Int, val rows: Int, bitSet: collection.Set[Int]) {
 }
 
 class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet) extends Grid2D(cols, rows, bitSet) {
+  def asReadOnly: Grid2D = this
+  def or_!(onlyBuildings: MutableGrid2D) = {
+    bitSet &= onlyBuildings.data
+    this
+  }
+  protected def data = bitSet
+  def block_!(area: Area): Unit = {
+    area.tiles.foreach { p => block_!(p.x, p.y) }
+  }
+
   def block_!(x: Int, y: Int): Unit = {
     bitSet += (x + y * cols)
   }
@@ -250,6 +262,8 @@ class MineralPatchGroup(val patchId: Int) {
 class AnalyzedMap(game: Game) {
   val sizeX = game.mapWidth() * 4
   val sizeY = game.mapHeight() * 4
+
+  val empty = new Grid2D(sizeX, sizeY, Set.empty)
 
   val walkableGridZoomed = {
     val bits = mutable.BitSet.empty

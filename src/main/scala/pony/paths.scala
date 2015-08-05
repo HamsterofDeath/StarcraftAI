@@ -1,6 +1,6 @@
 package pony
 
-import pony.brain.Universe
+import pony.brain.{HasUniverse, Universe}
 
 case class Path(waypoints: Seq[MapTilePosition])
 
@@ -69,10 +69,36 @@ class SimplePathFinder(baseOn:Grid2D) {
   }
 }
 
-class ConstructionSiteFinder[T <: Building](universe: Universe) {
-  def findSpotFor(building: Class[_ <: T]) = {
+class MapLayers(override val universe: Universe) extends HasUniverse {
+  private val simple               = world.map.walkableGridZoomed
+  private val plannedBuildings     = world.map.empty.mutableCopy
+  private var withBuildings        = evalWithBuildings
+  private var withPlannedBuildings = evalWithPlannedBuildings
+  def forBuildingConstruction = withPlannedBuildings.asReadOnly
+  def blockBuilding_!(where: Area): Unit = {
+    plannedBuildings.block_!(where)
+  }
+  private def update(): Unit = {
+    withBuildings = evalWithBuildings
+    withPlannedBuildings = evalWithPlannedBuildings
+  }
+  private def evalWithBuildings = simple.mutableCopy.or_!(onlyBuildings)
+  private def onlyBuildings = {
+    val empty = world.map.empty.mutableCopy
+    units.allByType[Building].foreach { b =>
+      empty.block_!(b.area)
+    }
+    empty
+  }
+  private def evalWithPlannedBuildings = withBuildings.mutableCopy.or_!(plannedBuildings)
+
+}
+
+class ConstructionSiteFinder(universe: Universe) {
+  def findSpotFor[T <: Building](building: Class[_ <: T]) = {
     val necessaryArea = Size.shared(building.toUnitType.tileWidth(), building.toUnitType.tileWidth())
-    val empty = universe.world.map.walkableGridZoomed.mutableCopy
+    val tryOnThis = universe.mapsLayers.forBuildingConstruction
+    Option.empty[Area]
   }
 }
 

@@ -2,8 +2,44 @@ package pony
 package brain
 package modules
 
+import pony.Orders.Construct
+
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
+
+class ProvideNewBuildings(universe: Universe)
+  extends AIModule[WorkerUnit](universe) with ComputationIntensive[WorkerUnit] {
+  self =>
+
+  override type ComputationInput = Data
+  override def evaluateNextOrders(in: ComputationInput): BackgroundComputationResult = {
+    val helper = new ConstructionSiteFinder(universe)
+    val order = helper.findSpotFor(in.buildingType).map { where =>
+      Construct(in.worker, in.buildingType, where)
+    }
+    order match {
+      case None =>
+        warn(s"Computation failed: $in")
+        BackgroundComputationResult.nothing
+      case Some(plannedOrder) =>
+        info(s"Planning to build ${in.buildingType.className} at ${plannedOrder.where} by ${in.worker}")
+        BackgroundComputationResult.result(plannedOrder.toSeq, () => false, () => {
+          mapLayers.blockBuilding_!(plannedOrder.where)
+        })
+    }
+  }
+  override def calculationInput = {
+    // we do them one by one, it's simpler
+    unitManager.failedToProvideByType[Building].headOption.flatMap { req =>
+      val request = UnitJobRequests.constructor(self)
+      unitManager.request(request) match {
+        case success: ExactlyOneSuccess[WorkerUnit] => Some(new Data(success.onlyOne, req.typeOfRequestedUnit))
+        case _ => None
+      }
+    }
+  }
+  case class Data(worker: WorkerUnit, buildingType: Class[_ <: Building])
+}
 
 class ProvideNewSupply(universe: Universe) extends AIModule[WorkerUnit](universe) {
   override def ordersForTick: Traversable[UnitOrder] = {
@@ -15,29 +51,27 @@ class ProvideNewUnits(universe: Universe) extends AIModule[Factory](universe) {
   self =>
 
   override def ordersForTick: Traversable[UnitOrder] = {
-    units.failedToProvide.flatMap { reqs =>
-      reqs.requests.flatMap { req =>
-        trace(s"Trying to satisfy $req somehow")
-        val wantedType = req.typeOfRequestedUnit
-        if (classOf[Mobile].isAssignableFrom(wantedType)) {
-          val typeFixed = wantedType.asInstanceOf[Class[Mobile]]
-          val wantedAmount = req.amount
-          1 to wantedAmount flatMap { _ =>
-            val builderOf = UnitJobRequests.builderOf(typeFixed, self)
-            units.request(builderOf) match {
-              case any: ExactlyOneSuccess[Factory] =>
-                hire(any)
-                val order = new TrainUnit(any.onlyOne, typeFixed, self)
-                assignJob(order)
-                order.ordersForTick
-              case _ => Nil
-            }
+    unitManager.failedToProvideFlat.flatMap { req =>
+      trace(s"Trying to satisfy $req somehow")
+      val wantedType = req.typeOfRequestedUnit
+      if (classOf[Mobile].isAssignableFrom(wantedType)) {
+        val typeFixed = wantedType.asInstanceOf[Class[Mobile]]
+        val wantedAmount = req.amount
+        1 to wantedAmount flatMap { _ =>
+          val builderOf = UnitJobRequests.builderOf(typeFixed, self)
+          unitManager.request(builderOf) match {
+            case any: ExactlyOneSuccess[Factory] =>
+              hire(any)
+              val order = new TrainUnit(any.onlyOne, typeFixed, self)
+              assignJob(order)
+              order.ordersForTick
+            case _ => Nil
           }
-        } else {
-          Nil
         }
+      } else {
+        Nil
       }
-    }
+    }.toSeq
   }
 }
 
@@ -73,7 +107,7 @@ class GatherMinerals(universe: Universe) extends AIModule(universe) {
       val missing = idealNumberOfWorkers - teamSize
       if (missing > 0) {
         val workerType = base.mainBuilding.race.workerClass
-        val result = universe.units.request(UnitJobRequests.idleOfType(emp, workerType, missing))
+        val result = universe.unitManager.request(UnitJobRequests.idleOfType(emp, workerType, missing))
         hire(result)
       }
       idleUnits.foreach { u =>
@@ -96,8 +130,8 @@ class GatherMinerals(universe: Universe) extends AIModule(universe) {
       class MinedPatch(val patch: MineralPatch) {
         private val miningTeam = ArrayBuffer.empty[GatherMineralsAtPatch]
         def hasOpenSpot: Boolean = miningTeam.size < estimateRequiredWorkers
-        def openSpotCount = estimateRequiredWorkers - miningTeam.size
         def estimateRequiredWorkers = 2
+        def openSpotCount = estimateRequiredWorkers - miningTeam.size
         def orders = miningTeam.flatMap(_.ordersForTick)
         def addToTeam(worker: WorkerUnit): Unit = {
           val job = new GatherMineralsAtPatch(worker, this)
@@ -158,7 +192,7 @@ class GatherMinerals(universe: Universe) extends AIModule(universe) {
           state = newState
           order.toList.filterNot(_.isNoop)
         }
-        override def finished = false
+        override def isFinished = false
       }
 
       object MiningOrganization {

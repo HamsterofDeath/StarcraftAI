@@ -13,19 +13,30 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
       mutable.HashMap[Employer[_ <: WrapsUnit], mutable.Set[UnitWithJob[_ <: WrapsUnit]]]
       with mutable.MultiMap[Employer[_ <: WrapsUnit], UnitWithJob[_ <: WrapsUnit]]
 
+  def failedToProvideByType[T <: WrapsUnit : Manifest] = {
+    val c = manifest[T].runtimeClass
+    failedToProvideFlat.collect {
+      case req: UnitRequest[_] if c.isAssignableFrom(req.typeOfRequestedUnit) => req.asInstanceOf[UnitRequest[T]]
+    }
+  }
+
+  def failedToProvideFlat = failedToProvide.flatMap(_.requests)
+
   def failedToProvide = unfulfilledRequests.toSeq
+
   def jobOf[T <: WrapsUnit](unit: T) = assignments(unit).asInstanceOf[UnitWithJob[T]]
   def tick(): Unit = {
     // do not pile these up, clear per tick
     unfulfilledRequests.clear()
 
     //clean
-    val removeUs = assignments.filter { case (_, job) => job.finished }.values.toList
+    val removeUs = assignments.filter { case (_, job) => job.isFinished }.values.toList
     info(s"Cleaning up ${removeUs.size} finished jobs", removeUs.nonEmpty)
 
     removeUs.foreach { job =>
       val newJob = new BusyDoingNothing(job.unit, Nobody)
       assignJob(Nobody, newJob)
+      job.onFinish()
     }
 
     def jobOf[T <: WrapsUnit](unit: T) = {
@@ -84,18 +95,18 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
     val result = hr match {
       case None =>
         unfulfilledRequests += req
-        new FailedHiringResult[T]
+        new FailedPreHiringResult[T]
       case Some(team) if !team.complete =>
         unfulfilledRequests += team.missingAsRequest
         if (team.hasOneMember)
-          new PartialHiringResult(team.teamAsMap) with ExactlyOneSuccess[T]
+          new PartialPreHiringResult(team.teamAsMap) with ExactlyOneSuccess[T]
         else
-          new PartialHiringResult(team.teamAsMap)
+          new PartialPreHiringResult(team.teamAsMap)
       case Some(team) =>
         if (team.hasOneMember) {
-          new SuccessfulHiringResult(team.teamAsMap) with ExactlyOneSuccess[T]
+          new SuccessfulPreHiringResult(team.teamAsMap) with ExactlyOneSuccess[T]
         } else {
-          new SuccessfulHiringResult(team.teamAsMap)
+          new SuccessfulPreHiringResult(team.teamAsMap)
         }
     }
     trace(s"Result of request: $result")
@@ -109,39 +120,39 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
   case object Nobody extends Employer[WrapsUnit](universe)
 }
 
-trait HiringResult[T <: WrapsUnit] {
+trait PreHiringResult[T <: WrapsUnit] {
   def success: Boolean
-  def hired: Map[UnitRequest[T], Set[T]]
-  def units = hired.flatMap(_._2)
+  def canHire: Map[UnitRequest[T], Set[T]]
+  def units = canHire.flatMap(_._2)
 
-  override def toString = s"HiringResult($success, $hired)"
+  override def toString = s"HiringResult($success, $canHire)"
 }
 
-class FailedHiringResult[T <: WrapsUnit] extends HiringResult[T] {
+class FailedPreHiringResult[T <: WrapsUnit] extends PreHiringResult[T] {
   def success = false
-  def hired = Map.empty
+  def canHire = Map.empty
 }
 
-trait AtLeastOneSuccess[T <: WrapsUnit] extends HiringResult[T] {
-  def one = hired.valuesIterator.next().head
+trait AtLeastOneSuccess[T <: WrapsUnit] extends PreHiringResult[T] {
+  def one = canHire.valuesIterator.next().head
 }
 
 trait ExactlyOneSuccess[T <: WrapsUnit] extends AtLeastOneSuccess[T] {
   def onlyOne = {
-    assert(hired.size == 1)
-    val set = hired.valuesIterator.next()
+    assert(canHire.size == 1)
+    val set = canHire.valuesIterator.next()
     assert(set.size == 1)
     set.head
   }
 }
 
-class SuccessfulHiringResult[T <: WrapsUnit](override val hired: Map[UnitRequest[T], Set[T]])
-  extends HiringResult[T] with AtLeastOneSuccess[T] {
+class SuccessfulPreHiringResult[T <: WrapsUnit](override val canHire: Map[UnitRequest[T], Set[T]])
+  extends PreHiringResult[T] with AtLeastOneSuccess[T] {
   def success = true
 }
 
-class PartialHiringResult[T <: WrapsUnit](override val hired: Map[UnitRequest[T], Set[T]])
-  extends HiringResult[T] with AtLeastOneSuccess[T] {
+class PartialPreHiringResult[T <: WrapsUnit](override val canHire: Map[UnitRequest[T], Set[T]])
+  extends PreHiringResult[T] with AtLeastOneSuccess[T] {
   def success = false
 }
 
@@ -184,9 +195,9 @@ abstract class Employer[T <: WrapsUnit : Manifest](override val universe: Univer
 
   def teamSize = employees.size
 
-  def idleUnits = employees.filter(units.jobOf(_).isIdle)
+  def idleUnits = employees.filter(unitManager.jobOf(_).isIdle)
 
-  def hire(result: HiringResult[T]): Unit = {
+  def hire(result: PreHiringResult[T]): Unit = {
     result.units.foreach(hire)
   }
 
@@ -200,7 +211,7 @@ abstract class Employer[T <: WrapsUnit : Manifest](override val universe: Univer
 
   def assignJob(job: UnitWithJob[T]): Unit = {
     assert(employees.contains(job.unit), s"Please hire ${job.unit} before giving it a job")
-    units.assignJob(this, job)
+    unitManager.assignJob(this, job)
   }
 
   def current = employees.toSeq
@@ -210,11 +221,20 @@ abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: 
   extends HasUniverse {
   override val universe     = employer.universe
   private  val creationTick = currentTick
+  private  val listeners    = ArrayBuffer.empty[JobFinishedListener[T]]
   def age = currentTick - creationTick
   def isIdle: Boolean = false
   def ordersForTick: Seq[UnitOrder]
   override def toString: String = s"${getClass.className} of $unit of $employer"
-  def finished: Boolean
+  def isFinished: Boolean
+  def onFinish(): Unit = {
+    listeners.foreach(_.onFinish())
+  }
+  def listen_!(listener: JobFinishedListener[T]): Unit = listeners += listener
+}
+
+trait JobFinishedListener[T <: WrapsUnit] {
+  def onFinish(): Unit
 }
 
 class TrainUnit[F <: Factory, T <: Mobile](factory: F, trainType: Class[_ <: Mobile], employer: Employer[F])
@@ -224,7 +244,7 @@ class TrainUnit[F <: Factory, T <: Mobile](factory: F, trainType: Class[_ <: Mob
     Orders.Train(unit, trainType).toSeq
   }
 
-  override def finished = {
+  override def isFinished = {
     !factory.isProducing && age > 10
   }
 }
@@ -233,14 +253,14 @@ class BusyDoingNothing[T <: WrapsUnit](unit: T, employer: Employer[T])
   extends UnitWithJob(employer, unit, Priority.None) {
   override def isIdle = true
   override def ordersForTick: Seq[UnitOrder] = Nil
-  override def finished = false
+  override def isFinished = false
 }
 
 class BusyBeingTrained[T <: WrapsUnit](unit: T, employer: Employer[T])
   extends UnitWithJob(employer, unit, Priority.Max) {
   override def isIdle = false
   override def ordersForTick: Seq[UnitOrder] = Nil
-  override def finished = unit.nativeUnit.getRemainingBuildTime == 0
+  override def isFinished = unit.nativeUnit.getRemainingBuildTime == 0
 }
 
 trait UnitRequest[T <: WrapsUnit] {
@@ -288,6 +308,14 @@ object UnitJobRequests {
 
     UnitJobRequests(req.toSeq, employer, Priority.Default)
 
+  }
+
+  def constructor[T <: WorkerUnit : Manifest](employer: Employer[T]): UnitJobRequests[T] = {
+
+    val actualClass = manifest[T].runtimeClass.asInstanceOf[Class[T]]
+    val req = AnyUnitRequest(actualClass, 1)
+
+    UnitJobRequests(req.toSeq, employer, Priority.ConstructBuilding)
   }
 
   def idleOfType[T <: WrapsUnit : Manifest](employer: Employer[T], ofType: Class[_ <: T], amount: Int = 1) = {

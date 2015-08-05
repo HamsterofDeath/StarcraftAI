@@ -1,6 +1,6 @@
 package pony
 
-import bwapi.Position
+import bwapi.{Position, TilePosition}
 
 trait HasXY {
   def x: Int
@@ -14,6 +14,8 @@ trait HasXY {
 
 }
 case class MapTilePosition(x: Int, y: Int) extends HasXY {
+  def toTilePosition = new TilePosition(x, y)
+
   def mapX = tileSize * x
   def mapY = tileSize * y
 
@@ -30,16 +32,32 @@ object MapTilePosition {
   def shared(x: Int, y: Int) = points(x)(y)
 }
 
-case class Size(x: Int, y: Int) extends HasXY
+case class Size(x: Int, y: Int) extends HasXY {
+  def points: Traversable[MapTilePosition] = new Traversable[MapTilePosition] {
+    override def foreach[U](f: (MapTilePosition) => U): Unit = {
+      for (x <- 0 to x; y <- 0 to y) {
+        f(MapTilePosition.shared(x, y))
+      }
+    }
+  }
+}
+
 object Size {
   val sizes = Array.tabulate(5, 5)((x, y) => Size(x, y))
   def shared(x: Int, y: Int) = sizes(x)(y)
 }
 
 case class Area(upperLeft: MapTilePosition, sizeOfArea: Size) {
-
   val lowerRight = upperLeft.movedBy(sizeOfArea)
   val center     = MapPosition((upperLeft.mapX + lowerRight.mapX) / 2, (upperLeft.mapY + lowerRight.mapY) / 2)
+  def tiles: Traversable[MapTilePosition] = new Traversable[MapTilePosition] {
+    override def foreach[U](f: (MapTilePosition) => U): Unit = {
+      sizeOfArea.points.map { p => {
+        p.movedBy(upperLeft)
+      }
+      }
+    }
+  }
   def outline: Traversable[MapTilePosition] = {
     new Traversable[MapTilePosition] {
       override def foreach[U](f: (MapTilePosition) => U): Unit = {
@@ -60,4 +78,10 @@ case class Area(upperLeft: MapTilePosition, sizeOfArea: Size) {
 
 case class MapPosition(x: Int, y: Int) extends HasXY {
   def toNative = new Position(x, y)
+}
+
+object GeometryHelpers {
+  def blockSpiral(origin: MapTilePosition): Traversable[MapTilePosition] = new Traversable[MapTilePosition] {
+    override def foreach[U](f: (MapTilePosition) => U): Unit = {}
+  }
 }

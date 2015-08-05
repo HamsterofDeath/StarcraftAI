@@ -3,6 +3,14 @@ package pony
 import bwapi.Game
 
 class Renderer(game: Game, private var color: bwapi.Color) {
+  def drawOutline(where: Area): Unit = {
+    drawOutline(where.upperLeft.mapX, where.upperLeft.mapY, where.lowerRight.mapX, where.lowerRight.mapY)
+  }
+
+  def drawOutline(x1: Int, y1: Int, x2: Int, y2: Int): Unit = {
+    game.drawBoxMap(x1, y1, x2, y2, color)
+  }
+
   def drawTextAboveUnit(u: Mobile, text: String): Unit = {
     game.drawTextMap(u.currentPositionNative.getX, u.currentPositionNative.getY, text)
   }

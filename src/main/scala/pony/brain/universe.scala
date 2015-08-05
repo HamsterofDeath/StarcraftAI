@@ -6,5 +6,7 @@ trait Universe {
   def world: DefaultWorld
   def bases: Bases
   def resources: ResourceManager
-  def units: UnitManager
+  def unitManager: UnitManager
+  def units: Units
+  def mapsLayers: MapLayers
 }

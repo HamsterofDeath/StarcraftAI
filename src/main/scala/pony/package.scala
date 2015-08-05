@@ -47,7 +47,6 @@ package object pony {
 
   implicit class RichUnitClass[T <: WrapsUnit](val c: Class[_ <: T]) extends AnyVal {
     def toUnitType = TypeMapping.unitTypeOf(c)
-    def toMoreSpecific(race: SCRace) = TypeMapping.unitTypeOf(c)
   }
 
   case object Trace extends LogLevel(1)

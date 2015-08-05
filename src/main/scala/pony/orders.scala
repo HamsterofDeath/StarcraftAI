@@ -20,6 +20,16 @@ abstract class UnitOrder {
 }
 
 object Orders {
+  case class Construct(unit: WorkerUnit, buildingType: Class[_ <: Building], where: Area) extends UnitOrder {
+    override def issueOrderToGame(): Unit = {
+      unit.nativeUnit.build(where.upperLeft.toTilePosition, buildingType.toUnitType)
+    }
+
+    override def renderDebug(renderer: Renderer): Unit = {
+      renderer.in_!(Color.White).drawOutline(where)
+    }
+  }
+
   case class Train(unit: Factory, trainType: Class[_ <: Mobile]) extends UnitOrder {
     override def issueOrderToGame(): Unit = {
       unit.nativeUnit.train(trainType.toUnitType)
