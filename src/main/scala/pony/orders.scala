@@ -22,7 +22,7 @@ abstract class UnitOrder {
 object Orders {
   case class Construct(unit: WorkerUnit, buildingType: Class[_ <: Building], where: Area) extends UnitOrder {
     override def issueOrderToGame(): Unit = {
-      unit.nativeUnit.build(where.upperLeft.toTilePosition, buildingType.toUnitType)
+      unit.nativeUnit.build(where.upperLeft.asTilePosition, buildingType.toUnitType)
     }
 
     override def renderDebug(renderer: Renderer): Unit = {
@@ -42,7 +42,7 @@ object Orders {
 
   case class Move(unit: Mobile, to: MapTilePosition) extends UnitOrder {
     override def issueOrderToGame(): Unit = {
-      unit.nativeUnit.move(to.toMapPosition.toNative)
+      unit.nativeUnit.move(to.asMapPosition.toNative)
     }
 
     override def renderDebug(renderer: Renderer): Unit = {

@@ -38,11 +38,11 @@ object WrapsUnit {
 
 trait StaticallyPositioned extends WrapsUnit {
   val tilePosition          = MapTilePosition.shared(nativeUnit.getTilePosition.getX, nativeUnit.getTilePosition.getY)
-  val position              = tilePosition.toMapPosition
+  val position              = tilePosition.asMapPosition
   val size                  = Size.shared(nativeUnit.getType.tileWidth(), nativeUnit.getType.tileHeight())
   val area                  = Area(tilePosition, size)
-  val nativeMapTilePosition = tilePosition.toNative
-  val nativeMapPosition     = tilePosition.toMapPosition.toNative
+  val nativeMapTilePosition = tilePosition.asNative
+  val nativeMapPosition     = tilePosition.asMapPosition.toNative
 
   override def toString: String = {
     s"${super.toString}@${area.describe}"
@@ -76,17 +76,17 @@ trait MainBuilding extends Building with Factory with ResourceGatherPoint with S
 trait Mobile extends WrapsUnit {
   def isMoving = nativeUnit.isMoving
 
-  def currentTileNative = currentTile.toNative
-  def currentTile = {
-    val tp = nativeUnit.getTilePosition
-    MapTilePosition.shared(tp.getX, tp.getY)
-  }
+  def currentTileNative = currentTile.asNative
   def currentPositionNative = currentPosition.toNative
   def currentPosition = {
     val p = nativeUnit.getPosition
     MapPosition(p.getX, p.getY)
   }
   override def toString = s"${super.toString}@$currentTile"
+  def currentTile = {
+    val tp = nativeUnit.getTilePosition
+    MapTilePosition.shared(tp.getX, tp.getY)
+  }
 }
 
 trait Killable {
