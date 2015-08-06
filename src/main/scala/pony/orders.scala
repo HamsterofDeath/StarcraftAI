@@ -20,13 +20,18 @@ abstract class UnitOrder {
 }
 
 object Orders {
-  case class Construct(unit: WorkerUnit, buildingType: Class[_ <: Building], where: Area) extends UnitOrder {
+  case class Construct(unit: WorkerUnit, buildingType: Class[_ <: Building], where: MapTilePosition) extends UnitOrder {
+    val area = {
+      val size = Size.shared(buildingType.toUnitType.tileWidth(), buildingType.toUnitType.tileWidth)
+      Area(where, size)
+    }
+
     override def issueOrderToGame(): Unit = {
-      unit.nativeUnit.build(where.upperLeft.asTilePosition, buildingType.toUnitType)
+      unit.nativeUnit.build(where.asTilePosition, buildingType.toUnitType)
     }
 
     override def renderDebug(renderer: Renderer): Unit = {
-      renderer.in_!(Color.White).drawOutline(where)
+      renderer.in_!(Color.White).drawOutline(area)
     }
   }
 

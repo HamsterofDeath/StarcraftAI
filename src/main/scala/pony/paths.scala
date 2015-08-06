@@ -95,10 +95,10 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
 }
 
 class ConstructionSiteFinder(universe: Universe) {
-  def findSpotFor[T <: Building](building: Class[_ <: T]) = {
+  def findSpotFor[T <: Building](near: MapTilePosition, building: Class[_ <: T]) = {
     val necessaryArea = Size.shared(building.toUnitType.tileWidth(), building.toUnitType.tileWidth())
     val tryOnThis = universe.mapsLayers.forBuildingConstruction
-    Option.empty[Area]
+    GeometryHelpers.blockSpiralClockWise(near).find(tryOnThis.free(_, necessaryArea))
   }
 }
 

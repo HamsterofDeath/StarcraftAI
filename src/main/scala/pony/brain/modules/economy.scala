@@ -12,9 +12,10 @@ class ProvideNewBuildings(universe: Universe)
   self =>
 
   override type ComputationInput = Data
+
   override def evaluateNextOrders(in: ComputationInput): BackgroundComputationResult = {
     val helper = new ConstructionSiteFinder(universe)
-    val order = helper.findSpotFor(in.buildingType).map { where =>
+    val order = helper.findSpotFor(in.base.mainBuilding.tilePosition, in.buildingType).map { where =>
       Construct(in.worker, in.buildingType, where)
     }
     order match {
@@ -24,21 +25,24 @@ class ProvideNewBuildings(universe: Universe)
       case Some(plannedOrder) =>
         info(s"Planning to build ${in.buildingType.className} at ${plannedOrder.where} by ${in.worker}")
         BackgroundComputationResult.result(plannedOrder.toSeq, () => false, () => {
-          mapLayers.blockBuilding_!(plannedOrder.where)
+          mapLayers.blockBuilding_!(plannedOrder.area)
         })
     }
   }
+
   override def calculationInput = {
     // we do them one by one, it's simpler
     unitManager.failedToProvideByType[Building].headOption.flatMap { req =>
       val request = UnitJobRequests.constructor(self)
       unitManager.request(request) match {
-        case success: ExactlyOneSuccess[WorkerUnit] => Some(new Data(success.onlyOne, req.typeOfRequestedUnit))
+        case success: ExactlyOneSuccess[WorkerUnit] => Some(
+          new Data(success.onlyOne, req.typeOfRequestedUnit, unitManager.bases.mainBase))
         case _ => None
       }
     }
   }
-  case class Data(worker: WorkerUnit, buildingType: Class[_ <: Building])
+
+  case class Data(worker: WorkerUnit, buildingType: Class[_ <: Building], base: Base)
 }
 
 class ProvideNewSupply(universe: Universe) extends AIModule[WorkerUnit](universe) {

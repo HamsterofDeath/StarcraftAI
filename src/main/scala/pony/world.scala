@@ -125,15 +125,15 @@ class Units(game: Game) {
     val lookFor = manifest[T].runtimeClass
     mine.find(lookFor.isInstance).map(_.asInstanceOf[T])
   }
-  def mine = all.filter(_.nativeUnit.getPlayer == game.self())
-
-  import scala.collection.JavaConverters._
-
-  def all = knownUnits.valuesIterator
   def mineByType[T: Manifest]: Iterator[T] = {
     val lookFor = manifest[T].runtimeClass
     mine.filter(lookFor.isInstance).map(_.asInstanceOf[T])
   }
+
+  import scala.collection.JavaConverters._
+
+  def mine = all.filter(_.nativeUnit.getPlayer == game.self())
+  def all = knownUnits.valuesIterator
   def minerals = allByType[MineralPatch]
   def allByType[T: Manifest]: Iterator[T] = {
     val lookFor = manifest[T].runtimeClass
@@ -161,6 +161,12 @@ class Units(game: Game) {
 }
 
 class Grid2D(val cols: Int, val rows: Int, bitSet: collection.Set[Int]) {
+  def free(position: MapTilePosition, area: Size): Boolean = {
+    area.points.forall { p =>
+      free(p.movedBy(position))
+    }
+  }
+  def free(p: MapTilePosition): Boolean = free(p.x, p.y)
   def zoomedOut = {
     val bits = mutable.BitSet.empty
     val subCols = cols / 4
@@ -173,13 +179,12 @@ class Grid2D(val cols: Int, val rows: Int, bitSet: collection.Set[Int]) {
     }
     new Grid2D(subCols, subRows, bits)
   }
-  def free(x: Int, y: Int): Boolean = bitSet(x + y * cols)
   def blocked = size - walkable
   def size = cols * rows
   def walkable = bitSet.size
   def blocked(x: Int, y: Int): Boolean = !free(x, y)
+  def free(x: Int, y: Int): Boolean = bitSet(x + y * cols)
   def blocked(p: MapTilePosition): Boolean = !free(p)
-  def free(p: MapTilePosition): Boolean = free(p.x, p.y)
   def all = new Traversable[MapTilePosition] {
     override def foreach[U](f: (MapTilePosition) => U): Unit = {
       for (x <- 0 until cols; y <- 0 until rows) {

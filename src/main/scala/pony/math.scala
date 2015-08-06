@@ -81,7 +81,7 @@ case class MapPosition(x: Int, y: Int) extends HasXY {
 
 object GeometryHelpers {
 
-  def blockSpiralClockWise(origin: MapTilePosition, blockSize: Int = 20): Traversable[MapTilePosition] = new
+  def blockSpiralClockWise(origin: MapTilePosition, blockSize: Int = 45): Traversable[MapTilePosition] = new
       Traversable[MapTilePosition] {
     override def foreach[U](f: (MapTilePosition) => U): Unit = {
       val directions = {

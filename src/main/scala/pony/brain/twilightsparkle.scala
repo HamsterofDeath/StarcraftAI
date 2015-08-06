@@ -33,11 +33,11 @@ object BackgroundComputationResult {
     override def afterComputation: Unit = {}
   }
 
-  def result(precalculatedOrders: Traversable[UnitOrder], checkValidity: () => Boolean,
+  def result(precalculatedOrders: Traversable[UnitOrder], checkValidityNow: () => Boolean,
              afterComputationDone: () => Unit): BackgroundComputationResult = new BackgroundComputationResult {
-    override def stillValid: Boolean = checkValidity()
-    override def afterComputation: Unit = afterComputationDone()
-    override def orders: Traversable[UnitOrder] = precalculatedOrders
+    override def stillValid = checkValidityNow()
+    override def afterComputation = afterComputationDone()
+    override def orders = precalculatedOrders
   }
 }
 
@@ -138,6 +138,9 @@ class TwilightSparkle(world: DefaultWorld) {
 
 class Bases(world: DefaultWorld) {
   private val myBases = ArrayBuffer.empty[Base]
+
+  def mainBase = myBases.head
+
   def tick(): Unit = {
     myBases.foreach(_.tick())
   }
