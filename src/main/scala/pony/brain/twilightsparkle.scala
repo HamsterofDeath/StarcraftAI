@@ -44,30 +44,37 @@ object BackgroundComputationResult {
 trait ComputationIntensive[T <: WrapsUnit] extends AIModule[T] {
   type ComputationInput
 
-  private var backgroundOp: Future[BackgroundComputationResult] = Future.successful(BackgroundComputationResult.nothing)
-  private var currentResult                                     = Option.empty[BackgroundComputationResult]
+  private var backgroundOp           = Future.successful(BackgroundComputationResult.nothing)
+  private var currentResult          = Option.empty[BackgroundComputationResult]
+  private var waitingForBackgroundOp = false
 
   override def ordersForTick: Traversable[UnitOrder] = {
     currentResult.filter(_.stillValid) match {
-      // reuse current computation result
+      // reuse current computation result as long as it is valid
       case Some(result) => result.orders
       case None =>
         // kick old result
         currentResult = None
-        if (backgroundOp.isCompleted) {
-          // stick to new result until it becomes invalid
+        if (waitingForBackgroundOp && !backgroundOp.isCompleted) {
+          // waiting, but no result yet: noop
+          Nil
+        } else if (waitingForBackgroundOp && backgroundOp.isCompleted) {
+          // we were waiting for a computation to finish
           val computationResult = Await.result(backgroundOp, Duration.Zero)
+          info(s"Background computation finished, result is $computationResult")
           currentResult = Some(computationResult)
+          waitingForBackgroundOp = false
           computationResult.orders
         } else {
+          // we are not waiting
           calculationInput match {
             case None => Nil
             case Some(in) =>
+              info(s"Background computation starting, input is $in")
               backgroundOp = Future {evaluateNextOrders(in)}
+              waitingForBackgroundOp = true
               Nil
           }
-          // schedule recalculation
-
         }
     }
   }
