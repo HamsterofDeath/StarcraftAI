@@ -47,7 +47,10 @@ class ProvideNewBuildings(universe: Universe)
 
 class ProvideNewSupply(universe: Universe) extends AIModule[WorkerUnit](universe) {
   override def ordersForTick: Traversable[UnitOrder] = {
-    Nil
+    val cur = resources.currentResources
+    val needsMore = cur.supplyUsagePercent >= 0.8 && cur.supplyTotal < 250
+    val race = universe.bases.mainBase.mainBuilding.race
+    val result = resources.request(ResourceRequests.forUnit(race.supplyClass))
   }
 }
 

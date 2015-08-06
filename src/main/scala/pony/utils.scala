@@ -67,3 +67,7 @@ class LazyVal[T](gen: => T) {
     value = null.asInstanceOf[T]
   }
 }
+
+object LazyVal {
+  def from[T](t: => T) = new LazyVal(t)
+}

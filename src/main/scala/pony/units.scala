@@ -65,7 +65,7 @@ trait Factory extends Building {
   def isProducing = nativeUnit.getOrder == Order.Train || nativeUnit.getRemainingTrainTime > 0
 }
 
-trait SupplyProvider {
+trait SupplyProvider extends WrapsUnit {
 
 }
 

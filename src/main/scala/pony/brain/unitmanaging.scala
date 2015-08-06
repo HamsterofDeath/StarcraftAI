@@ -116,6 +116,7 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
   private def allOfEmployer[T <: WrapsUnit](employer: Employer[T]) = byEmployer.getOrElse(employer, Set.empty)
   private def allNotOfEmployer[T <: WrapsUnit](employer: Employer[T]) = byEmployer.filter(_._1 != employer)
                                                                         .flatMap(_._2)
+  def nobody = Nobody
 
   case object Nobody extends Employer[WrapsUnit](universe)
 }
