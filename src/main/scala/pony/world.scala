@@ -1,7 +1,7 @@
 package pony
 
 import bwapi.{Color, Game, Player, Position}
-import pony.brain.ResourceRequestSums
+import pony.brain.{ResourceRequestSums, Supplies}
 
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
@@ -18,26 +18,26 @@ sealed trait SCRace {
 
 case object Terran extends SCRace {
   override def workerClass: Class[_ <: WorkerUnit] = classOf[SCV]
-  override def transporterClass: Class[_ <: TransporterUnit] = ???
+  override def transporterClass: Class[_ <: TransporterUnit] = classOf[Transporter]
   override def supplyClass: Class[_ <: SupplyProvider] = classOf[SupplyDepot]
 }
 
 case object Zerg extends SCRace {
   override def workerClass: Class[_ <: WorkerUnit] = classOf[Drone]
-  override def transporterClass: Class[_ <: TransporterUnit] = ???
+  override def transporterClass: Class[_ <: TransporterUnit] = classOf[Overlord]
   override def supplyClass: Class[_ <: SupplyProvider] = classOf[Overlord]
 }
 
 case object Protoss extends SCRace {
   override def workerClass: Class[_ <: WorkerUnit] = classOf[Probe]
-  override def transporterClass: Class[_ <: TransporterUnit] = ???
+  override def transporterClass: Class[_ <: TransporterUnit] = classOf[Shuttle]
   override def supplyClass: Class[_ <: SupplyProvider] = classOf[Pylon]
 }
 
 case object Other extends SCRace {
   override def workerClass: Class[_ <: WorkerUnit] = ???
   override def transporterClass: Class[_ <: TransporterUnit] = ???
-  override def supplyClass: Class[_ <: TransporterUnit] = ???
+  override def supplyClass: Class[_ <: SupplyProvider] = ???
 }
 
 trait WorldListener {
@@ -66,13 +66,16 @@ trait WorldListener {
   def onUnitCreate(unit: bwapi.Unit): Unit = {}
 }
 
-case class Resources(minerals: Int, gas: Int, supplyRemaining: Int, supplyUsed: Int, supplyTotal: Int) {
+case class Resources(minerals: Int, gas: Int, supply: Supplies) {
+  def supplyTotal = supply.total
   def >(sum: ResourceRequestSums) = minerals >= sum.minerals && gas >= sum.gas && supplyRemaining >= sum.supply
-
-  def -(sums: ResourceRequestSums) = copy(minerals - sums.minerals, gas - sums.gas, supplyRemaining - sums.supply,
-    supplyUsed + sums.supply)
-
-  def supplyUsagePercent = supplyUsed.toDouble / supplyTotal
+  def supplyRemaining = supply.available
+  def -(sums: ResourceRequestSums) = {
+    val supplyUpdated = supply.copy(supplyRemaining - sums.supply, supplyUsed + sums.supply)
+    copy(minerals - sums.minerals, gas - sums.gas, supply = supplyUpdated)
+  }
+  def supplyUsed = supply.used
+  def supplyUsagePercent = supply.supplyUsagePercent
 }
 
 class DefaultWorld(game: Game) extends WorldListener {
@@ -91,7 +94,7 @@ class DefaultWorld(game: Game) extends WorldListener {
     val self = game.self()
     val total = self.supplyTotal()
     val used = self.supplyUsed()
-    Resources(self.minerals(), self.gas(), total - used, used, total)
+    Resources(self.minerals(), self.gas(), Supplies(used, total))
   }
 
   def isFirstTick = ticks == 0
@@ -193,9 +196,9 @@ class Grid2D(val cols: Int, val rows: Int, bitSet: collection.Set[Int]) {
   def size = cols * rows
   def walkable = bitSet.size
   def blocked(x: Int, y: Int): Boolean = !free(x, y)
-  def free(x: Int, y: Int): Boolean = bitSet(x + y * cols)
   def blocked(p: MapTilePosition): Boolean = !free(p)
   def free(p: MapTilePosition): Boolean = free(p.x, p.y)
+  def free(x: Int, y: Int): Boolean = bitSet(x + y * cols)
   def all = new Traversable[MapTilePosition] {
     override def foreach[U](f: (MapTilePosition) => U): Unit = {
       for (x <- 0 until cols; y <- 0 until rows) {

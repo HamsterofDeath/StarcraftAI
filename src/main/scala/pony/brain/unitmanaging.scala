@@ -6,13 +6,17 @@ import scala.collection.mutable.ArrayBuffer
 
 class UnitManager(override val universe: Universe) extends HasUniverse {
   private val unfulfilledRequests = ArrayBuffer.empty[UnitJobRequests[_ <: WrapsUnit]]
-
   private val assignments = mutable.HashMap.empty[WrapsUnit, UnitWithJob[_ <: WrapsUnit]]
-
   private val byEmployer  = new
       mutable.HashMap[Employer[_ <: WrapsUnit], mutable.Set[UnitWithJob[_ <: WrapsUnit]]]
       with mutable.MultiMap[Employer[_ <: WrapsUnit], UnitWithJob[_ <: WrapsUnit]]
-
+  def race = bases.mainBase.mainBuilding.race
+  def selectJobs[T <: UnitWithJob[_] : Manifest](f: T => Boolean) = {
+    val wanted = manifest[T].runtimeClass
+    assignments.valuesIterator.filter { job =>
+      wanted.isAssignableFrom(job.unit.getClass) && f(job.asInstanceOf[T])
+    }.map {_.asInstanceOf[T]}.toVector
+  }
   def failedToProvideByType[T <: WrapsUnit : Manifest] = {
     val c = manifest[T].runtimeClass
     failedToProvideFlat.collect {
@@ -190,7 +194,7 @@ class UnitCollector[T <: WrapsUnit : Manifest](originalRequest: UnitJobRequests[
   }
 }
 
-abstract class Employer[T <: WrapsUnit : Manifest](override val universe: Universe) extends HasUniverse {
+class Employer[T <: WrapsUnit : Manifest](override val universe: Universe) extends HasUniverse {
 
   private var employees = ArrayBuffer.empty[T]
 
@@ -238,7 +242,7 @@ trait JobFinishedListener[T <: WrapsUnit] {
   def onFinish(): Unit
 }
 
-class TrainUnit[F <: Factory, T <: Mobile](factory: F, trainType: Class[_ <: Mobile], employer: Employer[F])
+class TrainUnit[F <: Factory, T <: Mobile](factory: F, trainType: Class[_ <: T], employer: Employer[F])
   extends UnitWithJob[F](employer, factory, Priority.Default) {
 
   override def ordersForTick: Seq[UnitOrder] = {
@@ -247,6 +251,27 @@ class TrainUnit[F <: Factory, T <: Mobile](factory: F, trainType: Class[_ <: Mob
 
   override def isFinished = {
     !factory.isProducing && age > 10
+  }
+}
+
+class ConstructBuilding[W <: WorkerUnit, B <: Building](worker: W, buildingType: Class[_ <: B], employer: Employer[W],
+                                                        where: MapTilePosition)
+  extends UnitWithJob[W](employer, worker, Priority.ConstructBuilding) {
+
+  private var startedConstruction  = false
+  private var finishedConstruction = false
+  def typeOfBuilding = buildingType
+  override def ordersForTick: Seq[UnitOrder] = {
+    Orders.Construct(unit, buildingType, where).toSeq
+  }
+  override def isFinished = {
+    if (!startedConstruction) {
+      startedConstruction = worker.isConstructing
+    }
+    if (startedConstruction) {
+      finishedConstruction = !worker.isConstructing
+    }
+    age > 50 && startedConstruction && finishedConstruction
   }
 }
 
@@ -320,6 +345,12 @@ object UnitJobRequests {
   }
 
   def idleOfType[T <: WrapsUnit : Manifest](employer: Employer[T], ofType: Class[_ <: T], amount: Int = 1) = {
+    val req: AnyUnitRequest[T] = AnyUnitRequest(ofType, amount)
+
+    UnitJobRequests[T](req.toSeq, employer, Priority.Default)
+  }
+
+  def buildingOfType[T <: Building : Manifest](employer: Employer[T], ofType: Class[_ <: T], amount: Int = 1) = {
     val req: AnyUnitRequest[T] = AnyUnitRequest(ofType, amount)
 
     UnitJobRequests[T](req.toSeq, employer, Priority.Default)

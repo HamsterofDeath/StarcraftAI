@@ -77,16 +77,16 @@ trait Mobile extends WrapsUnit {
   def isMoving = nativeUnit.isMoving
 
   def currentTileNative = currentTile.asNative
+  def currentTile = {
+    val tp = nativeUnit.getTilePosition
+    MapTilePosition.shared(tp.getX, tp.getY)
+  }
   def currentPositionNative = currentPosition.toNative
   def currentPosition = {
     val p = nativeUnit.getPosition
     MapPosition(p.getX, p.getY)
   }
   override def toString = s"${super.toString}@$currentTile"
-  def currentTile = {
-    val tp = nativeUnit.getTilePosition
-    MapTilePosition.shared(tp.getX, tp.getY)
-  }
 }
 
 trait Killable {
@@ -111,6 +111,7 @@ trait WorkerUnit extends Killable with Mobile {
   def isInMiningProcess = nativeUnit.getOrder == Order.MiningMinerals
   def isWaitingForMinerals = nativeUnit.getOrder == Order.WaitForMinerals
   def isMovingToMinerals = nativeUnit.getOrder == Order.MoveToMinerals
+  def isConstructing = nativeUnit.getOrder == Order.ConstructingBuilding
 
 }
 
@@ -133,11 +134,14 @@ class MineralPatch(unit: APIUnit) extends AnyUnit(unit) with Resource {
 
 class SupplyDepot(unit: APIUnit) extends AnyUnit(unit) with ImmobileSupplyProvider
 class Pylon(unit: APIUnit) extends AnyUnit(unit) with ImmobileSupplyProvider
-class Overlord(unit: APIUnit) extends AnyUnit(unit) with MobileSupplyProvider
+class Overlord(unit: APIUnit) extends AnyUnit(unit) with MobileSupplyProvider with TransporterUnit
 
 class SCV(unit: APIUnit) extends AnyUnit(unit) with WorkerUnit
 class Probe(unit: APIUnit) extends AnyUnit(unit) with WorkerUnit
 class Drone(unit: APIUnit) extends AnyUnit(unit) with WorkerUnit
+
+class Shuttle(unit: APIUnit) extends AnyUnit(unit) with TransporterUnit
+class Transporter(unit: APIUnit) extends AnyUnit(unit) with TransporterUnit
 
 class CommandCenter(unit: APIUnit) extends AnyUnit(unit) with MainBuilding
 

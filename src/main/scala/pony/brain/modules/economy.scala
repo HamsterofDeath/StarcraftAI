@@ -46,11 +46,26 @@ class ProvideNewBuildings(universe: Universe)
 }
 
 class ProvideNewSupply(universe: Universe) extends AIModule[WorkerUnit](universe) {
+  private val supplyEmployer = new Employer[SupplyProvider](universe)
+
   override def ordersForTick: Traversable[UnitOrder] = {
-    val cur = resources.currentResources
-    val needsMore = cur.supplyUsagePercent >= 0.8 && cur.supplyTotal < 250
+    // basing the calculations on the currently planned supplies will prevent endless requests
+    val cur = resources.suppliesWithPlans
+    val needsMore = cur.supplyUsagePercent >= 0.8 && cur.total < 200
+
+    trace(s"Need more supply: $cur")
     val race = universe.bases.mainBase.mainBuilding.race
-    val result = resources.request(ResourceRequests.forUnit(race.supplyClass))
+    val result = resources.request(ResourceRequests.forUnit(race.supplyClass), this)
+    result match {
+      case suc: ResourceApprovalSuccess =>
+        info(s"More supply approved! $suc, requesting ${race.supplyClass.className}")
+        val ofType = UnitJobRequests.newOfType(supplyEmployer, race.supplyClass)
+        //this will create an entry in the queue which will change the plans, so no need to do more here
+        unitManager.request(ofType)
+      case _ =>
+    }
+    //don't give orders directly
+    Nil
   }
 }
 

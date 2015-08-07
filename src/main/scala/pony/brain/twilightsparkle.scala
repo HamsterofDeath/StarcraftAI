@@ -22,7 +22,7 @@ trait HasUniverse {
 
 trait BackgroundComputationResult {
   def orders: Traversable[UnitOrder]
-  def afterComputation: Unit
+  def afterComputation(): Unit
   def stillValid: Boolean
 }
 
@@ -30,13 +30,13 @@ object BackgroundComputationResult {
   val nothing: BackgroundComputationResult = new BackgroundComputationResult {
     override def orders: Traversable[UnitOrder] = Nil
     override def stillValid: Boolean = false
-    override def afterComputation: Unit = {}
+    override def afterComputation(): Unit = {}
   }
 
   def result(precalculatedOrders: Traversable[UnitOrder], checkValidityNow: () => Boolean,
              afterComputationDone: () => Unit): BackgroundComputationResult = new BackgroundComputationResult {
     override def stillValid = checkValidityNow()
-    override def afterComputation = afterComputationDone()
+    override def afterComputation() = afterComputationDone()
     override def orders = precalculatedOrders
   }
 }
