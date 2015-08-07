@@ -41,6 +41,7 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
       val newJob = new BusyDoingNothing(job.unit, Nobody)
       assignJob(Nobody, newJob)
       job.onFinish()
+
     }
 
     def jobOf[T <: WrapsUnit](unit: T) = {
@@ -238,12 +239,26 @@ abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: 
   def listen_!(listener: JobFinishedListener[T]): Unit = listeners += listener
 }
 
+trait HasFunding[T <: WrapsUnit] extends UnitWithJob[T] with HasUniverse {
+
+  listen_!(() => release_!())
+
+  def proofForFunding: ResourceApprovalSuccess
+
+  private def release_!(): Unit = {
+    resources.unlock_!(proofForFunding)
+  }
+}
+
 trait JobFinishedListener[T <: WrapsUnit] {
   def onFinish(): Unit
 }
 
-class TrainUnit[F <: Factory, T <: Mobile](factory: F, trainType: Class[_ <: T], employer: Employer[F])
-  extends UnitWithJob[F](employer, factory, Priority.Default) {
+class TrainUnit[F <: Factory, T <: Mobile](factory: F, trainType: Class[_ <: T], employer: Employer[F],
+                                           funding: ResourceApprovalSuccess)
+  extends UnitWithJob[F](employer, factory, Priority.Default) with HasFunding[F] {
+
+  override def proofForFunding = funding
 
   override def ordersForTick: Seq[UnitOrder] = {
     Orders.Train(unit, trainType).toSeq
@@ -255,12 +270,15 @@ class TrainUnit[F <: Factory, T <: Mobile](factory: F, trainType: Class[_ <: T],
 }
 
 class ConstructBuilding[W <: WorkerUnit, B <: Building](worker: W, buildingType: Class[_ <: B], employer: Employer[W],
-                                                        where: MapTilePosition)
-  extends UnitWithJob[W](employer, worker, Priority.ConstructBuilding) {
+                                                        where: MapTilePosition, funding: ResourceApprovalSuccess)
+  extends UnitWithJob[W](employer, worker, Priority.ConstructBuilding) with HasFunding[W] {
 
   private var startedConstruction  = false
   private var finishedConstruction = false
   def typeOfBuilding = buildingType
+
+  override def proofForFunding = funding
+
   override def ordersForTick: Seq[UnitOrder] = {
     Orders.Construct(unit, buildingType, where).toSeq
   }

@@ -1,6 +1,8 @@
 import org.pmw.tinylog
 import org.pmw.tinylog.{Configurator, Level}
 
+import scala.collection.mutable
+
 /**
  * Created by HoD on 01.08.2015.
  */
@@ -47,6 +49,20 @@ package object pony {
 
   implicit class RichUnitClass[T <: WrapsUnit](val c: Class[_ <: T]) extends AnyVal {
     def toUnitType = TypeMapping.unitTypeOf(c)
+  }
+
+  implicit class InPlaceModify[T](val buff: mutable.Buffer[T]) extends AnyVal {
+    def removeElem(elem: T): Unit = {
+      val where = buff.indexOf(elem)
+      assert(where >= 0, s"Not found: $elem in $buff")
+      buff.remove(where)
+    }
+
+    def removeFirstMatch(elemIdentifier: T => Boolean): Unit = {
+      val where = buff.find(elemIdentifier).map(buff.indexOf).getOrElse(-1)
+      assert(where >= 0, s"Not found $elemIdentifier in $buff")
+      buff.remove(where)
+    }
   }
 
   case object Trace extends LogLevel(1)

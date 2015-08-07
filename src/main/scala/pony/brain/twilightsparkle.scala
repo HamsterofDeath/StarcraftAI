@@ -90,6 +90,15 @@ abstract class AIModule[T <: WrapsUnit : Manifest](override val universe: Univer
   def onNth: Int = 1
 }
 
+trait Orderless[T <: WrapsUnit] extends AIModule[T] {
+  override def ordersForTick: Traversable[UnitOrder] = {
+    onTick()
+    Nil
+  }
+
+  def onTick(): Unit
+}
+
 object AIModule {
   def noop[T <: WrapsUnit : Manifest](universe: Universe) = new AIModule[T](universe) {
     override def ordersForTick: Traversable[UnitOrder] = Nil

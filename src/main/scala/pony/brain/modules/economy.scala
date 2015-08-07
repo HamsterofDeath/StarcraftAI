@@ -45,10 +45,10 @@ class ProvideNewBuildings(universe: Universe)
   case class Data(worker: WorkerUnit, buildingType: Class[_ <: Building], base: Base)
 }
 
-class ProvideNewSupply(universe: Universe) extends AIModule[WorkerUnit](universe) {
+class ProvideNewSupply(universe: Universe) extends AIModule[WorkerUnit](universe) with Orderless[WorkerUnit] {
   private val supplyEmployer = new Employer[SupplyProvider](universe)
 
-  override def ordersForTick: Traversable[UnitOrder] = {
+  override def onTick() = {
     // basing the calculations on the currently planned supplies will prevent endless requests
     val cur = resources.suppliesWithPlans
     val needsMore = cur.supplyUsagePercent >= 0.8 && cur.total < 200
@@ -64,8 +64,6 @@ class ProvideNewSupply(universe: Universe) extends AIModule[WorkerUnit](universe
         unitManager.request(ofType)
       case _ =>
     }
-    //don't give orders directly
-    Nil
   }
 }
 
@@ -83,10 +81,14 @@ class ProvideNewUnits(universe: Universe) extends AIModule[Factory](universe) {
           val builderOf = UnitJobRequests.builderOf(typeFixed, self)
           unitManager.request(builderOf) match {
             case any: ExactlyOneSuccess[Factory] =>
-              hire(any)
-              val order = new TrainUnit(any.onlyOne, typeFixed, self)
-              assignJob(order)
-              order.ordersForTick
+              resources.request(ResourceRequests.forUnit(typeFixed), self) match {
+                case suc: ResourceApprovalSuccess =>
+                  hire(any)
+                  val order = new TrainUnit(any.onlyOne, typeFixed, self, suc)
+                  assignJob(order)
+                  order.ordersForTick
+                case _ => Nil
+              }
             case _ => Nil
           }
         }

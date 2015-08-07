@@ -4,11 +4,15 @@ package brain
 import scala.collection.mutable.ArrayBuffer
 
 class ResourceManager(override val universe: Universe) extends HasUniverse {
-  private val empty = Resources(0, 0, Supplies(0, 0))
 
+  private val empty       = Resources(0, 0, Supplies(0, 0))
   private val locked      = ArrayBuffer.empty[LockedResources[_]]
   private val lockedSums  = LazyVal.from(calcLockedSums)
   private var myResources = empty
+  def unlock_!(proofForFunding: ResourceApprovalSuccess): Unit = {
+    locked.removeFirstMatch(_.reqs.sum.equalValue(proofForFunding))
+    lockedSums.invalidate()
+  }
   def request[T <: WrapsUnit](requests: ResourceRequests, employer: Employer[T]) = {
     trace(s"Incoming resource request: $requests")
     // first check if we have enough resources
@@ -20,10 +24,12 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
       ResourceApprovalFail
     }
   }
+
   private def lock_![T <: WrapsUnit](requests: ResourceRequests, employer: Employer[T]): Unit = {
     locked += LockedResources(requests, employer)
     lockedSums.invalidate()
   }
+
   private def myUnlockedResources = myResources - lockedSums.get
 
   def tick(): Unit = {
@@ -101,6 +107,9 @@ object ResourceRequests {
 case class LockedResources[T <: WrapsUnit](reqs: ResourceRequests, employer: Employer[T])
 
 case class ResourceRequestSums(minerals: Int, gas: Int, supply: Int) {
+  def equalValue(proof: ResourceApprovalSuccess) = minerals == proof.minerals && gas == proof.gas &&
+                                                   supply == proof.supply
+
   def +(e: LockedResources[_]): ResourceRequestSums = {
     val sum = e.reqs.sum
     copy(minerals = minerals + sum.minerals, gas = gas + sum.gas, supply = supply + sum.supply)
