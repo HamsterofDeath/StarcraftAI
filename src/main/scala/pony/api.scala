@@ -33,15 +33,13 @@ trait AIAPI {
     this
   }
 
-  def world:DefaultWorld
+  def world: DefaultWorld
 
   def debugger = world.debugger
 }
 
-
-
-trait AIPlugIn  {
-  private var active              = true
+trait AIPlugIn {
+  private var active                = true
   private var myWorld: DefaultWorld = _
   def debugger = world.debugger
   def world = myWorld
@@ -49,19 +47,19 @@ trait AIPlugIn  {
     orders.queue_!(order)
   }
   def orders = world.orderQueue
-  def setWorld_!(world: DefaultWorld):Unit = {
+  def setWorld_!(world: DefaultWorld): Unit = {
     this.myWorld = world
   }
 
   def isActive = active
 
-  def onTick():Unit = {
+  def onTick(): Unit = {
     if (active) {
       tickPlugIn()
     }
   }
-  def off_!():Unit = active = false
-  def on_!():Unit = active = true
+  def off_!(): Unit = active = false
+  def on_!(): Unit = active = true
   protected def tickPlugIn(): Unit
 }
 

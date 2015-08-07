@@ -10,13 +10,14 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
   private val byEmployer  = new
       mutable.HashMap[Employer[_ <: WrapsUnit], mutable.Set[UnitWithJob[_ <: WrapsUnit]]]
       with mutable.MultiMap[Employer[_ <: WrapsUnit], UnitWithJob[_ <: WrapsUnit]]
-  def race = bases.mainBase.mainBuilding.race
+  def allJobs[T <: WrapsUnit : Manifest] = selectJobs[UnitWithJob[T]](_ => true)
   def selectJobs[T <: UnitWithJob[_] : Manifest](f: T => Boolean) = {
     val wanted = manifest[T].runtimeClass
     assignments.valuesIterator.filter { job =>
       wanted.isAssignableFrom(job.unit.getClass) && f(job.asInstanceOf[T])
     }.map {_.asInstanceOf[T]}.toVector
   }
+  def race = bases.mainBase.mainBuilding.race
   def failedToProvideByType[T <: WrapsUnit : Manifest] = {
     val c = manifest[T].runtimeClass
     failedToProvideFlat.collect {
@@ -228,6 +229,7 @@ abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: 
   override val universe     = employer.universe
   private  val creationTick = currentTick
   private  val listeners    = ArrayBuffer.empty[JobFinishedListener[T]]
+  def shortDebugString: String
   def age = currentTick - creationTick
   def isIdle: Boolean = false
   def ordersForTick: Seq[UnitOrder]
@@ -267,6 +269,7 @@ class TrainUnit[F <: Factory, T <: Mobile](factory: F, trainType: Class[_ <: T],
   override def isFinished = {
     !factory.isProducing && age > 10
   }
+  override def shortDebugString: String = s"Train ${trainType.className}"
 }
 
 class ConstructBuilding[W <: WorkerUnit, B <: Building](worker: W, buildingType: Class[_ <: B], employer: Employer[W],
@@ -275,6 +278,7 @@ class ConstructBuilding[W <: WorkerUnit, B <: Building](worker: W, buildingType:
 
   private var startedConstruction  = false
   private var finishedConstruction = false
+  override def shortDebugString: String = s"Build ${buildingType.className}"
   def typeOfBuilding = buildingType
 
   override def proofForFunding = funding
@@ -298,6 +302,7 @@ class BusyDoingNothing[T <: WrapsUnit](unit: T, employer: Employer[T])
   override def isIdle = true
   override def ordersForTick: Seq[UnitOrder] = Nil
   override def isFinished = false
+  override def shortDebugString: String = "Idle"
 }
 
 class BusyBeingTrained[T <: WrapsUnit](unit: T, employer: Employer[T])
@@ -305,6 +310,7 @@ class BusyBeingTrained[T <: WrapsUnit](unit: T, employer: Employer[T])
   override def isIdle = false
   override def ordersForTick: Seq[UnitOrder] = Nil
   override def isFinished = unit.nativeUnit.getRemainingBuildTime == 0
+  override def shortDebugString: String = "Todo"
 }
 
 trait UnitRequest[T <: WrapsUnit] {

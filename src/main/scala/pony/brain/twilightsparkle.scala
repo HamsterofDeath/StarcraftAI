@@ -108,7 +108,7 @@ object AIModule {
 class TwilightSparkle(world: DefaultWorld) {
   self =>
 
-  private val universe: Universe = new Universe {
+  val universe: Universe = new Universe {
     override def bases: Bases = self.bases
     override def world: DefaultWorld = self.world
     override def resources: ResourceManager = self.resources

@@ -1,7 +1,7 @@
 package pony
 
 import bwapi.Color
-import pony.brain.TwilightSparkle
+import pony.brain.{HasUniverse, TwilightSparkle, Universe}
 
 abstract class ControllingAI extends AIPlugIn {
 
@@ -33,10 +33,22 @@ class UnitIdRenderer extends AIPlugIn {
       renderer.in_!(Color.Green)
 
       world.units.mineByType[Mobile].foreach { u =>
-        renderer.drawTextAboveUnit(u, u.unitIdText)
+        renderer.drawTextAtUnit(u, u.unitIdText)
       }
     }
   }
+}
+
+class UnitJobRenderer(override val universe: Universe) extends AIPlugIn with HasUniverse {
+
+  override protected def tickPlugIn(): Unit = {
+    world.debugger.debugRender { renderer =>
+      unitManager.allJobs[Mobile].foreach { job =>
+        renderer.drawTextAtUnit(job.unit, job.shortDebugString, 1)
+      }
+    }
+  }
+  override def world: DefaultWorld = universe.world
 }
 
 class MainAI extends AIPlugIn {

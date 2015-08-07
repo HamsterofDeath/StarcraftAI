@@ -175,6 +175,14 @@ class GatherMinerals(universe: Universe) extends AIModule(universe) {
 
         private var state: State = Idle
 
+        override def shortDebugString: String = state match {
+          case States.Idle => s"Idle/${unit.nativeUnit.getOrder}"
+          case States.ApproachingMinerals => "Locked"
+          case States.Mining => "Mining"
+          case States.ReturningMinerals => "Delivering"
+        }
+
+
         override def ordersForTick: Seq[UnitOrder] = {
           def sendWorkerToPatch = ApproachingMinerals -> Orders.Gather(worker, miningTarget.patch)
           val (newState, order) = state match {
