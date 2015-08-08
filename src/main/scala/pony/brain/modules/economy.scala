@@ -2,8 +2,6 @@ package pony
 package brain
 package modules
 
-import pony.Orders.Construct
-
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
@@ -13,19 +11,19 @@ class ProvideNewBuildings(universe: Universe)
 
   override type ComputationInput = Data
 
-  override def evaluateNextOrders(in: ComputationInput): BackgroundComputationResult = {
+  override def evaluateNextOrders(in: ComputationInput) = {
     val helper = new ConstructionSiteFinder(universe)
-    val order = helper.findSpotFor(in.base.mainBuilding.tilePosition, in.buildingType).map { where =>
-      Construct(in.worker, in.buildingType, where)
+    val job = helper.findSpotFor(in.base.mainBuilding.tilePosition, in.buildingType).map { where =>
+      new ConstructBuilding(in.worker, in.buildingType, self, where, in.funding)
     }
-    order match {
+    job match {
       case None =>
         warn(s"Computation returned no result: $in")
-        BackgroundComputationResult.nothing
-      case Some(plannedOrder) =>
-        info(s"Planning to build ${in.buildingType.className} at ${plannedOrder.where} by ${in.worker}")
-        BackgroundComputationResult.result(plannedOrder.toSeq, () => false, () => {
-          mapLayers.blockBuilding_!(plannedOrder.area)
+        BackgroundComputationResult.nothing[WorkerUnit]
+      case Some(startJob) =>
+        info(s"Planning to build ${in.buildingType.className} at ${startJob.where} by ${in.worker}")
+        BackgroundComputationResult.result(startJob.toSeq, () => false, () => {
+          mapLayers.blockBuilding_!(startJob.area)
         })
     }
   }
@@ -33,20 +31,23 @@ class ProvideNewBuildings(universe: Universe)
   override def calculationInput = {
     // we do them one by one, it's simpler
     val buildingRelated = unitManager.failedToProvideByType[Building]
-    val constructionRequests = buildingRelated.collect { case buildIt: BuildUnitRequest[Building] => buildIt }
+    val constructionRequests = buildingRelated.collect {
+      case buildIt: BuildUnitRequest[Building] if buildIt.proofForFunding.isFunded => buildIt
+    }
     val anyOfThese = constructionRequests.headOption
     anyOfThese.flatMap { req =>
       val request = UnitJobRequests.constructor(self)
       unitManager.request(request) match {
         case success: ExactlyOneSuccess[WorkerUnit] =>
-          Some(new Data(success.onlyOne, req.typeOfRequestedUnit, unitManager.bases.mainBase,
-            new ConstructionSiteFinder(universe)))
+          new Data(success.onlyOne, req.typeOfRequestedUnit, unitManager.bases.mainBase,
+            new ConstructionSiteFinder(universe), req.proofForFunding.assumeSuccessful).toSome
         case _ => None
       }
     }
   }
 
-  case class Data(worker: WorkerUnit, buildingType: Class[_ <: Building], base: Base, helper: ConstructionSiteFinder)
+  case class Data(worker: WorkerUnit, buildingType: Class[_ <: Building], base: Base, helper: ConstructionSiteFinder,
+                  funding: ResourceApprovalSuccess)
 }
 
 class ProvideNewSupply(universe: Universe) extends AIModule[WorkerUnit](universe) with Orderless[WorkerUnit] {
@@ -134,6 +135,7 @@ class GatherMinerals(universe: Universe) extends AIModule(universe) {
     emp =>
 
     def ordersForTick = {
+      minerals.tick()
       val missing = idealNumberOfWorkers - teamSize
       if (missing > 0) {
         val workerType = base.mainBuilding.race.workerClass
@@ -176,17 +178,20 @@ class GatherMinerals(universe: Universe) extends AIModule(universe) {
         }
       }
 
-      class GatherMineralsAtPatch(worker: WorkerUnit, miningTarget: MinedPatch)
-        extends UnitWithJob(emp, worker, Priority.Default) {
+      class GatherMineralsAtPatch(myWorker: WorkerUnit, miningTarget: MinedPatch)
+        extends UnitWithJob(emp, myWorker, Priority.Default) with GatherMineralsAtSinglePatch {
+
+
 
         listen_!(() => {
-          miningTarget.removeFromTeam(worker)
+          miningTarget.removeFromTeam(myWorker)
         })
 
         import States._
 
         private var state: State = Idle
-
+        override def worker = myWorker
+        override def targetPatch = miningTarget.patch
         override def shortDebugString: String = state match {
           case States.Idle => s"Idle/${unit.nativeUnit.getOrder}"
           case States.ApproachingMinerals => "Locked"
@@ -195,12 +200,12 @@ class GatherMinerals(universe: Universe) extends AIModule(universe) {
         }
 
         override def ordersForTick: Seq[UnitOrder] = {
-          def sendWorkerToPatch = ApproachingMinerals -> Orders.Gather(worker, miningTarget.patch)
+          def sendWorkerToPatch = ApproachingMinerals -> Orders.Gather(myWorker, miningTarget.patch)
           val (newState, order) = state match {
-            case Idle if worker.isCarryingMinerals =>
-              ReturningMinerals -> Orders.ReturnMinerals(worker, base.mainBuilding)
+            case Idle if myWorker.isCarryingMinerals =>
+              ReturningMinerals -> Orders.ReturnMinerals(myWorker, base.mainBuilding)
             // start going to your patch using wall hack
-            case Idle if !worker.isCarryingMinerals =>
+            case Idle if !myWorker.isCarryingMinerals =>
               sendWorkerToPatch
             // keep going while mining has not been started
 
@@ -208,24 +213,24 @@ class GatherMinerals(universe: Universe) extends AIModule(universe) {
               // repeat the order to prevent the worker from moving away
               sendWorkerToPatch
 
-            case ApproachingMinerals if worker.isWaitingForMinerals || worker.isInMiningProcess =>
+            case ApproachingMinerals if myWorker.isWaitingForMinerals || myWorker.isInMiningProcess =>
               // let the poor worker alone now
               Mining -> Orders.NoUpdate
 
             case ApproachingMinerals =>
               ApproachingMinerals -> Orders.NoUpdate
 
-            case Mining if worker.isInMiningProcess =>
+            case Mining if myWorker.isInMiningProcess =>
               // let it work
               Mining -> Orders.NoUpdate
-            case Mining if worker.isCarryingMinerals =>
+            case Mining if myWorker.isCarryingMinerals =>
               // the worker is done mining
-              ReturningMinerals -> Orders.ReturnMinerals(worker, base.mainBuilding)
+              ReturningMinerals -> Orders.ReturnMinerals(myWorker, base.mainBuilding)
 
-            case ReturningMinerals if worker.isCarryingMinerals =>
+            case ReturningMinerals if myWorker.isCarryingMinerals =>
               // keep going back
               ReturningMinerals -> Orders.NoUpdate
-            case ReturningMinerals if !worker.isCarryingMinerals =>
+            case ReturningMinerals if !myWorker.isCarryingMinerals =>
               // switch back to mining mode
               sendWorkerToPatch
 
@@ -270,5 +275,9 @@ class GatherMinerals(universe: Universe) extends AIModule(universe) {
       }
     }
   }
+}
 
+trait GatherMineralsAtSinglePatch extends UnitWithJob[WorkerUnit] {
+  def worker: WorkerUnit
+  def targetPatch: MineralPatch
 }

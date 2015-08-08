@@ -14,10 +14,11 @@ trait HasUniverse {
   def unitManager = universe.unitManager
   def units = universe.units
   def resources = universe.resources
-  def world = universe.world
   def bases = universe.bases
   def currentTick = universe.currentTick
   def mapLayers = universe.mapsLayers
+  def nativeGame = world.nativeGame
+  def world = universe.world
   def ifNth(nth: Int)(u: => Unit) = {
     if (universe.currentTick % nth == 0) {
       u
@@ -26,36 +27,42 @@ trait HasUniverse {
 
 }
 
-trait BackgroundComputationResult {
-  def orders: Traversable[UnitOrder]
+trait BackgroundComputationResult[T <: WrapsUnit] {
+  def jobs: Traversable[UnitWithJob[T]]
+
+  def orders = jobs.flatMap(_.ordersForTick)
   def afterComputation(): Unit
-  def stillValid: Boolean
+  def repeatOrderIssue: Boolean
 }
 
 object BackgroundComputationResult {
-  val nothing: BackgroundComputationResult = new BackgroundComputationResult {
-    override def orders: Traversable[UnitOrder] = Nil
-    override def stillValid: Boolean = false
+  def nothing[T <: WrapsUnit]: BackgroundComputationResult[T] = new BackgroundComputationResult[T] {
+    override def repeatOrderIssue: Boolean = false
     override def afterComputation(): Unit = {}
+    override def jobs: Traversable[UnitWithJob[T]] = Nil
   }
 
-  def result(precalculatedOrders: Traversable[UnitOrder], checkValidityNow: () => Boolean,
-             afterComputationDone: () => Unit): BackgroundComputationResult = new BackgroundComputationResult {
-    override def stillValid = checkValidityNow()
+  def result[T <: WrapsUnit](myJobs: Traversable[UnitWithJob[T]],
+                             checkValidityNow: () => Boolean,
+                             afterComputationDone: () => Unit): BackgroundComputationResult[T] = new
+      BackgroundComputationResult[T] {
+
+    override def jobs = myJobs
+    override def repeatOrderIssue = checkValidityNow()
     override def afterComputation() = afterComputationDone()
-    override def orders = precalculatedOrders
+    override def orders = jobs.flatMap(_.ordersForTick)
   }
 }
 
 trait ComputationIntensive[T <: WrapsUnit] extends AIModule[T] {
   type ComputationInput
 
-  private var backgroundOp           = Future.successful(BackgroundComputationResult.nothing)
-  private var currentResult          = Option.empty[BackgroundComputationResult]
+  private var backgroundOp           = Future.successful(BackgroundComputationResult.nothing[T])
+  private var currentResult          = Option.empty[BackgroundComputationResult[T]]
   private var waitingForBackgroundOp = false
 
   override def ordersForTick: Traversable[UnitOrder] = {
-    currentResult.filter(_.stillValid) match {
+    currentResult.filter(_.repeatOrderIssue) match {
       // reuse current computation result as long as it is valid
       case Some(result) => result.orders
       case None =>
@@ -70,6 +77,8 @@ trait ComputationIntensive[T <: WrapsUnit] extends AIModule[T] {
           info(s"Background computation finished, result is $computationResult")
           currentResult = Some(computationResult)
           waitingForBackgroundOp = false
+          computationResult.jobs.foreach(e => hire(e.unit))
+          computationResult.jobs.foreach(assignJob)
           computationResult.orders
         } else {
           // we are not waiting
@@ -90,7 +99,7 @@ trait ComputationIntensive[T <: WrapsUnit] extends AIModule[T] {
   /**
    * do not access the universe here, it's running in another thread!
    */
-  def evaluateNextOrders(in: ComputationInput): BackgroundComputationResult
+  def evaluateNextOrders(in: ComputationInput): BackgroundComputationResult[T]
 }
 
 abstract class AIModule[T <: WrapsUnit : Manifest](override val universe: Universe)
@@ -173,7 +182,9 @@ class Bases(world: DefaultWorld) {
 }
 
 case class Base(world: DefaultWorld, mainBuilding: MainBuilding) {
+
   val myMineralGroup = world.mineralPatches.nearestTo(mainBuilding.tilePosition)
+
   def tick(): Unit = {
     world.debugger.debugRender { renderer =>
       world.mineralPatches.groups.foreach { mpg =>

@@ -4,12 +4,12 @@ package brain
 import scala.collection.mutable.ArrayBuffer
 
 class ResourceManager(override val universe: Universe) extends HasUniverse {
-
   private val empty       = Resources(0, 0, Supplies(0, 0))
   private val locked      = ArrayBuffer.empty[LockedResources[_]]
   private val lockedSums  = LazyVal.from(calcLockedSums)
   private var myResources = empty
-
+  def gatheredMinerals = nativeGame.self().gatheredMinerals()
+  def gatheredGas = nativeGame.self().gatheredGas()
   def unlock_!(proofForFunding: ResourceApprovalSuccess): Unit = {
     trace(s"Unlocked $proofForFunding")
     locked.removeFirstMatch(_.reqs.sum.equalValue(proofForFunding))
@@ -44,7 +44,8 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
     val ret = myUnlockedResources.supply
     ret.copy(total = ret.total + plannedToProvide)
   }
-  private def myUnlockedResources = myResources - lockedSums.get
+  private def myUnlockedResources = myResources - lockedResources
+  def lockedResources = lockedSums.get
   def plannedSuppliesToAdd = {
     // TODO include planned command centers
     unitManager
@@ -60,6 +61,11 @@ trait ResourceApproval {
   def gas: Int
   def supply: Int
   def success: Boolean
+  def isFunded = success
+  def assumeSuccessful = {
+    assert(success)
+    this.asInstanceOf[ResourceApprovalSuccess]
+  }
 }
 
 case class Supplies(used: Int, total: Int) {

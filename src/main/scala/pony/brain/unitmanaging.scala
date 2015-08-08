@@ -10,11 +10,17 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
   private val byEmployer          = new
       mutable.HashMap[Employer[_ <: WrapsUnit], mutable.Set[UnitWithJob[_ <: WrapsUnit]]]
       with mutable.MultiMap[Employer[_ <: WrapsUnit], UnitWithJob[_ <: WrapsUnit]]
-  def allJobs[T <: WrapsUnit : Manifest] = selectJobs[T, UnitWithJob[T]](_ => true)
+  def allJobsByUnit[T <: WrapsUnit : Manifest] = selectJobs[T, UnitWithJob[T]](_ => true)
   def selectJobs[U <: WrapsUnit : Manifest, T <: UnitWithJob[U] : Manifest](f: T => Boolean) = {
     val wanted = manifest[U].runtimeClass
     assignments.valuesIterator.filter { job =>
       wanted.isAssignableFrom(job.unit.getClass) && f(job.asInstanceOf[T])
+    }.map {_.asInstanceOf[T]}.toVector
+  }
+  def allJobsByType[T <: UnitWithJob[_] : Manifest] = {
+    val wanted = manifest[T].runtimeClass
+    assignments.valuesIterator.filter { job =>
+      wanted.isAssignableFrom(job.getClass)
     }.map {_.asInstanceOf[T]}.toVector
   }
   def race = bases.mainBase.mainBuilding.race
@@ -64,6 +70,7 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
     assignments ++= registerUs.map(e => e.unit -> e)
 
   }
+
   def assignJob[T <: WrapsUnit](employer: Employer[T], newJob: UnitWithJob[T]): Unit = {
     trace(s"New job assignment: $newJob, employed by $employer")
     assignments.get(newJob.unit).foreach { oldJob =>
@@ -76,8 +83,8 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
 
     assignments.put(newJob.unit, newJob)
     byEmployer.addBinding(employer, newJob)
-
   }
+
   def request[T <: WrapsUnit : Manifest](req: UnitJobRequests[T]) = {
     trace(s"${req.employer} requested ${req.requests.mkString(" and ")}")
     def hireResult: Option[UnitCollector[T]] = {
@@ -212,10 +219,20 @@ class Employer[T <: WrapsUnit : Manifest](override val universe: Universe) exten
   }
 
   def hire(unit: T): Unit = {
+    assert(!employees.contains(unit))
+    info(s"$unit got hired by $this")
     employees += unit
   }
 
   def fire(unit: T): Unit = {
+    assert(employees.contains(unit))
+    info(s"$unit got fired")
+    employees -= unit
+  }
+
+  def hiredBySomeoneMoreImportant(unit: T): Unit = {
+    assert(employees.contains(unit))
+    info(s"$unit got hired by someone else")
     employees -= unit
   }
 
@@ -284,18 +301,26 @@ class TrainUnit[F <: Factory, T <: Mobile](factory: F, trainType: Class[_ <: T],
 }
 
 class ConstructBuilding[W <: WorkerUnit, B <: Building](worker: W, buildingType: Class[_ <: B], employer: Employer[W],
-                                                        where: MapTilePosition, funding: ResourceApprovalSuccess)
+                                                        val where: MapTilePosition, funding: ResourceApprovalSuccess)
   extends UnitWithJob[W](employer, worker, Priority.ConstructBuilding) with JobHasFunding[W] {
+
+  val area = {
+    val unitType = buildingType.toUnitType
+    val size = Size.shared(unitType.tileWidth(), unitType.tileHeight())
+    Area(where, size)
+  }
 
   private var startedConstruction  = false
   private var finishedConstruction = false
+
   override def shortDebugString: String = s"Build ${buildingType.className}"
+
   def typeOfBuilding = buildingType
 
   override def proofForFunding = funding
 
   override def ordersForTick: Seq[UnitOrder] = {
-    Orders.Construct(unit, buildingType, where).toSeq
+    Orders.Construct(worker, buildingType, where).toSeq
   }
   override def isFinished = {
     if (!startedConstruction) {

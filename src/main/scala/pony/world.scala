@@ -82,14 +82,12 @@ class DefaultWorld(game: Game) extends WorldListener {
 
   // these must be initialized after the first tick. making them lazy solves this
   lazy val mineralPatches = new MineralAnalyzer(map, units)
-
   val map        = new AnalyzedMap(game)
   val units      = new Units(game)
   val debugger   = new Debugger(game)
   val orderQueue = new OrderQueue(game, debugger)
-
   private var ticks = 0
-
+  def nativeGame = game
   def currentResources = {
     val self = game.self()
     val total = self.supplyTotal()
@@ -189,6 +187,7 @@ class Grid2D(val cols: Int, val rows: Int, bitSet: collection.Set[Int]) {
     }
   }
   def free(p: MapTilePosition): Boolean = free(p.x, p.y)
+  def free(x: Int, y: Int): Boolean = !bitSet(x + y * cols)
   def zoomedOut = {
     val bits = mutable.BitSet.empty
     val subCols = cols / 4
@@ -201,7 +200,6 @@ class Grid2D(val cols: Int, val rows: Int, bitSet: collection.Set[Int]) {
     }
     new Grid2D(subCols, subRows, bits)
   }
-  def free(x: Int, y: Int): Boolean = !bitSet(x + y * cols)
   def blocked = size - walkable
   def size = cols * rows
   def walkable = bitSet.size
@@ -271,10 +269,14 @@ class MineralPatchGroup(val patchId: Int) {
   private val myPatches = mutable.HashSet.empty[MineralPatch]
   private val myCenter  = new LazyVal[MapTilePosition](calcCenter)
   private val myValue   = new LazyVal[Int](myPatches.foldLeft(0)((acc, mp) => acc + mp.remaining))
+  def tick() = {
+    myValue.invalidate()
+  }
   def addPatch(mp: MineralPatch): Unit = {
     myPatches += mp
     myCenter.invalidate()
   }
+
   override def toString = s"Minerals($value)@$center"
   def center = myCenter.get
   def value = myValue.get

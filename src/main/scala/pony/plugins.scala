@@ -1,7 +1,12 @@
 package pony
 
+import java.text.DecimalFormat
+
 import bwapi.Color
+import pony.brain.modules.GatherMineralsAtSinglePatch
 import pony.brain.{HasUniverse, TwilightSparkle, Universe}
+
+import scala.collection.mutable.ArrayBuffer
 
 abstract class ControllingAI extends AIPlugIn {
 
@@ -49,7 +54,7 @@ class UnitJobRenderer(override val universe: Universe) extends AIPlugIn with Has
 
   override protected def tickPlugIn(): Unit = {
     world.debugger.debugRender { renderer =>
-      unitManager.allJobs[Mobile].foreach { job =>
+      unitManager.allJobsByUnit[Mobile].foreach { job =>
         renderer.drawTextAtUnit(job.unit, job.shortDebugString, 1)
       }
     }
@@ -59,12 +64,41 @@ class UnitJobRenderer(override val universe: Universe) extends AIPlugIn with Has
 
 class StatsRenderer(override val universe: Universe) extends AIPlugIn with HasUniverse {
   override val world = universe.world
-
+  private  val resourceHistory = ArrayBuffer.empty[MinsGas]
+  private  val frameSize = 500
   override protected def tickPlugIn(): Unit = {
+    resourceHistory += MinsGas(resources.gatheredMinerals, resources.gatheredGas)
+    if (resourceHistory.size == frameSize + 1) {
+      resourceHistory.remove(0)
+    }
+
     world.debugger.debugRender { renderer =>
-      renderer.drawTextOnScreen("hello\nhello")
+      val debugString = ArrayBuffer.empty[String]
+
+      debugString += {
+        val locked = universe.resources.lockedResources
+        s"${locked.minerals}m, ${locked.gas}g, ${locked.supply}s locked"
+      }
+
+      val df = new DecimalFormat("#0.00")
+
+      debugString ++= {
+        universe.bases.bases.map { base =>
+          val mins = base.myMineralGroup.get
+          val gatherJob = unitManager.allJobsByType[GatherMineralsAtSinglePatch]
+                          .filter(e => mins.contains(e.targetPatch))
+          val minsGot = resourceHistory.last.mins - resourceHistory.head.mins
+          val minsGotPerWorker = df.format(minsGot.toDouble / gatherJob.size)
+          s"Base ${base.mainBuilding.unitIdText}: ${mins.value}m, ${
+            gatherJob.size
+          } workers, $minsGot income ($minsGotPerWorker avg)"
+        }
+      }
+
+      renderer.drawTextOnScreen(debugString.mkString("\n"))
     }
   }
+  case class MinsGas(mins: Int, gas: Int)
 }
 
 class BlockedBuildingSpotsRenderer(override val universe: Universe) extends AIPlugIn with HasUniverse {
