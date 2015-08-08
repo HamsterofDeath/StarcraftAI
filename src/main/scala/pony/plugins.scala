@@ -67,7 +67,7 @@ class StatsRenderer(override val universe: Universe) extends AIPlugIn with HasUn
   }
 }
 
-class BuildingSpotsRenderer(override val universe: Universe) extends AIPlugIn with HasUniverse {
+class BlockedBuildingSpotsRenderer(override val universe: Universe) extends AIPlugIn with HasUniverse {
   override val world = universe.world
 
   override protected def tickPlugIn(): Unit = {
@@ -82,6 +82,15 @@ class BuildingSpotsRenderer(override val universe: Universe) extends AIPlugIn wi
     world.debugger.debugRender { renderer =>
       renderer.in_!(Color.Blue)
       val area = mapLayers.blockedByResources
+      area.all.filter(area.blocked)
+      .foreach { blocked =>
+        renderer.drawCrossedOutOnTile(blocked)
+      }
+    }
+
+    world.debugger.debugRender { renderer =>
+      renderer.in_!(Color.Grey)
+      val area = mapLayers.blockedByWorkerPaths
       area.all.filter(area.blocked)
       .foreach { blocked =>
         renderer.drawCrossedOutOnTile(blocked)

@@ -13,6 +13,6 @@ object ConcoctedAI {
     .addPlugin(mainAi)
     .addPlugin(new UnitJobRenderer(mainAi.brain.universe))
     .addPlugin(new StatsRenderer(mainAi.brain.universe))
-    .addPlugin(new BuildingSpotsRenderer(mainAi.brain.universe))
+    .addPlugin(new BlockedBuildingSpotsRenderer(mainAi.brain.universe))
   }
 }

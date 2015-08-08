@@ -18,6 +18,12 @@ trait HasUniverse {
   def bases = universe.bases
   def currentTick = universe.currentTick
   def mapLayers = universe.mapsLayers
+  def ifNth(nth: Int)(u: => Unit) = {
+    if (universe.currentTick % nth == 0) {
+      u
+    }
+  }
+
 }
 
 trait BackgroundComputationResult {

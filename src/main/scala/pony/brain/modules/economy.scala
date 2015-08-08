@@ -160,22 +160,28 @@ class GatherMinerals(universe: Universe) extends AIModule(universe) {
       class MinedPatch(val patch: MineralPatch) {
         private val miningTeam = ArrayBuffer.empty[GatherMineralsAtPatch]
         def hasOpenSpot: Boolean = miningTeam.size < estimateRequiredWorkers
-        def estimateRequiredWorkers = 2
         def openSpotCount = estimateRequiredWorkers - miningTeam.size
+        def estimateRequiredWorkers = 2
         def orders = miningTeam.flatMap(_.ordersForTick)
         def addToTeam(worker: WorkerUnit): Unit = {
+          info(s"Added $worker to mining team of $patch")
           val job = new GatherMineralsAtPatch(worker, this)
           miningTeam += job
           assignJob(job)
         }
 
         def removeFromTeam(worker: WorkerUnit): Unit = {
+          info(s"Removing $worker from mining team of $patch")
           miningTeam.find(_.unit == worker).foreach {miningTeam -= _}
         }
       }
 
       class GatherMineralsAtPatch(worker: WorkerUnit, miningTarget: MinedPatch)
         extends UnitWithJob(emp, worker, Priority.Default) {
+
+        listen_!(() => {
+          miningTarget.removeFromTeam(worker)
+        })
 
         import States._
 
