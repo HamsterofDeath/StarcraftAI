@@ -11,6 +11,10 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
       mutable.HashMap[Employer[_ <: WrapsUnit], mutable.Set[UnitWithJob[_ <: WrapsUnit]]]
       with mutable.MultiMap[Employer[_ <: WrapsUnit], UnitWithJob[_ <: WrapsUnit]]
   private var unfulfilledRequestsLastTick = unfulfilledRequestsThisTick.toVector
+  def jobsByType = assignments.values.toSeq.groupBy(_.getClass)
+  def jobsOf[T <: WrapsUnit](emp: Employer[T]) = byEmployer.getOrElse(emp, Set.empty)
+                                                 .asInstanceOf[collection.Set[UnitWithJob[T]]]
+  def employers = byEmployer.keySet
   def plannedSupplyAdditions = {
     val byJob = allJobsByType[ConstructBuilding[WorkerUnit, Building]].collect {
       case cr: ConstructBuilding[WorkerUnit, Building] => cr.typeOfBuilding.toUnitType.supplyProvided()
@@ -54,6 +58,7 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
     unfulfilledRequestsThisTick.clear()
 
     //clean
+    assignments.foreach(_._2.onTick())
     val removeUs = assignments.filter { case (_, job) => job.isFinished }.values.toList
     info(s"Cleaning up ${removeUs.size} finished jobs", removeUs.nonEmpty)
 
@@ -61,7 +66,6 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
       val newJob = new BusyDoingNothing(job.unit, Nobody)
       assignJob_!(newJob)
       job.onFinish()
-
     }
 
     def jobOf[T <: WrapsUnit](unit: T) = {
@@ -276,6 +280,7 @@ abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: 
   override val universe     = employer.universe
   private  val creationTick = currentTick
   private  val listeners    = ArrayBuffer.empty[JobFinishedListener[T]]
+  def onTick(): Unit = {}
   def onStealUnit() = {}
   def shortDebugString: String
   def age = currentTick - creationTick
@@ -290,13 +295,26 @@ abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: 
 }
 
 trait HasFunding {
+  private var explicitlyUnlocked = false
+  private var autoUnlocked       = false
   def proofForFunding: ResourceApproval
   def resources: ResourceManager
+  def unlockManually_!(): Unit = {
+    trace(s"Manually unlocking $proofForFunding of $this")
+    unlock_!()
+    explicitlyUnlocked = true
+  }
   def unlock_!(): Unit = {
-    proofForFunding match {
-      case suc: ResourceApprovalSuccess =>
-        resources.unlock_!(suc)
-      case _ =>
+    if (!explicitlyUnlocked) {
+      assert(!autoUnlocked)
+      proofForFunding match {
+        case suc: ResourceApprovalSuccess =>
+          autoUnlocked = true
+          resources.unlock_!(suc)
+        case _ =>
+      }
+    } else {
+      trace(s"Not unlocking $proofForFunding of $this automatically, someone already did that")
     }
   }
 }
@@ -337,10 +355,16 @@ class ConstructBuilding[W <: WorkerUnit, B <: Building](worker: W, buildingType:
     val size = Size.shared(unitType.tileWidth(), unitType.tileHeight())
     Area(where, size)
   }
-
   private var startedConstruction  = false
   private var finishedConstruction = false
-
+  private var resourcesUnlocked    = false
+  override def onTick(): Unit = {
+    super.onTick()
+    if (startedConstruction && !resourcesUnlocked) {
+      unlockManually_!()
+      resourcesUnlocked = true
+    }
+  }
   override def shortDebugString: String = s"Build ${buildingType.className}"
 
   def typeOfBuilding = buildingType
@@ -378,10 +402,13 @@ class BusyBeingTrained[T <: WrapsUnit](unit: T, employer: Employer[T])
 }
 
 trait UnitRequest[T <: WrapsUnit] {
-  private var autoCleanAfterTick = true
+  private var autoCleanAfterTick  = true
+  private var keepResourcesLocked = false
   def includesByType(unit: WrapsUnit): Boolean = typeOfRequestedUnit.isAssignableFrom(unit.getClass)
   def typeOfRequestedUnit: Class[_ <: T]
   def amount: Int
+  def acceptableUntyped(unit: WrapsUnit) = typeOfRequestedUnit.isAssignableFrom(unit.getClass) &&
+                                           acceptable(unit.asInstanceOf[T])
   def acceptable(unit: T) = true
   def cherryPicker: Option[(T, T) => T] = None
   def clearable = autoCleanAfterTick
@@ -389,6 +416,14 @@ trait UnitRequest[T <: WrapsUnit] {
   def persistant_!(): Unit = {
     autoCleanAfterTick = false
   }
+  def clearable_!(): Unit = {
+    autoCleanAfterTick = true
+  }
+  def keepResourcesLocked_!(): Unit = {
+    keepResourcesLocked = true
+  }
+
+  def unlocksResourcesOnClean = !keepResourcesLocked
 
 
   override def toString = s"UnitRequest($typeOfRequestedUnit, $amount)"
@@ -407,13 +442,20 @@ case class BuildUnitRequest[T <: WrapsUnit](universe: Universe, typeOfRequestedU
                                             funding: ResourceApproval)
   extends UnitRequest[T] with HasFunding with HasUniverse {
 
+  if (typeOfRequestedUnit.toUnitType.isBuilding) {
+    keepResourcesLocked_!()
+  }
+
   override def proofForFunding = funding
 
   override def acceptable(unit: T): Boolean = false // refuse all that exist
 
   override def onClear(): Unit = {
     super.onClear()
-    unlock_!()
+    // for buildings, the resources need to be locked until the building process has begun
+    if (unlocksResourcesOnClean) {
+      unlock_!()
+    }
   }
 }
 
@@ -427,8 +469,11 @@ case class UnitJobRequests[T <: WrapsUnit : Manifest](requests: Seq[UnitRequest[
   assert(requests.forall(_.clearable) || requests.forall(!_.clearable))
 
   private val types = requests.map(_.typeOfRequestedUnit).toSet
+
   def clearable = requests.forall(_.clearable)
-  def wantsUnit(unitType: WrapsUnit) = types.exists(_.isAssignableFrom(unitType.getClass))
+
+  def wantsUnit(existingUnit: WrapsUnit) = types.exists(_.isAssignableFrom(existingUnit.getClass)) &&
+                                           requests.exists(_.acceptableUntyped(existingUnit))
 
   def commonUnitType = manifest[T].runtimeClass.asInstanceOf[Class[_ <: T]]
 
@@ -468,12 +513,3 @@ object UnitJobRequests {
     UnitJobRequests[T](req.toSeq, employer, Priority.Default)
   }
 }
-
-
-
-
-
-
-
-
-

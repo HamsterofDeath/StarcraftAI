@@ -8,11 +8,12 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
   private val locked      = ArrayBuffer.empty[LockedResources[_]]
   private val lockedSums  = LazyVal.from(calcLockedSums)
   private var myResources = empty
+  def detailledLocks = locked.toSeq
   def gatheredMinerals = nativeGame.self().gatheredMinerals()
   def gatheredGas = nativeGame.self().gatheredGas()
   def unlock_!(proofForFunding: ResourceApprovalSuccess): Unit = {
-    trace(s"Unlocked $proofForFunding")
     locked.removeFirstMatch(_.reqs.sum.equalValue(proofForFunding))
+    trace(s"Unlocked $proofForFunding")
     lockedSums.invalidate()
   }
 

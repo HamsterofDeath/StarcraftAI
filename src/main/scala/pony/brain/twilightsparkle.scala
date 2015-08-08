@@ -28,7 +28,6 @@ trait HasUniverse {
 }
 
 trait BackgroundComputationResult[T <: WrapsUnit] {
-  def dispose_!(): Unit
 
   def jobs: Traversable[UnitWithJob[T]]
 
@@ -42,7 +41,6 @@ object BackgroundComputationResult {
     override def repeatOrderIssue: Boolean = false
     override def afterComputation(): Unit = {}
     override def jobs: Traversable[UnitWithJob[T]] = Nil
-    override def dispose_!(): Unit = {}
   }
 
   def result[T <: WrapsUnit](myJobs: Traversable[UnitWithJob[T]],
@@ -54,7 +52,6 @@ object BackgroundComputationResult {
     override def repeatOrderIssue = checkValidityNow()
     override def afterComputation() = afterComputationDone()
     override def orders = jobs.flatMap(_.ordersForTick)
-    override def dispose_!(): Unit = jobs.foreach {_.}
   }
 }
 
@@ -110,6 +107,8 @@ abstract class AIModule[T <: WrapsUnit : Manifest](override val universe: Univer
   extends Employer[T](universe) with HasUniverse {
   def ordersForTick: Traversable[UnitOrder]
   def onNth: Int = 1
+
+  override def toString = s"Module ${getClass.className}"
 }
 
 trait Orderless[T <: WrapsUnit] extends AIModule[T] {

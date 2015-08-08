@@ -76,8 +76,14 @@ class StatsRenderer(override val universe: Universe) extends AIPlugIn with HasUn
       val debugString = ArrayBuffer.empty[String]
 
       debugString += {
-        val locked = universe.resources.lockedResources
-        s"${locked.minerals}m, ${locked.gas}g, ${locked.supply}s locked"
+        val locked = resources.lockedResources
+        val locks = resources.detailledLocks
+        s"${locked.minerals}m, ${locked.gas}g, ${locked.supply}s locked, ${locks.size} locks"
+      }
+
+      debugString ++= {
+        val missingUnits = unitManager.failedToProvideFlat.groupBy(_.typeOfRequestedUnit).mapValues(_.size)
+        missingUnits.map { case (unitClass, howMany) => s"Type ${unitClass.className} -> $howMany missing " }
       }
 
       val df = new DecimalFormat("#0.00")
@@ -95,7 +101,20 @@ class StatsRenderer(override val universe: Universe) extends AIPlugIn with HasUn
         }
       }
 
-      renderer.drawTextOnScreen(debugString.mkString("\n"))
+      debugString ++= {
+        unitManager.employers.map { emp =>
+          s"$emp has ${unitManager.jobsOf(emp).size} units"
+        }
+      }
+
+      debugString ++= {
+        unitManager.jobsByType.map { case (jobType, members) =>
+          s"${jobType.className} => ${members.size} units"
+        }
+      }
+
+
+      debugString.zipWithIndex.foreach { case (txt, line) => renderer.drawTextOnScreen(txt, line) }
     }
   }
   case class MinsGas(mins: Int, gas: Int)

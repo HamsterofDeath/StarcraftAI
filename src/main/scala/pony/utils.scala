@@ -3,8 +3,8 @@ package pony
 import bwapi.Game
 
 class Renderer(game: Game, private var color: bwapi.Color) {
-  def drawTextOnScreen(text: String): Unit = {
-    game.drawTextScreen(10, 10, text)
+  def drawTextOnScreen(text: String, row: Int = 0): Unit = {
+    game.drawTextScreen(10, 10 + row * 10, text)
   }
 
   def drawOutline(where: Area): Unit = {

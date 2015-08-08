@@ -14,7 +14,7 @@ class ProvideNewBuildings(universe: Universe)
   override def evaluateNextOrders(in: ComputationInput) = {
     val helper = new ConstructionSiteFinder(universe)
     val job = helper.findSpotFor(in.base.mainBuilding.tilePosition, in.buildingType).map { where =>
-      new ConstructBuilding(in.worker, in.buildingType, self, where, in.funding)
+      new ConstructBuilding(in.worker, in.buildingType, self, where, in.jobRequest.proofForFunding.assumeSuccessful)
     }
     job match {
       case None =>
@@ -22,8 +22,9 @@ class ProvideNewBuildings(universe: Universe)
         error(s"Computation returned no result: $in")
         BackgroundComputationResult.nothing[WorkerUnit]
       case Some(startJob) =>
-        info(s"Planning to build ${in.buildingType.className} at ${startJob.where} by ${in.worker}")
         BackgroundComputationResult.result(startJob.toSeq, () => false, () => {
+          info(s"Planning to build ${in.buildingType.className} at ${startJob.where} by ${in.worker}")
+          in.jobRequest.clearable_!()
           mapLayers.blockBuilding_!(startJob.area)
         })
     }
@@ -41,14 +42,14 @@ class ProvideNewBuildings(universe: Universe)
       unitManager.request(request) match {
         case success: ExactlyOneSuccess[WorkerUnit] =>
           new Data(success.onlyOne, req.typeOfRequestedUnit, unitManager.bases.mainBase,
-            new ConstructionSiteFinder(universe), req.proofForFunding.assumeSuccessful).toSome
+            new ConstructionSiteFinder(universe), req).toSome
         case _ => None
       }
     }
   }
 
   case class Data(worker: WorkerUnit, buildingType: Class[_ <: Building], base: Base, helper: ConstructionSiteFinder,
-                  funding: ResourceApprovalSuccess)
+                  jobRequest: BuildUnitRequest[Building])
 }
 
 class ProvideNewSupply(universe: Universe) extends AIModule[WorkerUnit](universe) with Orderless[WorkerUnit] {

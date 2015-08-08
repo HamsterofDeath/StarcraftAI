@@ -11,7 +11,7 @@ package object pony {
 
   type SCUnitType = Class[_ <: WrapsUnit]
   val tileSize = 32
-  private var logLevel: LogLevel = Info
+  private var logLevel: LogLevel = Trace
   def setLogLevel_!(logLevel: LogLevel): Unit = { this.logLevel = logLevel }
   def error(a: => Any, doIt: Boolean = true): Unit = {
     if (doIt && Error.includes(logLevel)) tinylog.Logger.error(a.toString)
