@@ -4,9 +4,9 @@ import pony.brain.{HasUniverse, Universe}
 
 case class Path(waypoints: Seq[MapTilePosition])
 
-class SimplePathFinder(baseOn:Grid2D) {
+class SimplePathFinder(baseOn: Grid2D) {
   def directLineOfSight(a: Area, b: MapTilePosition): Boolean = {
-    a.outline.exists(p => directLineOfSight(p,b))
+    a.outline.exists(p => directLineOfSight(p, b))
   }
 
   def directLineOfSight(a: MapTilePosition, b: MapTilePosition): Boolean = {
@@ -34,7 +34,7 @@ class SimplePathFinder(baseOn:Grid2D) {
     }
     dy <<= 1
     dx <<= 1
-    if (baseOn.blocked(startX,startY)) {
+    if (baseOn.blocked(startX, startY)) {
       return false
     }
     if (dx > dy) {
@@ -46,7 +46,7 @@ class SimplePathFinder(baseOn:Grid2D) {
         }
         startX += stepX
         fraction += dy
-        if (baseOn.blocked(startX,startY)) {
+        if (baseOn.blocked(startX, startY)) {
           return false
         }
       }
@@ -70,35 +70,61 @@ class SimplePathFinder(baseOn:Grid2D) {
 }
 
 class MapLayers(override val universe: Universe) extends HasUniverse {
-  private val simple               = world.map.walkableGridZoomed
-  private val plannedBuildings     = world.map.empty.mutableCopy
-  private var withBuildings        = evalWithBuildings
-  private var withPlannedBuildings = evalWithPlannedBuildings
-  def forBuildingConstruction = withPlannedBuildings.asReadOnly
+
+  private val rawMap                    = world.map.walkableGridZoomed
+  private val plannedBuildings          = world.map.empty.mutableCopy
+  private var justBuildings             = evalOnlyBuildings
+  private var justMineralsAndGas        = evalOnlyResources
+  private var withBuildings             = evalWithBuildings
+  private var withBuildingsAndResources = evalWithBuildingsAndResources
+  private var withEverything            = evalWithPlannedBuildings
+
+  def freeBuildingTiles = withEverything.asReadOnly
+
+  def blockedByBuildingTiles = justBuildings.asReadOnly
+
+  def blockedByResources = justMineralsAndGas.asReadOnly
+
   def blockBuilding_!(where: Area): Unit = {
     plannedBuildings.block_!(where)
   }
+  def tick(): Unit = {
+    update()
+  }
   private def update(): Unit = {
+    justBuildings = evalOnlyBuildings
+    justMineralsAndGas = evalOnlyResources
     withBuildings = evalWithBuildings
-    withPlannedBuildings = evalWithPlannedBuildings
+    withBuildingsAndResources = evalWithBuildingsAndResources
+    withEverything = evalWithPlannedBuildings
   }
-  private def evalWithBuildings = simple.mutableCopy.or_!(onlyBuildings)
-  private def onlyBuildings = {
-    val empty = world.map.empty.mutableCopy
-    units.allByType[Building].foreach { b =>
-      empty.block_!(b.area)
+  private def evalWithBuildings = rawMap.mutableCopy.or_!(justBuildings)
+  private def evalWithBuildingsAndResources = justBuildings.or_!(justMineralsAndGas)
+  private def evalOnlyBuildings = evalOnlyUnits(units.allByType[Building])
+  private def evalOnlyUnits(units: TraversableOnce[StaticallyPositioned]) = {
+    val ret = world.map.empty.mutableCopy
+    units.foreach { b =>
+      ret.block_!(b.area)
     }
-    empty
+    ret
   }
-  private def evalWithPlannedBuildings = withBuildings.mutableCopy.or_!(plannedBuildings)
+  private def evalOnlyResources = evalOnlyUnits(units.allByType[MineralPatch].filter(_.remaining > 0))
+                                  .or_!(evalOnlyUnits(units.allByType[Geysir]))
+  private def evalWithPlannedBuildings = withBuildingsAndResources.mutableCopy.or_!(plannedBuildings)
 
 }
 
 class ConstructionSiteFinder(universe: Universe) {
+  // initialisation happens in the main thread
+  private val tryOnThis = universe.mapsLayers.blockedByBuildingTiles.mutableCopy
+  private val helper    = new GeometryHelpers(universe.world.map.sizeX, universe.world.map.sizeY)
+
   def findSpotFor[T <: Building](near: MapTilePosition, building: Class[_ <: T]) = {
-    val necessaryArea = Size.shared(building.toUnitType.tileWidth(), building.toUnitType.tileWidth())
-    val tryOnThis = universe.mapsLayers.forBuildingConstruction
-    GeometryHelpers.blockSpiralClockWise(near).find(tryOnThis.free(_, necessaryArea))
+    // this happens in the background
+    val unitType = building.toUnitType
+    val necessaryArea = Size.shared(unitType.tileWidth(), unitType.tileHeight())
+    helper.blockSpiralClockWise(near)
+    .find(tryOnThis.free(_, necessaryArea))
   }
 }
 

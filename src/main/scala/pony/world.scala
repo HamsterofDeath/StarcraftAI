@@ -71,7 +71,7 @@ case class Resources(minerals: Int, gas: Int, supply: Supplies) {
   def >(sum: ResourceRequestSums) = minerals >= sum.minerals && gas >= sum.gas && supplyRemaining >= sum.supply
   def supplyRemaining = supply.available
   def -(sums: ResourceRequestSums) = {
-    val supplyUpdated = supply.copy(supplyRemaining - sums.supply, supplyUsed + sums.supply)
+    val supplyUpdated = supply.copy(supplyUsed + sums.supply)
     copy(minerals - sums.minerals, gas - sums.gas, supply = supplyUpdated)
   }
   def supplyUsed = supply.used
@@ -116,6 +116,9 @@ class DefaultWorld(game: Game) extends WorldListener {
 class Debugger(game: Game) {
   private val debugging = true
   private val renderer  = new Renderer(game, Color.Green)
+  def faster(): Unit = {
+    game.setLocalSpeed(3)
+  }
   def debugRender(whatToDo: Renderer => Any): Unit = {
     if (debugging) {
       whatToDo(renderer)
@@ -140,18 +143,21 @@ class Units(game: Game) {
     val lookFor = manifest[T].runtimeClass
     mine.find(lookFor.isInstance).map(_.asInstanceOf[T])
   }
-  def mine = all.filter(_.nativeUnit.getPlayer == game.self())
-
-  import scala.collection.JavaConverters._
-  def all = knownUnits.valuesIterator
   def mineByType[T: Manifest]: Iterator[T] = {
     val lookFor = manifest[T].runtimeClass
     mine.filter(lookFor.isInstance).map(_.asInstanceOf[T])
   }
+
+  import scala.collection.JavaConverters._
+
+  def mine = all.filter(_.nativeUnit.getPlayer == game.self())
+  def all = knownUnits.valuesIterator
   def minerals = allByType[MineralPatch]
   def allByType[T: Manifest]: Iterator[T] = {
     val lookFor = manifest[T].runtimeClass
-    all.filter(lookFor.isInstance).map(_.asInstanceOf[T])
+    all.filter { e =>
+      lookFor.isAssignableFrom(e.getClass)
+    }.map(_.asInstanceOf[T])
   }
   def tick(): Unit = {
     if (initial) {
@@ -175,6 +181,7 @@ class Units(game: Game) {
 }
 
 class Grid2D(val cols: Int, val rows: Int, bitSet: collection.Set[Int]) {
+
   def free(position: MapTilePosition, area: Size): Boolean = {
     area.points.forall { p =>
       free(p.movedBy(position))
@@ -187,7 +194,7 @@ class Grid2D(val cols: Int, val rows: Int, bitSet: collection.Set[Int]) {
     def squareFree(x: Int, y: Int) = free(x * 4, y * 4) && free(x * 4 + 1, y * 4) && free(x * 4, y * 4 + 1) &&
                                      free(x * 4 + 1, y * 4 + 1)
     for (x <- 0 until subCols; y <- 0 until subRows
-         if squareFree(x, y)) {
+         if !squareFree(x, y)) {
       bits += (x + y * subCols)
     }
     new Grid2D(subCols, subRows, bits)
@@ -198,7 +205,7 @@ class Grid2D(val cols: Int, val rows: Int, bitSet: collection.Set[Int]) {
   def blocked(x: Int, y: Int): Boolean = !free(x, y)
   def blocked(p: MapTilePosition): Boolean = !free(p)
   def free(p: MapTilePosition): Boolean = free(p.x, p.y)
-  def free(x: Int, y: Int): Boolean = bitSet(x + y * cols)
+  def free(x: Int, y: Int): Boolean = !bitSet(x + y * cols)
   def all = new Traversable[MapTilePosition] {
     override def foreach[U](f: (MapTilePosition) => U): Unit = {
       for (x <- 0 until cols; y <- 0 until rows) {
@@ -212,8 +219,8 @@ class Grid2D(val cols: Int, val rows: Int, bitSet: collection.Set[Int]) {
 
 class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet) extends Grid2D(cols, rows, bitSet) {
   def asReadOnly: Grid2D = this
-  def or_!(onlyBuildings: MutableGrid2D) = {
-    bitSet &= onlyBuildings.data
+  def or_!(other: MutableGrid2D) = {
+    bitSet |= other.data
     this
   }
   protected def data = bitSet
@@ -287,7 +294,7 @@ class AnalyzedMap(game: Game) {
     val bits = mutable.BitSet.empty
     0 until sizeX map { x =>
       0 until sizeY map { y =>
-        if (game.isWalkable(x, y)) {
+        if (!game.isWalkable(x, y)) {
           bits += x + (sizeX * y)
         }
       }

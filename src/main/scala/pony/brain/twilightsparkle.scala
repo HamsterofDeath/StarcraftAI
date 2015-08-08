@@ -2,7 +2,7 @@ package pony
 package brain
 
 import bwapi.Color
-import pony.brain.modules.{GatherMinerals, ProvideNewUnits}
+import pony.brain.modules.{GatherMinerals, ProvideNewBuildings, ProvideNewSupply, ProvideNewUnits}
 
 import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -81,6 +81,9 @@ trait ComputationIntensive[T <: WrapsUnit] extends AIModule[T] {
 
   def calculationInput: Option[ComputationInput]
 
+  /**
+   * do not access the universe here, it's running in another thread!
+   */
   def evaluateNextOrders(in: ComputationInput): BackgroundComputationResult
 }
 
@@ -124,6 +127,8 @@ class TwilightSparkle(world: DefaultWorld) {
   private val aiModules   = List(
     new GatherMinerals(universe),
     new ProvideNewUnits(universe),
+    new ProvideNewSupply(universe),
+    new ProvideNewBuildings(universe),
     AIModule.noop(universe)
   )
   private val unitManager = new UnitManager(universe)
@@ -134,6 +139,7 @@ class TwilightSparkle(world: DefaultWorld) {
       bases.findMainBase()
     }
 
+    maps.tick()
     bases.tick()
     resources.tick()
     unitManager.tick()

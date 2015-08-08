@@ -13,6 +13,12 @@ class MapReveal extends AIPluginRunOnce {
   }
 }
 
+class FastSpeed extends AIPluginRunOnce {
+  override def runOnce(): Unit = {
+    debugger.faster()
+  }
+}
+
 class WalkableRenderer extends AIPlugIn {
   override protected def tickPlugIn(): Unit = {
     world.debugger.debugRender { renderer =>
@@ -49,6 +55,39 @@ class UnitJobRenderer(override val universe: Universe) extends AIPlugIn with Has
     }
   }
   override def world: DefaultWorld = universe.world
+}
+
+class StatsRenderer(override val universe: Universe) extends AIPlugIn with HasUniverse {
+  override val world = universe.world
+
+  override protected def tickPlugIn(): Unit = {
+    world.debugger.debugRender { renderer =>
+      renderer.drawTextOnScreen("hello\nhello")
+    }
+  }
+}
+
+class BuildingSpotsRenderer(override val universe: Universe) extends AIPlugIn with HasUniverse {
+  override val world = universe.world
+
+  override protected def tickPlugIn(): Unit = {
+    world.debugger.debugRender { renderer =>
+      renderer.in_!(Color.Orange)
+      val area = mapLayers.blockedByBuildingTiles
+      area.all.filter(area.blocked)
+      .foreach { blocked =>
+        renderer.drawCrossedOutOnTile(blocked)
+      }
+    }
+    world.debugger.debugRender { renderer =>
+      renderer.in_!(Color.Blue)
+      val area = mapLayers.blockedByResources
+      area.all.filter(area.blocked)
+      .foreach { blocked =>
+        renderer.drawCrossedOutOnTile(blocked)
+      }
+    }
+  }
 }
 
 class MainAI extends AIPlugIn {

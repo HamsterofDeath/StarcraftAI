@@ -22,7 +22,7 @@ abstract class UnitOrder {
 object Orders {
   case class Construct(unit: WorkerUnit, buildingType: Class[_ <: Building], where: MapTilePosition) extends UnitOrder {
     val area = {
-      val size = Size.shared(buildingType.toUnitType.tileWidth(), buildingType.toUnitType.tileWidth)
+      val size = Size.shared(buildingType.toUnitType.tileWidth(), buildingType.toUnitType.tileHeight())
       Area(where, size)
     }
 

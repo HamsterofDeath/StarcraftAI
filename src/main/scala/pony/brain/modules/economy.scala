@@ -20,7 +20,7 @@ class ProvideNewBuildings(universe: Universe)
     }
     order match {
       case None =>
-        warn(s"Computation failed: $in")
+        warn(s"Computation returned no result: $in")
         BackgroundComputationResult.nothing
       case Some(plannedOrder) =>
         info(s"Planning to build ${in.buildingType.className} at ${plannedOrder.where} by ${in.worker}")
@@ -32,17 +32,21 @@ class ProvideNewBuildings(universe: Universe)
 
   override def calculationInput = {
     // we do them one by one, it's simpler
-    unitManager.failedToProvideByType[Building].headOption.flatMap { req =>
+    val buildingRelated = unitManager.failedToProvideByType[Building]
+    val constructionRequests = buildingRelated.collect { case buildIt: BuildUnitRequest[Building] => buildIt }
+    val anyOfThese = constructionRequests.headOption
+    anyOfThese.flatMap { req =>
       val request = UnitJobRequests.constructor(self)
       unitManager.request(request) match {
-        case success: ExactlyOneSuccess[WorkerUnit] => Some(
-          new Data(success.onlyOne, req.typeOfRequestedUnit, unitManager.bases.mainBase))
+        case success: ExactlyOneSuccess[WorkerUnit] =>
+          Some(new Data(success.onlyOne, req.typeOfRequestedUnit, unitManager.bases.mainBase,
+            new ConstructionSiteFinder(universe)))
         case _ => None
       }
     }
   }
 
-  case class Data(worker: WorkerUnit, buildingType: Class[_ <: Building], base: Base)
+  case class Data(worker: WorkerUnit, buildingType: Class[_ <: Building], base: Base, helper: ConstructionSiteFinder)
 }
 
 class ProvideNewSupply(universe: Universe) extends AIModule[WorkerUnit](universe) with Orderless[WorkerUnit] {
@@ -51,18 +55,20 @@ class ProvideNewSupply(universe: Universe) extends AIModule[WorkerUnit](universe
   override def onTick() = {
     // basing the calculations on the currently planned supplies will prevent endless requests
     val cur = resources.suppliesWithPlans
-    val needsMore = cur.supplyUsagePercent >= 0.8 && cur.total < 200
+    val needsMore = cur.supplyUsagePercent >= 0.8 && cur.total < 400
 
-    trace(s"Need more supply: $cur")
-    val race = universe.bases.mainBase.mainBuilding.race
-    val result = resources.request(ResourceRequests.forUnit(race.supplyClass), this)
-    result match {
-      case suc: ResourceApprovalSuccess =>
-        info(s"More supply approved! $suc, requesting ${race.supplyClass.className}")
-        val ofType = UnitJobRequests.newOfType(supplyEmployer, race.supplyClass)
-        //this will create an entry in the queue which will change the plans, so no need to do more here
-        unitManager.request(ofType)
-      case _ =>
+    trace(s"Need more supply: $cur", needsMore)
+    if (needsMore) {
+      val race = universe.bases.mainBase.mainBuilding.race
+      val result = resources.request(ResourceRequests.forUnit(race.supplyClass), this)
+      result match {
+        case suc: ResourceApprovalSuccess =>
+          info(s"More supply approved! $suc, requesting ${race.supplyClass.className}")
+          val ofType = UnitJobRequests.newOfType(universe, supplyEmployer, race.supplyClass, suc)
+          //this will create an entry in the queue which will change the plans, so no need to do more here
+          unitManager.request(ofType)
+        case _ =>
+      }
     }
   }
 }
@@ -181,7 +187,6 @@ class GatherMinerals(universe: Universe) extends AIModule(universe) {
           case States.Mining => "Mining"
           case States.ReturningMinerals => "Delivering"
         }
-
 
         override def ordersForTick: Seq[UnitOrder] = {
           def sendWorkerToPatch = ApproachingMinerals -> Orders.Gather(worker, miningTarget.patch)

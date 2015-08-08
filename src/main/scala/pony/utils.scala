@@ -3,6 +3,10 @@ package pony
 import bwapi.Game
 
 class Renderer(game: Game, private var color: bwapi.Color) {
+  def drawTextOnScreen(text: String): Unit = {
+    game.drawTextScreen(10, 10, text)
+  }
+
   def drawOutline(where: Area): Unit = {
     drawOutline(where.upperLeft.mapX, where.upperLeft.mapY, where.lowerRight.mapX, where.lowerRight.mapY)
   }

@@ -9,7 +9,10 @@ object ConcoctedAI {
     .addPlugin(new WalkableRenderer)
     .addPlugin(new UnitIdRenderer)
     .addPlugin(new MapReveal)
+    .addPlugin(new FastSpeed)
     .addPlugin(mainAi)
     .addPlugin(new UnitJobRenderer(mainAi.brain.universe))
+    .addPlugin(new StatsRenderer(mainAi.brain.universe))
+    .addPlugin(new BuildingSpotsRenderer(mainAi.brain.universe))
   }
 }

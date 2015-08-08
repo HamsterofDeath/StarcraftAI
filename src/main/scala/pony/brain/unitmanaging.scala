@@ -6,13 +6,13 @@ import scala.collection.mutable.ArrayBuffer
 
 class UnitManager(override val universe: Universe) extends HasUniverse {
   private val unfulfilledRequests = ArrayBuffer.empty[UnitJobRequests[_ <: WrapsUnit]]
-  private val assignments = mutable.HashMap.empty[WrapsUnit, UnitWithJob[_ <: WrapsUnit]]
-  private val byEmployer  = new
+  private val assignments         = mutable.HashMap.empty[WrapsUnit, UnitWithJob[_ <: WrapsUnit]]
+  private val byEmployer          = new
       mutable.HashMap[Employer[_ <: WrapsUnit], mutable.Set[UnitWithJob[_ <: WrapsUnit]]]
       with mutable.MultiMap[Employer[_ <: WrapsUnit], UnitWithJob[_ <: WrapsUnit]]
-  def allJobs[T <: WrapsUnit : Manifest] = selectJobs[UnitWithJob[T]](_ => true)
-  def selectJobs[T <: UnitWithJob[_] : Manifest](f: T => Boolean) = {
-    val wanted = manifest[T].runtimeClass
+  def allJobs[T <: WrapsUnit : Manifest] = selectJobs[T, UnitWithJob[T]](_ => true)
+  def selectJobs[U <: WrapsUnit : Manifest, T <: UnitWithJob[U] : Manifest](f: T => Boolean) = {
+    val wanted = manifest[U].runtimeClass
     assignments.valuesIterator.filter { job =>
       wanted.isAssignableFrom(job.unit.getClass) && f(job.asInstanceOf[T])
     }.map {_.asInstanceOf[T]}.toVector
@@ -32,6 +32,7 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
   def jobOf[T <: WrapsUnit](unit: T) = assignments(unit).asInstanceOf[UnitWithJob[T]]
   def tick(): Unit = {
     // do not pile these up, clear per tick
+    unfulfilledRequests.foreach(_.onClear())
     unfulfilledRequests.clear()
 
     //clean
@@ -80,7 +81,7 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
   def request[T <: WrapsUnit : Manifest](req: UnitJobRequests[T]) = {
     trace(s"${req.employer} requested ${req.requests.mkString(" and ")}")
     def hireResult: Option[UnitCollector[T]] = {
-      val collector = new UnitCollector(req)
+      val collector = new UnitCollector(req, universe)
       val available = (allOfEmployer(Nobody) ++ allNotOfEmployer(Nobody)).filter(_.priority < req.priority)
       available.foreach { candidate =>
         if (collector.requests(candidate)) {
@@ -103,6 +104,7 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
         unfulfilledRequests += req
         new FailedPreHiringResult[T]
       case Some(team) if !team.complete =>
+        info(s"Successful hiring request: $team")
         unfulfilledRequests += team.missingAsRequest
         if (team.hasOneMember)
           new PartialPreHiringResult(team.teamAsMap) with ExactlyOneSuccess[T]
@@ -163,7 +165,8 @@ class PartialPreHiringResult[T <: WrapsUnit](override val canHire: Map[UnitReque
   def success = false
 }
 
-class UnitCollector[T <: WrapsUnit : Manifest](originalRequest: UnitJobRequests[T]) {
+class UnitCollector[T <: WrapsUnit : Manifest](originalRequest: UnitJobRequests[T], override val universe: Universe)
+  extends HasUniverse {
   private val hired                      = new
       mutable.HashMap[UnitRequest[T], mutable.Set[T]] with mutable.MultiMap[UnitRequest[T], T]
   private val remainingAmountsPerRequest = mutable.HashMap.empty ++
@@ -171,7 +174,7 @@ class UnitCollector[T <: WrapsUnit : Manifest](originalRequest: UnitJobRequests[
   def hasOneMember = hired.valuesIterator.map(_.size).sum == 1
   def missingAsRequest: UnitJobRequests[T] = {
     val typesAndAmounts = remainingAmountsPerRequest.filter(_._2 > 0).map { case (req, amount) =>
-      BuildUnitRequest[T](req.typeOfRequestedUnit, amount)
+      BuildUnitRequest[T](universe, req.typeOfRequestedUnit, amount, ResourceApprovalFail)
     }
     UnitJobRequests[T](typesAndAmounts.toSeq, originalRequest.employer, originalRequest.priority)
   }
@@ -241,15 +244,23 @@ abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: 
   def listen_!(listener: JobFinishedListener[T]): Unit = listeners += listener
 }
 
-trait HasFunding[T <: WrapsUnit] extends UnitWithJob[T] with HasUniverse {
-
-  listen_!(() => release_!())
-
-  def proofForFunding: ResourceApprovalSuccess
-
-  private def release_!(): Unit = {
-    resources.unlock_!(proofForFunding)
+trait HasFunding {
+  def proofForFunding: ResourceApproval
+  def resources: ResourceManager
+  def unlock_!(): Unit = {
+    proofForFunding match {
+      case suc: ResourceApprovalSuccess =>
+        resources.unlock_!(suc)
+      case _ =>
+    }
   }
+}
+
+trait JobHasFunding[T <: WrapsUnit] extends UnitWithJob[T] with HasUniverse with HasFunding {
+
+  listen_!(() => {
+    unlock_!()
+  })
 }
 
 trait JobFinishedListener[T <: WrapsUnit] {
@@ -258,7 +269,7 @@ trait JobFinishedListener[T <: WrapsUnit] {
 
 class TrainUnit[F <: Factory, T <: Mobile](factory: F, trainType: Class[_ <: T], employer: Employer[F],
                                            funding: ResourceApprovalSuccess)
-  extends UnitWithJob[F](employer, factory, Priority.Default) with HasFunding[F] {
+  extends UnitWithJob[F](employer, factory, Priority.Default) with JobHasFunding[F] {
 
   override def proofForFunding = funding
 
@@ -274,7 +285,7 @@ class TrainUnit[F <: Factory, T <: Mobile](factory: F, trainType: Class[_ <: T],
 
 class ConstructBuilding[W <: WorkerUnit, B <: Building](worker: W, buildingType: Class[_ <: B], employer: Employer[W],
                                                         where: MapTilePosition, funding: ResourceApprovalSuccess)
-  extends UnitWithJob[W](employer, worker, Priority.ConstructBuilding) with HasFunding[W] {
+  extends UnitWithJob[W](employer, worker, Priority.ConstructBuilding) with JobHasFunding[W] {
 
   private var startedConstruction  = false
   private var finishedConstruction = false
@@ -315,11 +326,11 @@ class BusyBeingTrained[T <: WrapsUnit](unit: T, employer: Employer[T])
 
 trait UnitRequest[T <: WrapsUnit] {
   def includesByType(unit: WrapsUnit): Boolean = typeOfRequestedUnit.isAssignableFrom(unit.getClass)
-
   def typeOfRequestedUnit: Class[_ <: T]
   def amount: Int
   def acceptable(unit: T) = true
   def cherryPicker: Option[(T, T) => T] = None
+  def onClear(): Unit = {}
 
   override def toString = s"UnitRequest($typeOfRequestedUnit, $amount)"
 }
@@ -333,7 +344,17 @@ case class AnyFactoryRequest[T <: Factory, U <: Mobile](typeOfRequestedUnit: Cla
   }
 }
 
-case class BuildUnitRequest[T <: WrapsUnit](typeOfRequestedUnit: Class[_ <: T], amount: Int) extends UnitRequest[T]
+case class BuildUnitRequest[T <: WrapsUnit](universe: Universe, typeOfRequestedUnit: Class[_ <: T], amount: Int,
+                                            funding: ResourceApproval)
+  extends UnitRequest[T] with HasFunding with HasUniverse {
+
+  override def proofForFunding = funding
+
+  override def onClear(): Unit = {
+    super.onClear()
+    unlock_!()
+  }
+}
 
 case class SpecificUnitRequest[T <: WrapsUnit](unit: T) extends UnitRequest[T] {
   override def typeOfRequestedUnit = unit.getClass
@@ -347,6 +368,8 @@ case class UnitJobRequests[T <: WrapsUnit : Manifest](requests: Seq[UnitRequest[
   def wantsUnit(unitType: WrapsUnit) = types.exists(_.isAssignableFrom(unitType.getClass))
 
   def commonUnitType = manifest[T].runtimeClass
+
+  def onClear(): Unit = requests.foreach(_.onClear())
 }
 
 object UnitJobRequests {
@@ -374,18 +397,12 @@ object UnitJobRequests {
     UnitJobRequests[T](req.toSeq, employer, Priority.Default)
   }
 
-  def buildingOfType[T <: Building : Manifest](employer: Employer[T], ofType: Class[_ <: T], amount: Int = 1) = {
-    val req: AnyUnitRequest[T] = AnyUnitRequest(ofType, amount)
+  def newOfType[T <: WrapsUnit : Manifest](universe: Universe, employer: Employer[T], ofType: Class[_ <: T],
+                                           funding: ResourceApprovalSuccess, amount: Int = 1) = {
+    val req: BuildUnitRequest[T] = BuildUnitRequest(universe, ofType, amount, funding)
 
     UnitJobRequests[T](req.toSeq, employer, Priority.Default)
   }
-
-  def newOfType[T <: WrapsUnit : Manifest](employer: Employer[T], ofType: Class[_ <: T], amount: Int = 1) = {
-    val req: BuildUnitRequest[T] = BuildUnitRequest(ofType, amount)
-
-    UnitJobRequests[T](req.toSeq, employer, Priority.Default)
-  }
-
 }
 
 

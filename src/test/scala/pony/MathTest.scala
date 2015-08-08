@@ -18,6 +18,8 @@ class MathTest extends Specification {
     val first = testSpiral.head
     first mustEqual(100, 100)
   }
+  private def testSpiral = new GeometryHelpers(200, 200).blockSpiralClockWise(MapTilePosition.shared(100, 100), 5)
+                           .map(_.asTuple)
   def spiral9 = {
     val it = testSpiral
 
@@ -34,5 +36,4 @@ class MathTest extends Specification {
 
     expected mustEqual it.take(expected.size)
   }
-  private def testSpiral = GeometryHelpers.blockSpiralClockWise(MapTilePosition.shared(100, 100), 5).map(_.asTuple)
 }

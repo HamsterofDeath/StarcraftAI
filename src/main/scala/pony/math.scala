@@ -26,7 +26,8 @@ case class MapTilePosition(x: Int, y: Int) extends HasXY {
   override def toString = s"($x,$y)"
 }
 object MapTilePosition {
-  val points = Array.tabulate(256 * 4, 256 * 4)((x, y) => MapTilePosition(x, y))
+  val max    = 256 * 4
+  val points = Array.tabulate(max, max)((x, y) => MapTilePosition(x, y))
   def shared(xy: (Int, Int)): MapTilePosition = shared(xy._1, xy._2)
   def shared(x: Int, y: Int): MapTilePosition = points(x)(y)
 }
@@ -34,7 +35,7 @@ object MapTilePosition {
 case class Size(x: Int, y: Int) extends HasXY {
   def points: Traversable[MapTilePosition] = new Traversable[MapTilePosition] {
     override def foreach[U](f: (MapTilePosition) => U): Unit = {
-      for (x <- 0 to x; y <- 0 to y) {
+      for (x <- 0 until x; y <- 0 until y) {
         f(MapTilePosition.shared(x, y))
       }
     }
@@ -51,12 +52,10 @@ case class Area(upperLeft: MapTilePosition, sizeOfArea: Size) {
   val center     = MapPosition((upperLeft.mapX + lowerRight.mapX) / 2, (upperLeft.mapY + lowerRight.mapY) / 2)
   def tiles: Traversable[MapTilePosition] = new Traversable[MapTilePosition] {
     override def foreach[U](f: (MapTilePosition) => U): Unit = {
-      sizeOfArea.points.map { p => {
-        p.movedBy(upperLeft)
-      }
-      }
+      sizeOfArea.points.map { p => f(p.movedBy(upperLeft)) }
     }
   }
+
   def outline: Traversable[MapTilePosition] = {
     new Traversable[MapTilePosition] {
       override def foreach[U](f: (MapTilePosition) => U): Unit = {
@@ -79,7 +78,7 @@ case class MapPosition(x: Int, y: Int) extends HasXY {
   def toNative = new Position(x, y)
 }
 
-object GeometryHelpers {
+class GeometryHelpers(maxX: Int, maxY: Int) {
 
   def blockSpiralClockWise(origin: MapTilePosition, blockSize: Int = 45): Traversable[MapTilePosition] = new
       Traversable[MapTilePosition] {
@@ -111,8 +110,10 @@ object GeometryHelpers {
           def x = myX
           def y = myY
         }
+
         Iterator.iterate(new MutableXY)(_.next_!())
         .take(blockSize * blockSize)
+        .filter(e => e.x >= 0 && e.x < maxX && e.y >= 0 && e.y < maxY)
         .foreach(e => f(MapTilePosition.shared(e.x, e.y)))
       }
     }

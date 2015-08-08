@@ -9,10 +9,13 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
   private val locked      = ArrayBuffer.empty[LockedResources[_]]
   private val lockedSums  = LazyVal.from(calcLockedSums)
   private var myResources = empty
+
   def unlock_!(proofForFunding: ResourceApprovalSuccess): Unit = {
+    trace(s"Unlocked $proofForFunding")
     locked.removeFirstMatch(_.reqs.sum.equalValue(proofForFunding))
     lockedSums.invalidate()
   }
+
   def request[T <: WrapsUnit](requests: ResourceRequests, employer: Employer[T]) = {
     trace(s"Incoming resource request: $requests")
     // first check if we have enough resources
@@ -26,26 +29,26 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
   }
 
   private def lock_![T <: WrapsUnit](requests: ResourceRequests, employer: Employer[T]): Unit = {
-    locked += LockedResources(requests, employer)
+    val newLock = LockedResources(requests, employer)
+    trace(s"Locked $newLock")
+    locked += newLock
     lockedSums.invalidate()
   }
-
-  private def myUnlockedResources = myResources - lockedSums.get
-
   def tick(): Unit = {
     myResources = universe.world.currentResources
     lockedSums.invalidate()
   }
-
   def currentResources = myResources
   def suppliesWithPlans = {
     val plannedToProvide = plannedSuppliesToAdd.map {_.typeOfBuilding.toUnitType.supplyProvided}.sum
     val ret = myUnlockedResources.supply
     ret.copy(total = ret.total + plannedToProvide)
   }
+  private def myUnlockedResources = myResources - lockedSums.get
   def plannedSuppliesToAdd = {
     // TODO include planned command centers
-    unitManager.selectJobs[ConstructBuilding[_,_ <: Building]](_.typeOfBuilding == unitManager.race.supplyClass)
+    unitManager
+    .selectJobs((e: ConstructBuilding[WorkerUnit, Building]) => e.typeOfBuilding == unitManager.race.supplyClass)
   }
   private def calcLockedSums = locked.foldLeft(ResourceRequestSums.empty)((acc, e) => {
     acc + e
@@ -118,7 +121,7 @@ case class ResourceRequestSums(minerals: Int, gas: Int, supply: Int) {
   def +(e: ResourceRequest): ResourceRequestSums = {
     e match {
       case m: MineralsRequest => copy(minerals = minerals + m.amount)
-      case g: GasRequest => copy(gas = minerals + g.amount)
+      case g: GasRequest => copy(gas = gas + g.amount)
       case s: SupplyRequest => copy(supply = supply + s.amount)
     }
   }

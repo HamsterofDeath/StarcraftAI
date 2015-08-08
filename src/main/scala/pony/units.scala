@@ -77,16 +77,16 @@ trait Mobile extends WrapsUnit {
   def isMoving = nativeUnit.isMoving
 
   def currentTileNative = currentTile.asNative
-  def currentTile = {
-    val tp = nativeUnit.getTilePosition
-    MapTilePosition.shared(tp.getX, tp.getY)
-  }
   def currentPositionNative = currentPosition.toNative
   def currentPosition = {
     val p = nativeUnit.getPosition
     MapPosition(p.getX, p.getY)
   }
   override def toString = s"${super.toString}@$currentTile"
+  def currentTile = {
+    val tp = nativeUnit.getTilePosition
+    MapTilePosition.shared(tp.getX, tp.getY)
+  }
 }
 
 trait Killable {
@@ -132,6 +132,9 @@ class MineralPatch(unit: APIUnit) extends AnyUnit(unit) with Resource {
   def isBeingMined = nativeUnit.isBeingGathered
 }
 
+class VespeneGeysir(unit: APIUnit) extends AnyUnit(unit) with Geysir {
+}
+
 class SupplyDepot(unit: APIUnit) extends AnyUnit(unit) with ImmobileSupplyProvider
 class Pylon(unit: APIUnit) extends AnyUnit(unit) with ImmobileSupplyProvider
 class Overlord(unit: APIUnit) extends AnyUnit(unit) with MobileSupplyProvider with TransporterUnit
@@ -152,7 +155,10 @@ trait Geysir extends Resource
 object UnitWrapper {
   private val mappingRules: Map[UnitType, APIUnit => WrapsUnit] =
     HashMap(
+      UnitType.Resource_Vespene_Geyser -> (new VespeneGeysir(_)),
+
       UnitType.Terran_SCV -> (new SCV(_)),
+      UnitType.Terran_Supply_Depot -> (new SupplyDepot(_)),
       UnitType.Terran_Command_Center -> (new CommandCenter(_)),
 
       UnitType.Protoss_Probe -> (new Probe(_)),
