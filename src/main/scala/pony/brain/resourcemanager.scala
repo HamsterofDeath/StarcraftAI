@@ -34,18 +34,14 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
     locked += newLock
     lockedSums.invalidate()
   }
+  private def myUnlockedResources = myResources - lockedResources
+  def lockedResources = lockedSums.get
   def tick(): Unit = {
     myResources = universe.world.currentResources
     lockedSums.invalidate()
   }
   def currentResources = myResources
-  def suppliesWithPlans = {
-    val plannedToProvide = plannedSuppliesToAdd.map {_.typeOfBuilding.toUnitType.supplyProvided}.sum
-    val ret = myUnlockedResources.supply
-    ret.copy(total = ret.total + plannedToProvide)
-  }
-  private def myUnlockedResources = myResources - lockedResources
-  def lockedResources = lockedSums.get
+  def supplies = myUnlockedResources.supply
   def plannedSuppliesToAdd = {
     // TODO include planned command centers
     unitManager

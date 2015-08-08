@@ -28,6 +28,8 @@ trait HasUniverse {
 }
 
 trait BackgroundComputationResult[T <: WrapsUnit] {
+  def dispose_!(): Unit
+
   def jobs: Traversable[UnitWithJob[T]]
 
   def orders = jobs.flatMap(_.ordersForTick)
@@ -40,6 +42,7 @@ object BackgroundComputationResult {
     override def repeatOrderIssue: Boolean = false
     override def afterComputation(): Unit = {}
     override def jobs: Traversable[UnitWithJob[T]] = Nil
+    override def dispose_!(): Unit = {}
   }
 
   def result[T <: WrapsUnit](myJobs: Traversable[UnitWithJob[T]],
@@ -51,6 +54,7 @@ object BackgroundComputationResult {
     override def repeatOrderIssue = checkValidityNow()
     override def afterComputation() = afterComputationDone()
     override def orders = jobs.flatMap(_.ordersForTick)
+    override def dispose_!(): Unit = jobs.foreach {_.}
   }
 }
 
@@ -74,11 +78,11 @@ trait ComputationIntensive[T <: WrapsUnit] extends AIModule[T] {
         } else if (waitingForBackgroundOp && backgroundOp.isCompleted) {
           // we were waiting for a computation to finish
           val computationResult = Await.result(backgroundOp, Duration.Zero)
+          computationResult.afterComputation()
           info(s"Background computation finished, result is $computationResult")
           currentResult = Some(computationResult)
           waitingForBackgroundOp = false
-          computationResult.jobs.foreach(e => hire(e.unit))
-          computationResult.jobs.foreach(assignJob)
+          computationResult.jobs.foreach(assignJob_!)
           computationResult.orders
         } else {
           // we are not waiting

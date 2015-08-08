@@ -18,7 +18,8 @@ class ProvideNewBuildings(universe: Universe)
     }
     job match {
       case None =>
-        warn(s"Computation returned no result: $in")
+        // TODO fix it if it ever happens
+        error(s"Computation returned no result: $in")
         BackgroundComputationResult.nothing[WorkerUnit]
       case Some(startJob) =>
         info(s"Planning to build ${in.buildingType.className} at ${startJob.where} by ${in.worker}")
@@ -52,25 +53,31 @@ class ProvideNewBuildings(universe: Universe)
 
 class ProvideNewSupply(universe: Universe) extends AIModule[WorkerUnit](universe) with Orderless[WorkerUnit] {
   private val supplyEmployer = new Employer[SupplyProvider](universe)
-
   override def onTick() = {
-    // basing the calculations on the currently planned supplies will prevent endless requests
-    val cur = resources.suppliesWithPlans
+
+    val cur = plannedSupplies
     val needsMore = cur.supplyUsagePercent >= 0.8 && cur.total < 400
 
-    trace(s"Need more supply: $cur", needsMore)
+    trace(s"Need more supply: $cur ($plannedSupplies planned)", needsMore)
     if (needsMore) {
       val race = universe.bases.mainBase.mainBuilding.race
       val result = resources.request(ResourceRequests.forUnit(race.supplyClass), this)
       result match {
         case suc: ResourceApprovalSuccess =>
-          info(s"More supply approved! $suc, requesting ${race.supplyClass.className}")
+          trace(s"More supply approved! $suc, requesting ${race.supplyClass.className}")
           val ofType = UnitJobRequests.newOfType(universe, supplyEmployer, race.supplyClass, suc)
-          //this will create an entry in the queue which will change the plans, so no need to do more here
-          unitManager.request(ofType)
+
+          // this will always be unfulfilled
+          val result = unitManager.request(ofType)
+          assert(!result.success, s"Impossible success: $result")
         case _ =>
       }
     }
+  }
+  private def plannedSupplies = {
+    val real = resources.supplies
+    val planned = unitManager.plannedSupplyAdditions
+    real.copy(total = real.total + planned)
   }
 }
 
@@ -90,9 +97,8 @@ class ProvideNewUnits(universe: Universe) extends AIModule[Factory](universe) {
             case any: ExactlyOneSuccess[Factory] =>
               resources.request(ResourceRequests.forUnit(typeFixed), self) match {
                 case suc: ResourceApprovalSuccess =>
-                  hire(any)
                   val order = new TrainUnit(any.onlyOne, typeFixed, self, suc)
-                  assignJob(order)
+                  assignJob_!(order)
                   order.ordersForTick
                 case _ => Nil
               }
@@ -140,12 +146,16 @@ class GatherMinerals(universe: Universe) extends AIModule(universe) {
       if (missing > 0) {
         val workerType = base.mainBuilding.race.workerClass
         val result = universe.unitManager.request(UnitJobRequests.idleOfType(emp, workerType, missing))
-        hire(result)
-      }
-      idleUnits.foreach { u =>
-        Micro.MiningOrganization.findBestPatch(u).foreach { suggestion =>
-          suggestion.addToTeam(u)
+        val jobs = result.units.flatMap { worker =>
+          Micro.MiningOrganization.findBestPatch(worker).map { patch =>
+            info(s"Added $worker to mining team of $patch")
+            val job = new Micro.GatherMineralsAtPatch(worker, patch)
+            patch.lockToPatch_!(job)
+            job
+          }
         }
+        jobs.foreach(assignJob_!)
+
       }
 
       Micro.MiningOrganization.orders
@@ -160,36 +170,41 @@ class GatherMinerals(universe: Universe) extends AIModule(universe) {
     object Micro {
 
       class MinedPatch(val patch: MineralPatch) {
+
         private val miningTeam = ArrayBuffer.empty[GatherMineralsAtPatch]
+        override def toString: String = s"(Mined) $patch"
         def hasOpenSpot: Boolean = miningTeam.size < estimateRequiredWorkers
-        def openSpotCount = estimateRequiredWorkers - miningTeam.size
         def estimateRequiredWorkers = 2
+        def openSpotCount = estimateRequiredWorkers - miningTeam.size
         def orders = miningTeam.flatMap(_.ordersForTick)
-        def addToTeam(worker: WorkerUnit): Unit = {
-          info(s"Added $worker to mining team of $patch")
-          val job = new GatherMineralsAtPatch(worker, this)
+
+        def lockToPatch_!(job: GatherMineralsAtPatch): Unit = {
+          info(s"Added ${job.unit} to mining team of $patch")
           miningTeam += job
-          assignJob(job)
         }
 
-        def removeFromTeam(worker: WorkerUnit): Unit = {
+        def removeFromPatch_!(worker: WorkerUnit): Unit = {
           info(s"Removing $worker from mining team of $patch")
-          miningTeam.find(_.unit == worker).foreach {miningTeam -= _}
+          val found = miningTeam.find(_.unit == worker)
+          assert(found.isDefined, s"Did not find $worker in $miningTeam")
+          found.foreach {miningTeam -= _}
         }
       }
 
       class GatherMineralsAtPatch(myWorker: WorkerUnit, miningTarget: MinedPatch)
         extends UnitWithJob(emp, myWorker, Priority.Default) with GatherMineralsAtSinglePatch {
 
-
-
         listen_!(() => {
-          miningTarget.removeFromTeam(myWorker)
+          miningTarget.removeFromPatch_!(myWorker)
         })
 
         import States._
 
         private var state: State = Idle
+        override def onStealUnit(): Unit = {
+          super.onStealUnit()
+          miningTarget.removeFromPatch_!(myWorker)
+        }
         override def worker = myWorker
         override def targetPatch = miningTarget.patch
         override def shortDebugString: String = state match {
