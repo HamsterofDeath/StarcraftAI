@@ -22,6 +22,7 @@ case class MapTilePosition(x: Int, y: Int) extends HasXY {
   def mapX = tileSize * x
   def mapY = tileSize * y
   def movedBy(other: HasXY) = MapTilePosition.shared(x + other.x, y + other.y)
+  def movedBy(offX: Int, offY: Int) = MapTilePosition.shared(x + offX, y + offY)
 
   override def toString = s"($x,$y)"
 }

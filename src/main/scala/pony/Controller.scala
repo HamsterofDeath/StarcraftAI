@@ -1,12 +1,20 @@
 package pony
 
-import bwapi.{Unit => NUnit, Position, Player, BWEventListener, Mirror}
+import bwapi.{BWEventListener, Mirror, Player, Position, Unit => NUnit}
 
 /**
  * Created by HoD on 01.08.2015.
  */
 object Controller {
 
+  def main(args: Array[String]) {
+    try {
+      hookOnToBroodwar(ConcoctedAI.concoct)
+    }
+    catch {
+      case ex: Throwable => ex.printStackTrace()
+    }
+  }
   def hookOnToBroodwar(aiGenerator:(DefaultWorld) => AIAPI) = {
     val mirror = new Mirror
 
@@ -64,9 +72,14 @@ object Controller {
       }
 
       override def onStart(): Unit = {
-        val w = DefaultWorld.spawn(mirror.getGame)
-        world = Some(w)
-        ai = Some(aiGenerator(w))
+        try {
+          val w = DefaultWorld.spawn(mirror.getGame)
+          world = Some(w)
+          ai = Some(aiGenerator(w))
+        }
+        catch {
+          case ex: Throwable => ex.printStackTrace()
+        }
       }
 
       override def onPlayerLeft(player: Player): Unit = {
@@ -94,9 +107,5 @@ object Controller {
     mirror.getModule.setEventListener(listener)
     mirror.startGame()
 
-  }
-
-  def main(args: Array[String]) {
-    hookOnToBroodwar(ConcoctedAI.concoct)
   }
 }

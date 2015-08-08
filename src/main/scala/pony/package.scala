@@ -59,7 +59,7 @@ package object pony {
     }
 
     def removeFirstMatch(elemIdentifier: T => Boolean): Unit = {
-      val where = buff.find(elemIdentifier).map(buff.indexOf).getOrElse(-1)
+      val where = buff.indexWhere(elemIdentifier)
       assert(where >= 0, s"Not found $elemIdentifier in $buff")
       buff.remove(where)
     }

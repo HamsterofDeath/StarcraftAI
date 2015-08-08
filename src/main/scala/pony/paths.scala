@@ -2,9 +2,29 @@ package pony
 
 import pony.brain.{HasUniverse, Universe}
 
+import scala.collection.mutable
+
 case class Path(waypoints: Seq[MapTilePosition])
 
 class SimplePathFinder(baseOn: Grid2D) {
+  def findAreas = {
+    val areas = mutable.ArrayBuffer.empty[collection.Set[Int]]
+    baseOn.all.foreach { p =>
+      if (!areas.exists(_.contains(p.x + p.y * baseOn.cols))) {
+        val area = floodFill(p)
+        if (area.nonEmpty) {
+          areas += area
+        }
+      }
+    }
+    areas.toSeq
+  }
+
+  def floodFill(start: MapTilePosition): mutable.BitSet = {
+    val ret = mutable.BitSet.empty
+    SimplePathFinder.traverseTilesOfArea(start, (x, y) => ret += x + y * baseOn.cols, baseOn.cols, baseOn.rows, baseOn)
+    ret
+  }
 
   def directLineOfSight(a: Area, b: MapTilePosition): Boolean = {
     a.outline.exists(p => directLineOfSight(p, b))
@@ -22,7 +42,6 @@ object SimplePathFinder {
   def traverseTilesOfLine[T](a: MapTilePosition, b: MapTilePosition, f: (Int, Int) => T): Unit = {
     traverseTilesOfLine(a, b, (x, y) => {f(x, y); None}, None)
   }
-
   def traverseTilesOfLine[T](a: MapTilePosition, b: MapTilePosition, f: (Int, Int) => Option[T],
                              orElse: T): T = {
     var startX = a.x
@@ -76,6 +95,50 @@ object SimplePathFinder {
     }
     orElse
   }
+  def traverseTilesOfArea(start: MapTilePosition, f: (Int, Int) => Unit, sizeX: Int, sizeY: Int,
+                          baseOn: Grid2D): Unit = {
+    if (baseOn.free(start)) {
+      val taken = mutable.HashSet.empty[MapTilePosition]
+      val open = mutable.ListBuffer.empty[MapTilePosition]
+      open += start
+      taken += start
+
+      while (open.nonEmpty) {
+        val head = open.head
+        open.remove(0)
+        f(head.x, head.y)
+        if (head.x > 0) {
+          val left = head.movedBy(-1, 0)
+          if (!taken(left) && baseOn.free(left)) {
+            open += left
+            taken += left
+          }
+        }
+        if (head.y > 0) {
+          val up = head.movedBy(0, -1)
+          if (!taken(up) && baseOn.free(up)) {
+            open += up
+            taken += up
+          }
+        }
+        if (head.x < sizeX - 1) {
+          val right = head.movedBy(1, 0)
+          if (!taken(right) && baseOn.free(right)) {
+            open += right
+            taken += right
+          }
+        }
+        if (head.y < sizeY - 1) {
+          val down = head.movedBy(0, 1)
+          if (!taken(down) && baseOn.free(down)) {
+            open += down
+            taken += down
+          }
+        }
+
+      }
+    }
+  }
 
 }
 
@@ -120,7 +183,8 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   private def evalWithBuildings = rawMap.mutableCopy.or_!(justBuildings)
   private def evalWithBuildingsAndResources = justBuildings.or_!(justMineralsAndGas)
   private def evalOnlyBuildings = evalOnlyUnits(units.allByType[Building])
-
+  private def evalOnlyResources = evalOnlyUnits(units.allByType[MineralPatch].filter(_.remaining > 0))
+                                  .or_!(evalOnlyUnits(units.allByType[Geysir]))
   private def evalOnlyUnits(units: TraversableOnce[StaticallyPositioned]) = {
     val ret = world.map.empty.mutableCopy
     units.foreach { b =>
@@ -128,9 +192,6 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
     }
     ret
   }
-  private def evalOnlyResources = evalOnlyUnits(units.allByType[MineralPatch].filter(_.remaining > 0))
-                                  .or_!(evalOnlyUnits(units.allByType[Geysir]))
-
   private def evalEverything = withBuildingsAndResources.mutableCopy.or_!(plannedBuildings).or_!(justWorkerPaths)
 
   private def evalWorkerPaths = {
@@ -161,8 +222,7 @@ class ConstructionSiteFinder(universe: Universe) {
     // this happens in the background
     val unitType = building.toUnitType
     val necessaryArea = Size.shared(unitType.tileWidth(), unitType.tileHeight())
-    helper.blockSpiralClockWise(near)
-    .find(tryOnThis.free(_, necessaryArea))
+    helper.blockSpiralClockWise(near).find(tryOnThis.free(_, necessaryArea))
   }
 }
 

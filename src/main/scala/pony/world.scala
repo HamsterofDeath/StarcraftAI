@@ -141,14 +141,15 @@ class Units(game: Game) {
     val lookFor = manifest[T].runtimeClass
     mine.find(lookFor.isInstance).map(_.asInstanceOf[T])
   }
-  def mine = all.filter(_.nativeUnit.getPlayer == game.self())
-
-  import scala.collection.JavaConverters._
-  def all = knownUnits.valuesIterator
   def mineByType[T: Manifest]: Iterator[T] = {
     val lookFor = manifest[T].runtimeClass
     mine.filter(lookFor.isInstance).map(_.asInstanceOf[T])
   }
+
+  import scala.collection.JavaConverters._
+
+  def mine = all.filter(_.nativeUnit.getPlayer == game.self())
+  def all = knownUnits.valuesIterator
   def minerals = allByType[MineralPatch]
 
   def allByType[T: Manifest]: Iterator[T] = {
@@ -181,13 +182,15 @@ class Units(game: Game) {
 
 class Grid2D(val cols: Int, val rows: Int, bitSet: collection.Set[Int]) {
 
+  lazy val areas = {
+    new SimplePathFinder(this).findAreas
+  }
   def free(position: MapTilePosition, area: Size): Boolean = {
     area.points.forall { p =>
       free(p.movedBy(position))
     }
   }
   def free(p: MapTilePosition): Boolean = free(p.x, p.y)
-  def free(x: Int, y: Int): Boolean = !bitSet(x + y * cols)
   def zoomedOut = {
     val bits = mutable.BitSet.empty
     val subCols = cols / 4
@@ -200,6 +203,7 @@ class Grid2D(val cols: Int, val rows: Int, bitSet: collection.Set[Int]) {
     }
     new Grid2D(subCols, subRows, bits)
   }
+  def free(x: Int, y: Int): Boolean = !bitSet(x + y * cols)
   def blocked = size - walkable
   def size = cols * rows
   def walkable = bitSet.size
@@ -212,17 +216,22 @@ class Grid2D(val cols: Int, val rows: Int, bitSet: collection.Set[Int]) {
       }
     }
   }
-
   def mutableCopy = new MutableGrid2D(cols, rows, mutable.BitSet.empty ++ bitSet)
+  def areaCount = areas.size
 }
 
 class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet) extends Grid2D(cols, rows, bitSet) {
+
+  override lazy val areas = throw new UnsupportedOperationException(s"Sorry, mutable subclass cannot do that")
+
   def blockLine_!(a: MapTilePosition, b: MapTilePosition): Unit = {
     SimplePathFinder.traverseTilesOfLine(a, b, block_!)
   }
+
   def block_!(x: Int, y: Int): Unit = {
     bitSet += (x + y * cols)
   }
+
   def asReadOnly: Grid2D = this
 
   def or_!(other: MutableGrid2D) = {
@@ -310,6 +319,19 @@ class AnalyzedMap(game: Game) {
 
   val walkableGrid = walkableGridZoomed.zoomedOut
 
+  val areas = walkableGrid.areas
+
+  def debugAreas = {
+    val areas = walkableGrid.areas
+    val debugThis = walkableGrid
+    0 until debugThis.rows map { x =>
+      0 until debugThis.cols map { y =>
+        val index = areas.indexWhere(_.contains(x + y * debugThis.cols))
+        if (index == -1) " " else index.toString
+      } mkString
+    } mkString "\n"
+  }
+
   def debugMap = {
     val debugThis = walkableGrid
     0 until debugThis.rows map { x =>
@@ -325,7 +347,10 @@ class AnalyzedMap(game: Game) {
        |Total tiles ${walkableGridZoomed.size}
        |Walkable tiles ${walkableGridZoomed.walkable}
        |Blocked tiles ${walkableGridZoomed.blocked}
-       |Map: $debugMap
+       |Map
+       |$debugMap
+       |Area analysis
+       |${debugAreas}
      """.stripMargin)
 }
 
