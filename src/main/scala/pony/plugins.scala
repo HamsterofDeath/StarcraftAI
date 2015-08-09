@@ -4,7 +4,7 @@ import java.text.DecimalFormat
 
 import bwapi.Color
 import pony.brain.modules.GatherMineralsAtSinglePatch
-import pony.brain.{HasUniverse, TwilightSparkle, Universe}
+import pony.brain.{HasUniverse, TwilightSparkle, UnitWithJob, Universe}
 
 import scala.collection.mutable.ArrayBuffer
 
@@ -26,11 +26,11 @@ class FastSpeed extends AIPluginRunOnce {
 
 class WalkableRenderer extends AIPlugIn {
   override protected def tickPlugIn(): Unit = {
-    world.debugger.debugRender { renderer =>
+    lazyWorld.debugger.debugRender { renderer =>
       renderer.in_!(Color.Red)
 
-      world.map.walkableGrid.all
-      .filter(world.map.walkableGrid.blocked)
+      lazyWorld.map.walkableGrid.all
+      .filter(lazyWorld.map.walkableGrid.blocked)
       .foreach { blocked =>
         renderer.drawCrossedOutOnTile(blocked)
       }
@@ -40,10 +40,10 @@ class WalkableRenderer extends AIPlugIn {
 
 class UnitIdRenderer extends AIPlugIn {
   override protected def tickPlugIn(): Unit = {
-    world.debugger.debugRender { renderer =>
+    lazyWorld.debugger.debugRender { renderer =>
       renderer.in_!(Color.Green)
 
-      world.units.mineByType[Mobile].foreach { u =>
+      lazyWorld.units.mineByType[Mobile].foreach { u =>
         renderer.drawTextAtUnit(u, u.unitIdText)
       }
     }
@@ -53,26 +53,26 @@ class UnitIdRenderer extends AIPlugIn {
 class UnitJobRenderer(override val universe: Universe) extends AIPlugIn with HasUniverse {
 
   override protected def tickPlugIn(): Unit = {
-    world.debugger.debugRender { renderer =>
+    lazyWorld.debugger.debugRender { renderer =>
       unitManager.allJobsByUnit[Mobile].foreach { job =>
         renderer.drawTextAtUnit(job.unit, job.shortDebugString, 1)
       }
     }
   }
-  override def world: DefaultWorld = universe.world
+  override def lazyWorld: DefaultWorld = universe.world
 }
 
 class StatsRenderer(override val universe: Universe) extends AIPlugIn with HasUniverse {
-  override val world = universe.world
+  override val lazyWorld       = universe.world
   private  val resourceHistory = ArrayBuffer.empty[MinsGas]
-  private  val frameSize = 500
+  private  val frameSize       = 500
   override protected def tickPlugIn(): Unit = {
     resourceHistory += MinsGas(resources.gatheredMinerals, resources.gatheredGas)
     if (resourceHistory.size == frameSize + 1) {
       resourceHistory.remove(0)
     }
 
-    world.debugger.debugRender { renderer =>
+    lazyWorld.debugger.debugRender { renderer =>
       val debugString = ArrayBuffer.empty[String]
 
       debugString += {
@@ -121,10 +121,10 @@ class StatsRenderer(override val universe: Universe) extends AIPlugIn with HasUn
 }
 
 class BlockedBuildingSpotsRenderer(override val universe: Universe) extends AIPlugIn with HasUniverse {
-  override val world = universe.world
+  override val lazyWorld = universe.world
 
   override protected def tickPlugIn(): Unit = {
-    world.debugger.debugRender { renderer =>
+    lazyWorld.debugger.debugRender { renderer =>
       renderer.in_!(Color.Orange)
       val area = mapLayers.blockedByBuildingTiles
       area.all.filter(area.blocked)
@@ -132,7 +132,7 @@ class BlockedBuildingSpotsRenderer(override val universe: Universe) extends AIPl
         renderer.drawCrossedOutOnTile(blocked)
       }
     }
-    world.debugger.debugRender { renderer =>
+    lazyWorld.debugger.debugRender { renderer =>
       renderer.in_!(Color.Blue)
       val area = mapLayers.blockedByResources
       area.all.filter(area.blocked)
@@ -141,7 +141,7 @@ class BlockedBuildingSpotsRenderer(override val universe: Universe) extends AIPl
       }
     }
 
-    world.debugger.debugRender { renderer =>
+    lazyWorld.debugger.debugRender { renderer =>
       renderer.in_!(Color.Grey)
       val area = mapLayers.blockedByWorkerPaths
       area.all.filter(area.blocked)
@@ -152,8 +152,46 @@ class BlockedBuildingSpotsRenderer(override val universe: Universe) extends AIPl
   }
 }
 
-class MainAI extends AIPlugIn {
-  lazy val brain = new TwilightSparkle(world)
+class DebugHelper(main: AIAPIEventDispatcher with HasUniverse) extends AIPlugIn with HasUniverse {
+
+  main.listen_!(new AIAPI {
+    override def world: DefaultWorld = main.world
+    override def onSendText(s: String): Unit = {
+      super.onSendText(s)
+      val words = s.split(' ').toList
+      words match {
+        case command :: params =>
+          command match {
+            case "debug" =>
+              params match {
+                case List(id) =>
+                  unitManager.jobByUnitIdString(id).foreach {debugUnit}
+              }
+
+          }
+        case Nil =>
+
+      }
+    }
+  })
+
+  override def lazyWorld: DefaultWorld = main.world
+  override def universe: Universe = main.universe
+  override protected def tickPlugIn(): Unit = {
+    // nop
+  }
+  private def debugUnit(wrapsUnit: UnitWithJob[_ <: WrapsUnit]): Unit = {
+
+    info(s"user requested inspection of $wrapsUnit")
+  }
+}
+
+class MainAI extends AIPlugIn with HasUniverse with AIAPIEventDispatcher {
+  lazy val brain = new TwilightSparkle(lazyWorld)
+
+  override def debugger = world.debugger
+
+  override def universe = brain.universe
 
   override protected def tickPlugIn(): Unit = {
     brain.queueOrdersForTick()

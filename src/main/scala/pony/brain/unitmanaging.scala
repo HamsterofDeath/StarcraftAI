@@ -14,6 +14,9 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
   def jobsByType = assignments.values.toSeq.groupBy(_.getClass)
   def jobsOf[T <: WrapsUnit](emp: Employer[T]) = byEmployer.getOrElse(emp, Set.empty)
                                                  .asInstanceOf[collection.Set[UnitWithJob[T]]]
+
+  def jobByUnitIdString(str: String) = assignments.find(_._1.unitIdText == str).map(_._2)
+
   def employers = byEmployer.keySet
   def plannedSupplyAdditions = {
     val byJob = allJobsByType[ConstructBuilding[WorkerUnit, Building]].collect {

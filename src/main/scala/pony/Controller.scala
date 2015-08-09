@@ -26,7 +26,7 @@ object Controller {
       }
 
       override def onFrame(): Unit = {
-        ai.foreach(_.onTick())
+        ai.foreach(_.onTickOnApi())
       }
 
       override def onUnitShow(unit: NUnit): Unit = {
@@ -73,6 +73,7 @@ object Controller {
 
       override def onStart(): Unit = {
         try {
+          mirror.getGame.enableFlag(bwapi.Flag.Enum.UserInput.getValue)
           val w = DefaultWorld.spawn(mirror.getGame)
           world = Some(w)
           ai = Some(aiGenerator(w))

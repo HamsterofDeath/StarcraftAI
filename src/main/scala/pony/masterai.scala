@@ -1,6 +1,6 @@
 package pony
 
-class ConcoctedAI(override val world: DefaultWorld) extends AIAPI
+class ConcoctedAI(override val world: DefaultWorld) extends AIAPI with AIAPIEventDispatcher
 
 object ConcoctedAI {
   def concoct(world: DefaultWorld) = {
@@ -11,8 +11,9 @@ object ConcoctedAI {
     .addPlugin(new MapReveal)
     .addPlugin(new FastSpeed)
     .addPlugin(mainAi)
-    .addPlugin(new UnitJobRenderer(mainAi.brain.universe))
-    .addPlugin(new StatsRenderer(mainAi.brain.universe))
-    .addPlugin(new BlockedBuildingSpotsRenderer(mainAi.brain.universe))
+    .addPlugin(new UnitJobRenderer(mainAi.universe))
+    .addPlugin(new StatsRenderer(mainAi.universe))
+    .addPlugin(new BlockedBuildingSpotsRenderer(mainAi.universe))
+    .addPlugin(new DebugHelper(mainAi))
   }
 }

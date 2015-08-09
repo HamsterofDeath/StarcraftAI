@@ -213,13 +213,15 @@ class GatherMinerals(universe: Universe) extends AIModule(universe) {
           case States.ApproachingMinerals => "Locked"
           case States.Mining => "Mining"
           case States.ReturningMinerals => "Delivering"
+          case States.ReturningMineralsAfterInterruption => "Delivering (really)"
         }
 
         override def ordersForTick: Seq[UnitOrder] = {
           def sendWorkerToPatch = ApproachingMinerals -> Orders.Gather(myWorker, miningTarget.patch)
+          def returnDelivery = Orders.ReturnMinerals(myWorker, base.mainBuilding)
           val (newState, order) = state match {
             case Idle if myWorker.isCarryingMinerals =>
-              ReturningMinerals -> Orders.ReturnMinerals(myWorker, base.mainBuilding)
+              ReturningMineralsAfterInterruption -> returnDelivery
             // start going to your patch using wall hack
             case Idle if !myWorker.isCarryingMinerals =>
               sendWorkerToPatch
@@ -241,10 +243,14 @@ class GatherMinerals(universe: Universe) extends AIModule(universe) {
               Mining -> Orders.NoUpdate
             case Mining if myWorker.isCarryingMinerals =>
               // the worker is done mining
-              ReturningMinerals -> Orders.ReturnMinerals(myWorker, base.mainBuilding)
+              ReturningMinerals -> returnDelivery
+
+            case ReturningMineralsAfterInterruption if myWorker.isCarryingMinerals && !myWorker.isMoving =>
+              ReturningMineralsAfterInterruption -> returnDelivery
+            case ReturningMineralsAfterInterruption if myWorker.isCarryingMinerals =>
+              ReturningMinerals -> returnDelivery
 
             case ReturningMinerals if myWorker.isCarryingMinerals =>
-              // keep going back
               ReturningMinerals -> Orders.NoUpdate
             case ReturningMinerals if !myWorker.isCarryingMinerals =>
               // switch back to mining mode
@@ -288,6 +294,7 @@ class GatherMinerals(universe: Universe) extends AIModule(universe) {
         case object ApproachingMinerals extends State
         case object Mining extends State
         case object ReturningMinerals extends State
+        case object ReturningMineralsAfterInterruption extends State
       }
     }
   }

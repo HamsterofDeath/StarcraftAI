@@ -7,18 +7,31 @@ import scala.collection.mutable.ArrayBuffer
 trait AIAPI {
   private val plugins = ArrayBuffer.empty[AIPlugIn]
 
-  def onReceiveText(player: Player, s: String): Unit = ???
+  def onReceiveText(player: Player, s: String): Unit = {
+    trace(s"Received $s from $player")
+    plugins.collect { case receiver: AIAPIEventDispatcher => receiver.onReceiveText(player, s) }
+  }
 
-  def onPlayerLeft(player: Player): Unit = ???
+  def onPlayerLeft(player: Player): Unit = {
+    trace(s"$player left")
+    plugins.collect { case receiver: AIAPIEventDispatcher => receiver.onPlayerLeft(player) }
+  }
 
-  def onPlayerDropped(player: Player): Unit = ???
+  def onPlayerDropped(player: Player): Unit = {
+    trace(s"$player dropped")
+    plugins.collect { case receiver: AIAPIEventDispatcher => receiver.onPlayerDropped(player) }
+  }
 
-  def onSendText(s: String): Unit = ???
+  def onSendText(s: String): Unit = {
+    trace(s"User send $s")
+    plugins.collect { case receiver: AIAPIEventDispatcher => receiver.onSendText(s)
+    }
+  }
 
-  def onTick(): Unit = {
+  def onTickOnApi(): Unit = {
     try {
       world.tick()
-      plugins.filter(_.isActive).foreach(_.onTick())
+      plugins.filter(_.isActive).foreach(_.onTickOnPlugin())
       world.postTick()
     }
     catch {
@@ -38,22 +51,53 @@ trait AIAPI {
   def debugger = world.debugger
 }
 
+trait AIAPIEventDispatcher extends AIAPI {
+  private val receivers = ArrayBuffer.empty[AIAPI]
+
+  def listen_!(aiApi: AIAPI): Unit = {
+    receivers += aiApi
+  }
+
+  override def onReceiveText(player: Player, s: String): Unit = {
+    super.onReceiveText(player, s)
+    receivers.foreach(_.onReceiveText(player, s))
+  }
+
+  override def onPlayerLeft(player: Player): Unit = {
+    super.onPlayerLeft(player)
+    receivers.foreach(_.onPlayerLeft(player))
+  }
+
+  override def onPlayerDropped(player: Player): Unit = {
+    super.onPlayerDropped(player)
+    receivers.foreach(_.onPlayerDropped(player))
+  }
+
+  override def onSendText(s: String): Unit = {
+    super.onSendText(s)
+    receivers.foreach(_.onSendText(s))
+  }
+}
+
 trait AIPlugIn {
   private var active                = true
   private var myWorld: DefaultWorld = _
-  def debugger = world.debugger
-  def world = myWorld
+
+  def debugger = lazyWorld.debugger
+
+  def lazyWorld = myWorld
+
   def queueOrder(order: UnitOrder): Unit = {
     orders.queue_!(order)
   }
-  def orders = world.orderQueue
+  def orders = lazyWorld.orderQueue
   def setWorld_!(world: DefaultWorld): Unit = {
     this.myWorld = world
   }
 
   def isActive = active
 
-  def onTick(): Unit = {
+  def onTickOnPlugin(): Unit = {
     if (active) {
       tickPlugIn()
     }
