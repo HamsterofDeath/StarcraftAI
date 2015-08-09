@@ -150,6 +150,8 @@ trait ArmedBuilding extends Building with RangeWeapon
 trait ImmobileSupplyProvider extends SupplyProvider with Building
 trait MobileSupplyProvider extends SupplyProvider with Mobile
 
+trait GasProvider extends Resource with Building
+
 class MineralPatch(unit: APIUnit) extends AnyUnit(unit) with Resource {
   def isBeingMined = nativeUnit.isBeingGathered
 }
@@ -171,9 +173,12 @@ class Transporter(unit: APIUnit) extends AnyUnit(unit) with TransporterUnit
 class CommandCenter(unit: APIUnit) extends AnyUnit(unit) with MainBuilding
 class Comsat(unit: APIUnit) extends AnyUnit(unit) with SpellcasterBuilding with Addon
 class NuclearSilo(unit: APIUnit) extends AnyUnit(unit) with SpellcasterBuilding with Addon
+class PhysicsLab(unit: APIUnit) extends AnyUnit(unit) with UpgraderBuilding with Addon
+class Refinery(unit: APIUnit) extends AnyUnit(unit) with GasProvider
 
 class Barracks(unit: APIUnit) extends AnyUnit(unit) with UnitFactory
 class Factory(unit: APIUnit) extends AnyUnit(unit) with UnitFactory
+class Starport(unit: APIUnit) extends AnyUnit(unit) with UnitFactory
 
 class Academy(unit: APIUnit) extends AnyUnit(unit) with UpgraderBuilding
 class Armory(unit: APIUnit) extends AnyUnit(unit) with UpgraderBuilding
@@ -208,6 +213,9 @@ object UnitWrapper {
       UnitType.Terran_Machine_Shop -> (new MachineShop(_)),
       UnitType.Terran_Missile_Turret -> (new MissileTurret(_)),
       UnitType.Terran_Nuclear_Silo -> (new NuclearSilo(_)),
+      UnitType.Terran_Physics_Lab -> (new PhysicsLab(_)),
+      UnitType.Terran_Refinery -> (new Refinery(_)),
+      UnitType.Terran_Starport -> (new Starport(_)),
 
       UnitType.Protoss_Probe -> (new Probe(_)),
 

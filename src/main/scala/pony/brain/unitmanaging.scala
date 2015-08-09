@@ -11,6 +11,21 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
       mutable.HashMap[Employer[_ <: WrapsUnit], mutable.Set[UnitWithJob[_ <: WrapsUnit]]]
       with mutable.MultiMap[Employer[_ <: WrapsUnit], UnitWithJob[_ <: WrapsUnit]]
   private var unfulfilledRequestsLastTick = unfulfilledRequestsThisTick.toVector
+  def plannedToBuildByType(typeOfFactory: Class[_ <: Building]): Int = {
+    val byUnfulfilledRequest = unfulfilledRequestsLastTick.flatMap(_.requests).iterator.collect {
+      case b: BuildUnitRequest[_] if b.typeOfRequestedUnit == typeOfFactory => 1
+    }.size
+    byUnfulfilledRequest
+  }
+  def unitsByType[T <: WrapsUnit : Manifest]: collection.Set[T] = {
+    val runtimeClass = manifest[T].runtimeClass.asInstanceOf[Class[_ <: T]]
+    unitsByType(runtimeClass)
+  }
+  def unitsByType[T <: WrapsUnit](typeOfFactory: Class[_ <: T]): collection.Set[T] = {
+    assignments.keySet.collect {
+      case elem: WrapsUnit if typeOfFactory.isAssignableFrom(elem.getClass) => elem.asInstanceOf[T]
+    }
+  }
   def jobsByType = assignments.values.toSeq.groupBy(_.getClass)
   def jobsOf[T <: WrapsUnit](emp: Employer[T]) = byEmployer.getOrElse(emp, Set.empty)
                                                  .asInstanceOf[collection.Set[UnitWithJob[T]]]
