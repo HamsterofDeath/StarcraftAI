@@ -3,20 +3,30 @@ package brain
 
 import scala.collection.mutable.ArrayBuffer
 
+case class IncomeStats(minerals: Int, gas: Int, frames: Int)
+
 class ResourceManager(override val universe: Universe) extends HasUniverse {
+
+  private val resourceHistory   = ArrayBuffer.empty[MinsGas]
+  private val frameSizeForStats = 600
+  // should be 10 "seconds" i guess?
   private val empty       = Resources(0, 0, Supplies(0, 0))
   private val locked      = ArrayBuffer.empty[LockedResources[_]]
   private val lockedSums  = LazyVal.from(calcLockedSums)
   private var myResources = empty
+  def stats = {
+    val start = resourceHistory.head
+    val now = resourceHistory.last
+    val minPlus = start.mins - start.mins
+    val gasPlus = start.gas - start.gas
+    IncomeStats(minPlus, gasPlus, resourceHistory.size)
+  }
   def detailledLocks = locked.toSeq
-  def gatheredMinerals = nativeGame.self().gatheredMinerals()
-  def gatheredGas = nativeGame.self().gatheredGas()
   def unlock_!(proofForFunding: ResourceApprovalSuccess): Unit = {
     locked.removeFirstMatch(_.reqs.sum.equalValue(proofForFunding))
     trace(s"Unlocked $proofForFunding")
     lockedSums.invalidate()
   }
-
   def request[T <: WrapsUnit](requests: ResourceRequests, employer: Employer[T]) = {
     trace(s"Incoming resource request: $requests")
     // first check if we have enough resources
@@ -28,7 +38,6 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
       ResourceApprovalFail
     }
   }
-
   private def lock_![T <: WrapsUnit](requests: ResourceRequests, employer: Employer[T]): Unit = {
     val newLock = LockedResources(requests, employer)
     trace(s"Locked $newLock")
@@ -38,9 +47,17 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
   private def myUnlockedResources = myResources - lockedResources
   def lockedResources = lockedSums.get
   def tick(): Unit = {
+
     myResources = universe.world.currentResources
     lockedSums.invalidate()
+
+    resourceHistory += MinsGas(resources.gatheredMinerals, resources.gatheredGas)
+    if (resourceHistory.size == frameSizeForStats + 1) {
+      resourceHistory.remove(0)
+    }
   }
+  def gatheredMinerals = nativeGame.self().gatheredMinerals()
+  def gatheredGas = nativeGame.self().gatheredGas()
   def currentResources = myResources
   def supplies = myUnlockedResources.supply
   def plannedSuppliesToAdd = {
@@ -129,6 +146,7 @@ case class ResourceRequestSums(minerals: Int, gas: Int, supply: Int) {
     }
   }
 }
+case class MinsGas(mins: Int, gas: Int)
 
 object ResourceRequestSums {
   val empty = ResourceRequestSums(0, 0, 0)

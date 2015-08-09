@@ -2,7 +2,7 @@ package pony
 package brain
 
 import bwapi.Color
-import pony.brain.modules.{GatherMinerals, ProvideNewBuildings, ProvideNewSupply, ProvideNewUnits}
+import pony.brain.modules._
 
 import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -111,6 +111,9 @@ abstract class AIModule[T <: WrapsUnit : Manifest](override val universe: Univer
   override def toString = s"Module ${getClass.className}"
 }
 
+abstract class OrderlessAIModule[T <: WrapsUnit : Manifest](universe: Universe)
+  extends AIModule[T](universe) with Orderless[T]
+
 trait Orderless[T <: WrapsUnit] extends AIModule[T] {
   override def ordersForTick: Traversable[UnitOrder] = {
     onTick()
@@ -147,6 +150,7 @@ class TwilightSparkle(world: DefaultWorld) {
     new ProvideNewUnits(universe),
     new ProvideNewSupply(universe),
     new ProvideNewBuildings(universe),
+    new ProvideFactories(universe),
     AIModule.noop(universe)
   )
   private val unitManager = new UnitManager(universe)

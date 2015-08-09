@@ -35,7 +35,7 @@ object Orders {
     }
   }
 
-  case class Train(unit: Factory, trainType: Class[_ <: Mobile]) extends UnitOrder {
+  case class Train(unit: UnitFactory, trainType: Class[_ <: Mobile]) extends UnitOrder {
     override def issueOrderToGame(): Unit = {
       unit.nativeUnit.train(trainType.toUnitType)
     }

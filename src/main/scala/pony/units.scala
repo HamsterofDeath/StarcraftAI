@@ -57,7 +57,19 @@ trait Building extends BlockingTiles {
 
 }
 
-trait Factory extends Building {
+trait Upgrader {
+
+}
+
+trait UpgraderBuilding extends Building with Upgrader {
+
+}
+
+trait Addon extends Building {
+
+}
+
+trait UnitFactory extends Building {
   def canBuild[T <: Mobile](typeOfUnit: Class[_ <: T]) = {
     Dependencies.builderOf(typeOfUnit).isAssignableFrom(getClass)
   }
@@ -71,7 +83,11 @@ trait SupplyProvider extends WrapsUnit {
 
 trait ResourceGatherPoint
 
-trait MainBuilding extends Building with Factory with ResourceGatherPoint with SupplyProvider
+trait MainBuilding extends Building with UnitFactory with ResourceGatherPoint with SupplyProvider
+
+trait SpellcasterBuilding extends Building {
+
+}
 
 trait Mobile extends WrapsUnit {
   def isMoving = nativeUnit.isMoving
@@ -125,6 +141,12 @@ trait Resource extends BlockingTiles {
   def remaining = nativeUnit.getResources
 }
 
+trait RangeWeapon {
+
+}
+
+trait ArmedBuilding extends Building with RangeWeapon
+
 trait ImmobileSupplyProvider extends SupplyProvider with Building
 trait MobileSupplyProvider extends SupplyProvider with Mobile
 
@@ -147,6 +169,21 @@ class Shuttle(unit: APIUnit) extends AnyUnit(unit) with TransporterUnit
 class Transporter(unit: APIUnit) extends AnyUnit(unit) with TransporterUnit
 
 class CommandCenter(unit: APIUnit) extends AnyUnit(unit) with MainBuilding
+class Comsat(unit: APIUnit) extends AnyUnit(unit) with SpellcasterBuilding with Addon
+class NuclearSilo(unit: APIUnit) extends AnyUnit(unit) with SpellcasterBuilding with Addon
+
+class Barracks(unit: APIUnit) extends AnyUnit(unit) with UnitFactory
+class Factory(unit: APIUnit) extends AnyUnit(unit) with UnitFactory
+
+class Academy(unit: APIUnit) extends AnyUnit(unit) with UpgraderBuilding
+class Armory(unit: APIUnit) extends AnyUnit(unit) with UpgraderBuilding
+class ControlTower(unit: APIUnit) extends AnyUnit(unit) with UpgraderBuilding with Addon
+class EngineeringBay(unit: APIUnit) extends AnyUnit(unit) with UpgraderBuilding
+class MachineShop(unit: APIUnit) extends AnyUnit(unit) with UpgraderBuilding with Addon
+
+class MissileTurret(unit: APIUnit) extends AnyUnit(unit) with ArmedBuilding
+
+class Bunker(unit: APIUnit) extends AnyUnit(unit)
 
 class Irrelevant(unit: APIUnit) extends AnyUnit(unit)
 
@@ -160,6 +197,17 @@ object UnitWrapper {
       UnitType.Terran_SCV -> (new SCV(_)),
       UnitType.Terran_Supply_Depot -> (new SupplyDepot(_)),
       UnitType.Terran_Command_Center -> (new CommandCenter(_)),
+      UnitType.Terran_Barracks -> (new Barracks(_)),
+      UnitType.Terran_Academy -> (new Academy(_)),
+      UnitType.Terran_Armory -> (new Academy(_)),
+      UnitType.Terran_Bunker -> (new Bunker(_)),
+      UnitType.Terran_Comsat_Station -> (new Comsat(_)),
+      UnitType.Terran_Control_Tower -> (new ControlTower(_)),
+      UnitType.Terran_Engineering_Bay -> (new EngineeringBay(_)),
+      UnitType.Terran_Factory -> (new Factory(_)),
+      UnitType.Terran_Machine_Shop -> (new MachineShop(_)),
+      UnitType.Terran_Missile_Turret -> (new MissileTurret(_)),
+      UnitType.Terran_Nuclear_Silo -> (new NuclearSilo(_)),
 
       UnitType.Protoss_Probe -> (new Probe(_)),
 

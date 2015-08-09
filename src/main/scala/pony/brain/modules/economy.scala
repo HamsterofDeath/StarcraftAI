@@ -52,7 +52,13 @@ class ProvideNewBuildings(universe: Universe)
                   jobRequest: BuildUnitRequest[Building])
 }
 
-class ProvideNewSupply(universe: Universe) extends AIModule[WorkerUnit](universe) with Orderless[WorkerUnit] {
+class ProvideExpansions(universe: Universe) extends OrderlessAIModule[WorkerUnit](universe) {
+  override def onTick(): Unit = {
+
+  }
+}
+
+class ProvideNewSupply(universe: Universe) extends OrderlessAIModule[WorkerUnit](universe) {
   private val supplyEmployer = new Employer[SupplyProvider](universe)
   override def onTick() = {
 
@@ -82,7 +88,7 @@ class ProvideNewSupply(universe: Universe) extends AIModule[WorkerUnit](universe
   }
 }
 
-class ProvideNewUnits(universe: Universe) extends AIModule[Factory](universe) {
+class ProvideNewUnits(universe: Universe) extends AIModule[UnitFactory](universe) {
   self =>
 
   override def ordersForTick: Traversable[UnitOrder] = {
@@ -95,7 +101,7 @@ class ProvideNewUnits(universe: Universe) extends AIModule[Factory](universe) {
         1 to wantedAmount flatMap { _ =>
           val builderOf = UnitJobRequests.builderOf(typeFixed, self)
           unitManager.request(builderOf) match {
-            case any: ExactlyOneSuccess[Factory] =>
+            case any: ExactlyOneSuccess[UnitFactory] =>
               resources.request(ResourceRequests.forUnit(typeFixed), self) match {
                 case suc: ResourceApprovalSuccess =>
                   val order = new TrainUnit(any.onlyOne, typeFixed, self, suc)
@@ -175,8 +181,8 @@ class GatherMinerals(universe: Universe) extends AIModule(universe) {
         private val miningTeam = ArrayBuffer.empty[GatherMineralsAtPatch]
         override def toString: String = s"(Mined) $patch"
         def hasOpenSpot: Boolean = miningTeam.size < estimateRequiredWorkers
-        def estimateRequiredWorkers = 2
         def openSpotCount = estimateRequiredWorkers - miningTeam.size
+        def estimateRequiredWorkers = 2
         def orders = miningTeam.flatMap(_.ordersForTick)
 
         def lockToPatch_!(job: GatherMineralsAtPatch): Unit = {
@@ -300,6 +306,7 @@ class GatherMinerals(universe: Universe) extends AIModule(universe) {
   }
 }
 
+// need this for instanceof checks
 trait GatherMineralsAtSinglePatch extends UnitWithJob[WorkerUnit] {
   def worker: WorkerUnit
   def targetPatch: MineralPatch

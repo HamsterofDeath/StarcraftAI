@@ -333,8 +333,8 @@ trait JobFinishedListener[T <: WrapsUnit] {
   def onFinish(): Unit
 }
 
-class TrainUnit[F <: Factory, T <: Mobile](factory: F, trainType: Class[_ <: T], employer: Employer[F],
-                                           funding: ResourceApprovalSuccess)
+class TrainUnit[F <: UnitFactory, T <: Mobile](factory: F, trainType: Class[_ <: T], employer: Employer[F],
+                                               funding: ResourceApprovalSuccess)
   extends UnitWithJob[F](employer, factory, Priority.Default) with JobHasFunding[F] {
 
   override def proofForFunding = funding
@@ -434,8 +434,8 @@ trait UnitRequest[T <: WrapsUnit] {
 
 case class AnyUnitRequest[T <: WrapsUnit](typeOfRequestedUnit: Class[_ <: T], amount: Int) extends UnitRequest[T]
 
-case class AnyFactoryRequest[T <: Factory, U <: Mobile](typeOfRequestedUnit: Class[_ <: T], amount: Int,
-                                                        buildThis: Class[_ <: U]) extends UnitRequest[T] {
+case class AnyFactoryRequest[T <: UnitFactory, U <: Mobile](typeOfRequestedUnit: Class[_ <: T], amount: Int,
+                                                            buildThis: Class[_ <: U]) extends UnitRequest[T] {
   override def acceptable(unit: T): Boolean = {
     unit.canBuild(buildThis)
   }
@@ -484,8 +484,8 @@ case class UnitJobRequests[T <: WrapsUnit : Manifest](requests: Seq[UnitRequest[
 }
 
 object UnitJobRequests {
-  def builderOf[T <: Mobile, F <: Factory : Manifest](wantedType: Class[_ <: T],
-                                                      employer: Employer[F]): UnitJobRequests[F] = {
+  def builderOf[T <: Mobile, F <: UnitFactory : Manifest](wantedType: Class[_ <: T],
+                                                          employer: Employer[F]): UnitJobRequests[F] = {
 
     val actualClass = manifest[F].runtimeClass.asInstanceOf[Class[F]]
     val req = AnyFactoryRequest[F, T](actualClass, 1, wantedType)
