@@ -7,13 +7,17 @@ case class IncomeStats(minerals: Int, gas: Int, frames: Int)
 
 class ResourceManager(override val universe: Universe) extends HasUniverse {
 
-  private val resourceHistory   = ArrayBuffer.empty[MinsGas]
-  private val frameSizeForStats = 600
+  private val resourceHistory         = ArrayBuffer.empty[MinsGas]
+  private val frameSizeForStats       = 600
   // should be 10 "seconds" i guess?
-  private val empty       = Resources(0, 0, Supplies(0, 0))
-  private val locked      = ArrayBuffer.empty[LockedResources[_]]
-  private val lockedSums  = LazyVal.from(calcLockedSums)
-  private var myResources = empty
+  private val empty                   = Resources(0, 0, Supplies(0, 0))
+  private val locked                  = ArrayBuffer.empty[LockedResources[_]]
+  private val lockedSums              = LazyVal.from(calcLockedSums)
+  private val failedToProvideThisTick = ArrayBuffer.empty[ResourceRequests]
+  private var myResources             = empty
+  private var failedToProvideLastTick = Vector.empty[ResourceRequests]
+  def failedToProvide = failedToProvideLastTick
+
   def stats = {
     val start = resourceHistory.head
     val now = resourceHistory.last
@@ -21,12 +25,15 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
     val gasPlus = start.gas - start.gas
     IncomeStats(minPlus, gasPlus, resourceHistory.size)
   }
+
   def detailledLocks = locked.toSeq
+
   def unlock_!(proofForFunding: ResourceApprovalSuccess): Unit = {
     locked.removeFirstMatch(_.reqs.sum.equalValue(proofForFunding))
     trace(s"Unlocked $proofForFunding")
     lockedSums.invalidate()
   }
+
   def request[T <: WrapsUnit](requests: ResourceRequests, employer: Employer[T]) = {
     trace(s"Incoming resource request: $requests")
     // first check if we have enough resources
@@ -35,18 +42,25 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
       ResourceApprovalSuccess(requests.sum)
     } else {
       // TODO unlock resources with lesser priority, biggest first
+      failedToProvideThisTick += requests
       ResourceApprovalFail
     }
   }
+
   private def lock_![T <: WrapsUnit](requests: ResourceRequests, employer: Employer[T]): Unit = {
     val newLock = LockedResources(requests, employer)
     trace(s"Locked $newLock")
     locked += newLock
     lockedSums.invalidate()
   }
+
   private def myUnlockedResources = myResources - lockedResources
+
   def lockedResources = lockedSums.get
+
   def tick(): Unit = {
+    failedToProvideLastTick = failedToProvideThisTick.toVector
+    failedToProvideThisTick.clear()
 
     myResources = universe.world.currentResources
     lockedSums.invalidate()
@@ -56,12 +70,12 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
       resourceHistory.remove(0)
     }
   }
+
   def gatheredMinerals = nativeGame.self().gatheredMinerals()
   def gatheredGas = nativeGame.self().gatheredGas()
   def currentResources = myResources
   def supplies = myUnlockedResources.supply
   def plannedSuppliesToAdd = {
-    // TODO include planned command centers
     unitManager
     .selectJobs((e: ConstructBuilding[WorkerUnit, Building]) => e.typeOfBuilding == unitManager.race.supplyClass)
   }
@@ -110,20 +124,20 @@ trait ResourceRequest {
 case class MineralsRequest(amount: Int) extends ResourceRequest
 case class GasRequest(amount: Int) extends ResourceRequest
 case class SupplyRequest(amount: Int) extends ResourceRequest
-case class ResourceRequests(requests: Seq[ResourceRequest], priority: Priority) {
+case class ResourceRequests(requests: Seq[ResourceRequest], priority: Priority, whatFor: Class[_ <: WrapsUnit]) {
   val sum = requests.foldLeft(ResourceRequestSums.empty)((acc, e) => {
     acc + e
   })
 }
 
 object ResourceRequests {
-  val empty = ResourceRequests(Nil, Priority.None)
-  def forUnit[T <: WrapsUnit](unitType: Class[_ <: T]) = {
+  val empty = ResourceRequests(Nil, Priority.None, classOf[Irrelevant])
+  def forUnit[T <: WrapsUnit](unitType: Class[_ <: T], priority: Priority = Priority.Default) = {
     val mins = unitType.toUnitType.mineralPrice()
     val gas = unitType.toUnitType.gasPrice()
     val supply = unitType.toUnitType.supplyRequired()
 
-    ResourceRequests(Seq(MineralsRequest(mins), GasRequest(gas), SupplyRequest(supply)), Priority.ConstructBuilding)
+    ResourceRequests(Seq(MineralsRequest(mins), GasRequest(gas), SupplyRequest(supply)), priority, unitType)
   }
 }
 

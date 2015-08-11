@@ -25,8 +25,27 @@ class WalkableRenderer extends AIPlugIn {
     lazyWorld.debugger.debugRender { renderer =>
       renderer.in_!(Color.Red)
 
-      lazyWorld.map.walkableGrid.all
-      .filter(lazyWorld.map.walkableGrid.blocked)
+      val walkable = lazyWorld.map.walkableGrid
+      walkable.all
+      .filter(walkable.blocked)
+      .foreach { blocked =>
+        renderer.drawCrossedOutOnTile(blocked)
+      }
+    }
+  }
+}
+
+class BuildableRenderer(ignoreWalkable: Boolean) extends AIPlugIn {
+  override protected def tickPlugIn(): Unit = {
+    lazyWorld.debugger.debugRender { renderer =>
+      renderer.in_!(Color.Grey)
+
+      val builable = lazyWorld.map.buildableGrid
+      builable.all
+      .filter { e =>
+        builable.blocked(e) &&
+        (!ignoreWalkable || !lazyWorld.map.walkableGrid.blocked(e))
+      }
       .foreach { blocked =>
         renderer.drawCrossedOutOnTile(blocked)
       }
@@ -70,6 +89,22 @@ class StatsRenderer(override val universe: Universe) extends AIPlugIn with HasUn
         val locked = resources.lockedResources
         val locks = resources.detailledLocks
         s"${locked.minerals}m, ${locked.gas}g, ${locked.supply}s locked, ${locks.size} locks"
+      }
+
+      debugString += {
+        val locked = unitManager.plannedToBuild.groupBy(_.typeOfRequestedUnit).map { case (k, v) =>
+          s"${k.className}*${v.size}"
+        }
+
+        s"Planned buildings: ${locked.mkString(", ")}"
+      }
+
+      debugString += {
+        val locked = resources.failedToProvide.groupBy(_.whatFor).map { case (k, v) =>
+          s"${k.className}*${v.size}"
+        }
+
+        s"In queue (no funds yet): ${locked.mkString(", ")}"
       }
 
       debugString ++= {

@@ -7,6 +7,7 @@ object ConcoctedAI {
     val mainAi = new MainAI
     new ConcoctedAI(world)
     .addPlugin(new WalkableRenderer)
+    .addPlugin(new BuildableRenderer(true))
     .addPlugin(new UnitIdRenderer)
     .addPlugin(new MapReveal)
     .addPlugin(new FastSpeed)

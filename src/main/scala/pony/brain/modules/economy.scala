@@ -67,12 +67,14 @@ class ProvideNewSupply(universe: Universe) extends OrderlessAIModule[WorkerUnit]
 
     trace(s"Need more supply: $cur ($plannedSupplies planned)", needsMore)
     if (needsMore) {
+      // can't use helper because overlords are not buildings :|
       val race = universe.bases.mainBase.mainBuilding.race
-      val result = resources.request(ResourceRequests.forUnit(race.supplyClass), this)
+      val result = resources.request(ResourceRequests.forUnit(race.supplyClass, Priority.Supply), this)
       result match {
         case suc: ResourceApprovalSuccess =>
           trace(s"More supply approved! $suc, requesting ${race.supplyClass.className}")
-          val ofType = UnitJobRequests.newOfType(universe, supplyEmployer, race.supplyClass, suc)
+          val ofType = UnitJobRequests
+                       .newOfType(universe, supplyEmployer, race.supplyClass, suc, priority = Priority.Supply)
 
           // this will always be unfulfilled
           val result = unitManager.request(ofType)
@@ -102,7 +104,7 @@ class ProvideNewUnits(universe: Universe) extends AIModule[UnitFactory](universe
           val builderOf = UnitJobRequests.builderOf(typeFixed, self)
           unitManager.request(builderOf) match {
             case any: ExactlyOneSuccess[UnitFactory] =>
-              resources.request(ResourceRequests.forUnit(typeFixed), self) match {
+              resources.request(ResourceRequests.forUnit(typeFixed, req.priority), self) match {
                 case suc: ResourceApprovalSuccess =>
                   val order = new TrainUnit(any.onlyOne, typeFixed, self, suc)
                   assignJob_!(order)
@@ -162,7 +164,6 @@ class GatherMinerals(universe: Universe) extends AIModule(universe) {
           }
         }
         jobs.foreach(assignJob_!)
-
       }
 
       Micro.MiningOrganization.orders
@@ -225,6 +226,9 @@ class GatherMinerals(universe: Universe) extends AIModule(universe) {
         override def ordersForTick: Seq[UnitOrder] = {
           def sendWorkerToPatch = ApproachingMinerals -> Orders.Gather(myWorker, miningTarget.patch)
           def returnDelivery = Orders.ReturnMinerals(myWorker, base.mainBuilding)
+          if (myWorker.isGuarding) {
+            state = Idle
+          }
           val (newState, order) = state match {
             case Idle if myWorker.isCarryingMinerals =>
               ReturningMineralsAfterInterruption -> returnDelivery

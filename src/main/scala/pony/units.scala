@@ -90,6 +90,8 @@ trait SpellcasterBuilding extends Building {
 }
 
 trait Mobile extends WrapsUnit {
+  def isGuarding = nativeUnit.getOrder == Order.PlayerGuard
+
   def isMoving = nativeUnit.isMoving
 
   def currentTileNative = currentTile.asNative
@@ -112,6 +114,35 @@ trait Killable {
 trait Detector {
 
 }
+
+trait ArmedUnit extends WrapsUnit {
+
+}
+
+trait GroundWeapon extends Weapon {
+
+}
+
+trait AirWeapon extends Weapon {
+
+}
+
+trait Weapon {
+
+}
+
+trait RangeWeapon extends Weapon {
+
+}
+
+trait MeleeWeapon extends Weapon {
+
+}
+
+trait GroundAndAirWeapon extends RangeWeapon with GroundWeapon with AirWeapon {
+
+}
+
 
 trait AirUnit extends Killable with Mobile {
 
@@ -139,10 +170,6 @@ trait Ignored extends WrapsUnit
 
 trait Resource extends BlockingTiles {
   def remaining = nativeUnit.getResources
-}
-
-trait RangeWeapon {
-
 }
 
 trait ArmedBuilding extends Building with RangeWeapon
@@ -190,64 +217,69 @@ class MissileTurret(unit: APIUnit) extends AnyUnit(unit) with ArmedBuilding
 
 class Bunker(unit: APIUnit) extends AnyUnit(unit)
 
+class Marine(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon
+
 class Irrelevant(unit: APIUnit) extends AnyUnit(unit)
 
 trait Geysir extends Resource
 
 object UnitWrapper {
-  private val mappingRules: Map[UnitType, APIUnit => WrapsUnit] =
+
+  val class2UnitType = {
+    mappingRules.map { case (k, (_, c)) =>
+      c -> k
+    }
+  }
+  private val mappingRules: Map[UnitType, (APIUnit => WrapsUnit, Class[_ <: WrapsUnit])] =
     HashMap(
-      UnitType.Resource_Vespene_Geyser -> (new VespeneGeysir(_)),
+      UnitType.Resource_Vespene_Geyser -> ((new VespeneGeysir(_), classOf[VespeneGeysir])),
+      UnitType.Terran_SCV -> ((new SCV(_), classOf[SCV])),
+      UnitType.Terran_Supply_Depot -> ((new SupplyDepot(_), classOf[SupplyDepot])),
+      UnitType.Terran_Command_Center -> ((new CommandCenter(_), classOf[CommandCenter])),
+      UnitType.Terran_Barracks -> ((new Barracks(_), classOf[Barracks])),
+      UnitType.Terran_Academy -> ((new Academy(_), classOf[Academy])),
+      UnitType.Terran_Armory -> ((new Academy(_), classOf[Academy])),
+      UnitType.Terran_Bunker -> ((new Bunker(_), classOf[Bunker])),
+      UnitType.Terran_Comsat_Station -> ((new Comsat(_), classOf[Comsat])),
+      UnitType.Terran_Control_Tower -> ((new ControlTower(_), classOf[ControlTower])),
+      UnitType.Terran_Engineering_Bay -> ((new EngineeringBay(_), classOf[EngineeringBay])),
+      UnitType.Terran_Factory -> ((new Factory(_), classOf[Factory])),
+      UnitType.Terran_Machine_Shop -> ((new MachineShop(_), classOf[MachineShop])),
+      UnitType.Terran_Missile_Turret -> ((new MissileTurret(_), classOf[MissileTurret])),
+      UnitType.Terran_Nuclear_Silo -> ((new NuclearSilo(_), classOf[NuclearSilo])),
+      UnitType.Terran_Physics_Lab -> ((new PhysicsLab(_), classOf[PhysicsLab])),
+      UnitType.Terran_Refinery -> ((new Refinery(_), classOf[Refinery])),
+      UnitType.Terran_Starport -> ((new Starport(_), classOf[Starport])),
+      UnitType.Terran_Marine -> ((new Marine(_), classOf[Marine])),
 
-      UnitType.Terran_SCV -> (new SCV(_)),
-      UnitType.Terran_Supply_Depot -> (new SupplyDepot(_)),
-      UnitType.Terran_Command_Center -> (new CommandCenter(_)),
-      UnitType.Terran_Barracks -> (new Barracks(_)),
-      UnitType.Terran_Academy -> (new Academy(_)),
-      UnitType.Terran_Armory -> (new Academy(_)),
-      UnitType.Terran_Bunker -> (new Bunker(_)),
-      UnitType.Terran_Comsat_Station -> (new Comsat(_)),
-      UnitType.Terran_Control_Tower -> (new ControlTower(_)),
-      UnitType.Terran_Engineering_Bay -> (new EngineeringBay(_)),
-      UnitType.Terran_Factory -> (new Factory(_)),
-      UnitType.Terran_Machine_Shop -> (new MachineShop(_)),
-      UnitType.Terran_Missile_Turret -> (new MissileTurret(_)),
-      UnitType.Terran_Nuclear_Silo -> (new NuclearSilo(_)),
-      UnitType.Terran_Physics_Lab -> (new PhysicsLab(_)),
-      UnitType.Terran_Refinery -> (new Refinery(_)),
-      UnitType.Terran_Starport -> (new Starport(_)),
-
-      UnitType.Protoss_Probe -> (new Probe(_)),
-
-      UnitType.Zerg_Drone -> (new Drone(_)),
-
-      UnitType.Unknown -> (new Irrelevant(_)))
-
+      UnitType.Protoss_Probe -> ((new Probe(_), classOf[Probe])),
+      UnitType.Zerg_Drone -> ((new Drone(_), classOf[Drone])),
+      UnitType.Unknown -> ((new Irrelevant(_), classOf[Irrelevant]))
+    )
   def lift(unit: APIUnit) = {
     mappingRules.get(unit.getType) match {
-      case Some(mapper) => mapper(unit)
+      case Some((mapper, _)) => mapper(unit)
       case None =>
         if (unit.getType.isMineralField) new MineralPatch(unit)
         else new Irrelevant(unit)
     }
-
   }
 }
 
 // this should be a part of bwmirror, but it's missing for some reason
 object Dependencies {
-  private val builtBy: Map[Class[_ <: WrapsUnit], Class[_ <: WrapsUnit]] = Map(classOf[SCV] -> classOf[CommandCenter])
+  private val builtBy: Map[Class[_ <: WrapsUnit], Class[_ <: WrapsUnit]] = Map(
+    classOf[SCV] -> classOf[CommandCenter],
+    classOf[Marine] -> classOf[Barracks],
+    classOf[Irrelevant] -> classOf[Irrelevant]
+  )
 
   def builderOf(unitClass: Class[_ <: WrapsUnit]) = builtBy(unitClass)
 }
 
 object TypeMapping {
 
-  private val class2UnitType: Map[Class[_ <: WrapsUnit], UnitType] =
-    Map(classOf[SCV] -> UnitType.Terran_SCV,
-      classOf[SupplyDepot] -> UnitType.Terran_Supply_Depot,
-      classOf[CommandCenter] -> UnitType.Terran_Command_Center,
-      classOf[Irrelevant] -> UnitType.Unknown)
+  private val class2UnitType: Map[Class[_ <: WrapsUnit], UnitType] = UnitWrapper.class2UnitType
 
   def unitTypeOf[T <: WrapsUnit](c: Class[_ <: T]) = class2UnitType(c)
 }

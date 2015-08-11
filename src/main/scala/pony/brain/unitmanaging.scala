@@ -11,6 +11,9 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
       mutable.HashMap[Employer[_ <: WrapsUnit], mutable.Set[UnitWithJob[_ <: WrapsUnit]]]
       with mutable.MultiMap[Employer[_ <: WrapsUnit], UnitWithJob[_ <: WrapsUnit]]
   private var unfulfilledRequestsLastTick = unfulfilledRequestsThisTick.toVector
+
+  def plannedToBuild = unfulfilledRequestsLastTick.flatMap(_.requests).collect { case b: BuildUnitRequest[_] => b }
+
   def plannedToBuildByType(typeOfFactory: Class[_ <: Building]): Int = {
     val byUnfulfilledRequest = unfulfilledRequestsLastTick.flatMap(_.requests).iterator.collect {
       case b: BuildUnitRequest[_] if b.typeOfRequestedUnit == typeOfFactory => 1
@@ -128,7 +131,7 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
     byEmployer.addBinding(employer, newJob)
   }
 
-  def request[T <: WrapsUnit : Manifest](req: UnitJobRequests[T]) = {
+  def request[T <: WrapsUnit : Manifest](req: UnitJobRequests[T], buildIfNoneAvailable: Boolean = true) = {
     trace(s"${req.employer} requested ${req.requests.mkString(" and ")}")
     def hireResult: Option[UnitCollector[T]] = {
       val collector = new UnitCollector(req, universe)
@@ -151,11 +154,11 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
     val hr = hireResult
     val result = hr match {
       case None =>
-        unfulfilledRequestsThisTick += req
+        if (buildIfNoneAvailable) unfulfilledRequestsThisTick += req
         new FailedPreHiringResult[T]
       case Some(team) if !team.complete =>
         trace(s"Partially successful hiring request: $team")
-        unfulfilledRequestsThisTick += team.missingAsRequest
+        if (buildIfNoneAvailable) unfulfilledRequestsThisTick += team.missingAsRequest
         if (team.hasOneMember)
           new PartialPreHiringResult(team.teamAsMap) with ExactlyOneSuccess[T]
         else
@@ -226,7 +229,7 @@ class UnitCollector[T <: WrapsUnit : Manifest](originalRequest: UnitJobRequests[
   def hasOneMember = hired.valuesIterator.map(_.size).sum == 1
   def missingAsRequest: UnitJobRequests[T] = {
     val typesAndAmounts = remainingAmountsPerRequest.filter(_._2 > 0).map { case (req, amount) =>
-      BuildUnitRequest[T](universe, req.typeOfRequestedUnit, amount, ResourceApprovalFail)
+      BuildUnitRequest[T](universe, req.typeOfRequestedUnit, amount, ResourceApprovalFail, Priority.Default)
     }
     UnitJobRequests[T](typesAndAmounts.toSeq, originalRequest.employer, originalRequest.priority)
   }
@@ -422,6 +425,7 @@ class BusyBeingTrained[T <: WrapsUnit](unit: T, employer: Employer[T])
 trait UnitRequest[T <: WrapsUnit] {
   private var autoCleanAfterTick  = true
   private var keepResourcesLocked = false
+  def priority: Priority
   def includesByType(unit: WrapsUnit): Boolean = typeOfRequestedUnit.isAssignableFrom(unit.getClass)
   def typeOfRequestedUnit: Class[_ <: T]
   def amount: Int
@@ -447,17 +451,20 @@ trait UnitRequest[T <: WrapsUnit] {
   override def toString = s"UnitRequest($typeOfRequestedUnit, $amount)"
 }
 
-case class AnyUnitRequest[T <: WrapsUnit](typeOfRequestedUnit: Class[_ <: T], amount: Int) extends UnitRequest[T]
+case class AnyUnitRequest[T <: WrapsUnit](typeOfRequestedUnit: Class[_ <: T], amount: Int) extends UnitRequest[T] {
+  override def priority: Priority = Priority.Default
+}
 
 case class AnyFactoryRequest[T <: UnitFactory, U <: Mobile](typeOfRequestedUnit: Class[_ <: T], amount: Int,
                                                             buildThis: Class[_ <: U]) extends UnitRequest[T] {
   override def acceptable(unit: T): Boolean = {
     unit.canBuild(buildThis)
   }
+  override def priority: Priority = Priority.Default
 }
 
 case class BuildUnitRequest[T <: WrapsUnit](universe: Universe, typeOfRequestedUnit: Class[_ <: T], amount: Int,
-                                            funding: ResourceApproval)
+                                            funding: ResourceApproval, override val priority: Priority)
   extends UnitRequest[T] with HasFunding with HasUniverse {
 
   if (typeOfRequestedUnit.toUnitType.isBuilding) {
@@ -480,6 +487,7 @@ case class BuildUnitRequest[T <: WrapsUnit](universe: Universe, typeOfRequestedU
 case class SpecificUnitRequest[T <: WrapsUnit](unit: T) extends UnitRequest[T] {
   override def typeOfRequestedUnit = unit.getClass
   override def amount: Int = 1
+  override def priority: Priority = Priority.Default
 }
 
 case class UnitJobRequests[T <: WrapsUnit : Manifest](requests: Seq[UnitRequest[T]], employer: Employer[T],
@@ -500,34 +508,38 @@ case class UnitJobRequests[T <: WrapsUnit : Manifest](requests: Seq[UnitRequest[
 
 object UnitJobRequests {
   def builderOf[T <: Mobile, F <: UnitFactory : Manifest](wantedType: Class[_ <: T],
-                                                          employer: Employer[F]): UnitJobRequests[F] = {
+                                                          employer: Employer[F],
+                                                          priority: Priority = Priority.Default): UnitJobRequests[F] = {
 
     val actualClass = manifest[F].runtimeClass.asInstanceOf[Class[F]]
     val req = AnyFactoryRequest[F, T](actualClass, 1, wantedType)
 
-    UnitJobRequests(req.toSeq, employer, Priority.Default)
+    UnitJobRequests(req.toSeq, employer, priority)
 
   }
 
-  def constructor[T <: WorkerUnit : Manifest](employer: Employer[T]): UnitJobRequests[T] = {
+  def constructor[T <: WorkerUnit : Manifest](employer: Employer[T],
+                                              priority: Priority = Priority.ConstructBuilding): UnitJobRequests[T] = {
 
     val actualClass = manifest[T].runtimeClass.asInstanceOf[Class[T]]
     val req = AnyUnitRequest(actualClass, 1)
 
-    UnitJobRequests(req.toSeq, employer, Priority.ConstructBuilding)
+    UnitJobRequests(req.toSeq, employer, priority)
   }
 
-  def idleOfType[T <: WrapsUnit : Manifest](employer: Employer[T], ofType: Class[_ <: T], amount: Int = 1) = {
+  def idleOfType[T <: WrapsUnit : Manifest](employer: Employer[T], ofType: Class[_ <: T], amount: Int = 1,
+                                            priority: Priority = Priority.Default) = {
     val req: AnyUnitRequest[T] = AnyUnitRequest(ofType, amount)
 
-    UnitJobRequests[T](req.toSeq, employer, Priority.Default)
+    UnitJobRequests[T](req.toSeq, employer, priority)
   }
 
   def newOfType[T <: WrapsUnit : Manifest](universe: Universe, employer: Employer[T], ofType: Class[_ <: T],
-                                           funding: ResourceApprovalSuccess, amount: Int = 1) = {
-    val req: BuildUnitRequest[T] = BuildUnitRequest(universe, ofType, amount, funding)
+                                           funding: ResourceApprovalSuccess, amount: Int = 1,
+                                           priority: Priority = Priority.Default) = {
+    val req: BuildUnitRequest[T] = BuildUnitRequest(universe, ofType, amount, funding, priority)
     // this one needs to survive across ticks
     req.persistant_!()
-    UnitJobRequests[T](req.toSeq, employer, Priority.Default)
+    UnitJobRequests[T](req.toSeq, employer, priority)
   }
 }

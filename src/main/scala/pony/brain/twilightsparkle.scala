@@ -24,7 +24,6 @@ trait HasUniverse {
       u
     }
   }
-
 }
 
 trait BackgroundComputationResult[T <: WrapsUnit] {
@@ -151,6 +150,7 @@ class TwilightSparkle(world: DefaultWorld) {
     new ProvideNewSupply(universe),
     new ProvideNewBuildings(universe),
     new ProvideFactories(universe),
+    new ProvideArmy(universe),
     AIModule.noop(universe)
   )
   private val unitManager = new UnitManager(universe)

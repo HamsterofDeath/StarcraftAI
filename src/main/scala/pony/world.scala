@@ -7,7 +7,7 @@ import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
 class UnitData(in: bwapi.Unit) {
-
+  // todo use this
 }
 
 sealed trait SCRace {
@@ -200,20 +200,18 @@ class Units(game: Game) {
   def mine = all.filter(_.nativeUnit.getPlayer == game.self())
 
   import scala.collection.JavaConverters._
-  def all = knownUnits.valuesIterator
   def mineByType[T: Manifest]: Iterator[T] = {
     val lookFor = manifest[T].runtimeClass
     mine.filter(lookFor.isInstance).map(_.asInstanceOf[T])
   }
   def minerals = allByType[MineralPatch]
-
   def allByType[T: Manifest]: Iterator[T] = {
     val lookFor = manifest[T].runtimeClass
     all.filter { e =>
       lookFor.isAssignableFrom(e.getClass)
     }.map(_.asInstanceOf[T])
   }
-
+  def all = knownUnits.valuesIterator
   def tick(): Unit = {
     if (initial) {
       initial = false
@@ -257,13 +255,13 @@ class Grid2D(val cols: Int, val rows: Int, bitSet: collection.Set[Int]) {
     }
     new Grid2D(subCols, subRows, bits)
   }
-  def free(x: Int, y: Int): Boolean = !bitSet(x + y * cols)
   def blocked = size - walkable
   def size = cols * rows
   def walkable = bitSet.size
   def blocked(x: Int, y: Int): Boolean = !free(x, y)
   def blocked(p: MapTilePosition): Boolean = !free(p)
   def free(p: MapTilePosition): Boolean = free(p.x, p.y)
+  def free(x: Int, y: Int): Boolean = !bitSet(x + y * cols)
   def all = new Traversable[MapTilePosition] {
     override def foreach[U](f: (MapTilePosition) => U): Unit = {
       for (x <- 0 until cols; y <- 0 until rows) {
@@ -372,6 +370,31 @@ class AnalyzedMap(game: Game) {
     new Grid2D(sizeX, sizeY, bits)
   }
 
+  val buildableGrid = {
+    val bits = mutable.BitSet.empty
+    0 until sizeX / 4 map { x =>
+      0 until sizeY / 4 map { y =>
+        if (!game.isBuildable(x, y)) {
+          bits += x + (sizeX * y)
+        }
+      }
+    }
+    new Grid2D(sizeX, sizeY, bits)
+  }
+
+  val buildableGridZoomed = {
+    // fake this for math reasons
+    val bits = mutable.BitSet.empty
+    0 until sizeX map { x =>
+      0 until sizeY map { y =>
+        if (!buildableGrid.free(x / 4, y / 4)) {
+          bits += x + (sizeX * y)
+        }
+      }
+    }
+    new Grid2D(sizeX, sizeY, bits)
+  }
+
   val walkableGrid = walkableGridZoomed.zoomedOut
 
   val areas = walkableGrid.areas
@@ -396,16 +419,27 @@ class AnalyzedMap(game: Game) {
     } mkString "\n"
   }
 
+  def debugMap2 = {
+    val debugThis = buildableGrid
+    0 until debugThis.rows map { x =>
+      0 until debugThis.cols map { y =>
+        if (debugThis.free(x, y)) " " else "X"
+      } mkString
+    } mkString "\n"
+  }
+
   info(
     s"""
        |Received map ${game.mapName()} with hash ${game.mapHash()}, size $sizeX * $sizeY
        |Total tiles ${walkableGridZoomed.size}
        |Walkable tiles ${walkableGridZoomed.walkable}
        |Blocked tiles ${walkableGridZoomed.blocked}
-       |Map
+       |Walkable map
        |$debugMap
+       |Buildable map
+       |$debugMap2
        |Area analysis
-       |${debugAreas}
+       |$debugAreas
      """.stripMargin)
 }
 

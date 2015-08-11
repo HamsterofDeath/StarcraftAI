@@ -144,7 +144,8 @@ object SimplePathFinder {
 
 class MapLayers(override val universe: Universe) extends HasUniverse {
 
-  private val rawMap                    = world.map.walkableGridZoomed
+  private val rawMapWalk                = world.map.walkableGridZoomed
+  private val rawMapBuild               = world.map.buildableGrid
   private val plannedBuildings          = world.map.empty.mutableCopy
   private var justBuildings             = evalOnlyBuildings
   private var justMineralsAndGas        = evalOnlyResources
@@ -164,6 +165,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   def blockBuilding_!(where: Area): Unit = {
     plannedBuildings.block_!(where)
   }
+
   def tick(): Unit = {
     update()
   }
@@ -180,7 +182,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
     withEverything = evalEverything
   }
 
-  private def evalWithBuildings = rawMap.mutableCopy.or_!(justBuildings)
+  private def evalWithBuildings = rawMapBuild.mutableCopy.or_!(justBuildings)
   private def evalWithBuildingsAndResources = justBuildings.or_!(justMineralsAndGas)
   private def evalOnlyBuildings = evalOnlyUnits(units.allByType[Building])
   private def evalOnlyResources = evalOnlyUnits(units.allByType[MineralPatch].filter(_.remaining > 0))
