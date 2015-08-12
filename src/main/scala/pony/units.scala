@@ -23,6 +23,7 @@ trait OrderHistorySupport extends WrapsUnit {
       history.remove(0)
     }
   }
+  def unitHistory = history.reverse
   case class HistoryElement(order: Order, target: APIUnit, job: UnitWithJob[_ <: WrapsUnit])
 
 }
