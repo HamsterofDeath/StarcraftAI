@@ -227,11 +227,6 @@ trait Geysir extends Resource
 
 object UnitWrapper {
 
-  val class2UnitType = {
-    mappingRules.map { case (k, (_, c)) =>
-      c -> k
-    }
-  }
   private val mappingRules: Map[UnitType, (APIUnit => WrapsUnit, Class[_ <: WrapsUnit])] =
     HashMap(
       UnitType.Resource_Vespene_Geyser -> ((new VespeneGeysir(_), classOf[VespeneGeysir])),
@@ -258,6 +253,14 @@ object UnitWrapper {
       UnitType.Zerg_Drone -> ((new Drone(_), classOf[Drone])),
       UnitType.Unknown -> ((new Irrelevant(_), classOf[Irrelevant]))
     )
+
+  def class2UnitType = {
+    mappingRules.map { case (k, (_, c)) =>
+      c -> k
+    }
+  }
+
+
   def lift(unit: APIUnit) = {
     mappingRules.get(unit.getType) match {
       case Some((mapper, _)) => mapper(unit)
