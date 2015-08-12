@@ -124,7 +124,9 @@ trait WorldEventDispatcher extends WorldListener {
 
 case class Resources(minerals: Int, gas: Int, supply: Supplies) {
   def supplyTotal = supply.total
-  def >(sum: ResourceRequestSums) = minerals >= sum.minerals && gas >= sum.gas && supplyRemaining >= sum.supply
+  def >(sum: ResourceRequestSums) = (minerals >= sum.minerals || sum.minerals == 0) &&
+                                    {gas >= sum.gas || sum.gas == 0} &&
+                                    (supplyRemaining >= sum.supply || sum.supply == 0)
   def supplyRemaining = supply.available
   def -(sums: ResourceRequestSums) = {
     val supplyUpdated = supply.copy(supplyUsed + sums.supply)
@@ -197,13 +199,15 @@ class Units(game: Game) {
     val lookFor = manifest[T].runtimeClass
     mine.find(lookFor.isInstance).map(_.asInstanceOf[T])
   }
-  def mine = all.filter(_.nativeUnit.getPlayer == game.self())
-
-  import scala.collection.JavaConverters._
   def mineByType[T: Manifest]: Iterator[T] = {
     val lookFor = manifest[T].runtimeClass
     mine.filter(lookFor.isInstance).map(_.asInstanceOf[T])
   }
+
+  import scala.collection.JavaConverters._
+
+  def mine = all.filter(_.nativeUnit.getPlayer == game.self())
+  def all = knownUnits.valuesIterator
   def minerals = allByType[MineralPatch]
   def allByType[T: Manifest]: Iterator[T] = {
     val lookFor = manifest[T].runtimeClass
@@ -211,7 +215,6 @@ class Units(game: Game) {
       lookFor.isAssignableFrom(e.getClass)
     }.map(_.asInstanceOf[T])
   }
-  def all = knownUnits.valuesIterator
   def tick(): Unit = {
     if (initial) {
       initial = false
@@ -280,13 +283,7 @@ class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet) extends Grid2D
   def blockLine_!(a: MapTilePosition, b: MapTilePosition): Unit = {
     SimplePathFinder.traverseTilesOfLine(a, b, block_!)
   }
-
-  def block_!(x: Int, y: Int): Unit = {
-    bitSet += (x + y * cols)
-  }
-
   def asReadOnly: Grid2D = this
-
   def or_!(other: MutableGrid2D) = {
     bitSet |= other.data
     this
@@ -294,6 +291,9 @@ class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet) extends Grid2D
   protected def data = bitSet
   def block_!(area: Area): Unit = {
     area.tiles.foreach { p => block_!(p.x, p.y) }
+  }
+  def block_!(x: Int, y: Int): Unit = {
+    bitSet += (x + y * cols)
   }
 }
 

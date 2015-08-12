@@ -24,7 +24,7 @@ class ProvideNewBuildings(universe: Universe)
       case Some(startJob) =>
         BackgroundComputationResult.result(startJob.toSeq, () => false, () => {
           info(s"Planning to build ${in.buildingType.className} at ${startJob.where} by ${in.worker}")
-          in.jobRequest.clearable_!()
+          in.jobRequest.clearableInNextTick_!()
           mapLayers.blockBuilding_!(startJob.area)
         })
     }
@@ -104,20 +104,31 @@ class ProvideNewUnits(universe: Universe) extends AIModule[UnitFactory](universe
           val builderOf = UnitJobRequests.builderOf(typeFixed, self)
           unitManager.request(builderOf) match {
             case any: ExactlyOneSuccess[UnitFactory] =>
-              resources.request(ResourceRequests.forUnit(typeFixed, req.priority), self) match {
-                case suc: ResourceApprovalSuccess =>
-                  val order = new TrainUnit(any.onlyOne, typeFixed, self, suc)
-                  assignJob_!(order)
-                  order.ordersForTick
-                case _ => Nil
+              val producer = any
+              unitManager.jobOf(producer.onlyOne) match {
+                case t: CreatesUnit[_] =>
+                  req.clearableInNextTick_!()
+                  Nil
+                case _ =>
+                  resources.request(ResourceRequests.forUnit(typeFixed, req.priority), self) match {
+                    case suc: ResourceApprovalSuccess =>
+                      val order = new TrainUnit(any.onlyOne, typeFixed, self, suc)
+                      assignJob_!(order)
+                      order.ordersForTick
+                    case _ =>
+                      req.clearableInNextTick_!()
+                      Nil
+                  }
               }
-            case _ => Nil
+            case _ =>
+              req.clearableInNextTick_!()
+              Nil
           }
         }
       } else {
         Nil
       }
-    }.toSeq
+    }
   }
 }
 
@@ -140,6 +151,7 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
         s"""
            |Added new mineral gathering job(s): ${add.mkString(" & ")}
        """.stripMargin, add.nonEmpty)
+    gatheringJobs ++= add
   }
 
   class GatherAtBase(base: Base, minerals: MineralPatchGroup) extends Employer[WorkerUnit](universe) {
@@ -280,8 +292,11 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
           val maxFreeSlots = assignments.iterator.map(_._2.openSpotCount).max
           val notFull = assignments.filter(_._2.openSpotCount == maxFreeSlots)
           if (notFull.nonEmpty) {
-            val (_, patch) = notFull.minBy { case (minerals, _) =>
-              minerals.position.distanceTo(worker.currentPosition)
+            val (_, patch) = notFull.minBy { case (mins, _) =>
+              val (from, to) = {
+                mins.area.closestDirectConnection(base.mainBuilding)
+              }
+              from.distanceTo(to)
             }
             Some(patch)
           } else

@@ -51,12 +51,17 @@ object Size {
 case class Area(upperLeft: MapTilePosition, sizeOfArea: Size) {
   val lowerRight = upperLeft.movedBy(sizeOfArea)
   val center     = MapPosition((upperLeft.mapX + lowerRight.mapX) / 2, (upperLeft.mapY + lowerRight.mapY) / 2)
-  def tiles: Traversable[MapTilePosition] = new Traversable[MapTilePosition] {
-    override def foreach[U](f: (MapTilePosition) => U): Unit = {
-      sizeOfArea.points.map { p => f(p.movedBy(upperLeft)) }
+  def closestDirectConnection(elem: StaticallyPositioned) = {
+    // TODO optimize
+    val from = outline.minBy { p =>
+      elem.area.outline.minBy(_.distanceTo(p)).distanceTo(p)
     }
-  }
 
+    val to = elem.area.outline.minBy { p =>
+      outline.minBy(_.distanceTo(p)).distanceTo(p)
+    }
+    from -> to
+  }
   def outline: Traversable[MapTilePosition] = {
     new Traversable[MapTilePosition] {
       override def foreach[U](f: (MapTilePosition) => U): Unit = {
@@ -71,6 +76,11 @@ case class Area(upperLeft: MapTilePosition, sizeOfArea: Size) {
       }
     }
 
+  }
+  def tiles: Traversable[MapTilePosition] = new Traversable[MapTilePosition] {
+    override def foreach[U](f: (MapTilePosition) => U): Unit = {
+      sizeOfArea.points.map { p => f(p.movedBy(upperLeft)) }
+    }
   }
   def describe = s"$upperLeft/$lowerRight"
 }

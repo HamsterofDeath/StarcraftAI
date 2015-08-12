@@ -1,14 +1,29 @@
 package pony
 
 import bwapi.{Order, Race, Unit => APIUnit, UnitType}
+import pony.brain.{UnitWithJob, Universe}
 
 import scala.collection.immutable.HashMap
+import scala.collection.mutable.ListBuffer
 
 trait NiceToString extends WrapsUnit {
   override def toString = s"[$unitIdText] ${getClass.className}"
 }
 
-class AnyUnit(val nativeUnit: APIUnit) extends WrapsUnit with NiceToString {
+class AnyUnit(val nativeUnit: APIUnit) extends WrapsUnit with NiceToString with OrderHistorySupport {
+}
+
+trait OrderHistorySupport extends WrapsUnit {
+  private val history    = ListBuffer.empty[HistoryElement]
+  private val maxHistory = 1000
+  override def onTick(universe: Universe): Unit = {
+    super.onTick(universe)
+    history += HistoryElement(nativeUnit.getOrder, nativeUnit.getOrderTarget, universe.unitManager.jobOf(this))
+    if (history.size > maxHistory) {
+      history.remove(0)
+    }
+  }
+  case class HistoryElement(order: Order, target: APIUnit, job: UnitWithJob[_ <: WrapsUnit])
 
 }
 
@@ -24,6 +39,10 @@ trait WrapsUnit {
     else Other
   }
   def isBeingCreated = nativeUnit.getRemainingBuildTime > 0
+  def onTick(universe: Universe) = {
+
+  }
+
 }
 
 trait Controllable extends WrapsUnit
@@ -97,16 +116,16 @@ trait Mobile extends WrapsUnit with Controllable {
   def isMoving = nativeUnit.isMoving
 
   def currentTileNative = currentTile.asNative
-  def currentTile = {
-    val tp = nativeUnit.getTilePosition
-    MapTilePosition.shared(tp.getX, tp.getY)
-  }
   def currentPositionNative = currentPosition.toNative
   def currentPosition = {
     val p = nativeUnit.getPosition
     MapPosition(p.getX, p.getY)
   }
   override def toString = s"${super.toString}@$currentTile"
+  def currentTile = {
+    val tp = nativeUnit.getTilePosition
+    MapTilePosition.shared(tp.getX, tp.getY)
+  }
 }
 
 trait Killable {
@@ -160,7 +179,8 @@ trait WorkerUnit extends Killable with Mobile {
   def isInMiningProcess = nativeUnit.getOrder == Order.MiningMinerals
   def isWaitingForMinerals = nativeUnit.getOrder == Order.WaitForMinerals
   def isMovingToMinerals = nativeUnit.getOrder == Order.MoveToMinerals
-  def isConstructing = nativeUnit.getOrder == Order.ConstructingBuilding
+  def isConstructing = nativeUnit.getOrder == Order.ConstructingBuilding ||
+                       nativeUnit.getOrder == Order.PlaceBuilding
 
 }
 
@@ -223,7 +243,7 @@ class Marine(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundAnd
 
 class Irrelevant(unit: APIUnit) extends AnyUnit(unit)
 
-trait Geysir extends Resource
+trait Geysir extends Resource with BlockingTiles
 
 object UnitWrapper {
 

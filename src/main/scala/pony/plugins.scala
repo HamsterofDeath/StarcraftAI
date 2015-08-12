@@ -70,7 +70,7 @@ class UnitJobRenderer(override val universe: Universe) extends AIPlugIn with Has
   override protected def tickPlugIn(): Unit = {
     lazyWorld.debugger.debugRender { renderer =>
       unitManager.allJobsByUnitType[Mobile].foreach { job =>
-        renderer.drawTextAtUnit(job.unit, job.shortDebugString, 1)
+        renderer.drawTextAtUnit(job.unit, s"${job.shortDebugString} -> ${job.unit.nativeUnit.getOrder}", 1)
       }
     }
   }
@@ -96,7 +96,7 @@ class StatsRenderer(override val universe: Universe) extends AIPlugIn with HasUn
           s"${k.className}*${v.size}"
         }
 
-        s"Planned buildings: ${locked.mkString(", ")}"
+        s"Planned (funded): ${locked.mkString(", ")}"
       }
 
       debugString += {
@@ -104,7 +104,7 @@ class StatsRenderer(override val universe: Universe) extends AIPlugIn with HasUn
           s"${k.className}*${v.size}"
         }
 
-        s"In queue (no funds yet): ${locked.mkString(", ")}"
+        s"In queue (no funds): ${locked.mkString(", ")}"
       }
 
       debugString ++= {

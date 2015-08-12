@@ -34,11 +34,11 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
     lockedSums.invalidate()
   }
 
-  def request[T <: WrapsUnit](requests: ResourceRequests, employer: Employer[T]) = {
+  def request[T <: WrapsUnit](requests: ResourceRequests, employer: Employer[T], lock: Boolean = true) = {
     trace(s"Incoming resource request: $requests")
     // first check if we have enough resources
     if (myUnlockedResources > requests.sum) {
-      lock_!(requests, employer)
+      if (lock) lock_!(requests, employer)
       ResourceApprovalSuccess(requests.sum)
     } else {
       // TODO unlock resources with lesser priority, biggest first

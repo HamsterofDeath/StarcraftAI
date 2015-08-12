@@ -1,6 +1,8 @@
 package pony
 package brain
 
+import pony.Orders.Stop
+
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
@@ -80,10 +82,22 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
 
     //clean
     assignments.foreach(_._2.onTick())
-    val removeUs = assignments.filter { case (_, job) => job.isFinished }.values.toList
-    info(s"Cleaning up ${removeUs.size} finished jobs", removeUs.nonEmpty)
+    val removeUs = {
+      val done = assignments.filter { case (_, job) => job.isFinished }.values
+      val failed = assignments.filter { case (_, job) => job.hasFailed }.values
+      trace(s"${failed.size} jobs failed, putting units on the market again")
+      (done ++ failed).toVector
+    }
+    info(s"Cleaning up ${removeUs.size} finished/failed jobs", removeUs.nonEmpty)
 
     removeUs.foreach { job =>
+      job.unit match {
+        case m: Mobile =>
+          // stop whatever you were doing so the next employer doesn't hire a rebel
+          world.orderQueue.queue_!(new Stop(m))
+        case _ =>
+      }
+
       val newJob = new BusyDoingNothing(job.unit, Nobody)
       assignJob_!(newJob)
       job.onFinish()
@@ -91,7 +105,13 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
 
     def jobOf[T <: WrapsUnit](unit: T) = {
       if (unit.isBeingCreated) {
-        new BusyBeingTrained(unit, Trainer)
+        unit match {
+          case b: Building =>
+            new BusyBeingContructed(unit, Constructor)
+          case m: Mobile =>
+            new BusyBeingTrained(unit, Trainer)
+          case _ => throw new UnsupportedOperationException(s"Check this: $unit")
+        }
       } else {
         new BusyDoingNothing(unit, Nobody)
       }
@@ -182,6 +202,7 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
 
   case object Nobody extends Employer[WrapsUnit](universe)
   case object Trainer extends Employer[WrapsUnit](universe)
+  case object Constructor extends Employer[WrapsUnit](universe)
 }
 
 trait PreHiringResult[T <: WrapsUnit] {
@@ -301,7 +322,9 @@ abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: 
   override val universe     = employer.universe
   private  val creationTick = currentTick
   private  val listeners    = ArrayBuffer.empty[JobFinishedListener[T]]
-  def onTick(): Unit = {}
+  def onTick(): Unit = {
+    unit.onTick(universe)
+  }
   def onStealUnit() = {}
   def shortDebugString: String
   def age = currentTick - creationTick
@@ -313,6 +336,22 @@ abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: 
     listeners.foreach(_.onFinish())
   }
   def listen_!(listener: JobFinishedListener[T]): Unit = listeners += listener
+
+  def hasFailed: Boolean = false
+}
+
+trait IssueOrderNTimes[T <: WrapsUnit] extends UnitWithJob[T] {
+  private var issued = 0
+  def once: Seq[UnitOrder]
+  override def ordersForTick: Seq[UnitOrder] = {
+    if (issued == times)
+      Nil
+    else {
+      issued += times
+      once
+    }
+  }
+  def times = 1
 }
 
 trait HasFunding {
@@ -351,25 +390,34 @@ trait JobFinishedListener[T <: WrapsUnit] {
   def onFinish(): Unit
 }
 
+trait CreatesUnit[T <: WrapsUnit] extends UnitWithJob[T]
+
 class TrainUnit[F <: UnitFactory, T <: Mobile](factory: F, trainType: Class[_ <: T], employer: Employer[F],
                                                funding: ResourceApprovalSuccess)
-  extends UnitWithJob[F](employer, factory, Priority.Default) with JobHasFunding[F] {
+  extends UnitWithJob[F](employer, factory, Priority.Default) with JobHasFunding[F] with IssueOrderNTimes[F] with
+          CreatesUnit[F] {
 
   override def proofForFunding = funding
 
-  override def ordersForTick: Seq[UnitOrder] = {
+  override def once: Seq[UnitOrder] = {
     Orders.Train(unit, trainType).toSeq
   }
 
   override def isFinished = {
-    !factory.isProducing && age > 10
+    val idle = !factory.isProducing
+    val delay = age > 10
+    val isLazy = !factory.nativeUnit.isTraining
+    val ret = idle && delay && isLazy
+    ret
   }
+
   override def shortDebugString: String = s"Train ${trainType.className}"
 }
 
 class ConstructBuilding[W <: WorkerUnit, B <: Building](worker: W, buildingType: Class[_ <: B], employer: Employer[W],
                                                         val where: MapTilePosition, funding: ResourceApprovalSuccess)
-  extends UnitWithJob[W](employer, worker, Priority.ConstructBuilding) with JobHasFunding[W] {
+  extends UnitWithJob[W](employer, worker, Priority.ConstructBuilding) with JobHasFunding[W] with CreatesUnit[W] with
+          IssueOrderNTimes[W] {
 
   val area = {
     val unitType = buildingType.toUnitType
@@ -386,15 +434,22 @@ class ConstructBuilding[W <: WorkerUnit, B <: Building](worker: W, buildingType:
       resourcesUnlocked = true
     }
   }
+
+  override def once: Seq[UnitOrder] = Orders.Construct(worker, buildingType, where).toSeq
+
+  override def times = 10
+
   override def shortDebugString: String = s"Build ${buildingType.className}"
 
   def typeOfBuilding = buildingType
 
   override def proofForFunding = funding
 
-  override def ordersForTick: Seq[UnitOrder] = {
-    Orders.Construct(worker, buildingType, where).toSeq
+  override def hasFailed: Boolean = {
+    val fail = !worker.isConstructing && age > 50
+    fail
   }
+
   override def isFinished = {
     if (!startedConstruction) {
       startedConstruction = worker.isConstructing
@@ -419,7 +474,15 @@ class BusyBeingTrained[T <: WrapsUnit](unit: T, employer: Employer[T])
   override def isIdle = false
   override def ordersForTick: Seq[UnitOrder] = Nil
   override def isFinished = unit.nativeUnit.getRemainingBuildTime == 0
-  override def shortDebugString: String = "Todo"
+  override def shortDebugString: String = "Train me"
+}
+
+class BusyBeingContructed[T <: WrapsUnit](unit: T, employer: Employer[T])
+  extends UnitWithJob(employer, unit, Priority.Max) {
+  override def isIdle = false
+  override def ordersForTick: Seq[UnitOrder] = Nil
+  override def isFinished = unit.nativeUnit.getRemainingBuildTime == 0
+  override def shortDebugString: String = "Build me"
 }
 
 trait UnitRequest[T <: WrapsUnit] {
@@ -438,7 +501,7 @@ trait UnitRequest[T <: WrapsUnit] {
   def persistant_!(): Unit = {
     autoCleanAfterTick = false
   }
-  def clearable_!(): Unit = {
+  def clearableInNextTick_!(): Unit = {
     autoCleanAfterTick = true
   }
   def keepResourcesLocked_!(): Unit = {
