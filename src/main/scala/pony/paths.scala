@@ -149,7 +149,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   private val plannedBuildings          = world.map.empty.mutableCopy
   private var justBuildings             = evalOnlyBuildings
   private var justMineralsAndGas        = evalOnlyResources
-  private var justWorkerPaths           = evalOnlyResources
+  private var justWorkerPaths           = evalWorkerPaths
   private var withBuildings             = evalWithBuildings
   private var withBuildingsAndResources = evalWithBuildingsAndResources
   private var withEverything            = evalEverything
@@ -185,8 +185,6 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   private def evalWithBuildings = rawMapBuild.mutableCopy.or_!(justBuildings)
   private def evalWithBuildingsAndResources = justBuildings.or_!(justMineralsAndGas)
   private def evalOnlyBuildings = evalOnlyUnits(units.allByType[Building])
-  private def evalOnlyResources = evalOnlyUnits(units.allByType[MineralPatch].filter(_.remaining > 0))
-                                  .or_!(evalOnlyUnits(units.allByType[Geysir]))
   private def evalOnlyUnits(units: TraversableOnce[StaticallyPositioned]) = {
     val ret = world.map.empty.mutableCopy
     units.foreach { b =>
@@ -194,6 +192,8 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
     }
     ret
   }
+  private def evalOnlyResources = evalOnlyUnits(units.allByType[MineralPatch].filter(_.remaining > 0))
+                                  .or_!(evalOnlyUnits(units.allByType[Geysir]))
   private def evalEverything = withBuildingsAndResources.mutableCopy.or_!(plannedBuildings).or_!(justWorkerPaths)
 
   private def evalWorkerPaths = {
