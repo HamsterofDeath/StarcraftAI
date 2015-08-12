@@ -26,6 +26,8 @@ trait WrapsUnit {
   def isBeingCreated = nativeUnit.getRemainingBuildTime > 0
 }
 
+trait Controllable extends WrapsUnit
+
 object WrapsUnit {
   private var counter = 0
 
@@ -57,7 +59,7 @@ trait Building extends BlockingTiles {
 
 }
 
-trait Upgrader {
+trait Upgrader extends Controllable {
 
 }
 
@@ -69,7 +71,7 @@ trait Addon extends Building {
 
 }
 
-trait UnitFactory extends Building {
+trait UnitFactory extends Building with Controllable {
   def canBuild[T <: Mobile](typeOfUnit: Class[_ <: T]) = {
     Dependencies.builderOf(typeOfUnit).isAssignableFrom(getClass)
   }
@@ -85,26 +87,26 @@ trait ResourceGatherPoint
 
 trait MainBuilding extends Building with UnitFactory with ResourceGatherPoint with SupplyProvider
 
-trait SpellcasterBuilding extends Building {
+trait SpellcasterBuilding extends Building with Controllable {
 
 }
 
-trait Mobile extends WrapsUnit {
+trait Mobile extends WrapsUnit with Controllable {
   def isGuarding = nativeUnit.getOrder == Order.PlayerGuard
 
   def isMoving = nativeUnit.isMoving
 
   def currentTileNative = currentTile.asNative
+  def currentTile = {
+    val tp = nativeUnit.getTilePosition
+    MapTilePosition.shared(tp.getX, tp.getY)
+  }
   def currentPositionNative = currentPosition.toNative
   def currentPosition = {
     val p = nativeUnit.getPosition
     MapPosition(p.getX, p.getY)
   }
   override def toString = s"${super.toString}@$currentTile"
-  def currentTile = {
-    val tp = nativeUnit.getTilePosition
-    MapTilePosition.shared(tp.getX, tp.getY)
-  }
 }
 
 trait Killable {
@@ -127,7 +129,7 @@ trait AirWeapon extends Weapon {
 
 }
 
-trait Weapon {
+trait Weapon extends Controllable {
 
 }
 

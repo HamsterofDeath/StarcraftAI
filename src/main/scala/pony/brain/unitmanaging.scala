@@ -51,7 +51,7 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
       wanted.isAssignableFrom(job.getClass)
     }.map {_.asInstanceOf[T]}.toVector
   }
-  def allJobsByUnit[T <: WrapsUnit : Manifest] = selectJobs[T, UnitWithJob[T]](_ => true)
+  def allJobsByUnitType[T <: WrapsUnit : Manifest] = selectJobs[T, UnitWithJob[T]](_ => true)
   def selectJobs[U <: WrapsUnit : Manifest, T <: UnitWithJob[U] : Manifest](f: T => Boolean) = {
     val wanted = manifest[U].runtimeClass
     assignments.valuesIterator.filter { job =>
@@ -541,5 +541,13 @@ object UnitJobRequests {
     // this one needs to survive across ticks
     req.persistant_!()
     UnitJobRequests[T](req.toSeq, employer, priority)
+  }
+}
+
+class OrderBridge(universe: Universe) extends AIModule[Controllable](universe) {
+  override def ordersForTick: Traversable[UnitOrder] = {
+    unitManager.allJobsByUnitType[Controllable].flatMap { job =>
+      job.ordersForTick
+    }
   }
 }

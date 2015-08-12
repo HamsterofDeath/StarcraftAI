@@ -151,6 +151,7 @@ class TwilightSparkle(world: DefaultWorld) {
     new ProvideNewBuildings(universe),
     new ProvideFactories(universe),
     new ProvideArmy(universe),
+    new OrderBridge(universe),
     AIModule.noop(universe)
   )
   private val unitManager = new UnitManager(universe)

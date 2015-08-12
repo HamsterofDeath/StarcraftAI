@@ -121,13 +121,13 @@ class ProvideNewUnits(universe: Universe) extends AIModule[UnitFactory](universe
   }
 }
 
-class GatherMinerals(universe: Universe) extends AIModule(universe) {
+class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
 
   private val gatheringJobs = ArrayBuffer.empty[GatherAtBase]
 
-  override def ordersForTick = {
+  override def onTick(): Unit = {
     createJobsForBases()
-    gatheringJobs.flatMap(_.ordersForTick)
+    gatheringJobs.foreach(_.onTick())
   }
 
   private def createJobsForBases(): Unit = {
@@ -136,20 +136,16 @@ class GatherMinerals(universe: Universe) extends AIModule(universe) {
         new GatherAtBase(base, minerals)
       }
     }
-    if (add.nonEmpty) {
       info(
         s"""
            |Added new mineral gathering job(s): ${add.mkString(" & ")}
-       """.stripMargin)
-    }
-
-    gatheringJobs ++= add
+       """.stripMargin, add.nonEmpty)
   }
 
   class GatherAtBase(base: Base, minerals: MineralPatchGroup) extends Employer[WorkerUnit](universe) {
     emp =>
 
-    def ordersForTick = {
+    def onTick(): Unit = {
       minerals.tick()
       val missing = idealNumberOfWorkers - teamSize
       if (missing > 0) {
@@ -165,8 +161,6 @@ class GatherMinerals(universe: Universe) extends AIModule(universe) {
         }
         jobs.foreach(assignJob_!)
       }
-
-      Micro.MiningOrganization.orders
     }
 
     private def idealNumberOfWorkers = Micro.MiningOrganization.idealNumberOfWorkers
@@ -182,8 +176,8 @@ class GatherMinerals(universe: Universe) extends AIModule(universe) {
         private val miningTeam = ArrayBuffer.empty[GatherMineralsAtPatch]
         override def toString: String = s"(Mined) $patch"
         def hasOpenSpot: Boolean = miningTeam.size < estimateRequiredWorkers
-        def openSpotCount = estimateRequiredWorkers - miningTeam.size
         def estimateRequiredWorkers = 2
+        def openSpotCount = estimateRequiredWorkers - miningTeam.size
         def orders = miningTeam.flatMap(_.ordersForTick)
 
         def lockToPatch_!(job: GatherMineralsAtPatch): Unit = {
@@ -277,10 +271,11 @@ class GatherMinerals(universe: Universe) extends AIModule(universe) {
 
       object MiningOrganization {
         private val assignments = mutable.HashMap.empty[MineralPatch, MinedPatch]
-        def orders = assignments.valuesIterator.flatMap(_.orders)
+
         minerals.patches.foreach { mp =>
           assignments.put(mp, new MinedPatch(mp))
         }
+
         def findBestPatch(worker: WorkerUnit) = {
           val maxFreeSlots = assignments.iterator.map(_._2.openSpotCount).max
           val notFull = assignments.filter(_._2.openSpotCount == maxFreeSlots)

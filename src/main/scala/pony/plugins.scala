@@ -69,7 +69,7 @@ class UnitJobRenderer(override val universe: Universe) extends AIPlugIn with Has
 
   override protected def tickPlugIn(): Unit = {
     lazyWorld.debugger.debugRender { renderer =>
-      unitManager.allJobsByUnit[Mobile].foreach { job =>
+      unitManager.allJobsByUnitType[Mobile].foreach { job =>
         renderer.drawTextAtUnit(job.unit, job.shortDebugString, 1)
       }
     }
