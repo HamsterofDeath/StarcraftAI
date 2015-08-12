@@ -207,7 +207,6 @@ class Units(game: Game) {
   import scala.collection.JavaConverters._
 
   def mine = all.filter(_.nativeUnit.getPlayer == game.self())
-  def all = knownUnits.valuesIterator
   def minerals = allByType[MineralPatch]
   def allByType[T: Manifest]: Iterator[T] = {
     val lookFor = manifest[T].runtimeClass
@@ -215,6 +214,7 @@ class Units(game: Game) {
       lookFor.isAssignableFrom(e.getClass)
     }.map(_.asInstanceOf[T])
   }
+  def all = knownUnits.valuesIterator
   def tick(): Unit = {
     if (initial) {
       initial = false
@@ -225,6 +225,7 @@ class Units(game: Game) {
 
   private def init(): Unit = {
     game.getMinerals.asScala.foreach {addUnit}
+    game.getGeysers.asScala.foreach {addUnit}
   }
 
   private def addUnit(u: bwapi.Unit): Unit = {

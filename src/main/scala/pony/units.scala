@@ -282,6 +282,7 @@ object UnitWrapper {
 
 
   def lift(unit: APIUnit) = {
+    trace(s"Detected unit of type ${unit.getType}")
     mappingRules.get(unit.getType) match {
       case Some((mapper, _)) => mapper(unit)
       case None =>
