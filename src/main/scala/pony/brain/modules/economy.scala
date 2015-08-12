@@ -90,10 +90,10 @@ class ProvideNewSupply(universe: Universe) extends OrderlessAIModule[WorkerUnit]
   }
 }
 
-class ProvideNewUnits(universe: Universe) extends AIModule[UnitFactory](universe) {
+class ProvideNewUnits(universe: Universe) extends OrderlessAIModule[UnitFactory](universe) {
   self =>
 
-  override def ordersForTick: Traversable[UnitOrder] = {
+  override def onTick(): Unit = {
     unitManager.failedToProvideFlat.flatMap { req =>
       trace(s"Trying to satisfy $req somehow")
       val wantedType = req.typeOfRequestedUnit
@@ -114,7 +114,7 @@ class ProvideNewUnits(universe: Universe) extends AIModule[UnitFactory](universe
                     case suc: ResourceApprovalSuccess =>
                       val order = new TrainUnit(any.onlyOne, typeFixed, self, suc)
                       assignJob_!(order)
-                      order.ordersForTick
+                      Nil
                     case _ =>
                       req.clearableInNextTick_!()
                       Nil
@@ -190,7 +190,6 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
         def hasOpenSpot: Boolean = miningTeam.size < estimateRequiredWorkers
         def estimateRequiredWorkers = 2
         def openSpotCount = estimateRequiredWorkers - miningTeam.size
-        def orders = miningTeam.flatMap(_.ordersForTick)
 
         def lockToPatch_!(job: GatherMineralsAtPatch): Unit = {
           info(s"Added ${job.unit} to mining team of $patch")
@@ -262,8 +261,10 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
               ReturningMinerals -> returnDelivery
 
             case ReturningMineralsAfterInterruption if myWorker.isCarryingMinerals && !myWorker.isMoving =>
+              noCommandsForTicks_!(10)
               ReturningMineralsAfterInterruption -> returnDelivery
             case ReturningMineralsAfterInterruption if myWorker.isCarryingMinerals =>
+              noCommandsForTicks_!(10)
               ReturningMinerals -> returnDelivery
 
             case ReturningMinerals if myWorker.isCarryingMinerals =>

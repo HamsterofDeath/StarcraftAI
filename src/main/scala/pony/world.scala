@@ -376,11 +376,11 @@ class AnalyzedMap(game: Game) {
     0 until sizeX / 4 map { x =>
       0 until sizeY / 4 map { y =>
         if (!game.isBuildable(x, y)) {
-          bits += x + (sizeX * y)
+          bits += x + (sizeX / 4 * y)
         }
       }
     }
-    new Grid2D(sizeX, sizeY, bits)
+    new Grid2D(sizeX / 4, sizeY / 4, bits)
   }
 
   val buildableGridZoomed = {

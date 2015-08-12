@@ -85,10 +85,10 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
     val removeUs = {
       val done = assignments.filter { case (_, job) => job.isFinished }.values
       val failed = assignments.filter { case (_, job) => job.hasFailed }.values
-      trace(s"${failed.size} jobs failed, putting units on the market again")
+      debug(s"${failed.size} jobs failed, putting units on the market again", failed.nonEmpty)
       (done ++ failed).toVector
     }
-    info(s"Cleaning up ${removeUs.size} finished/failed jobs", removeUs.nonEmpty)
+    debug(s"Cleaning up ${removeUs.size} finished/failed jobs", removeUs.nonEmpty)
 
     removeUs.foreach { job =>
       job.unit match {
@@ -319,9 +319,10 @@ class Employer[T <: WrapsUnit : Manifest](override val universe: Universe) exten
 
 abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: T, val priority: Priority)
   extends HasUniverse {
-  override val universe     = employer.universe
-  private  val creationTick = currentTick
-  private  val listeners    = ArrayBuffer.empty[JobFinishedListener[T]]
+  override val universe           = employer.universe
+  private  val creationTick       = currentTick
+  private  val listeners          = ArrayBuffer.empty[JobFinishedListener[T]]
+  private  var noCommandsForTicks = 0
   def onTick(): Unit = {
     unit.onTick(universe)
   }
@@ -329,15 +330,25 @@ abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: 
   def shortDebugString: String
   def age = currentTick - creationTick
   def isIdle: Boolean = false
-  def ordersForTick: Seq[UnitOrder]
+  def ordersForThisTick = {
+    if (noCommandsForTicks > 0) {
+      noCommandsForTicks -= 1
+      Nil
+    } else {
+      ordersForTick
+    }
+  }
+  def noCommandsForTicks_!(n: Int): Unit = {
+    noCommandsForTicks = n
+  }
   override def toString: String = s"${getClass.className} of $unit of $employer"
   def isFinished: Boolean
   def onFinish(): Unit = {
     listeners.foreach(_.onFinish())
   }
   def listen_!(listener: JobFinishedListener[T]): Unit = listeners += listener
-
   def hasFailed: Boolean = false
+  protected def ordersForTick: Seq[UnitOrder]
 }
 
 trait IssueOrderNTimes[T <: WrapsUnit] extends UnitWithJob[T] {
@@ -610,7 +621,7 @@ object UnitJobRequests {
 class OrderBridge(universe: Universe) extends AIModule[Controllable](universe) {
   override def ordersForTick: Traversable[UnitOrder] = {
     unitManager.allJobsByUnitType[Controllable].flatMap { job =>
-      job.ordersForTick
+      job.ordersForThisTick
     }
   }
 }

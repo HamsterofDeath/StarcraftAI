@@ -30,7 +30,7 @@ trait BackgroundComputationResult[T <: WrapsUnit] {
 
   def jobs: Traversable[UnitWithJob[T]]
 
-  def orders = jobs.flatMap(_.ordersForTick)
+  def orders = jobs.flatMap(_.ordersForThisTick)
   def afterComputation(): Unit
   def repeatOrderIssue: Boolean
 }
@@ -50,7 +50,7 @@ object BackgroundComputationResult {
     override def jobs = myJobs
     override def repeatOrderIssue = checkValidityNow()
     override def afterComputation() = afterComputationDone()
-    override def orders = jobs.flatMap(_.ordersForTick)
+    override def orders = jobs.flatMap(_.ordersForThisTick)
   }
 }
 

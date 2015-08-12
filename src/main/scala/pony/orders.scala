@@ -83,7 +83,8 @@ object Orders {
   }
   case class ReturnMinerals(unit: WorkerUnit, to: MainBuilding) extends UnitOrder {
     override def issueOrderToGame(): Unit = {
-      unit.nativeUnit.move(to.nativeMapPosition)
+      // for some reason, other commands are not reliable
+      unit.nativeUnit.returnCargo()
     }
 
     override def renderDebug(renderer: Renderer): Unit = {
