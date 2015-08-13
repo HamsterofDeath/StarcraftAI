@@ -15,6 +15,7 @@ object ConcoctedAI {
     .addPlugin(new UnitJobRenderer(mainAi.universe))
     .addPlugin(new StatsRenderer(mainAi.universe))
     .addPlugin(new BlockedBuildingSpotsRenderer(mainAi.universe))
+    .addPlugin(new ChokePointRenderer(mainAi.universe))
     .addPlugin(new DebugHelper(mainAi))
   }
 }

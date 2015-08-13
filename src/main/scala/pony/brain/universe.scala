@@ -9,4 +9,5 @@ trait Universe {
   def unitManager: UnitManager
   def units: Units
   def mapsLayers: MapLayers
+  def strategicMap: StrategicMap
 }

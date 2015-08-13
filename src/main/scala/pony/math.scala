@@ -1,5 +1,8 @@
 package pony
 
+import java.util.concurrent.ConcurrentHashMap
+import java.util.function.Function
+
 import bwapi.{Position, TilePosition}
 
 trait HasXY {
@@ -29,8 +32,18 @@ case class MapTilePosition(x: Int, y: Int) extends HasXY {
 object MapTilePosition {
   val max    = 256 * 4
   val points = Array.tabulate(max, max)((x, y) => MapTilePosition(x, y))
+  private val strange  = new ConcurrentHashMap[(Int, Int), MapTilePosition]
+  private val computer = new Function[(Int, Int), MapTilePosition] {
+    override def apply(t: (Int, Int)) = MapTilePosition(t._1, t._2)
+  }
   def shared(xy: (Int, Int)): MapTilePosition = shared(xy._1, xy._2)
-  def shared(x: Int, y: Int): MapTilePosition = points(x)(y)
+  def shared(x: Int, y: Int): MapTilePosition =
+    if (inRange(x, y))
+      points(x)(y)
+    else {
+      strange.computeIfAbsent((x, y), computer)
+    }
+  private def inRange(x: Int, y: Int) = x >= 0 && y >= 0 && x < max && y < max
 }
 
 case class Size(x: Int, y: Int) extends HasXY {
@@ -51,6 +64,7 @@ object Size {
 case class Area(upperLeft: MapTilePosition, sizeOfArea: Size) {
   val lowerRight = upperLeft.movedBy(sizeOfArea)
   val center     = MapPosition((upperLeft.mapX + lowerRight.mapX) / 2, (upperLeft.mapY + lowerRight.mapY) / 2)
+  def anyTile = upperLeft
   def closestDirectConnection(elem: StaticallyPositioned) = {
     // TODO optimize
     val from = outline.minBy { p =>

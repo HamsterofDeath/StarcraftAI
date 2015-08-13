@@ -37,6 +37,7 @@ trait AIAPI {
     catch {
       case t: Throwable =>
         t.printStackTrace()
+        System.exit(0)
     }
   }
 
@@ -84,13 +85,11 @@ trait AIPlugIn {
   private var myWorld: DefaultWorld = _
 
   def debugger = lazyWorld.debugger
-
-  def lazyWorld = myWorld
-
   def queueOrder(order: UnitOrder): Unit = {
     orders.queue_!(order)
   }
   def orders = lazyWorld.orderQueue
+  def lazyWorld = myWorld
   def setWorld_!(world: DefaultWorld): Unit = {
     this.myWorld = world
   }

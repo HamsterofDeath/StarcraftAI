@@ -3,6 +3,10 @@ package pony
 import bwapi.Game
 
 class Renderer(game: Game, private var color: bwapi.Color) {
+  def drawLine(from: MapTilePosition, to: MapTilePosition): Unit = {
+    game.drawLineMap(from.mapX, from.mapY, to.mapX, to.mapY, color)
+  }
+
   def drawTextOnScreen(text: String, row: Int = 0): Unit = {
     game.drawTextScreen(10, 10 + row * 10, text)
   }

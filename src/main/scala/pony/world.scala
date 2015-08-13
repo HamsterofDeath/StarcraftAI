@@ -140,6 +140,8 @@ class DefaultWorld(game: Game) extends WorldListener with WorldEventDispatcher {
 
   // these must be initialized after the first tick. making them lazy solves this
   lazy val mineralPatches = new MineralAnalyzer(map, units)
+  lazy val strategicMap   = new StrategicMap(mineralPatches.resourceAreas, map.walkableGrid)
+
   val map        = new AnalyzedMap(game)
   val units      = new Units(game)
   val debugger   = new Debugger(game)
@@ -170,13 +172,15 @@ class DefaultWorld(game: Game) extends WorldListener with WorldEventDispatcher {
 }
 
 class Debugger(game: Game) {
-  private val debugging = true
-  private val renderer  = new Renderer(game, Color.Green)
+  private val debugging  = true
+  private val renderer   = new Renderer(game, Color.Green)
+  private var countTicks = 0
   def faster(): Unit = {
     game.setLocalSpeed(3)
   }
   def debugRender(whatToDo: Renderer => Any): Unit = {
-    if (debugging) {
+    countTicks += 1
+    if (debugging && countTicks > 5) {
       whatToDo(renderer)
     }
   }
@@ -237,11 +241,19 @@ class Units(game: Game) {
   }
 }
 
-class Grid2D(val cols: Int, val rows: Int, bitSet: collection.Set[Int]) {
-
-  lazy val areas = {
-    new SimplePathFinder(this).findAreas
+class Grid2D(val cols: Int, val rows: Int, bitSet: collection.Set[Int], containsBlocked: Boolean = true) {
+  private lazy val lazyAreas = new SimplePathFinder(this).findAreas
+  def minAreaSize(i: Int) = {
+    val mut = mutableCopy
+    areas.filter(_.allContained.size < i).foreach { area =>
+      area.allContained.foreach(mut.block_!)
+    }
+    mut.asReadOnly
   }
+  def allContained = allBlocked
+  def allBlocked = bitSet.iterator.map(index => MapTilePosition(index % cols, index / rows))
+  def mutableCopy = new MutableGrid2D(cols, rows, mutable.BitSet.empty ++ bitSet)
+  def containedCount = bitSet.size
   def free(position: MapTilePosition, area: Size): Boolean = {
     area.points.forall { p =>
       free(p.movedBy(position))
@@ -259,30 +271,53 @@ class Grid2D(val cols: Int, val rows: Int, bitSet: collection.Set[Int]) {
     }
     new Grid2D(subCols, subRows, bits)
   }
+  def free(x: Int, y: Int): Boolean = {
+    val coord = x + y * cols
+    if (containsBlocked) !bitSet(coord) else bitSet(coord)
+  }
   def blocked = size - walkable
   def size = cols * rows
   def walkable = bitSet.size
   def blocked(x: Int, y: Int): Boolean = !free(x, y)
   def blocked(p: MapTilePosition): Boolean = !free(p)
   def free(p: MapTilePosition): Boolean = free(p.x, p.y)
-  def free(x: Int, y: Int): Boolean = !bitSet(x + y * cols)
-  def all = new Traversable[MapTilePosition] {
+  def contains(x: Int, y: Int): Boolean = !free(x, y)
+  def contains(p: MapTilePosition): Boolean = !free(p)
+  def all: Traversable[MapTilePosition] = new Traversable[MapTilePosition] {
     override def foreach[U](f: (MapTilePosition) => U): Unit = {
       for (x <- 0 until cols; y <- 0 until rows) {
         f(MapTilePosition.shared(x, y))
       }
     }
   }
-  def mutableCopy = new MutableGrid2D(cols, rows, mutable.BitSet.empty ++ bitSet)
   def areaCount = areas.size
+  def areas = lazyAreas
 }
 
 class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet) extends Grid2D(cols, rows, bitSet) {
+  def areaSize(anyContained: MapTilePosition) = {
+    val isFree = free(anyContained)
+    val on = if (isFree) this else reverseView
+    AreaHelper.freeAreaSize(anyContained, on)
+  }
+  def reverseView: Grid2D = new Grid2D(cols, rows, bitSet, false)
+  def anyFree = all.find(free)
 
-  override lazy val areas = throw new UnsupportedOperationException(s"Sorry, mutable subclass cannot do that")
+  override def areas = new SimplePathFinder(this).findAreas
 
   def blockLine_!(a: MapTilePosition, b: MapTilePosition): Unit = {
-    SimplePathFinder.traverseTilesOfLine(a, b, block_!)
+    AreaHelper.traverseTilesOfLine(a, b, block_!)
+  }
+  def block_!(x: Int, y: Int): Unit = {
+    if (inArea(x, y)) {
+      bitSet += (x + y * cols)
+    }
+  }
+  def inArea(x: Int, y: Int) = x >= 0 && y >= 0 && x < cols && y < rows
+  def blockLineRelative_!(center: MapTilePosition, from: HasXY, to: HasXY): Unit = {
+    val absoluteFrom = center.movedBy(from)
+    val absoluteTo = center.movedBy(to)
+    AreaHelper.traverseTilesOfLine(absoluteFrom, absoluteTo, block_!)
   }
   def asReadOnly: Grid2D = this
   def or_!(other: MutableGrid2D) = {
@@ -293,13 +328,14 @@ class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet) extends Grid2D
   def block_!(area: Area): Unit = {
     area.tiles.foreach { p => block_!(p.x, p.y) }
   }
-  def block_!(x: Int, y: Int): Unit = {
-    bitSet += (x + y * cols)
+  def block_!(tile: MapTilePosition): Unit = {
+    block_!(tile.x, tile.y)
   }
 }
 
 class MineralAnalyzer(map: AnalyzedMap, myUnits: Units) {
-  val groups = {
+
+  val groups        = {
     val patchGroups = ArrayBuffer.empty[MineralPatchGroup]
     val pf = new SimplePathFinder(map.walkableGrid)
     myUnits.minerals.foreach { mp =>
@@ -315,6 +351,11 @@ class MineralAnalyzer(map: AnalyzedMap, myUnits: Units) {
     }
     patchGroups.toSeq
   }
+  val resourceAreas = {
+    groups.map { patchGroup => ResourceArea(patchGroup, Nil) }
+  }
+
+
   def nearestTo(position: MapTilePosition) = {
     if (groups.nonEmpty)
       Some(groups.minBy(_.center.distanceTo(position)))
@@ -368,7 +409,7 @@ class AnalyzedMap(game: Game) {
         }
       }
     }
-    new Grid2D(sizeX, sizeY, bits)
+    new Grid2D(sizeX, sizeY, bits).minAreaSize(6)
   }
 
   val buildableGrid = {
@@ -380,7 +421,7 @@ class AnalyzedMap(game: Game) {
         }
       }
     }
-    new Grid2D(sizeX / 4, sizeY / 4, bits)
+    new Grid2D(sizeX / 4, sizeY / 4, bits).minAreaSize(6)
   }
 
   val buildableGridZoomed = {
@@ -405,7 +446,7 @@ class AnalyzedMap(game: Game) {
     val debugThis = walkableGrid
     0 until debugThis.rows map { x =>
       0 until debugThis.cols map { y =>
-        val index = areas.indexWhere(_.contains(x + y * debugThis.cols))
+        val index = areas.indexWhere(_.contains(x, y))
         if (index == -1) " " else index.toString
       } mkString
     } mkString "\n"

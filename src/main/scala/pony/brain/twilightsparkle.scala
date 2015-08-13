@@ -19,6 +19,7 @@ trait HasUniverse {
   def mapLayers = universe.mapsLayers
   def nativeGame = world.nativeGame
   def world = universe.world
+  def strategicMap = universe.strategicMap
   def ifNth(nth: Int)(u: => Unit) = {
     if (universe.currentTick % nth == 0) {
       u
@@ -139,6 +140,7 @@ class TwilightSparkle(world: DefaultWorld) {
     override def currentTick = world.tickCount
     override def mapsLayers = self.maps
     override def units = world.units
+    override def strategicMap = world.strategicMap
   }
 
   private val bases     = new Bases(world)

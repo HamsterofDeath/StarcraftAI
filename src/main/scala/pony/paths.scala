@@ -17,12 +17,12 @@ class SimplePathFinder(baseOn: Grid2D) {
         }
       }
     }
-    areas.toSeq
+    areas.toSeq.map(data => new Grid2D(baseOn.cols, baseOn.rows, data))
   }
 
   def floodFill(start: MapTilePosition): mutable.BitSet = {
     val ret = mutable.BitSet.empty
-    SimplePathFinder.traverseTilesOfArea(start, (x, y) => ret += x + y * baseOn.cols, baseOn.cols, baseOn.rows, baseOn)
+    AreaHelper.traverseTilesOfArea(start, (x, y) => ret += x + y * baseOn.cols, baseOn)
     ret
   }
 
@@ -31,13 +31,13 @@ class SimplePathFinder(baseOn: Grid2D) {
   }
 
   def directLineOfSight(a: MapTilePosition, b: MapTilePosition): Boolean = {
-    SimplePathFinder.traverseTilesOfLine(a, b, (x, y) => {
+    AreaHelper.traverseTilesOfLine(a, b, (x, y) => {
       if (baseOn.blocked(x, y)) Some(true) else None
     }, true)
   }
 }
 
-object SimplePathFinder {
+object AreaHelper {
 
   def traverseTilesOfLine[T](a: MapTilePosition, b: MapTilePosition, f: (Int, Int) => T): Unit = {
     traverseTilesOfLine(a, b, (x, y) => {f(x, y); None}, None)
@@ -95,8 +95,17 @@ object SimplePathFinder {
     }
     orElse
   }
-  def traverseTilesOfArea(start: MapTilePosition, f: (Int, Int) => Unit, sizeX: Int, sizeY: Int,
-                          baseOn: Grid2D): Unit = {
+  def freeAreaSize(start: MapTilePosition, baseOn: Grid2D) = {
+    var count = 0
+    traverseTilesOfArea(start, (x, y) => {
+      count += 1
+    }, baseOn)
+    count
+  }
+
+  def traverseTilesOfArea(start: MapTilePosition, f: (Int, Int) => Unit, baseOn: Grid2D): Unit = {
+    val sizeX = baseOn.cols
+    val sizeY = baseOn.rows
     if (baseOn.free(start)) {
       val taken = mutable.HashSet.empty[MapTilePosition]
       val open = mutable.ListBuffer.empty[MapTilePosition]

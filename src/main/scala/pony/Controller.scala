@@ -13,6 +13,7 @@ object Controller {
     }
     catch {
       case ex: Throwable => ex.printStackTrace()
+        System.exit(0)
     }
   }
   def hookOnToBroodwar(aiGenerator:(DefaultWorld) => AIAPI) = {

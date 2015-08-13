@@ -86,6 +86,8 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
       val done = assignments.filter { case (_, job) => job.isFinished }.values
       val failed = assignments.filter { case (_, job) => job.hasFailed }.values
       debug(s"${failed.size} jobs failed, putting units on the market again", failed.nonEmpty)
+      trace(s"Failed: ${failed.mkString(", ")}")
+      trace(s"Finished: ${done.mkString(", ")}")
       (done ++ failed).toVector
     }
     debug(s"Cleaning up ${removeUs.size} finished/failed jobs", removeUs.nonEmpty)

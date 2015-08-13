@@ -20,6 +20,18 @@ class FastSpeed extends AIPluginRunOnce {
   }
 }
 
+class ChokePointRenderer(override val universe: Universe) extends AIPlugIn with HasUniverse {
+  override protected def tickPlugIn(): Unit = {
+    lazyWorld.debugger.debugRender { renderer =>
+      strategicMap.domains.foreach { case (choke, _) =>
+        choke.lines.foreach { line =>
+          renderer.in_!(Color.Green).drawLine(line.absoluteFrom, line.absoluteTo)
+        }
+      }
+    }
+  }
+}
+
 class WalkableRenderer extends AIPlugIn {
   override protected def tickPlugIn(): Unit = {
     lazyWorld.debugger.debugRender { renderer =>
@@ -81,7 +93,6 @@ class StatsRenderer(override val universe: Universe) extends AIPlugIn with HasUn
   override val lazyWorld       = universe.world
 
   override protected def tickPlugIn(): Unit = {
-    resources.stats
     lazyWorld.debugger.debugRender { renderer =>
       val debugString = ArrayBuffer.empty[String]
 
@@ -115,16 +126,17 @@ class StatsRenderer(override val universe: Universe) extends AIPlugIn with HasUn
       val df = new DecimalFormat("#0.00")
 
       debugString ++= {
-        universe.bases.bases.map { base =>
-          val mins = base.myMineralGroup.get
-          val gatherJob = unitManager.allJobsByType[GatherMineralsAtSinglePatch]
-                          .filter(e => mins.contains(e.targetPatch))
-          val stats = resources.stats
-          val minsGot = stats.minerals
-          val minsGotPerWorker = df.format(minsGot.toDouble / gatherJob.size)
-          s"Base ${base.mainBuilding.unitIdText}: ${mins.value}m, ${
-            gatherJob.size
-          } workers, $minsGot income ($minsGotPerWorker avg)"
+        universe.bases.bases.flatMap { base =>
+          base.myMineralGroup.map { mins =>
+            val gatherJob = unitManager.allJobsByType[GatherMineralsAtSinglePatch]
+                            .filter(e => mins.contains(e.targetPatch))
+            val stats = resources.stats
+            val minsGot = stats.minerals
+            val minsGotPerWorker = df.format(minsGot.toDouble / gatherJob.size)
+            s"Base ${base.mainBuilding.unitIdText}: ${mins.value}m, ${
+              gatherJob.size
+            } workers, $minsGot income ($minsGotPerWorker avg)"
+          }
         }
       }
 
