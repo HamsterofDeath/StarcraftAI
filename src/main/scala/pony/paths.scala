@@ -44,13 +44,17 @@ class AreaHelper(source: Grid2D) {
   }
 
   def directLineOfSight(a: MapTilePosition, b: MapTilePosition): Boolean = {
-    AreaHelper.traverseTilesOfLine(a, b, (x, y) => {
-      if (baseOn.blocked(x, y)) Some(true) else None
-    }, true)
+    AreaHelper.directLineOfSight(a, b, baseOn)
   }
 }
 
 object AreaHelper {
+
+  def directLineOfSight(a: MapTilePosition, b: MapTilePosition, grid2D: Grid2D): Boolean = {
+    AreaHelper.traverseTilesOfLine(a, b, (x, y) => {
+      if (grid2D.blocked(x, y)) Some(true) else None
+    }, true)
+  }
 
   def traverseTilesOfLine[T](a: MapTilePosition, b: MapTilePosition, f: (Int, Int) => T): Unit = {
     traverseTilesOfLine(a, b, (x, y) => {f(x, y); None}, None)
@@ -165,7 +169,7 @@ object AreaHelper {
 }
 
 class MapLayers(override val universe: Universe) extends HasUniverse {
-  private val rawMapWalk                = world.map.walkableGridZoomed
+  private val rawMapWalk                = world.map.walkableGrid
   private val rawMapBuild               = world.map.buildableGrid
   private val plannedBuildings          = world.map.empty.zoomedOut.mutableCopy
   private var justBuildings             = evalOnlyBuildings
@@ -174,7 +178,11 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   private var withBuildings             = evalWithBuildings
   private var withBuildingsAndResources = evalWithBuildingsAndResources
   private var withEverything            = evalEverything
+
+  def rawWalkableMap = rawMapWalk
+
   def blockedByPlannedBuildings = plannedBuildings.asReadOnly
+
   def freeBuildingTiles = withEverything.asReadOnly
 
   def blockedByBuildingTiles = justBuildings.asReadOnly
@@ -242,7 +250,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
 
 class ConstructionSiteFinder(universe: Universe) {
   // initialisation happens in the main thread
-  private val tryOnThis = universe.mapsLayers.freeBuildingTiles.mutableCopy
+  private val tryOnThis = universe.mapLayers.freeBuildingTiles.mutableCopy
   private val helper    = new GeometryHelpers(universe.world.map.sizeX, universe.world.map.sizeY)
 
   def findSpotFor[T <: Building](near: MapTilePosition, building: Class[_ <: T]) = {

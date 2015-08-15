@@ -16,7 +16,7 @@ trait HasUniverse {
   def resources = universe.resources
   def bases = universe.bases
   def currentTick = universe.currentTick
-  def mapLayers = universe.mapsLayers
+  def mapLayers = universe.mapLayers
   def nativeGame = world.nativeGame
   def world = universe.world
   def strategicMap = universe.strategicMap
@@ -138,7 +138,7 @@ class TwilightSparkle(world: DefaultWorld) {
     override def resources: ResourceManager = self.resources
     override def unitManager: UnitManager = self.unitManager
     override def currentTick = world.tickCount
-    override def mapsLayers = self.maps
+    override def mapLayers = self.maps
     override def units = world.units
     override def strategicMap = world.strategicMap
   }
@@ -153,6 +153,7 @@ class TwilightSparkle(world: DefaultWorld) {
     new ProvideNewBuildings(universe),
     new ProvideFactories(universe),
     new ProvideArmy(universe),
+    new JobReAssignments(universe),
     new OrderBridge(universe),
     AIModule.noop(universe)
   )

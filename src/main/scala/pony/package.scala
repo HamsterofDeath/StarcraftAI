@@ -66,14 +66,17 @@ package object pony {
       buff.remove(where)
     }
   }
-
+  implicit class RichBoolean(val b: Boolean) extends AnyVal {
+    def not = !b
+    def ifElse[T](ifTrue: T, ifFalse: T) = if (b) ifTrue else ifFalse
+  }
   case object Trace extends LogLevel(1)
   case object Debug extends LogLevel(2)
   case object Info extends LogLevel(3)
+
   case object Warn extends LogLevel(4)
 
   case object Error extends LogLevel(5)
 
   case object Off extends LogLevel(6)
-
 }

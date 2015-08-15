@@ -9,10 +9,12 @@ trait HasXY {
   def x: Int
   def y: Int
 
-  def distanceTo(other: HasXY) = {
+  def distanceTo(other: HasXY) = math.sqrt(distanceToSquared(other))
+
+  def distanceToSquared(other: HasXY) = {
     val xDiff = x - other.x
     val yDiff = y - other.y
-    math.sqrt(xDiff * xDiff + yDiff * yDiff)
+    xDiff * xDiff + yDiff * yDiff
   }
 
 }
@@ -64,15 +66,19 @@ object Size {
 case class Area(upperLeft: MapTilePosition, sizeOfArea: Size) {
   val lowerRight = upperLeft.movedBy(sizeOfArea)
   val center     = MapPosition((upperLeft.mapX + lowerRight.mapX) / 2, (upperLeft.mapY + lowerRight.mapY) / 2)
+  def distanceTo(tilePosition: MapTilePosition) = {
+    // TODO optimize
+    outline.minBy(_.distanceToSquared(tilePosition)).distanceTo(tilePosition)
+  }
   def anyTile = upperLeft
   def closestDirectConnection(elem: StaticallyPositioned) = {
     // TODO optimize
     val from = outline.minBy { p =>
-      elem.area.outline.minBy(_.distanceTo(p)).distanceTo(p)
+      elem.area.outline.minBy(_.distanceToSquared(p)).distanceTo(p)
     }
 
     val to = elem.area.outline.minBy { p =>
-      outline.minBy(_.distanceTo(p)).distanceTo(p)
+      outline.minBy(_.distanceToSquared(p)).distanceTo(p)
     }
     from -> to
   }

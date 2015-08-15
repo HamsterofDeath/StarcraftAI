@@ -246,8 +246,10 @@ class Units(game: Game) {
 class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
              protected val containsBlocked: Boolean = true) {
   self =>
-
   private lazy val lazyAreas = new AreaHelper(this).findFreeAreas
+  def areaWhichContains(tile: MapTilePosition) = areas.find(_.contains(tile))
+  def contains(p: MapTilePosition): Boolean = !free(p)
+  def connectedByLine(a: MapTilePosition, b: MapTilePosition) = AreaHelper.directLineOfSight(a, b, this)
   def blockedCount = size - freeCount
   def freeCount = if (containsBlocked) size - areaDataBitSet.size else areaDataBitSet.size
   def mkString: String = mkString('x')
@@ -282,13 +284,17 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
   }
   def allContained = allBlocked
   def allBlocked = if (containsBlocked) bitSetToTiles else allIndexes.filterNot(areaDataBitSet).map(indexToTile)
+  private def indexToTile(index: Int) = MapTilePosition.shared(index % cols, index / rows)
+  private def bitSetToTiles = areaDataBitSet.iterator.map(index => MapTilePosition.shared(index % cols, index / rows))
   def mutableCopy = new MutableGrid2D(cols, rows, mutable.BitSet.empty ++ areaDataBitSet)
+  def areas = lazyAreas
   def containedCount = areaDataBitSet.size
   def free(position: MapTilePosition, area: Size): Boolean = {
     area.points.forall { p =>
       free(p.movedBy(position))
     }
   }
+  def free(p: MapTilePosition): Boolean = free(p.x, p.y)
   def zoomedOut = {
     val bits = mutable.BitSet.empty
     val subCols = cols / 4
@@ -306,11 +312,7 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
   def blocked(x: Int, y: Int): Boolean = !free(x, y)
   def blocked(p: MapTilePosition): Boolean = !free(p)
   def contains(x: Int, y: Int): Boolean = !free(x, y)
-  def contains(p: MapTilePosition): Boolean = !free(p)
-  def free(p: MapTilePosition): Boolean = free(p.x, p.y)
   def allFree = if (containsBlocked) allIndexes.filterNot(areaDataBitSet).map(indexToTile) else bitSetToTiles
-  private def indexToTile(index: Int) = MapTilePosition.shared(index % cols, index / rows)
-  private def bitSetToTiles = areaDataBitSet.iterator.map(index => MapTilePosition.shared(index % cols, index / rows))
   def all: Iterator[MapTilePosition] = new Iterator[MapTilePosition] {
     private var index = 0
     private val max   = self.size
@@ -321,9 +323,7 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
       ret
     }
   }
-
   def areaCount = areas.size
-  def areas = lazyAreas
 }
 
 class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet) extends Grid2D(cols, rows, bitSet) {
@@ -355,18 +355,6 @@ class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet) extends Grid2D
   def block_!(area: Area): Unit = {
     area.tiles.foreach { p => block_!(p.x, p.y) }
   }
-  def block_!(x: Int, y: Int): Unit = {
-    if (inArea(x, y)) {
-      val where = xyToIndex(x, y)
-      if (containsBlocked) {
-        bitSet += where
-      } else {
-        bitSet -= where
-      }
-    }
-  }
-  private def xyToIndex(x: Int, y: Int) = x + y * cols
-  def inArea(x: Int, y: Int) = x >= 0 && y >= 0 && x < cols && y < rows
   def free_!(area: Area): Unit = {
     area.tiles.foreach { p => free_!(p.x, p.y) }
   }
@@ -380,8 +368,20 @@ class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet) extends Grid2D
       }
     }
   }
+  private def xyToIndex(x: Int, y: Int) = x + y * cols
+  def inArea(x: Int, y: Int) = x >= 0 && y >= 0 && x < cols && y < rows
   def block_!(tile: MapTilePosition): Unit = {
     block_!(tile.x, tile.y)
+  }
+  def block_!(x: Int, y: Int): Unit = {
+    if (inArea(x, y)) {
+      val where = xyToIndex(x, y)
+      if (containsBlocked) {
+        bitSet += where
+      } else {
+        bitSet -= where
+      }
+    }
   }
 }
 

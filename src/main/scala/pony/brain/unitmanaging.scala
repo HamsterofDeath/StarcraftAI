@@ -19,6 +19,7 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
     if (reorganizeJobQueue.nonEmpty) {
       reorganizeJobQueue.remove(0)
     }
+    trace(s"${reorganizeJobQueue.size} jobs left to optimize")
     ret
   }
   def tryFindBetterEmployeeFor[T <: WrapsUnit](anyJob: CanAcceptUnitSwitch[T]): Unit = {
@@ -197,7 +198,7 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
 
   def allOfEmployer[T <: WrapsUnit](employer: Employer[T]) = byEmployer.getOrElse(employer, Set.empty)
   def allNotOfEmployer[T <: WrapsUnit](employer: Employer[T]) = byEmployer.filter(_._1 != employer)
-                                                                        .flatMap(_._2)
+                                                                .flatMap(_._2)
   def nobody = Nobody
 
   case object Nobody extends Employer[WrapsUnit](universe)
@@ -280,7 +281,6 @@ class UnitCollector[T <: WrapsUnit : Manifest](req: UnitJobRequests[T], override
       None
   }
   def typed(any: UnitWithJob[_ <: WrapsUnit]) = any.asInstanceOf[UnitWithJob[T]]
-  def priorityRule = req.priorityRule
   def hasAny = hired.nonEmpty
   def collect(unit: WrapsUnit) = {
     remainingAmountsPerRequest.find {
@@ -297,6 +297,7 @@ class UnitCollector[T <: WrapsUnit : Manifest](req: UnitJobRequests[T], override
     req.wantsUnit(unit.unit)
   }
   def hasPriorityRule = priorityRule.isDefined
+  def priorityRule = req.priorityRule
   def missingAsRequest: UnitJobRequests[T] = {
     val typesAndAmounts = remainingAmountsPerRequest.filter(_._2 > 0).map { case (req, amount) =>
       BuildUnitRequest[T](universe, req.typeOfRequestedUnit, amount, ResourceApprovalFail, Priority.Default)
@@ -466,8 +467,10 @@ class TrainUnit[F <: UnitFactory, T <: Mobile](factory: F, trainType: Class[_ <:
   override def shortDebugString: String = s"Train ${trainType.className}"
 }
 
-class ConstructBuilding[W <: WorkerUnit, B <: Building](worker: W, buildingType: Class[_ <: B], employer: Employer[W],
-                                                        val where: MapTilePosition, funding: ResourceApprovalSuccess)
+class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, buildingType: Class[_ <: B],
+                                                                   employer: Employer[W],
+                                                                   val where: MapTilePosition,
+                                                                   funding: ResourceApprovalSuccess)
   extends UnitWithJob[W](employer, worker, Priority.ConstructBuilding) with JobHasFunding[W] with CreatesUnit[W] with
           IssueOrderNTimes[W] with CanAcceptUnitSwitch[W] {
 
@@ -522,8 +525,17 @@ class ConstructBuilding[W <: WorkerUnit, B <: Building](worker: W, buildingType:
   }
 
   override def asRequest: UnitJobRequests[W] = {
-    val anyUnitRequest = AnyUnitRequest(worker.getClass, 1).withCherryPicker_! { alternative =>
-      val distance = area.distanceTo()
+    val request = AnyUnitRequest[W](worker.getClass, 1)
+    val anyUnitRequest = request.withCherryPicker_! { hijackFromThis =>
+      val altUnit = hijackFromThis.unit
+      val sameArea = mapLayers.rawWalkableMap.areaWhichContains(altUnit.currentTile) ==
+                     mapLayers.rawWalkableMap.areaWhichContains(where)
+
+      val canSee = mapLayers.rawWalkableMap.connectedByLine(altUnit.currentTile, where)
+
+      val distance = area.distanceTo(altUnit.currentTile)
+
+      PriorityChain(sameArea.ifElse(1, 0), canSee.ifElse(1, 0), -distance)
     }
     UnitJobRequests(anyUnitRequest.toSeq, employer, priority)
   }
@@ -558,11 +570,11 @@ class BusyBeingContructed[T <: WrapsUnit](unit: T, employer: Employer[T])
 case class PriorityChain(data: Vector[Double])
 object PriorityChain {
 
-  implicit         val ordByPriorities: Ordering[PriorityChain]  = Ordering.by(_.data)
-  private implicit val ord            : Ordering[Vector[Double]] = Ordering.fromLessThan { (a, b) =>
+  implicit         val ordOnPriorities       : Ordering[PriorityChain]  = Ordering.by(_.data)
+  private implicit val ordOnVectorWithDoubles: Ordering[Vector[Double]] = Ordering.fromLessThan { (a, b) =>
     assert(a.size == b.size)
     def isLess: Boolean = {
-      for (i <- 0 to a.size) {
+      for (i <- a.indices) {
         val lessThan = a(i) < b(i)
         if (lessThan) return true
       }
@@ -571,6 +583,7 @@ object PriorityChain {
     isLess
   }
   def apply(singleValue: Double): PriorityChain = PriorityChain(Vector(singleValue))
+  def apply(multiValues: Double*): PriorityChain = PriorityChain(multiValues.toVector)
 }
 
 trait UnitRequest[T <: WrapsUnit] {
@@ -595,13 +608,11 @@ trait UnitRequest[T <: WrapsUnit] {
   def onClear(): Unit = {
     onClearActions.foreach(_.onClear())
   }
-  def doOnClear_![T](u: => T) = {
-    onClearActions += new OnClearAction {
-      override def onClear(): Unit = u
-    }
+  def doOnClear_![X](u: => X) = {
+    onClearActions += (() => u)
   }
 
-  if (typeOfRequestedUnit.toUnitType.isBuilding) {
+  if (classOf[Building].isAssignableFrom(typeOfRequestedUnit)) {
     keepResourcesLocked_!()
   }
 
@@ -636,7 +647,6 @@ case class AnyFactoryRequest[T <: UnitFactory, U <: Mobile](typeOfRequestedUnit:
 trait OnClearAction {
   def onClear(): Unit
 }
-
 
 case class BuildUnitRequest[T <: WrapsUnit](universe: Universe, typeOfRequestedUnit: Class[_ <: T], amount: Int,
                                             funding: ResourceApproval, override val priority: Priority)
@@ -673,7 +683,7 @@ case class UnitJobRequests[T <: WrapsUnit : Manifest](requests: Seq[UnitRequest[
   def priorityRule: Option[RateCandidate[T]] = {
     val picker = if (requests.size == 1) requests.head.ratingFuntion else None
     picker.map { nat => new RateCandidate[T] {
-      override def giveRating(forThatOne: UnitWithJob[T]): PriorityChain = nat(forThatOne)
+      def giveRating(forThatOne: UnitWithJob[T]): PriorityChain = nat(forThatOne)
     }
     }
   }
@@ -705,8 +715,9 @@ object UnitJobRequests {
     val actualClass = manifest[T].runtimeClass.asInstanceOf[Class[T]]
     val req = AnyUnitRequest(actualClass, 1).withCherryPicker_! { w =>
       var valueOfExcuses = 0
-      if (!w.isIdle) valueOfExcuses -= 1
-      if (w.unit.isCarryingMinerals) valueOfExcuses -= 2
+      if (!w.isIdle) valueOfExcuses += 1
+      if (w.unit.isCarryingMinerals) valueOfExcuses += 2
+      if (w.unit.isInMiningProcess) valueOfExcuses += 1
       PriorityChain(valueOfExcuses)
     }
 

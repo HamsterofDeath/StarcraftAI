@@ -8,6 +8,6 @@ trait Universe {
   def resources: ResourceManager
   def unitManager: UnitManager
   def units: Units
-  def mapsLayers: MapLayers
+  def mapLayers: MapLayers
   def strategicMap: StrategicMap
 }
