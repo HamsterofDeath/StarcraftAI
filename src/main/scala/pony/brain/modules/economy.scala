@@ -193,9 +193,8 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
         private val miningTeam = ArrayBuffer.empty[GatherMineralsAtPatch]
         override def toString: String = s"(Mined) $patch"
         def hasOpenSpot: Boolean = miningTeam.size < estimateRequiredWorkers
-        def estimateRequiredWorkers = 2
         def openSpotCount = estimateRequiredWorkers - miningTeam.size
-
+        def estimateRequiredWorkers = 2 + (patch.area.distanceTo(base.mainBuilding.area) / 4).toInt
         def lockToPatch_!(job: GatherMineralsAtPatch): Unit = {
           info(s"Added ${job.unit} to mining team of $patch")
           miningTeam += job
@@ -225,6 +224,7 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
         }
         override def worker = myWorker
         override def targetPatch = miningTarget.patch
+        override def requiredWorkers: Int = miningTarget.estimateRequiredWorkers
         override def shortDebugString: String = state match {
           case States.Idle => s"Idle/${unit.nativeUnit.getOrder}"
           case States.ApproachingMinerals => "Locked"
@@ -299,10 +299,7 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
           val notFull = assignments.filter(_._2.openSpotCount == maxFreeSlots)
           if (notFull.nonEmpty) {
             val (_, patch) = notFull.minBy { case (mins, _) =>
-              val (from, to) = {
-                mins.area.closestDirectConnection(base.mainBuilding)
-              }
-              from.distanceTo(to)
+              mins.area.closestDirectConnection(base.mainBuilding).length
             }
             Some(patch)
           } else
@@ -330,4 +327,5 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
 trait GatherMineralsAtSinglePatch extends UnitWithJob[WorkerUnit] {
   def worker: WorkerUnit
   def targetPatch: MineralPatch
+  def requiredWorkers: Int
 }

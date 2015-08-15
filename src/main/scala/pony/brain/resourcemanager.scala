@@ -21,8 +21,8 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
   def stats = {
     val start = resourceHistory.head
     val now = resourceHistory.last
-    val minPlus = start.mins - start.mins
-    val gasPlus = start.gas - start.gas
+    val minPlus = now.mins - start.mins
+    val gasPlus = now.gas - start.gas
     IncomeStats(minPlus, gasPlus, resourceHistory.size)
   }
 
@@ -53,11 +53,6 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
     locked += newLock
     lockedSums.invalidate()
   }
-
-  private def myUnlockedResources = myResources - lockedResources
-
-  def lockedResources = lockedSums.get
-
   def tick(): Unit = {
     failedToProvideLastTick = failedToProvideThisTick.toVector
     failedToProvideThisTick.clear()
@@ -70,11 +65,12 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
       resourceHistory.remove(0)
     }
   }
-
   def gatheredMinerals = nativeGame.self().gatheredMinerals()
   def gatheredGas = nativeGame.self().gatheredGas()
   def currentResources = myResources
   def supplies = myUnlockedResources.supply
+  private def myUnlockedResources = myResources - lockedResources
+  def lockedResources = lockedSums.get
   def plannedSuppliesToAdd = {
     unitManager
     .selectJobs((e: ConstructBuilding[WorkerUnit, Building]) => e.typeOfBuilding == unitManager.race.supplyClass)

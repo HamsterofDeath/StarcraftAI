@@ -63,24 +63,33 @@ object Size {
   def shared(x: Int, y: Int) = sizes(x)(y)
 }
 
+case class Line(a: MapTilePosition, b: MapTilePosition) {
+  val length = a.distanceTo(b)
+}
+
 case class Area(upperLeft: MapTilePosition, sizeOfArea: Size) {
+
   val lowerRight = upperLeft.movedBy(sizeOfArea)
   val center     = MapPosition((upperLeft.mapX + lowerRight.mapX) / 2, (upperLeft.mapY + lowerRight.mapY) / 2)
   def distanceTo(tilePosition: MapTilePosition) = {
     // TODO optimize
     outline.minBy(_.distanceToSquared(tilePosition)).distanceTo(tilePosition)
   }
-  def anyTile = upperLeft
-  def closestDirectConnection(elem: StaticallyPositioned) = {
+
+  def distanceTo(area: Area) = {
+    closestDirectConnection(area).length
+  }
+  def closestDirectConnection(area: Area): Line = {
     // TODO optimize
     val from = outline.minBy { p =>
-      elem.area.outline.minBy(_.distanceToSquared(p)).distanceTo(p)
+      area.outline.minBy(_.distanceToSquared(p)).distanceTo(p)
     }
 
-    val to = elem.area.outline.minBy { p =>
+    val to = area.outline.minBy { p =>
       outline.minBy(_.distanceToSquared(p)).distanceTo(p)
     }
-    from -> to
+    Line(from, to)
+
   }
   def outline: Traversable[MapTilePosition] = {
     new Traversable[MapTilePosition] {
@@ -97,6 +106,9 @@ case class Area(upperLeft: MapTilePosition, sizeOfArea: Size) {
     }
 
   }
+  def anyTile = upperLeft
+  def closestDirectConnection(elem: StaticallyPositioned): Line =
+    closestDirectConnection(elem.area)
   def tiles: Traversable[MapTilePosition] = new Traversable[MapTilePosition] {
     override def foreach[U](f: (MapTilePosition) => U): Unit = {
       sizeOfArea.points.map { p => f(p.movedBy(upperLeft)) }

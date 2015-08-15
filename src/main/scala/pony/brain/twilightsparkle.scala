@@ -1,7 +1,6 @@
 package pony
 package brain
 
-import bwapi.Color
 import pony.brain.modules._
 
 import scala.collection.mutable.ArrayBuffer
@@ -197,13 +196,6 @@ case class Base(world: DefaultWorld, mainBuilding: MainBuilding) {
   val myMineralGroup = world.mineralPatches.nearestTo(mainBuilding.tilePosition)
 
   def tick(): Unit = {
-    world.debugger.debugRender { renderer =>
-      world.mineralPatches.groups.foreach { mpg =>
-        mpg.patches.foreach { mp =>
-          renderer.in_!(Color.Green).writeText(mp.tilePosition, mpg.patchId)
-        }
-      }
-    }
   }
 
   info(

@@ -68,7 +68,7 @@ class UnitIdRenderer extends AIPlugIn {
       renderer.in_!(Color.Green)
 
       lazyWorld.units.mineByType[Mobile].foreach { u =>
-        renderer.drawTextAtUnit(u, u.unitIdText)
+        renderer.drawTextAtMobileUnit(u, u.unitIdText)
       }
     }
   }
@@ -79,7 +79,7 @@ class UnitJobRenderer(override val universe: Universe) extends AIPlugIn with Has
   override protected def tickPlugIn(): Unit = {
     lazyWorld.debugger.debugRender { renderer =>
       unitManager.allJobsByUnitType[Mobile].foreach { job =>
-        renderer.drawTextAtUnit(job.unit, s"${job.shortDebugString} -> ${job.unit.nativeUnit.getOrder}", 1)
+        renderer.drawTextAtMobileUnit(job.unit, s"${job.shortDebugString} -> ${job.unit.nativeUnit.getOrder}", 1)
       }
     }
   }
@@ -104,7 +104,7 @@ class StatsRenderer(override val universe: Universe) extends AIPlugIn with HasUn
           s"${k.className}*${v.size}"
         }
 
-        s"Planned (funded): ${locked.mkString(", ")}"
+        s"Planned (funded): ${locked.toList.sorted.mkString(", ")}"
       }
 
       debugString += {
@@ -112,14 +112,14 @@ class StatsRenderer(override val universe: Universe) extends AIPlugIn with HasUn
           s"${k.className}*${v.size}"
         }
 
-        s"In queue (no funds): ${locked.mkString(", ")}"
+        s"In queue (no funds): ${locked.toList.sorted.mkString(", ")}"
       }
 
       debugString += {
 
         val missingUnits = unitManager.failedToProvideFlat.groupBy(_.typeOfRequestedUnit).mapValues(_.size)
         val formatted = missingUnits.map { case (unitClass, howMany) => s"${unitClass.className}/$howMany" }
-        s"Type/missing: ${formatted.mkString(", ")}"
+        s"Type/missing: ${formatted.toList.sorted.mkString(", ")}"
       }
 
       val df = new DecimalFormat("#0.00")
@@ -136,20 +136,20 @@ class StatsRenderer(override val universe: Universe) extends AIPlugIn with HasUn
               gatherJob.size
             } workers, $minsGot income ($minsGotPerWorker avg)"
           }
-        }
+        }.toList.sorted
       }
 
       debugString += {
         val formatted = unitManager.jobsByType.map { case (jobType, members) =>
           s"${jobType.className}/${members.size}"
         }
-        s"Job/units: ${formatted.mkString(", ")}"
+        s"Job/units: ${formatted.toList.sorted.mkString(", ")}"
       }
 
       debugString ++= {
         unitManager.employers.map { emp =>
           s"$emp has ${unitManager.jobsOf(emp).size} units"
-        }
+        }.toList.sorted
       }
 
 
@@ -194,6 +194,27 @@ class BlockedBuildingSpotsRenderer(override val universe: Universe) extends AIPl
       .foreach { blocked =>
         renderer.drawCrossedOutOnTile(blocked)
       }
+    }
+  }
+}
+
+class MineralDebugRenderer(override val universe: Universe) extends AIPlugIn with HasUniverse {
+  override val lazyWorld = universe.world
+
+  override protected def tickPlugIn(): Unit = {
+    lazyWorld.debugger.debugRender { renderer =>
+      renderer.in_!(Color.Yellow)
+      world.mineralPatches.groups.foreach { mpg =>
+        mpg.patches.foreach { mp =>
+          renderer.writeText(mp.tilePosition, s"#${mpg.patchId}")
+        }
+      }
+
+      universe.unitManager.allJobsByType[GatherMineralsAtSinglePatch].groupBy(_.targetPatch).foreach { case (k, v) =>
+        val estimatedWorkerCount = v.head.requiredWorkers
+        renderer.drawTextAtStaticUnit(v.head.targetPatch, estimatedWorkerCount.toString, 1)
+      }
+
     }
   }
 }

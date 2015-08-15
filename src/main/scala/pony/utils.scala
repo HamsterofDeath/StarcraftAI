@@ -19,8 +19,12 @@ class Renderer(game: Game, private var color: bwapi.Color) {
     game.drawBoxMap(x1, y1, x2, y2, color)
   }
 
-  def drawTextAtUnit(u: Mobile, text: String, lineOffset: Int = 0): Unit = {
+  def drawTextAtMobileUnit(u: Mobile, text: String, lineOffset: Int = 0): Unit = {
     game.drawTextMap(u.currentPositionNative.getX, u.currentPositionNative.getY + lineOffset * 10, text)
+  }
+
+  def drawTextAtStaticUnit(u: StaticallyPositioned, text: String, lineOffset: Int = 0): Unit = {
+    game.drawTextMap(u.nativeMapPosition.getX, u.nativeMapPosition.getY + lineOffset * 10, text)
   }
 
   def indicateTarget(currentPosition: MapPosition, to: MapTilePosition): Unit = {
