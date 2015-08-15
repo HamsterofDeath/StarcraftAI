@@ -165,7 +165,6 @@ object AreaHelper {
 }
 
 class MapLayers(override val universe: Universe) extends HasUniverse {
-
   private val rawMapWalk                = world.map.walkableGridZoomed
   private val rawMapBuild               = world.map.buildableGrid
   private val plannedBuildings          = world.map.empty.zoomedOut.mutableCopy
@@ -175,7 +174,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   private var withBuildings             = evalWithBuildings
   private var withBuildingsAndResources = evalWithBuildingsAndResources
   private var withEverything            = evalEverything
-
+  def blockedByPlannedBuildings = plannedBuildings.asReadOnly
   def freeBuildingTiles = withEverything.asReadOnly
 
   def blockedByBuildingTiles = justBuildings.asReadOnly
@@ -186,6 +185,10 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
 
   def blockBuilding_!(where: Area): Unit = {
     plannedBuildings.block_!(where)
+  }
+
+  def unblockBuilding_!(where: Area): Unit = {
+    plannedBuildings.free_!(where)
   }
 
   def tick(): Unit = {
@@ -246,7 +249,13 @@ class ConstructionSiteFinder(universe: Universe) {
     // this happens in the background
     val unitType = building.toUnitType
     val necessaryArea = Size.shared(unitType.tileWidth(), unitType.tileHeight())
-    helper.blockSpiralClockWise(near).find(tryOnThis.free(_, necessaryArea))
+    helper.blockSpiralClockWise(near).find { candidate =>
+      val checkIfBlocksSelf = tryOnThis.mutableCopy
+      checkIfBlocksSelf.block_!(Area(candidate, necessaryArea))
+      def areaFree = tryOnThis.free(candidate, necessaryArea)
+      def noLock = checkIfBlocksSelf.areaCount == tryOnThis.areaCount
+      areaFree && noLock
+    }
   }
 }
 

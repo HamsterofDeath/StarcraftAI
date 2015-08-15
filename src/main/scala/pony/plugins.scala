@@ -167,6 +167,14 @@ class BlockedBuildingSpotsRenderer(override val universe: Universe) extends AIPl
       }
     }
     lazyWorld.debugger.debugRender { renderer =>
+      renderer.in_!(Color.White)
+      val area = mapLayers.blockedByPlannedBuildings
+      area.allBlocked
+      .foreach { blocked =>
+        renderer.drawCrossedOutOnTile(blocked)
+      }
+    }
+    lazyWorld.debugger.debugRender { renderer =>
       renderer.in_!(Color.Blue)
       val area = mapLayers.blockedByResources
       area.allBlocked
@@ -174,7 +182,6 @@ class BlockedBuildingSpotsRenderer(override val universe: Universe) extends AIPl
         renderer.drawCrossedOutOnTile(blocked)
       }
     }
-
     lazyWorld.debugger.debugRender { renderer =>
       renderer.in_!(Color.Grey)
       val area = mapLayers.blockedByWorkerPaths

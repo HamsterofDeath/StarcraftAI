@@ -27,6 +27,8 @@ object Controller {
       }
 
       override def onFrame(): Unit = {
+        // clean up
+        pony.tickCount += 1
         ai.foreach(_.onTickOnApi())
       }
 

@@ -25,7 +25,12 @@ class ProvideNewBuildings(universe: Universe)
         BackgroundComputationResult.result(startJob.toSeq, () => false, () => {
           info(s"Planning to build ${in.buildingType.className} at ${startJob.where} by ${in.worker}")
           in.jobRequest.clearableInNextTick_!()
+          in.jobRequest.doOnClear_! {
+            mapLayers.unblockBuilding_!(startJob.area)
+          }
           mapLayers.blockBuilding_!(startJob.area)
+          //maybe there is a better worker for this than the one that was initially chosen
+          unitManager.tryFindBetterEmployeeFor(startJob)
         })
     }
   }
