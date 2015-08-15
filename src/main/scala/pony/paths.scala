@@ -6,21 +6,34 @@ import scala.collection.mutable
 
 case class Path(waypoints: Seq[MapTilePosition])
 
-class SimplePathFinder(baseOn: Grid2D) {
-  def findAreas = {
+class AreaHelper(source: Grid2D) {
+  private val baseOn = source.ensureContainsBlocked
+
+  def findFreeAreas = {
     val areas = mutable.ArrayBuffer.empty[collection.Set[Int]]
-    baseOn.all.foreach { p =>
-      if (!areas.exists(_.contains(p.x + p.y * baseOn.cols))) {
+    baseOn.allFree.foreach { p =>
+      val areaAlreadyKnown = areas.exists(_.contains(p.x + p.y * baseOn.cols))
+      if (!areaAlreadyKnown) {
         val area = floodFill(p)
         if (area.nonEmpty) {
           areas += area
         }
       }
     }
-    areas.toSeq.map(data => new Grid2D(baseOn.cols, baseOn.rows, data))
+    val ret = areas.toSeq.map { data =>
+      val asGrid = new Grid2D(baseOn.cols, baseOn.rows, data, false)
+      val flipped = asGrid.ensureContainsBlocked
+      flipped
+    }
+    assert({
+      val before = baseOn.freeCount
+      val after = ret.map(_.freeCount)
+      before == after.sum
+    }, s"Math is broken")
+    ret
   }
 
-  def floodFill(start: MapTilePosition): mutable.BitSet = {
+  private def floodFill(start: MapTilePosition): mutable.BitSet = {
     val ret = mutable.BitSet.empty
     AreaHelper.traverseTilesOfArea(start, (x, y) => ret += x + y * baseOn.cols, baseOn)
     ret

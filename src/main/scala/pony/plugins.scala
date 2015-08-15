@@ -53,11 +53,8 @@ class BuildableRenderer(ignoreWalkable: Boolean) extends AIPlugIn {
       renderer.in_!(Color.Grey)
 
       val builable = lazyWorld.map.buildableGrid
-      builable.all
-      .filter { e =>
-        builable.blocked(e) &&
-        (!ignoreWalkable || !lazyWorld.map.walkableGrid.blocked(e))
-      }
+      builable.allBlocked
+      .filter { e => !ignoreWalkable || !lazyWorld.map.walkableGrid.blocked(e) }
       .foreach { blocked =>
         renderer.drawCrossedOutOnTile(blocked)
       }
@@ -164,7 +161,7 @@ class BlockedBuildingSpotsRenderer(override val universe: Universe) extends AIPl
     lazyWorld.debugger.debugRender { renderer =>
       renderer.in_!(Color.Orange)
       val area = mapLayers.blockedByBuildingTiles
-      area.all.filter(area.blocked)
+      area.allBlocked
       .foreach { blocked =>
         renderer.drawCrossedOutOnTile(blocked)
       }
@@ -172,7 +169,7 @@ class BlockedBuildingSpotsRenderer(override val universe: Universe) extends AIPl
     lazyWorld.debugger.debugRender { renderer =>
       renderer.in_!(Color.Blue)
       val area = mapLayers.blockedByResources
-      area.all.filter(area.blocked)
+      area.allBlocked
       .foreach { blocked =>
         renderer.drawCrossedOutOnTile(blocked)
       }
@@ -181,7 +178,7 @@ class BlockedBuildingSpotsRenderer(override val universe: Universe) extends AIPl
     lazyWorld.debugger.debugRender { renderer =>
       renderer.in_!(Color.Grey)
       val area = mapLayers.blockedByWorkerPaths
-      area.all.filter(area.blocked)
+      area.allBlocked
       .foreach { blocked =>
         renderer.drawCrossedOutOnTile(blocked)
       }

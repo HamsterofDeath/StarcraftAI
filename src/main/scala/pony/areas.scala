@@ -27,14 +27,15 @@ class StrategicMap(resources: Seq[ResourceArea], walkable: Grid2D) {
     val tries = (-lineLength, -lineLength) ::(0, -lineLength) ::(lineLength, -lineLength) ::(lineLength, 0) :: Nil map
                 { case (x, y) => RelativePoint(x, y) }
 
-    val myAreas = walkable.areas
+    val findSubAreasOfThis = walkable
+    val myAreas = findSubAreasOfThis.areas
     myAreas.flatMap { area =>
 
       val relevantResources = resources.filter { r =>
         r.resources.exists(p => area.contains(p.area.anyTile))
       }
 
-      area.allContained.flatMap { center =>
+      area.allContained.toVector.par.flatMap { center =>
         val cutters = tries.flatMap { line =>
           val operateOn = area.mutableCopy
           operateOn.blockLineRelative_!(center, line, line.opposite)
