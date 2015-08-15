@@ -1,7 +1,7 @@
 package pony
 
 import bwapi.{Order, Race, Unit => APIUnit, UnitType}
-import pony.brain.{UnitWithJob, Universe}
+import pony.brain.{PriorityChain, UnitWithJob, Universe}
 
 import scala.collection.immutable.HashMap
 import scala.collection.mutable.ListBuffer
@@ -181,7 +181,20 @@ trait WorkerUnit extends Killable with Mobile {
   def isMovingToMinerals = nativeUnit.getOrder == Order.MoveToMinerals
   def isInConstructionProcess = isConstructingBuilding || nativeUnit.getOrder == Order.PlaceBuilding
   def isConstructingBuilding = nativeUnit.getOrder == Order.ConstructingBuilding
+
 }
+
+object WorkerUnit {
+  def currentPriority[T <: WorkerUnit](w: UnitWithJob[T]) = {
+    var valueOfExcuses = 0
+    if (!w.isIdle) valueOfExcuses += 1
+    if (w.unit.isCarryingMinerals) valueOfExcuses += 2
+    if (w.unit.isInMiningProcess) valueOfExcuses += 1
+    PriorityChain(valueOfExcuses)
+  }
+}
+
+
 
 trait TransporterUnit extends AirUnit {
 

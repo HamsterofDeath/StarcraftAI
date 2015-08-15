@@ -3,6 +3,7 @@ package pony
 case class Priority(importance: Double) {
 
   def <(priority: Priority) = importance < priority.importance
+  def <=(priority: Priority) = importance <= priority.importance
 }
 object Priority {
   val None              = Priority(0)

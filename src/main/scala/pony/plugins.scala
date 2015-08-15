@@ -115,9 +115,11 @@ class StatsRenderer(override val universe: Universe) extends AIPlugIn with HasUn
         s"In queue (no funds): ${locked.mkString(", ")}"
       }
 
-      debugString ++= {
+      debugString += {
+
         val missingUnits = unitManager.failedToProvideFlat.groupBy(_.typeOfRequestedUnit).mapValues(_.size)
-        missingUnits.map { case (unitClass, howMany) => s"Type ${unitClass.className} -> $howMany missing " }
+        val formatted = missingUnits.map { case (unitClass, howMany) => s"${unitClass.className}/$howMany" }
+        s"Type/missing: ${formatted.mkString(", ")}"
       }
 
       val df = new DecimalFormat("#0.00")
@@ -137,17 +139,20 @@ class StatsRenderer(override val universe: Universe) extends AIPlugIn with HasUn
         }
       }
 
+      debugString += {
+        val formatted = unitManager.jobsByType.map { case (jobType, members) =>
+          s"${jobType.className}/${members.size}"
+        }
+        s"Job/units: ${formatted.mkString(", ")}"
+      }
+
       debugString ++= {
         unitManager.employers.map { emp =>
           s"$emp has ${unitManager.jobsOf(emp).size} units"
         }
       }
 
-      debugString ++= {
-        unitManager.jobsByType.map { case (jobType, members) =>
-          s"${jobType.className} => ${members.size} units"
-        }
-      }
+
 
       debugString.zipWithIndex.foreach { case (txt, line) => renderer.drawTextOnScreen(txt, line) }
     }

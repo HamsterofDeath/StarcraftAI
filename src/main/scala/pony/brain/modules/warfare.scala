@@ -48,7 +48,7 @@ class ProvideFactories(universe: Universe) extends OrderlessAIModule[WorkerUnit]
 
   private def evaluateCapacities = {
     // TODO actually calculate this & adjust number of factories to money income
-    IdealProducerCount(classOf[Barracks], 4) ::
+    IdealProducerCount(classOf[Barracks], 6) ::
     /*
         IdealProducerCount(classOf[Factory], 3) ::
         IdealProducerCount(classOf[Starport], 3) ::

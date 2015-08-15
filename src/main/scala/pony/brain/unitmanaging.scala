@@ -254,11 +254,12 @@ class UnitCollector[T <: WrapsUnit : Manifest](req: UnitJobRequests[T], override
     hired.values.head.head
   }
   def hasOneMember = hired.valuesIterator.map(_.size).sum == 1
-  def collect_!(): Option[UnitCollector[T]] = {
+  def collect_!(includeCandidates: Seq[UnitWithJob[T]] = Nil): Option[UnitCollector[T]] = {
     val um = unitManager
     val available = {
       val potential = (um.allOfEmployer(um.Nobody) ++ um.allNotOfEmployer(um.Nobody))
                       .filter(_.priority < req.priority)
+                      .++(includeCandidates)
                       .filter(requests)
                       .map(typed)
       priorityRule.fold(potential.toVector) { rule =>
@@ -534,8 +535,10 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, bu
       val canSee = mapLayers.rawWalkableMap.connectedByLine(altUnit.currentTile, where)
 
       val distance = area.distanceTo(altUnit.currentTile)
+      val busyness = WorkerUnit.currentPriority(hijackFromThis)
+      val weightedDistance = distance * busyness.sum
 
-      PriorityChain(sameArea.ifElse(1, 0), canSee.ifElse(1, 0), -distance)
+      PriorityChain(sameArea.ifElse(0, 1), canSee.ifElse(0, 1), weightedDistance)
     }
     UnitJobRequests(anyUnitRequest.toSeq, employer, priority)
   }
@@ -567,20 +570,24 @@ class BusyBeingContructed[T <: WrapsUnit](unit: T, employer: Employer[T])
   override def shortDebugString: String = "Build me"
 }
 
-case class PriorityChain(data: Vector[Double])
+case class PriorityChain(data: Vector[Double]) {
+  lazy val sum = data.sum
+}
 object PriorityChain {
 
-  implicit         val ordOnPriorities       : Ordering[PriorityChain]  = Ordering.by(_.data)
-  private implicit val ordOnVectorWithDoubles: Ordering[Vector[Double]] = Ordering.fromLessThan { (a, b) =>
-    assert(a.size == b.size)
-    def isLess: Boolean = {
-      for (i <- a.indices) {
-        val lessThan = a(i) < b(i)
-        if (lessThan) return true
+  implicit val ordOnPriorities: Ordering[PriorityChain] = {
+    implicit val ordOnVectorWithDoubles: Ordering[Vector[Double]] = Ordering.fromLessThan { (a, b) =>
+      assert(a.size == b.size)
+      def isLess: Boolean = {
+        for (i <- a.indices) {
+          val lessThan = a(i) < b(i)
+          if (lessThan) return true
+        }
+        false
       }
-      false
+      isLess
     }
-    isLess
+    Ordering.by(_.data)
   }
   def apply(singleValue: Double): PriorityChain = PriorityChain(Vector(singleValue))
   def apply(multiValues: Double*): PriorityChain = PriorityChain(multiValues.toVector)
@@ -713,13 +720,7 @@ object UnitJobRequests {
                                               priority: Priority = Priority.ConstructBuilding): UnitJobRequests[T] = {
 
     val actualClass = manifest[T].runtimeClass.asInstanceOf[Class[T]]
-    val req = AnyUnitRequest(actualClass, 1).withCherryPicker_! { w =>
-      var valueOfExcuses = 0
-      if (!w.isIdle) valueOfExcuses += 1
-      if (w.unit.isCarryingMinerals) valueOfExcuses += 2
-      if (w.unit.isInMiningProcess) valueOfExcuses += 1
-      PriorityChain(valueOfExcuses)
-    }
+    val req = AnyUnitRequest(actualClass, 1).withCherryPicker_!(WorkerUnit.currentPriority)
 
     UnitJobRequests(req.toSeq, employer, priority)
   }
@@ -759,7 +760,7 @@ class JobReAssignments(universe: Universe) extends OrderlessAIModule[Controllabl
         unitManager.tryFindBetterEmployeeFor(optimizeMe)
       } else {
         def doTyped[T <: WrapsUnit : Manifest](old: CanAcceptUnitSwitch[T]) = {
-          val uc = new UnitCollector(old.asRequest, universe).collect_!()
+          val uc = new UnitCollector(old.asRequest, universe).collect_!(List(old))
           uc match {
             case Some(replacement) if replacement.hasOneMember && replacement.onlyMember == optimizeMe.unit =>
               debug(s"Same unit chosen as best worker")
