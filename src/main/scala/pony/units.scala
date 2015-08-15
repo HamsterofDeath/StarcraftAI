@@ -117,16 +117,16 @@ trait Mobile extends WrapsUnit with Controllable {
   def isMoving = nativeUnit.isMoving
 
   def currentTileNative = currentTile.asNative
+  def currentTile = {
+    val tp = nativeUnit.getTilePosition
+    MapTilePosition.shared(tp.getX, tp.getY)
+  }
   def currentPositionNative = currentPosition.toNative
   def currentPosition = {
     val p = nativeUnit.getPosition
     MapPosition(p.getX, p.getY)
   }
   override def toString = s"${super.toString}@$currentTile"
-  def currentTile = {
-    val tp = nativeUnit.getTilePosition
-    MapTilePosition.shared(tp.getX, tp.getY)
-  }
 }
 
 trait Killable {
@@ -175,14 +175,12 @@ trait GroundUnit extends Killable with Mobile {
 }
 
 trait WorkerUnit extends Killable with Mobile {
-
   def isCarryingMinerals = nativeUnit.isCarryingMinerals
   def isInMiningProcess = nativeUnit.getOrder == Order.MiningMinerals
   def isWaitingForMinerals = nativeUnit.getOrder == Order.WaitForMinerals
   def isMovingToMinerals = nativeUnit.getOrder == Order.MoveToMinerals
-  def isConstructing = nativeUnit.getOrder == Order.ConstructingBuilding ||
-                       nativeUnit.getOrder == Order.PlaceBuilding
-
+  def isInConstructionProcess = isConstructingBuilding || nativeUnit.getOrder == Order.PlaceBuilding
+  def isConstructingBuilding = nativeUnit.getOrder == Order.ConstructingBuilding
 }
 
 trait TransporterUnit extends AirUnit {

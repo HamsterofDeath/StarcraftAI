@@ -250,13 +250,18 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
   private lazy val lazyAreas = new AreaHelper(this).findFreeAreas
   def blockedCount = size - freeCount
   def freeCount = if (containsBlocked) size - areaDataBitSet.size else areaDataBitSet.size
+  def mkString: String = mkString('x')
   def mkString(blockedDisplay: Char) = {
-    0 until rows map { x =>
-      0 until cols map { y =>
+    0 until rows map { y =>
+      0 until cols map { x =>
         if (free(x, y)) " " else blockedDisplay
       } mkString
     } mkString "\n"
 
+  }
+  def free(x: Int, y: Int): Boolean = {
+    val coord = x + y * cols
+    if (containsBlocked) !areaDataBitSet(coord) else areaDataBitSet(coord)
   }
   def ensureContainsBlocked = if (containsBlocked)
     this
@@ -285,7 +290,6 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
       free(p.movedBy(position))
     }
   }
-  def free(p: MapTilePosition): Boolean = free(p.x, p.y)
   def zoomedOut = {
     val bits = mutable.BitSet.empty
     val subCols = cols / 4
@@ -298,10 +302,6 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
     }
     new Grid2D(subCols, subRows, bits)
   }
-  def free(x: Int, y: Int): Boolean = {
-    val coord = x + y * cols
-    if (containsBlocked) !areaDataBitSet(coord) else areaDataBitSet(coord)
-  }
   def blocked = size - walkable
   def size = cols * rows
   def walkable = areaDataBitSet.size
@@ -309,6 +309,7 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
   def blocked(p: MapTilePosition): Boolean = !free(p)
   def contains(x: Int, y: Int): Boolean = !free(x, y)
   def contains(p: MapTilePosition): Boolean = !free(p)
+  def free(p: MapTilePosition): Boolean = free(p.x, p.y)
   def allFree = if (containsBlocked) allIndexes.filterNot(areaDataBitSet).map(indexToTile) else bitSetToTiles
   def all: Iterator[MapTilePosition] = new Iterator[MapTilePosition] {
     private var index = 0
@@ -482,8 +483,8 @@ class AnalyzedMap(game: Game) {
   def debugAreas = {
     val areas = walkableGrid.areas
     val debugThis = walkableGrid
-    0 until debugThis.rows map { x =>
-      0 until debugThis.cols map { y =>
+    0 until debugThis.rows map { y =>
+      0 until debugThis.cols map { x =>
         val index = areas.indexWhere(_.contains(x, y))
         if (index == -1) " " else index.toString
       } mkString

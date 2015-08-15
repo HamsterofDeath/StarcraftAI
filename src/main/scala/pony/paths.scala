@@ -168,7 +168,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
 
   private val rawMapWalk                = world.map.walkableGridZoomed
   private val rawMapBuild               = world.map.buildableGrid
-  private val plannedBuildings          = world.map.empty.mutableCopy
+  private val plannedBuildings          = world.map.empty.zoomedOut.mutableCopy
   private var justBuildings             = evalOnlyBuildings
   private var justMineralsAndGas        = evalOnlyResources
   private var justWorkerPaths           = evalWorkerPaths
@@ -205,10 +205,10 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   }
 
   private def evalWithBuildings = rawMapBuild.mutableCopy.or_!(justBuildings)
-  private def evalWithBuildingsAndResources = justBuildings.or_!(justMineralsAndGas)
+  private def evalWithBuildingsAndResources = justBuildings.mutableCopy.or_!(justMineralsAndGas)
   private def evalOnlyBuildings = evalOnlyUnits(units.allByType[Building])
   private def evalOnlyUnits(units: TraversableOnce[StaticallyPositioned]) = {
-    val ret = world.map.empty.mutableCopy
+    val ret = world.map.empty.zoomedOut.mutableCopy
     units.foreach { b =>
       ret.block_!(b.area)
     }
@@ -220,7 +220,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
 
   private def evalWorkerPaths = {
     trace("Re-evaluation of worker paths")
-    val ret = world.map.empty.mutableCopy
+    val ret = world.map.empty.zoomedOut.mutableCopy
     bases.bases.foreach { base =>
       base.myMineralGroup.foreach { group =>
         group.patches.foreach { patch =>

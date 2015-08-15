@@ -88,7 +88,9 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
       debug(s"${failed.size} jobs failed, putting units on the market again", failed.nonEmpty)
       trace(s"Failed: ${failed.mkString(", ")}")
       trace(s"Finished: ${done.mkString(", ")}")
-      (done ++ failed).toVector
+      val ret = (done ++ failed).toVector
+      assert(ret.size == ret.distinct.size, s"A job is failed and finished at the same time")
+      ret
     }
     debug(s"Cleaning up ${removeUs.size} finished/failed jobs", removeUs.nonEmpty)
 
@@ -437,12 +439,13 @@ class ConstructBuilding[W <: WorkerUnit, B <: Building](worker: W, buildingType:
     val size = Size.shared(unitType.tileWidth(), unitType.tileHeight())
     Area(where, size)
   }
-  private var startedConstruction  = false
-  private var finishedConstruction = false
-  private var resourcesUnlocked    = false
+  private var startedMovingToSite      = false
+  private var startedActualConstuction = false
+  private var finishedConstruction     = false
+  private var resourcesUnlocked        = false
   override def onTick(): Unit = {
     super.onTick()
-    if (startedConstruction && !resourcesUnlocked) {
+    if (startedActualConstuction && !resourcesUnlocked) {
       unlockManually_!()
       resourcesUnlocked = true
     }
@@ -459,18 +462,22 @@ class ConstructBuilding[W <: WorkerUnit, B <: Building](worker: W, buildingType:
   override def proofForFunding = funding
 
   override def hasFailed: Boolean = {
-    val fail = !worker.isConstructing && age > 50
+    val fail = !worker.isInConstructionProcess && age > 50 && !isFinished
     fail
   }
 
   override def isFinished = {
-    if (!startedConstruction) {
-      startedConstruction = worker.isConstructing
+    if (!startedMovingToSite) {
+      startedMovingToSite = worker.isInConstructionProcess
+      trace(s"Worker $worker started to move to construction site")
+    } else if (!startedActualConstuction) {
+      startedActualConstuction = worker.isConstructingBuilding
+      trace(s"Worker $worker started to build $buildingType")
+    } else if (!finishedConstruction) {
+      finishedConstruction = !worker.isInConstructionProcess
+      trace(s"Worker $worker finished to build $buildingType")
     }
-    if (startedConstruction) {
-      finishedConstruction = !worker.isConstructing
-    }
-    age > 50 && startedConstruction && finishedConstruction
+    age > 50 && startedMovingToSite && finishedConstruction
   }
 }
 
