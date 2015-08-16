@@ -52,8 +52,11 @@ object AreaHelper {
 
   def directLineOfSight(a: MapTilePosition, b: MapTilePosition, grid2D: Grid2D): Boolean = {
     AreaHelper.traverseTilesOfLine(a, b, (x, y) => {
-      if (grid2D.blocked(x, y)) Some(true) else None
+      if (grid2D.blocked(x, y)) Some(false) else None
     }, true)
+  }
+  def traverseTilesOfLine[T](a: MapTilePosition, b: MapTilePosition, f: (Int, Int) => T): Unit = {
+    traverseTilesOfLine(a, b, (x, y) => {f(x, y); None}, None)
   }
   def traverseTilesOfLine[T](a: MapTilePosition, b: MapTilePosition, f: (Int, Int) => Option[T],
                              orElse: T): T = {
@@ -107,9 +110,6 @@ object AreaHelper {
       }
     }
     orElse
-  }
-  def traverseTilesOfLine[T](a: MapTilePosition, b: MapTilePosition, f: (Int, Int) => T): Unit = {
-    traverseTilesOfLine(a, b, (x, y) => {f(x, y); None}, None)
   }
   def freeAreaSize(start: MapTilePosition, baseOn: Grid2D) = {
     var count = 0

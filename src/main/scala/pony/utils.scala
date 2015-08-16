@@ -18,6 +18,10 @@ class Renderer(game: Game, private var color: bwapi.Color) {
     game.drawTextScreen(10, 10 + row * 10, text)
   }
 
+  def drawTextAtTile(text: String, where: MapTilePosition): Unit = {
+    game.drawTextMap(where.mapX, where.mapY, text)
+  }
+
   def drawOutline(where: Area): Unit = {
     drawOutline(where.upperLeft.mapX, where.upperLeft.mapY, where.lowerRight.mapX, where.lowerRight.mapY)
   }
@@ -70,7 +74,7 @@ class Renderer(game: Game, private var color: bwapi.Color) {
   }
 }
 
-class LazyVal[T](gen: => T) {
+class LazyVal[T](gen: => T) extends Serializable {
   private var evaluated = false
   private var value: T  = _
   def get = {

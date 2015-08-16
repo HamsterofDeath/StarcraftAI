@@ -25,9 +25,11 @@ class FastSpeed extends AIPluginRunOnce {
 class ChokePointRenderer(override val universe: Universe) extends AIPlugIn with HasUniverse {
   override protected def tickPlugIn(): Unit = {
     lazyWorld.debugger.debugRender { renderer =>
+      renderer.in_!(Color.Green)
       strategicMap.domains.get.foreach { case (choke, _) =>
         choke.lines.foreach { line =>
-          renderer.in_!(Color.Green).drawLine(line.absoluteFrom, line.absoluteTo)
+          renderer.drawLine(line.absoluteFrom, line.absoluteTo)
+          renderer.drawTextAtTile(s"Chokepoint ${choke.index}", line.center)
         }
       }
     }
@@ -92,6 +94,7 @@ class StatsRenderer(override val universe: Universe) extends AIPlugIn with HasUn
   override val lazyWorld       = universe.world
 
   override protected def tickPlugIn(): Unit = {
+
     lazyWorld.debugger.debugRender { renderer =>
       val debugString = ArrayBuffer.empty[String]
 
@@ -250,7 +253,14 @@ class DebugHelper(main: AIAPIEventDispatcher with HasUniverse) extends AIPlugIn 
                 case List("minerals", id) =>
                   world.mineralPatches.groups.find(_.patchId.toString == id).foreach { group =>
                     units.mineByType[Mobile].filterNot(_.isInstanceOf[WorkerUnit]).foreach { u =>
-                      world.orderQueue.queue_!(new AttackMove(u, group.center.randomized(8)))
+                      world.orderQueue.queue_!(new AttackMove(u, group.center.randomized(12)))
+                    }
+                  }
+
+                case List("choke", id) =>
+                  strategicMap.domains.get.find(_._1.index.toString == id).foreach { choke =>
+                    units.mineByType[Mobile].filterNot(_.isInstanceOf[WorkerUnit]).foreach { u =>
+                      world.orderQueue.queue_!(new AttackMove(u, choke._1.center.randomized(3)))
                     }
                   }
               }
