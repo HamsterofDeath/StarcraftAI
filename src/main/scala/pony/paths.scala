@@ -284,11 +284,16 @@ class ConstructionSiteFinder(universe: Universe) {
     val unitType = building.toUnitType
     val necessaryArea = Size.shared(unitType.tileWidth(), unitType.tileHeight())
     helper.blockSpiralClockWise(near).find { candidate =>
-      val checkIfBlocksSelf = tryOnThis.mutableCopy
-      checkIfBlocksSelf.block_!(Area(candidate, necessaryArea))
-      def areaFree = tryOnThis.free(candidate, necessaryArea)
-      def noLock = checkIfBlocksSelf.areaCount == tryOnThis.areaCount
-      areaFree && noLock
+      val area = Area(candidate, necessaryArea)
+      def containsArea = tryOnThis.includes(area)
+      def free = {
+        val checkIfBlocksSelf = tryOnThis.mutableCopy
+        checkIfBlocksSelf.block_!(area)
+        def areaFree = tryOnThis.free(candidate, necessaryArea)
+        def noLock = checkIfBlocksSelf.areaCount == tryOnThis.areaCount
+        areaFree && noLock
+      }
+      containsArea && free
     }
   }
 }

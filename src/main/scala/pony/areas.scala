@@ -34,7 +34,7 @@ class StrategicMap(resources: Seq[ResourceArea], walkable: Grid2D, game: Game) {
     myAreas.flatMap { area =>
 
       val relevantResources = resources.filter { r =>
-        r.resources.exists(p => area.contains(p.area.anyTile))
+        r.resources.exists(p => area.containsAsData(p.area.anyTile))
       }
 
       area.allContained.toVector.par.flatMap { center =>
@@ -58,7 +58,7 @@ class StrategicMap(resources: Seq[ResourceArea], walkable: Grid2D, game: Game) {
           val cuttingLines = cutters.map { p => CuttingLine(center, p) }
           val chokePoint = ChokePoint(center, cuttingLines)
           val grouped = relevantResources.groupBy { r1 =>
-            subAreas.find(_.contains(r1.center))
+            subAreas.find(_.containsAsData(r1.center))
           }
           if (grouped.values.forall(_.nonEmpty)) {
             val cleaned = grouped.filter(_._1.isDefined)
