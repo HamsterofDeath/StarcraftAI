@@ -54,6 +54,17 @@ object Orders {
       renderer.indicateTarget(unit.currentPosition, to)
     }
   }
+  case class AttackMove(unit: Mobile, where: MapTilePosition) extends UnitOrder {
+
+    override def issueOrderToGame(): Unit = {
+      unit.nativeUnit.attack(where.asMapPosition.toNative)
+    }
+
+    override def renderDebug(renderer: Renderer): Unit = {
+
+    }
+  }
+
   case class Gather(unit: WorkerUnit, patch: MineralPatch) extends UnitOrder {
     override def issueOrderToGame(): Unit = {
       unit.nativeUnit.gather(patch.nativeUnit)

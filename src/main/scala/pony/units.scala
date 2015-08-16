@@ -124,8 +124,8 @@ trait Mobile extends WrapsUnit with Controllable {
   }
   override def toString = s"${super.toString}@$currentTile"
   def currentTile = {
-    val tp = nativeUnit.getTilePosition
-    MapTilePosition.shared(tp.getX, tp.getY + 1)
+    val tp = nativeUnit.getPosition
+    MapTilePosition.shared(tp.getX / 32, tp.getY / 32)
   }
 }
 

@@ -7,6 +7,8 @@ import java.util.zip.{Deflater, ZipEntry, ZipInputStream, ZipOutputStream}
 import bwapi.Game
 import org.apache.commons.io.FileUtils
 
+import scala.util.Try
+
 class Renderer(game: Game, private var color: bwapi.Color) {
   def drawLine(from: MapTilePosition, to: MapTilePosition): Unit = {
     game.drawLineMap(from.mapX, from.mapY, to.mapX, to.mapY, color)
@@ -105,7 +107,12 @@ class FileStorageLazyVal[T](gen: => T, fileName: String) extends LazyVal(gen) {
         info(s"Loading ${file.getAbsolutePath}")
         val bytes = FileUtils.readFileToByteArray(file)
         loaded = true
-        fromZippedBytes(bytes)
+        fromZippedBytes(bytes) match {
+          case None =>
+            invalidate()
+            get
+          case Some(data) => data
+        }
       } else {
         val saveMe = super.get
         info(s"Saving ${file.getAbsolutePath}")
@@ -115,15 +122,17 @@ class FileStorageLazyVal[T](gen: => T, fileName: String) extends LazyVal(gen) {
       }
     }
   }
-  private def file = FileStorageLazyVal.fileByName(fileName)
   def fromZippedBytes(bytes: Array[Byte]) = {
     val zi = new ZipInputStream(new ByteArrayInputStream(bytes))
     val nextEntry = zi.getNextEntry
     val os = new ObjectInputStream(new BufferedInputStream(zi))
-    val ret = os.readObject().asInstanceOf[T]
-    os.close()
-    ret
+    Try {
+      val ret = os.readObject().asInstanceOf[T]
+      os.close()
+      ret
+    }.toOption
   }
+  private def file = FileStorageLazyVal.fileByName(fileName)
   private def toZippedBytes(t: T): Array[Byte] = {
     val bytes = new ByteArrayOutputStream()
     val o = new ObjectOutputStream(bytes)

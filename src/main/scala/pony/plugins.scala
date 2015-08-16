@@ -3,10 +3,12 @@ package pony
 import java.text.DecimalFormat
 
 import bwapi.Color
+import pony.Orders.AttackMove
 import pony.brain.modules.GatherMineralsAtSinglePatch
 import pony.brain.{HasUniverse, TwilightSparkle, UnitWithJob, Universe}
 
 import scala.collection.mutable.ArrayBuffer
+import scala.util.{Failure, Success, Try}
 
 class MapReveal extends AIPluginRunOnce {
   override def runOnce(): Unit = {
@@ -235,7 +237,7 @@ class DebugHelper(main: AIAPIEventDispatcher with HasUniverse) extends AIPlugIn 
     override def onSendText(s: String): Unit = {
       super.onSendText(s)
       val words = s.split(' ').toList
-      words match {
+      Try(words match {
         case command :: params =>
           command match {
             case "debug" =>
@@ -243,9 +245,22 @@ class DebugHelper(main: AIAPIEventDispatcher with HasUniverse) extends AIPlugIn 
                 case List(id) =>
                   unitManager.jobByUnitIdString(id).foreach {debugUnit}
               }
+            case "attack" =>
+              params match {
+                case List("minerals", id) =>
+                  world.mineralPatches.groups.find(_.patchId.toString == id).foreach { group =>
+                    units.mineByType[Mobile].filterNot(_.isInstanceOf[WorkerUnit]).foreach { u =>
+                      world.orderQueue.queue_!(new AttackMove(u, group.center.randomized(8)))
+                    }
+                  }
+              }
           }
         case Nil =>
 
+      }) match {
+        case Success(_) =>
+        case Failure(ex) =>
+          ex.printStackTrace()
       }
     }
   })

@@ -21,13 +21,17 @@ trait HasXY {
 case class MapTilePosition(x: Int, y: Int) extends HasXY {
   val asTuple = (x, y)
   val asMapPosition  = MapPosition(x * tileSize, y * tileSize)
+  def randomized(shuffle: Int) = {
+    val xRand = math.random * shuffle - shuffle * 0.5
+    val yRand = math.random * shuffle - shuffle * 0.5
+    movedBy(xRand.toInt, yRand.toInt)
+  }
+  def movedBy(offX: Int, offY: Int) = MapTilePosition.shared(x + offX, y + offY)
   def asTilePosition = new TilePosition(x, y)
   def asNative = MapTilePosition.nativeShared(x, y)
   def mapX = tileSize * x
   def mapY = tileSize * y
   def movedBy(other: HasXY) = MapTilePosition.shared(x + other.x, y + other.y)
-  def movedBy(offX: Int, offY: Int) = MapTilePosition.shared(x + offX, y + offY)
-
   override def toString = s"($x,$y)"
 }
 object MapTilePosition {
@@ -50,7 +54,6 @@ object MapTilePosition {
     else {
       strange.computeIfAbsent((x, y), computer)
     }
-  private def inRange(x: Int, y: Int) = x >= 0 && y >= 0 && x < max && y < max
   def nativeShared(xy: (Int, Int)): Position = nativeShared(xy._1, xy._2)
   def nativeShared(x: Int, y: Int): Position =
     if (inRange(x, y))
@@ -58,6 +61,7 @@ object MapTilePosition {
     else {
       nativeStrange.computeIfAbsent((x, y), nativeComputer)
     }
+  private def inRange(x: Int, y: Int) = x >= 0 && y >= 0 && x < max && y < max
 }
 
 case class Size(x: Int, y: Int) extends HasXY {
@@ -87,25 +91,6 @@ case class Area(upperLeft: MapTilePosition, sizeOfArea: Size) {
     // TODO optimize
     outline.minBy(_.distanceToSquared(tilePosition)).distanceTo(tilePosition)
   }
-
-  def distanceTo(area: Area) = {
-    closestDirectConnection(area).length
-  }
-  def anyTile = upperLeft
-  def closestDirectConnection(elem: StaticallyPositioned): Line =
-    closestDirectConnection(elem.area)
-  def closestDirectConnection(area: Area): Line = {
-    // TODO optimize
-    val from = outline.minBy { p =>
-      area.outline.minBy(_.distanceToSquared(p)).distanceTo(p)
-    }
-
-    val to = area.outline.minBy { p =>
-      outline.minBy(_.distanceToSquared(p)).distanceTo(p)
-    }
-    Line(from, to)
-
-  }
   def outline: Traversable[MapTilePosition] = {
     new Traversable[MapTilePosition] {
       override def foreach[U](f: (MapTilePosition) => U): Unit = {
@@ -121,6 +106,24 @@ case class Area(upperLeft: MapTilePosition, sizeOfArea: Size) {
     }
 
   }
+  def distanceTo(area: Area) = {
+    closestDirectConnection(area).length
+  }
+  def closestDirectConnection(area: Area): Line = {
+    // TODO optimize
+    val from = outline.minBy { p =>
+      area.outline.minBy(_.distanceToSquared(p)).distanceTo(p)
+    }
+
+    val to = area.outline.minBy { p =>
+      outline.minBy(_.distanceToSquared(p)).distanceTo(p)
+    }
+    Line(from, to)
+
+  }
+  def anyTile = upperLeft
+  def closestDirectConnection(elem: StaticallyPositioned): Line =
+    closestDirectConnection(elem.area)
   def tiles: Traversable[MapTilePosition] = new Traversable[MapTilePosition] {
     override def foreach[U](f: (MapTilePosition) => U): Unit = {
       sizeOfArea.points.map { p => f(p.movedBy(upperLeft)) }
