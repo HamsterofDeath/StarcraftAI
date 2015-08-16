@@ -20,10 +20,9 @@ trait HasXY {
 }
 case class MapTilePosition(x: Int, y: Int) extends HasXY {
   val asTuple = (x, y)
-
-  val asTilePosition = new TilePosition(x, y)
-  val asNative       = new Position(x, y)
   val asMapPosition  = MapPosition(x * tileSize, y * tileSize)
+  def asTilePosition = new TilePosition(x, y)
+  def asNative = MapTilePosition.nativeShared(x, y)
   def mapX = tileSize * x
   def mapY = tileSize * y
   def movedBy(other: HasXY) = MapTilePosition.shared(x + other.x, y + other.y)
@@ -32,11 +31,17 @@ case class MapTilePosition(x: Int, y: Int) extends HasXY {
   override def toString = s"($x,$y)"
 }
 object MapTilePosition {
-  val max    = 256 * 4
-  val points = Array.tabulate(max, max)((x, y) => MapTilePosition(x, y))
-  private val strange  = new ConcurrentHashMap[(Int, Int), MapTilePosition]
-  private val computer = new Function[(Int, Int), MapTilePosition] {
+  val max          = 256 * 4
+  val points       = Array.tabulate(max, max)((x, y) => MapTilePosition(x, y))
+  val nativePoints = Array.tabulate(max, max)((x, y) => new Position(x, y))
+  private val strange       = new ConcurrentHashMap[(Int, Int), MapTilePosition]
+  private val nativeStrange = new ConcurrentHashMap[(Int, Int), Position]
+
+  private val computer       = new Function[(Int, Int), MapTilePosition] {
     override def apply(t: (Int, Int)) = MapTilePosition(t._1, t._2)
+  }
+  private val nativeComputer = new Function[(Int, Int), Position] {
+    override def apply(t: (Int, Int)) = new Position(t._1, t._2)
   }
   def shared(xy: (Int, Int)): MapTilePosition = shared(xy._1, xy._2)
   def shared(x: Int, y: Int): MapTilePosition =
@@ -46,6 +51,13 @@ object MapTilePosition {
       strange.computeIfAbsent((x, y), computer)
     }
   private def inRange(x: Int, y: Int) = x >= 0 && y >= 0 && x < max && y < max
+  def nativeShared(xy: (Int, Int)): Position = nativeShared(xy._1, xy._2)
+  def nativeShared(x: Int, y: Int): Position =
+    if (inRange(x, y))
+      nativePoints(x)(y)
+    else {
+      nativeStrange.computeIfAbsent((x, y), nativeComputer)
+    }
 }
 
 case class Size(x: Int, y: Int) extends HasXY {
@@ -79,6 +91,9 @@ case class Area(upperLeft: MapTilePosition, sizeOfArea: Size) {
   def distanceTo(area: Area) = {
     closestDirectConnection(area).length
   }
+  def anyTile = upperLeft
+  def closestDirectConnection(elem: StaticallyPositioned): Line =
+    closestDirectConnection(elem.area)
   def closestDirectConnection(area: Area): Line = {
     // TODO optimize
     val from = outline.minBy { p =>
@@ -106,9 +121,6 @@ case class Area(upperLeft: MapTilePosition, sizeOfArea: Size) {
     }
 
   }
-  def anyTile = upperLeft
-  def closestDirectConnection(elem: StaticallyPositioned): Line =
-    closestDirectConnection(elem.area)
   def tiles: Traversable[MapTilePosition] = new Traversable[MapTilePosition] {
     override def foreach[U](f: (MapTilePosition) => U): Unit = {
       sizeOfArea.points.map { p => f(p.movedBy(upperLeft)) }

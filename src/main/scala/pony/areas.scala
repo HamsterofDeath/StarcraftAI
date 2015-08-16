@@ -1,5 +1,7 @@
 package pony
 
+import bwapi.Game
+
 case class ResourceArea(patches: MineralPatchGroup, geysirs: Seq[Geysir]) {
   val resources = patches.patches ++ geysirs
   def center = patches.center
@@ -20,8 +22,8 @@ case class CuttingLine(center: MapTilePosition, from: RelativePoint) {
   def to = from.opposite
 }
 
-class StrategicMap(resources: Seq[ResourceArea], walkable: Grid2D) {
-  val domains = {
+class StrategicMap(resources: Seq[ResourceArea], walkable: Grid2D, game: Game) {
+  val domains = FileStorageLazyVal.from({
 
     val lineLength = 4
     val tries = (-lineLength, -lineLength) ::(0, -lineLength) ::(lineLength, -lineLength) ::(lineLength, 0) :: Nil map
@@ -70,5 +72,6 @@ class StrategicMap(resources: Seq[ResourceArea], walkable: Grid2D) {
           None
       }.toVector
     }
-  }
+  }, fileName)
+  private def fileName = s"${game.mapFileName()}_${game.mapHash()}"
 }

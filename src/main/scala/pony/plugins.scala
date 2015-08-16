@@ -23,7 +23,7 @@ class FastSpeed extends AIPluginRunOnce {
 class ChokePointRenderer(override val universe: Universe) extends AIPlugIn with HasUniverse {
   override protected def tickPlugIn(): Unit = {
     lazyWorld.debugger.debugRender { renderer =>
-      strategicMap.domains.foreach { case (choke, _) =>
+      strategicMap.domains.get.foreach { case (choke, _) =>
         choke.lines.foreach { line =>
           renderer.in_!(Color.Green).drawLine(line.absoluteFrom, line.absoluteTo)
         }
@@ -190,6 +190,15 @@ class BlockedBuildingSpotsRenderer(override val universe: Universe) extends AIPl
     lazyWorld.debugger.debugRender { renderer =>
       renderer.in_!(Color.Grey)
       val area = mapLayers.blockedByWorkerPaths
+      area.allBlocked
+      .foreach { blocked =>
+        renderer.drawCrossedOutOnTile(blocked)
+      }
+    }
+
+    lazyWorld.debugger.debugRender { renderer =>
+      renderer.in_!(Color.Grey)
+      val area = mapLayers.blockedByMobileUnits
       area.allBlocked
       .foreach { blocked =>
         renderer.drawCrossedOutOnTile(blocked)

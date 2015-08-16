@@ -1,6 +1,11 @@
 package pony
 
+import java.io.{BufferedInputStream, ByteArrayInputStream, ByteArrayOutputStream, File, ObjectInputStream,
+ObjectOutputStream}
+import java.util.zip.{Deflater, ZipEntry, ZipInputStream, ZipOutputStream}
+
 import bwapi.Game
+import org.apache.commons.io.FileUtils
 
 class Renderer(game: Game, private var color: bwapi.Color) {
   def drawLine(from: MapTilePosition, to: MapTilePosition): Unit = {
@@ -64,22 +69,90 @@ class Renderer(game: Game, private var color: bwapi.Color) {
 }
 
 class LazyVal[T](gen: => T) {
-  private var loaded   = false
-  private var value: T = _
+  private var evaluated = false
+  private var value: T  = _
   def get = {
-    if (!loaded)
+    if (!evaluated)
       value = gen
 
-    loaded = true
+    evaluated = true
     value
   }
 
   def invalidate(): Unit = {
-    loaded = false
+    evaluated = false
     value = null.asInstanceOf[T]
   }
 }
 
 object LazyVal {
   def from[T](t: => T) = new LazyVal(t)
+}
+
+class FileStorageLazyVal[T](gen: => T, fileName: String) extends LazyVal(gen) {
+
+  private var loaded = false
+  override def invalidate(): Unit = {
+    loaded = false
+    file.delete()
+    super.invalidate()
+  }
+  override def get: T = {
+    if (loaded) {
+      super.get
+    } else {
+      if (file.exists()) {
+        info(s"Loading ${file.getAbsolutePath}")
+        val bytes = FileUtils.readFileToByteArray(file)
+        loaded = true
+        fromZippedBytes(bytes)
+      } else {
+        val saveMe = super.get
+        info(s"Saving ${file.getAbsolutePath}")
+        FileUtils.writeByteArrayToFile(file, toZippedBytes(saveMe))
+        loaded = true
+        saveMe
+      }
+    }
+  }
+  private def file = FileStorageLazyVal.fileByName(fileName)
+  def fromZippedBytes(bytes: Array[Byte]) = {
+    val zi = new ZipInputStream(new ByteArrayInputStream(bytes))
+    val nextEntry = zi.getNextEntry
+    val os = new ObjectInputStream(new BufferedInputStream(zi))
+    val ret = os.readObject().asInstanceOf[T]
+    os.close()
+    ret
+  }
+  private def toZippedBytes(t: T): Array[Byte] = {
+    val bytes = new ByteArrayOutputStream()
+    val o = new ObjectOutputStream(bytes)
+    o.writeObject(t)
+    val data = bytes.toByteArray
+    val zipped = new ByteArrayOutputStream()
+    val zo = new ZipOutputStream(zipped)
+    zo.setLevel(Deflater.BEST_COMPRESSION)
+    zo.putNextEntry(new ZipEntry("pony.magic"))
+    zo.write(data)
+    zo.closeEntry()
+    zo.close()
+    zipped.toByteArray
+  }
+}
+
+object FileStorageLazyVal {
+  def from[T](gen: => T, unique: String) = new FileStorageLazyVal(gen, unique)
+
+  def fileByName(fileName: String) = {
+    initRoot()
+    new File(s"data/$fileName.dat")
+  }
+
+  def initRoot(): Unit = {
+    val file = new File("data")
+    if (!file.exists()) {
+      info(s"Data directory is ${file.getAbsolutePath}")
+      assert(file.mkdir())
+    }
+  }
 }

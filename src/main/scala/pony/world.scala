@@ -142,7 +142,7 @@ class DefaultWorld(game: Game) extends WorldListener with WorldEventDispatcher {
 
   // these must be initialized after the first tick. making them lazy solves this
   lazy val mineralPatches = new MineralAnalyzer(map, units)
-  lazy val strategicMap   = new StrategicMap(mineralPatches.resourceAreas, map.walkableGrid)
+  lazy val strategicMap   = new StrategicMap(mineralPatches.resourceAreas, map.walkableGrid, game)
 
   val map        = new AnalyzedMap(game)
   val units      = new Units(game)
@@ -208,8 +208,6 @@ class Units(game: Game) {
   def mine = all.filter(_.nativeUnit.getPlayer == game.self())
 
   import scala.collection.JavaConverters._
-
-  def all = knownUnits.valuesIterator
   def mineByType[T: Manifest]: Iterator[T] = {
     val lookFor = manifest[T].runtimeClass
     mine.filter(lookFor.isInstance).map(_.asInstanceOf[T])
@@ -221,6 +219,7 @@ class Units(game: Game) {
       lookFor.isAssignableFrom(e.getClass)
     }.map(_.asInstanceOf[T])
   }
+  def all = knownUnits.valuesIterator
   def tick(): Unit = {
     if (initial) {
       initial = false
@@ -261,10 +260,6 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
     } mkString "\n"
 
   }
-  def free(x: Int, y: Int): Boolean = {
-    val coord = x + y * cols
-    if (containsBlocked) !areaDataBitSet(coord) else areaDataBitSet(coord)
-  }
   def ensureContainsBlocked = if (containsBlocked)
     this
   else {
@@ -273,8 +268,6 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
   }
   def blocked(index: Int) = !free(index)
   def free(index: Int) = if (containsBlocked) !areaDataBitSet(index) else areaDataBitSet(index)
-  private def allIndexes = Iterator.range(0, size)
-  def size = cols * rows
   def minAreaSize(i: Int) = {
     val mut = mutableCopy
     areas.filter(_.allContained.size < i).foreach { area =>
@@ -284,17 +277,13 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
   }
   def allContained = allBlocked
   def allBlocked = if (containsBlocked) bitSetToTiles else allIndexes.filterNot(areaDataBitSet).map(indexToTile)
-  private def indexToTile(index: Int) = MapTilePosition.shared(index % cols, index / rows)
-  private def bitSetToTiles = areaDataBitSet.iterator.map(index => MapTilePosition.shared(index % cols, index / rows))
   def mutableCopy = new MutableGrid2D(cols, rows, mutable.BitSet.empty ++ areaDataBitSet)
-  def areas = lazyAreas
   def containedCount = areaDataBitSet.size
   def free(position: MapTilePosition, area: Size): Boolean = {
     area.points.forall { p =>
       free(p.movedBy(position))
     }
   }
-  def free(p: MapTilePosition): Boolean = free(p.x, p.y)
   def zoomedOut = {
     val bits = mutable.BitSet.empty
     val subCols = cols / 4
@@ -311,8 +300,16 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
   def walkable = areaDataBitSet.size
   def blocked(x: Int, y: Int): Boolean = !free(x, y)
   def blocked(p: MapTilePosition): Boolean = !free(p)
+  def free(p: MapTilePosition): Boolean = free(p.x, p.y)
   def contains(x: Int, y: Int): Boolean = !free(x, y)
+  def free(x: Int, y: Int): Boolean = {
+    val coord = x + y * cols
+    if (containsBlocked) !areaDataBitSet(coord) else areaDataBitSet(coord)
+  }
   def allFree = if (containsBlocked) allIndexes.filterNot(areaDataBitSet).map(indexToTile) else bitSetToTiles
+  private def allIndexes = Iterator.range(0, size)
+  private def indexToTile(index: Int) = MapTilePosition.shared(index % cols, index / rows)
+  private def bitSetToTiles = areaDataBitSet.iterator.map(index => MapTilePosition.shared(index % cols, index / rows))
   def all: Iterator[MapTilePosition] = new Iterator[MapTilePosition] {
     private var index = 0
     private val max   = self.size
@@ -323,7 +320,9 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
       ret
     }
   }
+  def size = cols * rows
   def areaCount = areas.size
+  def areas = lazyAreas
 }
 
 class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet) extends Grid2D(cols, rows, bitSet) {

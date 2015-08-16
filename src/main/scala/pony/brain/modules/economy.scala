@@ -194,7 +194,7 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
         override def toString: String = s"(Mined) $patch"
         def hasOpenSpot: Boolean = miningTeam.size < estimateRequiredWorkers
         def openSpotCount = estimateRequiredWorkers - miningTeam.size
-        def estimateRequiredWorkers = 2 + (patch.area.distanceTo(base.mainBuilding.area) / 4).toInt
+        def estimateRequiredWorkers = math.round(patch.area.distanceTo(base.mainBuilding.area) / 2.0).toInt
         def lockToPatch_!(job: GatherMineralsAtPatch): Unit = {
           info(s"Added ${job.unit} to mining team of $patch")
           miningTeam += job
