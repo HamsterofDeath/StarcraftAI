@@ -12,23 +12,27 @@ case class ChokePoint(center: MapTilePosition, lines: Seq[CuttingLine], index: I
 
 case class RelativePoint(xOff: Int, yOff: Int) extends HasXY {
   lazy val opposite = RelativePoint(-xOff, -yOff)
+  def asMapTile = MapTilePosition.shared(x, y)
   override def x = xOff
   override def y = yOff
 }
 
-case class CuttingLine(center: MapTilePosition, from: RelativePoint) {
-  def absoluteFrom = center.movedBy(from)
-  def absoluteTo = center.movedBy(to)
-  def to = from.opposite
+case class CuttingLine(line: Line) {
+  def center = line.center
+  def absoluteFrom = line.a
+  def absoluteTo = line.b
 }
 
 class StrategicMap(resources: Seq[ResourceArea], walkable: Grid2D, game: Game) {
   val domains = LazyVal.from({
     info(s"Analyzing map ${game.mapFileName()}")
     val tooMany = {
-      val lineLength = 5
+      val lineLength = 4
       val tries = (-lineLength, -lineLength) ::(0, -lineLength) ::(lineLength, -lineLength) ::(lineLength, 0) :: Nil map
-                  { case (x, y) => RelativePoint(x, y) }
+                  { case (x, y) =>
+                    val point = RelativePoint(x, y)
+                    Line(point.asMapTile, point.opposite.asMapTile)
+                  }
 
       val findSubAreasOfThis = walkable
       val myAreas = findSubAreasOfThis.areas
@@ -39,27 +43,31 @@ class StrategicMap(resources: Seq[ResourceArea], walkable: Grid2D, game: Game) {
         }
 
         area.allContained.toVector.par.flatMap { center =>
-          val cutters = tries.flatMap { line =>
-            val operateOn = area.mutableCopy
-            operateOn.blockLineRelative_!(center, line, line.opposite)
-            operateOn.anyFree.map { _ =>
-              val modified = operateOn.areaCount
-              val untouched = area.areaCount
-              val cutsArea = modified != untouched
-              line -> cutsArea
-            }
-          }.collect { case (line, cuts) if cuts => line }
+          val cutters = tries.map(_.movedBy(center))
+                        .filter(line => area.anyBlockedOnLine(line.movedBy(center)))
+                        .flatMap { line =>
+                          val operateOn = area.mutableCopy
+                          operateOn.block_!(line)
+                          operateOn.anyFree.map { _ =>
+                            val modified = operateOn.areaCount
+                            val untouched = area.areaCount
+                            val cutsArea = modified != untouched
+                            line -> cutsArea
+                          }
+                        }.collect { case (line, cuts) if cuts => line }
           if (cutters.nonEmpty) {
             val operateOn = area.mutableCopy
             cutters.foreach { line =>
-              operateOn.blockLineRelative_!(center, line, line.opposite)
+              operateOn.block_!(line)
             }
 
             val subAreas = operateOn.areas
-            val cuttingLines = cutters.map { p => CuttingLine(center, p) }
+            val cuttingLines = cutters.map(CuttingLine)
             val chokePoint = ChokePoint(center, cuttingLines)
             val grouped = relevantResources.groupBy { r1 =>
-              subAreas.find(_.containsAsData(r1.center))
+              val mainArea = subAreas.find(_.free(r1.center))
+              def ok = r1.resources.forall(e => subAreas.find(_.free(e.tilePosition)) == mainArea)
+              if (ok) mainArea else None
             }
             if (grouped.values.forall(_.nonEmpty)) {
               val cleaned = grouped.filter(_._1.isDefined)
@@ -78,7 +86,8 @@ class StrategicMap(resources: Seq[ResourceArea], walkable: Grid2D, game: Game) {
       }
     }
 
-    val groupedByArea = tooMany.groupBy(_._2.values.toSet)
+    val groupedByArea = tooMany.filter(_._2.size > 1)
+                        .groupBy(_._2.values.toSet)
     val reduced = groupedByArea.values.map { manyWithSameValue =>
       val center = {
         val tup = manyWithSameValue.map { case (choke, _) =>

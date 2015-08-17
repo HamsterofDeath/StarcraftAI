@@ -10,6 +10,7 @@ class MathTest extends Specification {
        |Single element spiral should work as expected $spiralSingle
        |9 element spiral should work as expected $spiral9
        |Bigger spiral should work as expected $spiralMany
+       |Shared points should work as expected $sharedPoints
                                  """.stripMargin
   def spiralResult = {
     testSpiral.isEmpty mustEqual false
@@ -35,5 +36,9 @@ class MathTest extends Specification {
       (101, 99), (102, 99), (102, 100), (102, 101), (102, 102), (101, 102))
 
     expected mustEqual it.take(expected.size)
+  }
+
+  def sharedPoints = {
+    MapTilePosition.shared(0, 0) mustEqual MapTilePosition(0, 0)
   }
 }

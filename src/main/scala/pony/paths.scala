@@ -10,21 +10,21 @@ class AreaHelper(source: Grid2D) {
   private val baseOn = source.ensureContainsBlocked
 
   def findFreeAreas = {
-    val areas = mutable.ArrayBuffer.empty[collection.Set[Int]]
+    val areas = mutable.ArrayBuffer.empty[Grid2D]
     baseOn.allFree.foreach { p =>
-      val areaAlreadyKnown = areas.exists(_.contains(p.x + p.y * baseOn.cols))
+      val areaAlreadyKnown = areas.exists(_.free(p.x, p.y))
       if (!areaAlreadyKnown) {
         val area = floodFill(p)
         if (area.nonEmpty) {
-          areas += area
+          areas += {
+            val asGrid = new Grid2D(baseOn.cols, baseOn.rows, area, false)
+            val flipped = asGrid.ensureContainsBlocked
+            flipped
+          }
         }
       }
     }
-    val ret = areas.toSeq.map { data =>
-      val asGrid = new Grid2D(baseOn.cols, baseOn.rows, data, false)
-      val flipped = asGrid.ensureContainsBlocked
-      flipped
-    }
+    val ret = areas.toSeq
     assert({
       val before = baseOn.freeCount
       val after = ret.map(_.freeCount)
@@ -54,9 +54,6 @@ object AreaHelper {
     AreaHelper.traverseTilesOfLine(a, b, (x, y) => {
       if (grid2D.blocked(x, y)) Some(false) else None
     }, true)
-  }
-  def traverseTilesOfLine[T](a: MapTilePosition, b: MapTilePosition, f: (Int, Int) => T): Unit = {
-    traverseTilesOfLine(a, b, (x, y) => {f(x, y); None}, None)
   }
   def traverseTilesOfLine[T](a: MapTilePosition, b: MapTilePosition, f: (Int, Int) => Option[T],
                              orElse: T): T = {
@@ -110,6 +107,9 @@ object AreaHelper {
       }
     }
     orElse
+  }
+  def traverseTilesOfLine[T](a: MapTilePosition, b: MapTilePosition, f: (Int, Int) => T): Unit = {
+    traverseTilesOfLine(a, b, (x, y) => {f(x, y); None}, None)
   }
   def freeAreaSize(start: MapTilePosition, baseOn: Grid2D) = {
     var count = 0
@@ -209,6 +209,13 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   private def evalWithBuildings = rawMapBuild.mutableCopy.or_!(justBuildings)
   private def evalWithBuildingsAndResources = justBuildings.mutableCopy.or_!(justMineralsAndGas)
   private def evalOnlyBuildings = evalOnlyUnits(units.allByType[Building])
+  private def evalOnlyUnits(units: TraversableOnce[StaticallyPositioned]) = {
+    val ret = world.map.empty.zoomedOut.mutableCopy
+    units.foreach { b =>
+      ret.block_!(b.area)
+    }
+    ret
+  }
   private def evalOnlyMobileBlockingUnits = evalOnlyMobileUnits(units.allByType[GroundUnit])
   private def evalOnlyMobileUnits(units: TraversableOnce[GroundUnit]) = {
     val ret = world.map.empty.zoomedOut.mutableCopy
@@ -219,13 +226,6 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   }
   private def evalOnlyResources = evalOnlyUnits(units.allByType[MineralPatch].filter(_.remaining > 0))
                                   .or_!(evalOnlyUnits(units.allByType[Geysir]))
-  private def evalOnlyUnits(units: TraversableOnce[StaticallyPositioned]) = {
-    val ret = world.map.empty.zoomedOut.mutableCopy
-    units.foreach { b =>
-      ret.block_!(b.area)
-    }
-    ret
-  }
   private def evalEverythingStatic = withBuildingsAndResources.mutableCopy
                                      .or_!(plannedBuildings)
                                      .or_!(justWorkerPaths)
@@ -263,7 +263,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
         group.patches.foreach { patch =>
           base.mainBuilding.area.outline.foreach { outline =>
             patch.area.tiles.foreach { patchTile =>
-              ret.blockLine_!(outline, patchTile)
+              ret.block_!(outline, patchTile)
             }
           }
         }
