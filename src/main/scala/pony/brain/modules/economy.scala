@@ -139,7 +139,7 @@ class ProvideNewUnits(universe: Universe) extends OrderlessAIModule[UnitFactory]
 
 class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
 
-  private val gatheringJobs = ArrayBuffer.empty[GatherAtBase]
+  private val gatheringJobs = ArrayBuffer.empty[GetMinerals]
 
   override def onTick(): Unit = {
     createJobsForBases()
@@ -149,7 +149,7 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
   private def createJobsForBases(): Unit = {
     val add = universe.bases.bases.filterNot(e => gatheringJobs.exists(_.covers(e))).flatMap { base =>
       base.myMineralGroup.map { minerals =>
-        new GatherAtBase(base, minerals)
+        new GetMinerals(base, minerals)
       }
     }
       info(
@@ -159,7 +159,7 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
     gatheringJobs ++= add
   }
 
-  class GatherAtBase(base: Base, minerals: MineralPatchGroup) extends Employer[WorkerUnit](universe) {
+  class GetMinerals(base: Base, minerals: MineralPatchGroup) extends Employer[WorkerUnit](universe) {
     emp =>
 
     def onTick(): Unit = {
@@ -193,8 +193,8 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
         private val miningTeam = ArrayBuffer.empty[GatherMineralsAtPatch]
         override def toString: String = s"(Mined) $patch"
         def hasOpenSpot: Boolean = miningTeam.size < estimateRequiredWorkers
-        def openSpotCount = estimateRequiredWorkers - miningTeam.size
         def estimateRequiredWorkers = math.round(patch.area.distanceTo(base.mainBuilding.area) / 2.0).toInt
+        def openSpotCount = estimateRequiredWorkers - miningTeam.size
         def lockToPatch_!(job: GatherMineralsAtPatch): Unit = {
           info(s"Added ${job.unit} to mining team of $patch")
           miningTeam += job
@@ -321,6 +321,14 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
       }
     }
   }
+}
+
+class GatherGas(universe: Universe) extends OrderlessAIModule(universe) {
+  private val gatheringJobs = ArrayBuffer.empty[GetGas]
+  override def onTick(): Unit = {
+
+  }
+  class GetGas()
 }
 
 // need this for instanceof checks
