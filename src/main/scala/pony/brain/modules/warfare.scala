@@ -5,7 +5,8 @@ package modules
 trait BuildingRequestHelper extends AIModule[WorkerUnit] {
   private val buildingEmployer = new Employer[Building](universe)
 
-  def requestBuilding[T <: Building](buildingType: Class[_ <: T]) = {
+  def requestBuilding[T <: Building](buildingType: Class[_ <: T],
+                                     forceBuildingPosition: Option[MapTilePosition] = None) = {
     val req = ResourceRequests.forUnit(buildingType)
     val result = resources.request(req, buildingEmployer)
     result match {
@@ -39,7 +40,7 @@ class ProvideFactories(universe: Universe) extends OrderlessAIModule[WorkerUnit]
   override def onTick(): Unit = {
     evaluateCapacities.foreach { cap =>
       val existingByType = unitManager.unitsByType(cap.typeOfFactory).size +
-                           unitManager.plannedToBuildByType(cap.typeOfFactory)
+                           unitManager.plannedToBuildByClass(cap.typeOfFactory).size
       if (existingByType < cap.maximumSustainable) {
         requestBuilding(cap.typeOfFactory)
       }

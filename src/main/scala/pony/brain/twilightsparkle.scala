@@ -165,7 +165,6 @@ class TwilightSparkle(world: DefaultWorld) {
     }
 
     maps.tick()
-    bases.tick()
     resources.tick()
     unitManager.tick()
 
@@ -181,22 +180,19 @@ class Bases(world: DefaultWorld) {
 
   def mainBase = myBases.head
 
-  def tick(): Unit = {
-    myBases.foreach(_.tick())
-  }
   def bases = myBases.toSeq
 
   def findMainBase(): Unit = {
-    world.units.firstByType[MainBuilding].foreach {myBases += new Base(world, _)}
+    world.units.firstByType[MainBuilding].foreach {myBases += new Base(_)(world)}
   }
 }
 
-case class Base(world: DefaultWorld, mainBuilding: MainBuilding) {
+case class Base(mainBuilding: MainBuilding)(world: DefaultWorld) {
 
   val myMineralGroup = world.mineralPatches.nearestTo(mainBuilding.tilePosition)
-
-  def tick(): Unit = {
-  }
+  val myGeysirs      = world.units.geysirs
+                       .filter(g => mainBuilding.area.distanceTo(g.area) < 5)
+                       .toSet
 
   info(
     s"""

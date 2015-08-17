@@ -2,6 +2,7 @@ package pony
 
 import pony.brain.{HasUniverse, Universe}
 
+import scala.collection.JavaConverters._
 import scala.collection.mutable
 
 case class Path(waypoints: Seq[MapTilePosition])
@@ -180,6 +181,16 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   private var withEverythingStatic      = evalEverythingStatic
   private var withEverythingBlocking    = evalEverythingBlocking
   private var lastUpdatePerformedInTick = universe.currentTick
+  def isOnIsland(tilePosition: MapTilePosition) = {
+
+    val others = world.nativeGame
+                 .getPlayers
+                 .asScala
+                 .map(_.getStartLocation)
+                 .map { p => p -> rawMapWalk.areas.find(_.free(p)) }
+                 .filter(_._2.exists(_.free(tilePosition)))
+    others.size <= 1 // one or less starting positions = "island"
+  }
   def rawWalkableMap = rawMapWalk
   def blockedByPlannedBuildings = plannedBuildings.asReadOnly
   def freeBuildingTiles = {

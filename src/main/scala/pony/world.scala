@@ -1,6 +1,6 @@
 package pony
 
-import bwapi.{Color, Game, Player, Position}
+import bwapi.{Color, Game, Player, Position, TilePosition}
 import pony.brain.{ResourceRequestSums, Supplies}
 
 import scala.collection.immutable.BitSet
@@ -201,6 +201,7 @@ class Debugger(game: Game) {
 class Units(game: Game) {
   private val knownUnits = mutable.HashMap.empty[Long, WrapsUnit]
   private var initial    = true
+  def geysirs = allByType[Geysir]
   def firstByType[T: Manifest]: Option[T] = {
     val lookFor = manifest[T].runtimeClass
     mine.find(lookFor.isInstance).map(_.asInstanceOf[T])
@@ -247,8 +248,12 @@ class Units(game: Game) {
 class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
              protected val containsBlocked: Boolean = true) extends Serializable {
   self =>
-
   private val lazyAreas = LazyVal.from {new AreaHelper(self).findFreeAreas}
+  def free(p: TilePosition): Boolean = free(p.getX, p.getY)
+  def free(x: Int, y: Int): Boolean = {
+    val coord = x + y * cols
+    if (containsBlocked) !areaDataBitSet(coord) else areaDataBitSet(coord)
+  }
   def anyBlockedOnLine(center: MapTilePosition, from: HasXY, to: HasXY): Boolean = {
     val absoluteFrom = center.movedBy(from)
     val absoluteTo = center.movedBy(to)
@@ -285,6 +290,7 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
   def blocked(index: Int) = !free(index)
   def free(index: Int) = if (containsBlocked) !areaDataBitSet(index) else areaDataBitSet(index)
   private def allIndexes = Iterator.range(0, size)
+  def size = cols * rows
   def minAreaSize(i: Int) = {
     val mut = mutableCopy
     areas.filter(_.allContained.size < i).foreach { area =>
@@ -304,10 +310,6 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
     }
   }
   def free(p: MapTilePosition): Boolean = free(p.x, p.y)
-  def free(x: Int, y: Int): Boolean = {
-    val coord = x + y * cols
-    if (containsBlocked) !areaDataBitSet(coord) else areaDataBitSet(coord)
-  }
   def zoomedOut = {
     val bits = mutable.BitSet.empty
     val subCols = cols / 4
@@ -336,7 +338,6 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
       ret
     }
   }
-  def size = cols * rows
   def areaCount = areas.size
 }
 

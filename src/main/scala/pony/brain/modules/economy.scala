@@ -12,9 +12,14 @@ class ProvideNewBuildings(universe: Universe)
   override type ComputationInput = Data
 
   override def evaluateNextOrders(in: ComputationInput) = {
-    val helper = new ConstructionSiteFinder(universe)
-    val job = helper.findSpotFor(in.base.mainBuilding.tilePosition, in.buildingType).map { where =>
-      new ConstructBuilding(in.worker, in.buildingType, self, where, in.jobRequest.proofForFunding.assumeSuccessful)
+    val helper = in.helper
+    val job = {
+      def newJob(where: MapTilePosition) =
+        new ConstructBuilding(in.worker, in.buildingType, self, where, in.jobRequest.proofForFunding.assumeSuccessful)
+
+      in.jobRequest.forceBuildingPosition
+      .orElse(helper.findSpotFor(in.base.mainBuilding.tilePosition, in.buildingType))
+      .map(newJob)
     }
     job match {
       case None =>
@@ -23,7 +28,7 @@ class ProvideNewBuildings(universe: Universe)
         BackgroundComputationResult.nothing[WorkerUnit]
       case Some(startJob) =>
         BackgroundComputationResult.result(startJob.toSeq, () => false, () => {
-          info(s"Planning to build ${in.buildingType.className} at ${startJob.where} by ${in.worker}")
+          info(s"Planning to build ${in.buildingType.className} at ${startJob.buildWhere} by ${in.worker}")
           in.jobRequest.clearableInNextTick_!()
           in.jobRequest.doOnClear_! {
             mapLayers.unblockBuilding_!(startJob.area)
@@ -152,9 +157,9 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
         new GetMinerals(base, minerals)
       }
     }
-      info(
-        s"""
-           |Added new mineral gathering job(s): ${add.mkString(" & ")}
+    info(
+      s"""
+         |Added new mineral gathering job(s): ${add.mkString(" & ")}
        """.stripMargin, add.nonEmpty)
     gatheringJobs ++= add
   }
@@ -323,12 +328,62 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
   }
 }
 
-class GatherGas(universe: Universe) extends OrderlessAIModule(universe) {
+class GatherGas(universe: Universe) extends OrderlessAIModule[WorkerUnit](universe) with BuildingRequestHelper {
   private val gatheringJobs = ArrayBuffer.empty[GetGas]
   override def onTick(): Unit = {
-
+    val unattended = unitManager.bases.bases.filter(base => !gatheringJobs.exists(_.covers(base)))
+    unattended.foreach { base =>
+      base.myGeysirs.map { geysir =>
+        new GetGas(base, geysir)
+      }
+    }
+    gatheringJobs.foreach(_.onTick())
   }
-  class GetGas()
+
+  class GetGas(base: Base, geysir: Geysir) extends Employer[WorkerUnit](universe) {
+    self =>
+    private val idealWorkerCount            = (base.mainBuilding.area.distanceTo(geysir.area) / 2).toInt
+    private val workerCountBeforeWantingGas = universe.mapLayers
+                                              .isOnIsland(base.mainBuilding.tilePosition)
+                                              .ifElse(8, 12)
+    private var refinery                    = Option.empty[Refinery]
+    def onTick(): Unit = {
+      refinery match {
+        case None =>
+          if (unitManager.unitsByType[WorkerUnit].size >= workerCountBeforeWantingGas) {
+            def requestExists = unitManager.plannedConstructions[Refinery]
+                                .exists(_.forcedPosition.contains(geysir.tilePosition))
+            def jobExists = unitManager.constructionsInProgress[Refinery]
+                            .exists(_.buildWhere == geysir.tilePosition)
+            if (!requestExists && !jobExists) {
+              requestBuilding(classOf[Refinery], Some(geysir.tilePosition))
+            }
+            unitManager.unitsByType[Refinery]
+            .find(_.tilePosition == geysir.tilePosition)
+            .filterNot(_.isBeingCreated)
+            .foreach { refinery =>
+              self.refinery = Some(refinery)
+            }
+          }
+        case Some(ref) =>
+          val missing = idealWorkerCount - teamSize
+          val result = unitManager.request(UnitJobRequests.idleOfType(self, classOf[WorkerUnit], missing))
+          result.units.foreach { freeWorker =>
+            assignJob_!()
+          }
+      }
+    }
+    def covers(base: Base) = this.base.mainBuilding == base.mainBuilding
+    class GatherGasAtRefinery(worker: WorkerUnit)
+      extends UnitWithJob[WorkerUnit](self, worker, Priority.ConstructBuilding) {
+
+      override def shortDebugString: String = "Collecting gas"
+      override def isFinished = false
+      override protected def ordersForTick: Seq[UnitOrder] = {
+
+      }
+    }
+  }
 }
 
 // need this for instanceof checks
