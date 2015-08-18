@@ -1,6 +1,7 @@
 package pony
 package brain
 
+import pony.brain.modules.Strategy.Strategies
 import pony.brain.modules._
 
 import scala.collection.mutable.ArrayBuffer
@@ -19,6 +20,7 @@ trait HasUniverse {
   def nativeGame = world.nativeGame
   def world = universe.world
   def strategicMap = universe.strategicMap
+  def strategy = universe.strategy
   def ifNth(nth: Int)(u: => Unit) = {
     if (universe.currentTick % nth == 0) {
       u
@@ -140,10 +142,13 @@ class TwilightSparkle(world: DefaultWorld) {
     override def mapLayers = self.maps
     override def units = world.units
     override def strategicMap = world.strategicMap
+    override def strategy = self.strategy
+
   }
 
   private val bases     = new Bases(world)
   private val resources = new ResourceManager(universe)
+  private val strategy  = new Strategies(universe)
 
   private val aiModules   = List(
     new GatherMinerals(universe),
@@ -178,7 +183,14 @@ class TwilightSparkle(world: DefaultWorld) {
 
 class Bases(world: DefaultWorld) {
   private val myBases = ArrayBuffer.empty[Base]
-
+  def rich = {
+    val singleValuable = myMineralFields.exists(_.value > 15000)
+    val multipleIncomes = myMineralFields.size >= 2 && myMineralFields.map(_.value).sum > 2000
+    val muchGas = myGeysirs.map(_.remaining).sum > 2000
+    (singleValuable || multipleIncomes) && muchGas
+  }
+  def myMineralFields = myBases.flatMap(_.myMineralGroup).toSeq
+  def myGeysirs = myBases.flatMap(_.myGeysirs).toSeq
   def mainBase = myBases.head
 
   def bases = myBases.toSeq

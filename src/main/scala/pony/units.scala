@@ -123,16 +123,16 @@ trait Mobile extends WrapsUnit with Controllable {
   def isMoving = nativeUnit.isMoving
 
   def currentTileNative = currentTile.asNative
+  def currentTile = {
+    val tp = nativeUnit.getPosition
+    MapTilePosition.shared(tp.getX / 32, tp.getY / 32)
+  }
   def currentPositionNative = currentPosition.toNative
   def currentPosition = {
     val p = nativeUnit.getPosition
     MapPosition(p.getX, p.getY)
   }
   override def toString = s"${super.toString}@$currentTile"
-  def currentTile = {
-    val tp = nativeUnit.getPosition
-    MapTilePosition.shared(tp.getX / 32, tp.getY / 32)
-  }
 }
 
 trait Killable {
@@ -146,6 +146,8 @@ trait Detector {
 trait ArmedUnit extends WrapsUnit {
 
 }
+
+trait SpiderMines extends WrapsUnit
 
 trait GroundWeapon extends Weapon {
 
@@ -263,6 +265,16 @@ class MissileTurret(unit: APIUnit) extends AnyUnit(unit) with ArmedBuilding
 class Bunker(unit: APIUnit) extends AnyUnit(unit)
 
 class Marine(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon
+class Firebat(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundWeapon
+class Ghost(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon
+class Medic(unit: APIUnit) extends AnyUnit(unit) with GroundUnit
+class Vulture(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundWeapon with SpiderMines
+class Tank(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundWeapon
+class Goliath(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon
+class Wraith(unit: APIUnit) extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon
+class Valkery(unit: APIUnit) extends AnyUnit(unit) with AirUnit with AirWeapon
+class Battlecruiser(unit: APIUnit) extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon
+class ScienceVessel(unit: APIUnit) extends AnyUnit(unit) with AirUnit
 
 class Irrelevant(unit: APIUnit) extends AnyUnit(unit)
 
