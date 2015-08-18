@@ -74,7 +74,17 @@ class ProvideArmy(universe: Universe) extends OrderlessAIModule[UnitFactory](uni
         t -> existing.get(t).map(_.size).getOrElse(0)
       }.toMap
     }
+    val totalWanted = summed.values.sum
     val totalExisting = existingCounts.values.sum
+    val percentagesWanted = summed.map { case (t, v) => t -> v.toDouble / totalWanted }
+    val percentagesExisting = existingCounts.map { case (t, v) => t -> v.toDouble / totalExisting }
+    val mostMissing = percentagesWanted.toVector.sortBy { case (t, idealRatio) =>
+      val existingRatio = percentagesExisting.getOrElse(t, 0.0)
+      existingRatio - idealRatio
+    }
+    mostMissing.headOption.foreach { case (thisOne, _) =>
+      requestUnit(thisOne)
+    }
   }
 }
 
