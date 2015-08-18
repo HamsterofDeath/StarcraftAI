@@ -7,11 +7,12 @@ trait BuildingRequestHelper extends AIModule[WorkerUnit] {
 
   def requestBuilding[T <: Building](buildingType: Class[_ <: T],
                                      forceBuildingPosition: Option[MapTilePosition] = None) = {
-    val req = ResourceRequests.forUnit(buildingType)
+    val req = ResourceRequests.forUnit(universe.race, buildingType)
     val result = resources.request(req, buildingEmployer)
     result match {
       case suc: ResourceApprovalSuccess =>
-        val unitReq = UnitJobRequests.newOfType(universe, buildingEmployer, buildingType, suc)
+        val unitReq = UnitJobRequests.newOfType(universe, buildingEmployer, buildingType, suc,
+          forceBuildingPosition = forceBuildingPosition)
         info(s"Financing possible for $buildingType, requesting build")
         unitManager.request(unitReq)
       case _ =>
@@ -23,7 +24,7 @@ trait UnitRequestHelper extends AIModule[UnitFactory] {
   private val mobileEmployer = new Employer[Mobile](universe)
 
   def requestUnit[T <: Mobile](mobileType: Class[_ <: T]) = {
-    val req = ResourceRequests.forUnit(mobileType)
+    val req = ResourceRequests.forUnit(universe.race, mobileType)
     val result = resources.request(req, mobileEmployer)
     result match {
       case suc: ResourceApprovalSuccess =>

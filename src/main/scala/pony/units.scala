@@ -6,6 +6,11 @@ import pony.brain.{PriorityChain, UnitWithJob, Universe}
 import scala.collection.immutable.HashMap
 import scala.collection.mutable.ListBuffer
 
+trait HasNativeSCAttributes {
+  def nativeUnit: APIUnit
+  def currentOrder = nativeUnit.getOrder
+}
+
 trait NiceToString extends WrapsUnit {
   override def toString = s"[$unitIdText] ${getClass.className}"
 }
@@ -28,8 +33,9 @@ trait OrderHistorySupport extends WrapsUnit {
 
 }
 
-trait WrapsUnit {
-  val unitId = WrapsUnit.nextId
+trait WrapsUnit extends HasNativeSCAttributes {
+  val unitId      = WrapsUnit.nextId
+  val initialType = nativeUnit.getType
   def nativeUnit: APIUnit
   def unitIdText = Integer.toString(unitId, 36)
   def race = {
@@ -165,7 +171,6 @@ trait GroundAndAirWeapon extends RangeWeapon with GroundWeapon with AirWeapon {
 
 }
 
-
 trait AirUnit extends Killable with Mobile {
 
 }
@@ -177,12 +182,18 @@ trait GroundUnit extends Killable with Mobile {
 trait Floating
 
 trait WorkerUnit extends Killable with Mobile with GroundUnit with GroundWeapon with Floating {
+  def isGatheringGas = currentOrder == Order.HarvestGas || currentOrder == Order.MoveToGas ||
+                       currentOrder == Order.ReturnGas || currentOrder == Order.WaitForGas
+
+  def isMagic = currentOrder == Order.ResetCollision
+  def isInMiningProcess = currentOrder == Order.MiningMinerals
+  def isWaitingForMinerals = currentOrder == Order.WaitForMinerals
+  def isMovingToMinerals = currentOrder == Order.MoveToMinerals
+  def isInConstructionProcess = isConstructingBuilding || currentOrder == Order.PlaceBuilding
+  def isConstructingBuilding = currentOrder == Order.ConstructingBuilding
+  def isCarryingNothing = !isCarryingMinerals && !isCarryingGas
   def isCarryingMinerals = nativeUnit.isCarryingMinerals
-  def isInMiningProcess = nativeUnit.getOrder == Order.MiningMinerals
-  def isWaitingForMinerals = nativeUnit.getOrder == Order.WaitForMinerals
-  def isMovingToMinerals = nativeUnit.getOrder == Order.MoveToMinerals
-  def isInConstructionProcess = isConstructingBuilding || nativeUnit.getOrder == Order.PlaceBuilding
-  def isConstructingBuilding = nativeUnit.getOrder == Order.ConstructingBuilding
+  def isCarryingGas = nativeUnit.isCarryingGas
 
 }
 
@@ -195,8 +206,6 @@ object WorkerUnit {
     PriorityChain(valueOfExcuses)
   }
 }
-
-
 
 trait TransporterUnit extends AirUnit {
 
@@ -219,7 +228,7 @@ class MineralPatch(unit: APIUnit) extends AnyUnit(unit) with Resource {
   def isBeingMined = nativeUnit.isBeingGathered
 }
 
-class VespeneGeysir(unit: APIUnit) extends AnyUnit(unit) with Geysir {
+class VespeneGeysir(unit: APIUnit) extends AnyUnit(unit) with Geysir with Resource {
 }
 
 class SupplyDepot(unit: APIUnit) extends AnyUnit(unit) with ImmobileSupplyProvider
@@ -293,7 +302,6 @@ object UnitWrapper {
       c -> k
     }
   }
-
 
   def lift(unit: APIUnit) = {
     trace(s"Detected unit of type ${unit.getType}")

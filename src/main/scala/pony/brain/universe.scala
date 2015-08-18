@@ -10,4 +10,5 @@ trait Universe {
   def units: Units
   def mapLayers: MapLayers
   def strategicMap: StrategicMap
+  def race = bases.mainBase.mainBuilding.race
 }

@@ -128,7 +128,8 @@ case class ResourceRequests(requests: Seq[ResourceRequest], priority: Priority, 
 
 object ResourceRequests {
   val empty = ResourceRequests(Nil, Priority.None, classOf[Irrelevant])
-  def forUnit[T <: WrapsUnit](unitType: Class[_ <: T], priority: Priority = Priority.Default) = {
+  def forUnit[T <: WrapsUnit](race: SCRace, unspecificType: Class[_ <: T], priority: Priority = Priority.Default) = {
+    val unitType = race.specialize(unspecificType)
     val mins = unitType.toUnitType.mineralPrice()
     val gas = unitType.toUnitType.gasPrice()
     val supply = unitType.toUnitType.supplyRequired()

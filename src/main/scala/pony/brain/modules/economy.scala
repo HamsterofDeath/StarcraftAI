@@ -79,12 +79,12 @@ class ProvideNewSupply(universe: Universe) extends OrderlessAIModule[WorkerUnit]
     if (needsMore) {
       // can't use helper because overlords are not buildings :|
       val race = universe.bases.mainBase.mainBuilding.race
-      val result = resources.request(ResourceRequests.forUnit(race.supplyClass, Priority.Supply), this)
+      val result = resources.request(ResourceRequests.forUnit(race, classOf[SupplyProvider], Priority.Supply), this)
       result match {
         case suc: ResourceApprovalSuccess =>
           trace(s"More supply approved! $suc, requesting ${race.supplyClass.className}")
           val ofType = UnitJobRequests
-                       .newOfType(universe, supplyEmployer, race.supplyClass, suc, priority = Priority.Supply)
+                       .newOfType(universe, supplyEmployer, classOf[SupplyProvider], suc, priority = Priority.Supply)
 
           // this will always be unfulfilled
           val result = unitManager.request(ofType)
@@ -120,7 +120,7 @@ class ProvideNewUnits(universe: Universe) extends OrderlessAIModule[UnitFactory]
                   req.clearableInNextTick_!()
                   Nil
                 case _ =>
-                  resources.request(ResourceRequests.forUnit(typeFixed, req.priority), self) match {
+                  resources.request(ResourceRequests.forUnit(universe.race, typeFixed, req.priority), self) match {
                     case suc: ResourceApprovalSuccess =>
                       val order = new TrainUnit(any.onlyOne, typeFixed, self, suc)
                       assignJob_!(order)
@@ -171,8 +171,7 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
       minerals.tick()
       val missing = idealNumberOfWorkers - teamSize
       if (missing > 0) {
-        val workerType = base.mainBuilding.race.workerClass
-        val result = universe.unitManager.request(UnitJobRequests.idleOfType(emp, workerType, missing))
+        val result = universe.unitManager.request(UnitJobRequests.idleOfType(emp, classOf[WorkerUnit], missing))
         val jobs = result.units.flatMap { worker =>
           Micro.MiningOrganization.findBestPatch(worker).map { patch =>
             info(s"Added $worker to mining team of $patch")
@@ -335,17 +334,18 @@ class GatherGas(universe: Universe) extends OrderlessAIModule[WorkerUnit](univer
     unattended.foreach { base =>
       base.myGeysirs.map { geysir =>
         new GetGas(base, geysir)
-      }
+      }.foreach {gatheringJobs += _}
     }
+
     gatheringJobs.foreach(_.onTick())
   }
 
   class GetGas(base: Base, geysir: Geysir) extends Employer[WorkerUnit](universe) {
     self =>
-    private val idealWorkerCount            = (base.mainBuilding.area.distanceTo(geysir.area) / 2).toInt
+    private val idealWorkerCount            = 4 + (base.mainBuilding.area.distanceTo(geysir.area) / 3).toInt
     private val workerCountBeforeWantingGas = universe.mapLayers
                                               .isOnIsland(base.mainBuilding.tilePosition)
-                                              .ifElse(8, 12)
+                                              .ifElse(8, 14)
     private var refinery                    = Option.empty[Refinery]
     def onTick(): Unit = {
       refinery match {
@@ -367,21 +367,37 @@ class GatherGas(universe: Universe) extends OrderlessAIModule[WorkerUnit](univer
           }
         case Some(ref) =>
           val missing = idealWorkerCount - teamSize
-          val result = unitManager.request(UnitJobRequests.idleOfType(self, classOf[WorkerUnit], missing))
+          val ofType = UnitJobRequests.idleOfType(self, classOf[WorkerUnit], missing, Priority.CollectGas)
+                       .acceptOnly_!(_.isCarryingNothing)
+          val result = unitManager.request(ofType)
           result.units.foreach { freeWorker =>
-            assignJob_!()
+            assignJob_!(new GatherGasAtRefinery(freeWorker))
           }
       }
     }
     def covers(base: Base) = this.base.mainBuilding == base.mainBuilding
+
     class GatherGasAtRefinery(worker: WorkerUnit)
       extends UnitWithJob[WorkerUnit](self, worker, Priority.ConstructBuilding) {
 
-      override def shortDebugString: String = "Collecting gas"
+      private var state: State = Idle
+      override def shortDebugString: String = state.getClass.className
       override def isFinished = false
       override protected def ordersForTick: Seq[UnitOrder] = {
-
+        val (newState, order) = state match {
+          case Idle =>
+            Gathering -> Orders.Gather(worker, geysir)
+          case Gathering if worker.isGatheringGas || worker.isMagic =>
+            Gathering -> Orders.NoUpdate
+          case _ =>
+            Idle -> Orders.NoUpdate
+        }
+        state = newState
+        order.toSeq
       }
+      trait State
+      case object Idle extends State
+      case object Gathering extends State
     }
   }
 }

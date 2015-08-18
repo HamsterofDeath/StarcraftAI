@@ -147,6 +147,7 @@ class TwilightSparkle(world: DefaultWorld) {
 
   private val aiModules   = List(
     new GatherMinerals(universe),
+    new GatherGas(universe),
     new ProvideNewUnits(universe),
     new ProvideNewSupply(universe),
     new ProvideNewBuildings(universe),

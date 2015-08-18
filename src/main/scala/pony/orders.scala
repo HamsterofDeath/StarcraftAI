@@ -65,13 +65,13 @@ object Orders {
     }
   }
 
-  case class Gather(unit: WorkerUnit, patch: MineralPatch) extends UnitOrder {
+  case class Gather(unit: WorkerUnit, minsOrGas: Resource) extends UnitOrder {
     override def issueOrderToGame(): Unit = {
-      unit.nativeUnit.gather(patch.nativeUnit)
+      unit.nativeUnit.gather(minsOrGas.nativeUnit)
     }
 
     override def renderDebug(renderer: Renderer): Unit = {
-      renderer.in_!(Color.Teal).indicateTarget(unit.currentPosition, patch.area)
+      renderer.in_!(Color.Teal).indicateTarget(unit.currentPosition, minsOrGas.area)
     }
   }
   case class MoveToPatch(unit: WorkerUnit, patch: MineralPatch) extends UnitOrder {
