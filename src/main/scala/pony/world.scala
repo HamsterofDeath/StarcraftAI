@@ -12,7 +12,59 @@ class UnitData(in: bwapi.Unit) {
   // todo use this
 }
 
+trait TechTree {
+  protected val builtBy  : Map[Class[_ <: WrapsUnit], Class[_ <: WrapsUnit]]
+  protected val dependsOn: Map[Class[_ <: WrapsUnit], Set[Class[_ <: WrapsUnit]]]
+  def canBuild(factory: Class[_ <: UnitFactory], mobile: Class[_ <: Mobile]) = {
+    builtBy(mobile) == factory
+  }
+  def requiredFor[T <: WrapsUnit](what: Class[_ <: T]): Set[Class[_ <: WrapsUnit]] = {
+    ???
+  }
+}
+
+class TerranTechTree extends TechTree {
+
+  override protected val builtBy: Map[Class[_ <: WrapsUnit], Class[_ <: WrapsUnit]] = Map(
+    classOf[SCV] -> classOf[CommandCenter],
+    classOf[Marine] -> classOf[Barracks],
+    classOf[Firebat] -> classOf[Barracks],
+    classOf[Ghost] -> classOf[Barracks],
+    classOf[Medic] -> classOf[Barracks],
+    classOf[Vulture] -> classOf[Factory],
+    classOf[Tank] -> classOf[Factory],
+    classOf[Goliath] -> classOf[Factory],
+    classOf[Wraith] -> classOf[Starport],
+    classOf[Battlecruiser] -> classOf[Starport],
+    classOf[Shuttle] -> classOf[Starport],
+    classOf[ScienceVessel] -> classOf[Starport],
+    classOf[Irrelevant] -> classOf[Irrelevant]
+  )
+
+  override protected val dependsOn = {
+    val inferred = builtBy.map { case (k, v) => k -> Set(v) }.toList
+
+    val additional: Map[Class[_ <: WrapsUnit], Set[_ <: Class[_ <: WrapsUnit]]] = Map(
+      classOf[RocketTower] -> classOf[EngineeringBay].toSet,
+      classOf[Ghost] -> classOf[CovertOps].toSet,
+      classOf[Bunker] -> classOf[Barracks].toSet,
+      classOf[Firebat] -> classOf[Academy].toSet,
+      classOf[Medic] -> classOf[Academy].toSet,
+      classOf[Tank] -> classOf[MachineShop].toSet,
+      classOf[Goliath] -> classOf[MachineShop].toSet,
+      classOf[Battlecruiser] -> Set(classOf[ControlTower], classOf[PhysicsLab]),
+      classOf[ScienceVessel] -> Set(classOf[ScienceFacility], classOf[ControlTower]),
+      classOf[Valkery] -> classOf[ControlTower].toSet,
+      classOf[Irrelevant] -> classOf[Irrelevant].toSet
+    )
+
+    (inferred ++ additional.toList).groupBy(_._1).map { case (k, vs) => k -> vs.flatMap(_._2).toSet }
+  }
+
+}
+
 sealed trait SCRace {
+  val techTree: TechTree
   def specialize[T](unitType: Class[_ <: T]) = {
     (if (classOf[WorkerUnit].isAssignableFrom(unitType)) {
       workerClass
@@ -25,31 +77,34 @@ sealed trait SCRace {
     } else
       unitType).asInstanceOf[Class[_ <: T]]
   }
-
   def workerClass: Class[_ <: WorkerUnit]
   def transporterClass: Class[_ <: TransporterUnit]
   def supplyClass: Class[_ <: SupplyProvider]
 }
 
 case object Terran extends SCRace {
+  override val techTree = new TerranTechTree
   override def workerClass: Class[_ <: WorkerUnit] = classOf[SCV]
   override def transporterClass: Class[_ <: TransporterUnit] = classOf[Transporter]
   override def supplyClass: Class[_ <: SupplyProvider] = classOf[SupplyDepot]
 }
 
 case object Zerg extends SCRace {
+  override val techTree = ???
   override def workerClass: Class[_ <: WorkerUnit] = classOf[Drone]
   override def transporterClass: Class[_ <: TransporterUnit] = classOf[Overlord]
   override def supplyClass: Class[_ <: SupplyProvider] = classOf[Overlord]
 }
 
 case object Protoss extends SCRace {
+  override val techTree = ???
   override def workerClass: Class[_ <: WorkerUnit] = classOf[Probe]
   override def transporterClass: Class[_ <: TransporterUnit] = classOf[Shuttle]
   override def supplyClass: Class[_ <: SupplyProvider] = classOf[Pylon]
 }
 
 case object Other extends SCRace {
+  override val techTree: TechTree = ???
   override def workerClass: Class[_ <: WorkerUnit] = ???
   override def transporterClass: Class[_ <: TransporterUnit] = ???
   override def supplyClass: Class[_ <: SupplyProvider] = ???
@@ -227,12 +282,13 @@ class Units(game: Game) {
   }
 
   import scala.collection.JavaConverters._
-  def mine = all.filter(_.nativeUnit.getPlayer == game.self())
-  def all = knownUnits.valuesIterator
+
   def mineByType[T: Manifest]: Iterator[T] = {
     val lookFor = manifest[T].runtimeClass
     mine.filter(lookFor.isInstance).map(_.asInstanceOf[T])
   }
+  def mine = all.filter(_.nativeUnit.getPlayer == game.self())
+  def all = knownUnits.valuesIterator
   def minerals = allByType[MineralPatch]
   def tick(): Unit = {
     if (initial) {
@@ -278,13 +334,13 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
   def areaWhichContains(tile: MapTilePosition) = areas.find(_.containsAsData(tile))
   def containsAsData(p: MapTilePosition): Boolean = !free(p)
   def free(p: MapTilePosition): Boolean = free(p.x, p.y)
-  def areas = lazyAreas.get
   def includes(area: Area): Boolean = area.outline.forall(includes)
   def includes(p: MapTilePosition): Boolean = includes(p.x, p.y)
   def includes(x: Int, y: Int): Boolean = x >= 0 && x < cols && y >= 0 && y < rows
   def connectedByLine(a: MapTilePosition, b: MapTilePosition) = AreaHelper.directLineOfSight(a, b, this)
   def blockedCount = size - freeCount
   def freeCount = if (containsBlocked) size - areaDataBitSet.size else areaDataBitSet.size
+  def size = cols * rows
   def mkString: String = mkString('x')
   def mkString(blockedDisplay: Char) = {
     0 until rows map { y =>
@@ -293,10 +349,6 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
       } mkString
     } mkString "\n"
 
-  }
-  def free(x: Int, y: Int): Boolean = {
-    val coord = x + y * cols
-    if (containsBlocked) !areaDataBitSet(coord) else areaDataBitSet(coord)
   }
   def ensureContainsBlocked = if (containsBlocked)
     this
@@ -313,6 +365,7 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
     }
     mut.asReadOnly
   }
+  def areas = lazyAreas.get
   def mutableCopy = new MutableGrid2D(cols, rows, mutable.BitSet.empty ++ areaDataBitSet)
   def allContained = allBlocked
   def allBlocked = if (containsBlocked) bitSetToTiles else allIndexes.filterNot(areaDataBitSet).map(indexToTile)
@@ -339,10 +392,13 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
   }
   override def toString: String = s"Grid2D(${areaDataBitSet.size} of ${size})"
   def blocked = size - walkable
-  def size = cols * rows
   def walkable = areaDataBitSet.size
   def blocked(p: MapTilePosition): Boolean = !free(p)
   def containsAsData(x: Int, y: Int): Boolean = !free(x, y)
+  def free(x: Int, y: Int): Boolean = {
+    val coord = x + y * cols
+    if (containsBlocked) !areaDataBitSet(coord) else areaDataBitSet(coord)
+  }
   def allFree = if (containsBlocked) allIndexes.filterNot(areaDataBitSet).map(indexToTile) else bitSetToTiles
   def all: Iterator[MapTilePosition] = new Iterator[MapTilePosition] {
     private var index = 0
@@ -390,6 +446,18 @@ class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet) extends Grid2D
   def block_!(area: Area): Unit = {
     area.tiles.foreach { p => block_!(p.x, p.y) }
   }
+  def block_!(x: Int, y: Int): Unit = {
+    if (inArea(x, y)) {
+      val where = xyToIndex(x, y)
+      if (containsBlocked) {
+        bitSet += where
+      } else {
+        bitSet -= where
+      }
+    }
+  }
+  private def xyToIndex(x: Int, y: Int) = x + y * cols
+  def inArea(x: Int, y: Int) = x >= 0 && y >= 0 && x < cols && y < rows
   def free_!(area: Area): Unit = {
     area.tiles.foreach { p => free_!(p.x, p.y) }
   }
@@ -403,20 +471,8 @@ class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet) extends Grid2D
       }
     }
   }
-  private def xyToIndex(x: Int, y: Int) = x + y * cols
-  def inArea(x: Int, y: Int) = x >= 0 && y >= 0 && x < cols && y < rows
   def block_!(tile: MapTilePosition): Unit = {
     block_!(tile.x, tile.y)
-  }
-  def block_!(x: Int, y: Int): Unit = {
-    if (inArea(x, y)) {
-      val where = xyToIndex(x, y)
-      if (containsBlocked) {
-        bitSet += where
-      } else {
-        bitSet -= where
-      }
-    }
   }
 }
 

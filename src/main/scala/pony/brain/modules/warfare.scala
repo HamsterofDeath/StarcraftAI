@@ -63,29 +63,36 @@ case class IdealUnitRatio[T <: Mobile](unitType: Class[_ <: Mobile], amount: Int
 class ProvideArmy(universe: Universe) extends OrderlessAIModule[UnitFactory](universe) with UnitRequestHelper {
 
   override def onTick(): Unit = {
-    val ratios = strategy.current.suggestUnits
-    val summed = ratios.groupBy(_.unitType)
-                 .map { case (t, v) =>
-                   (t, v.map(_.fixedAmount).sum)
-                 }
-    val existingCounts = {
-      val existing = unitManager.unitsByType[Mobile].groupBy(_.getClass)
-      summed.keySet.map { t =>
-        t -> existing.get(t).map(_.size).getOrElse(0)
-      }.toMap
-    }
-    val totalWanted = summed.values.sum
-    val totalExisting = existingCounts.values.sum
-    val percentagesWanted = summed.map { case (t, v) => t -> v.toDouble / totalWanted }
-    val percentagesExisting = existingCounts.map { case (t, v) => t -> v.toDouble / totalExisting }
-    val mostMissing = percentagesWanted.toVector.sortBy { case (t, idealRatio) =>
-      val existingRatio = percentagesExisting.getOrElse(t, 0.0)
+    val p = percentages
+    val mostMissing = p.wanted.toVector.sortBy { case (t, idealRatio) =>
+      val existingRatio = p.existing.getOrElse(t, 0.0)
       existingRatio - idealRatio
     }
     mostMissing.headOption.foreach { case (thisOne, _) =>
       requestUnit(thisOne)
     }
   }
+  def percentages = {
+    val ratios = strategy.current.suggestUnits
+    val summed = ratios.groupBy(_.unitType)
+                 .map { case (t, v) =>
+                   (t, v.map(_.fixedAmount).sum)
+                 }
+    val totalWanted = summed.values.sum
+    val percentagesWanted = summed.map { case (t, v) => t -> v.toDouble / totalWanted }
+
+    val existingCounts = {
+      val existing = unitManager.unitsByType[Mobile].groupBy(_.getClass)
+      summed.keySet.map { t =>
+        t -> existing.get(t).map(_.size).getOrElse(0)
+      }.toMap
+    }
+
+    val totalExisting = existingCounts.values.sum
+    val percentagesExisting = existingCounts.map { case (t, v) => t -> v.toDouble / totalExisting }
+    Percentages(percentagesWanted, percentagesExisting)
+  }
+  case class Percentages(wanted: Map[Class[_ <: Mobile], Double], existing: Map[Class[_ <: Mobile], Double])
 }
 
 object Strategy {

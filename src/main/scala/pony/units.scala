@@ -99,7 +99,7 @@ trait Addon extends Building {
 
 trait UnitFactory extends Building with Controllable {
   def canBuild[T <: Mobile](typeOfUnit: Class[_ <: T]) = {
-    Dependencies.builderOf(typeOfUnit).isAssignableFrom(getClass)
+    race.techTree.canBuild(getClass, typeOfUnit)
   }
 
   def isProducing = nativeUnit.getOrder == Order.Train || nativeUnit.getRemainingTrainTime > 0
@@ -245,10 +245,16 @@ class Shuttle(unit: APIUnit) extends AnyUnit(unit) with TransporterUnit
 class Transporter(unit: APIUnit) extends AnyUnit(unit) with TransporterUnit
 
 class CommandCenter(unit: APIUnit) extends AnyUnit(unit) with MainBuilding
+
 class Comsat(unit: APIUnit) extends AnyUnit(unit) with SpellcasterBuilding with Addon
 class NuclearSilo(unit: APIUnit) extends AnyUnit(unit) with SpellcasterBuilding with Addon
 class PhysicsLab(unit: APIUnit) extends AnyUnit(unit) with UpgraderBuilding with Addon
 class Refinery(unit: APIUnit) extends AnyUnit(unit) with GasProvider
+class CovertOps(unit: APIUnit) extends AnyUnit(unit) with UpgraderBuilding with Addon
+class MachineShop(unit: APIUnit) extends AnyUnit(unit) with UpgraderBuilding with Addon
+class ControlTower(unit: APIUnit) extends AnyUnit(unit) with UpgraderBuilding with Addon
+
+class RocketTower(unit: APIUnit) extends AnyUnit(unit) with ArmedBuilding
 
 class Barracks(unit: APIUnit) extends AnyUnit(unit) with UnitFactory
 class Factory(unit: APIUnit) extends AnyUnit(unit) with UnitFactory
@@ -256,9 +262,8 @@ class Starport(unit: APIUnit) extends AnyUnit(unit) with UnitFactory
 
 class Academy(unit: APIUnit) extends AnyUnit(unit) with UpgraderBuilding
 class Armory(unit: APIUnit) extends AnyUnit(unit) with UpgraderBuilding
-class ControlTower(unit: APIUnit) extends AnyUnit(unit) with UpgraderBuilding with Addon
 class EngineeringBay(unit: APIUnit) extends AnyUnit(unit) with UpgraderBuilding
-class MachineShop(unit: APIUnit) extends AnyUnit(unit) with UpgraderBuilding with Addon
+class ScienceFacility(unit: APIUnit) extends AnyUnit(unit) with UpgraderBuilding
 
 class MissileTurret(unit: APIUnit) extends AnyUnit(unit) with ArmedBuilding
 
@@ -324,17 +329,6 @@ object UnitWrapper {
         else new Irrelevant(unit)
     }
   }
-}
-
-// this should be a part of bwmirror, but it's missing for some reason
-object Dependencies {
-  private val builtBy: Map[Class[_ <: WrapsUnit], Class[_ <: WrapsUnit]] = Map(
-    classOf[SCV] -> classOf[CommandCenter],
-    classOf[Marine] -> classOf[Barracks],
-    classOf[Irrelevant] -> classOf[Irrelevant]
-  )
-
-  def builderOf(unitClass: Class[_ <: WrapsUnit]) = builtBy(unitClass)
 }
 
 object TypeMapping {

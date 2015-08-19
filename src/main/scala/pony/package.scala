@@ -36,6 +36,8 @@ package object pony {
   implicit class ToOneElemList[T](val t: T) extends AnyVal {
     def toSome = Some(t)
     def toSeq = Seq(t)
+    def toSet = Set(t)
+    def toGSet = collection.Set(t)
     def toList = List(t)
     def toJavaList = java.util.Arrays.asList(t)
     def toVector = Vector(t)
