@@ -53,6 +53,8 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
     locked += newLock
     lockedSums.invalidate()
   }
+  private def myUnlockedResources = myResources - lockedResources
+  def lockedResources = lockedSums.get
   def tick(): Unit = {
     failedToProvideLastTick = failedToProvideThisTick.toVector
     failedToProvideThisTick.clear()
@@ -69,8 +71,6 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
   def gatheredGas = nativeGame.self().gatheredGas()
   def currentResources = myResources
   def supplies = myUnlockedResources.supply
-  private def myUnlockedResources = myResources - lockedResources
-  def lockedResources = lockedSums.get
   def plannedSuppliesToAdd = {
     unitManager
     .selectJobs((e: ConstructBuilding[WorkerUnit, Building]) => e.typeOfBuilding == unitManager.race.supplyClass)
@@ -138,7 +138,9 @@ object ResourceRequests {
   }
 }
 
-case class LockedResources[T <: WrapsUnit](reqs: ResourceRequests, employer: Employer[T])
+case class LockedResources[T <: WrapsUnit](reqs: ResourceRequests, employer: Employer[T]) {
+  def whatFor = reqs.whatFor
+}
 
 case class ResourceRequestSums(minerals: Int, gas: Int, supply: Int) {
   def equalValue(proof: ResourceApprovalSuccess) = minerals == proof.minerals && gas == proof.gas &&

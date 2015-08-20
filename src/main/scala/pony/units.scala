@@ -21,6 +21,9 @@ class AnyUnit(val nativeUnit: APIUnit) extends WrapsUnit with NiceToString with 
 trait OrderHistorySupport extends WrapsUnit {
   private val history    = ListBuffer.empty[HistoryElement]
   private val maxHistory = 1000
+  def trackOrder(order: UnitOrder): Unit = {
+    history.lastOption.foreach(_.trackOrder_!(order))
+  }
   override def onTick(universe: Universe): Unit = {
     super.onTick(universe)
     history += HistoryElement(nativeUnit.getOrder, nativeUnit.getOrderTarget, universe.unitManager.jobOf(this))
@@ -29,7 +32,14 @@ trait OrderHistorySupport extends WrapsUnit {
     }
   }
   def unitHistory = history.reverse
-  case class HistoryElement(order: Order, target: APIUnit, job: UnitWithJob[_ <: WrapsUnit])
+  case class HistoryElement(order: Order, target: APIUnit, job: UnitWithJob[_ <: WrapsUnit]) {
+    private var issuedOrder: UnitOrder = _
+
+    def trackOrder_!(issuedOrder: UnitOrder): Unit = {
+      this.issuedOrder = issuedOrder
+    }
+    override def toString: String = s"$order, $issuedOrder, $target, $job"
+  }
 
 }
 
@@ -123,16 +133,16 @@ trait Mobile extends WrapsUnit with Controllable {
   def isMoving = nativeUnit.isMoving
 
   def currentTileNative = currentTile.asNative
-  def currentTile = {
-    val tp = nativeUnit.getPosition
-    MapTilePosition.shared(tp.getX / 32, tp.getY / 32)
-  }
   def currentPositionNative = currentPosition.toNative
   def currentPosition = {
     val p = nativeUnit.getPosition
     MapPosition(p.getX, p.getY)
   }
   override def toString = s"${super.toString}@$currentTile"
+  def currentTile = {
+    val tp = nativeUnit.getPosition
+    MapTilePosition.shared(tp.getX / 32, tp.getY / 32)
+  }
 }
 
 trait Killable {
@@ -242,7 +252,7 @@ class Probe(unit: APIUnit) extends AnyUnit(unit) with WorkerUnit
 class Drone(unit: APIUnit) extends AnyUnit(unit) with WorkerUnit
 
 class Shuttle(unit: APIUnit) extends AnyUnit(unit) with TransporterUnit
-class Transporter(unit: APIUnit) extends AnyUnit(unit) with TransporterUnit
+class Dropship(unit: APIUnit) extends AnyUnit(unit) with TransporterUnit
 
 class CommandCenter(unit: APIUnit) extends AnyUnit(unit) with MainBuilding
 
@@ -308,6 +318,17 @@ object UnitWrapper {
       UnitType.Terran_Refinery -> ((new Refinery(_), classOf[Refinery])),
       UnitType.Terran_Starport -> ((new Starport(_), classOf[Starport])),
       UnitType.Terran_Marine -> ((new Marine(_), classOf[Marine])),
+      UnitType.Terran_Medic -> ((new Medic(_), classOf[Medic])),
+      UnitType.Terran_Valkyrie -> ((new Valkery(_), classOf[Valkery])),
+      UnitType.Terran_Vulture -> ((new Vulture(_), classOf[Vulture])),
+      UnitType.Terran_Siege_Tank_Tank_Mode -> ((new Tank(_), classOf[Tank])),
+      UnitType.Terran_Siege_Tank_Siege_Mode -> ((new Tank(_), classOf[Tank])),
+      UnitType.Terran_Goliath -> ((new Goliath(_), classOf[Goliath])),
+      UnitType.Terran_Wraith -> ((new Wraith(_), classOf[Wraith])),
+      UnitType.Terran_Science_Vessel -> ((new ScienceVessel(_), classOf[ScienceVessel])),
+      UnitType.Terran_Battlecruiser -> ((new Battlecruiser(_), classOf[Battlecruiser])),
+      UnitType.Terran_Dropship -> ((new Dropship(_), classOf[Dropship])),
+      UnitType.Terran_Ghost -> ((new Ghost(_), classOf[Ghost])),
 
       UnitType.Protoss_Probe -> ((new Probe(_), classOf[Probe])),
       UnitType.Zerg_Drone -> ((new Drone(_), classOf[Drone])),

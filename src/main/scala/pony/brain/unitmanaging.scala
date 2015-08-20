@@ -25,6 +25,10 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
   def tryFindBetterEmployeeFor[T <: WrapsUnit](anyJob: CanAcceptUnitSwitch[T]): Unit = {
     reorganizeJobQueue += anyJob
   }
+
+  def plannedToBuild(c: Class[_ <: Building]): Boolean = plannedToBuild
+                                                         .exists(e => c.isAssignableFrom(e.typeOfRequestedUnit))
+
   def plannedToBuild = unfulfilledRequestsLastTick.flatMap(_.requests).collect { case b: BuildUnitRequest[_] => b }
 
   def plannedToBuildByType[T <: Building : Manifest]: Int = {
@@ -34,14 +38,14 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
   def plannedToBuildByClass(typeOfFactory: Class[_ <: Building]) = {
     unfulfilledByTargetType(typeOfFactory)
   }
+  def plannedConstructions[T <: Building : Manifest] = {
+    val typeOfFactory = manifest[T].runtimeClass.asInstanceOf[Class[_ <: T]]
+    unfulfilledByTargetType(typeOfFactory)
+  }
   private def unfulfilledByTargetType[T <: WrapsUnit](targetType: Class[_ <: T]) = {
     unfulfilledRequestsLastTick.flatMap(_.requests).iterator.collect {
       case b: BuildUnitRequest[_] if b.typeOfRequestedUnit == targetType => b
     }
-  }
-  def plannedConstructions[T <: Building : Manifest] = {
-    val typeOfFactory = manifest[T].runtimeClass.asInstanceOf[Class[_ <: T]]
-    unfulfilledByTargetType(typeOfFactory)
   }
   def constructionsInProgress[T <: Building : Manifest] = {
     val typeOfFactory = manifest[T].runtimeClass
@@ -50,7 +54,12 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
     }
     byJob
   }
-
+  def allJobsByType[T <: UnitWithJob[_] : Manifest] = {
+    val wanted = manifest[T].runtimeClass
+    assignments.valuesIterator.filter { job =>
+      wanted.isAssignableFrom(job.getClass)
+    }.map {_.asInstanceOf[T]}.toVector
+  }
   def unitsByType[T <: WrapsUnit : Manifest]: collection.Set[T] = {
     val runtimeClass = manifest[T].runtimeClass.asInstanceOf[Class[_ <: T]]
     unitsByType(runtimeClass)
@@ -63,9 +72,7 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
   def jobsByType = assignments.values.toSeq.groupBy(_.getClass)
   def jobsOf[T <: WrapsUnit](emp: Employer[T]) = byEmployer.getOrElse(emp, Set.empty)
                                                  .asInstanceOf[collection.Set[UnitWithJob[T]]]
-
   def jobByUnitIdString(str: String) = assignments.find(_._1.unitIdText == str).map(_._2)
-
   def employers = byEmployer.keySet
   def plannedSupplyAdditions = {
     val byJob = allJobsByType[ConstructBuilding[WorkerUnit, Building]].collect {
@@ -75,12 +82,6 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
       case b: BuildUnitRequest[_] => b.typeOfRequestedUnit.toUnitType.supplyProvided()
     }.sum
     byJob + byUnfulfilledRequest
-  }
-  def allJobsByType[T <: UnitWithJob[_] : Manifest] = {
-    val wanted = manifest[T].runtimeClass
-    assignments.valuesIterator.filter { job =>
-      wanted.isAssignableFrom(job.getClass)
-    }.map {_.asInstanceOf[T]}.toVector
   }
   def allJobsByUnitType[T <: WrapsUnit : Manifest] = selectJobs[T, UnitWithJob[T]](_ => true)
   def selectJobs[U <: WrapsUnit : Manifest, T <: UnitWithJob[U] : Manifest](f: T => Boolean) = {
@@ -184,29 +185,33 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
       new UnitCollector(req, universe).collect_!()
     }
 
-    req.allTypes.flatMap(race.techTree.requiredFor)
-
-
-    val hr = hireResult
-    val result = hr match {
-      case None =>
-        if (buildIfNoneAvailable) unfulfilledRequestsThisTick += req
-        new FailedPreHiringResult[T]
-      case Some(team) if !team.complete =>
-        trace(s"Partially successful hiring request: $team")
-        if (buildIfNoneAvailable) unfulfilledRequestsThisTick += team.missingAsRequest
-        if (team.hasOneMember)
-          new PartialPreHiringResult(team.teamAsMap) with ExactlyOneSuccess[T]
-        else
-          new PartialPreHiringResult(team.teamAsMap)
-      case Some(team) =>
-        trace(s"Successful hiring request: $team")
-        if (team.hasOneMember) {
-          new SuccessfulPreHiringResult(team.teamAsMap) with ExactlyOneSuccess[T]
-        } else {
-          new SuccessfulPreHiringResult(team.teamAsMap)
-        }
+    val mustHave = req.allTypes.flatMap(race.techTree.requiredFor)
+    val missing = mustHave.filterNot(units.ownsByType)
+    val result = if (missing.isEmpty) {
+      val hr = hireResult
+      hr match {
+        case None =>
+          if (buildIfNoneAvailable) unfulfilledRequestsThisTick += req
+          new FailedPreHiringResult[T]
+        case Some(team) if !team.complete =>
+          trace(s"Partially successful hiring request: $team")
+          if (buildIfNoneAvailable) unfulfilledRequestsThisTick += team.missingAsRequest
+          if (team.hasOneMember)
+            new PartialPreHiringResult(team.teamAsMap) with ExactlyOneSuccess[T]
+          else
+            new PartialPreHiringResult(team.teamAsMap)
+        case Some(team) =>
+          trace(s"Successful hiring request: $team")
+          if (team.hasOneMember) {
+            new SuccessfulPreHiringResult(team.teamAsMap) with ExactlyOneSuccess[T]
+          } else {
+            new SuccessfulPreHiringResult(team.teamAsMap)
+          }
+      }
+    } else {
+      new MissingRequirementResult[T](missing)
     }
+
     trace(s"Result of request: $result")
     result
   }
@@ -222,7 +227,9 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
 }
 
 trait PreHiringResult[T <: WrapsUnit] {
-  def missingRequirements: Set[Class[_ <: WrapsUnit]] = Set.empty
+  def hasMissingRequirements = missingRequirements.nonEmpty
+
+  def missingRequirements: Set[Class[_ <: Building]] = Set.empty
   def success: Boolean
   def canHire: Map[UnitRequest[T], Set[T]]
   def units = canHire.flatMap(_._2)
@@ -235,7 +242,7 @@ class FailedPreHiringResult[T <: WrapsUnit] extends PreHiringResult[T] {
   def canHire = Map.empty
 }
 
-class MissingRequirementResult[T <: WrapsUnit](needs: Set[Class[_ <: WrapsUnit]]) extends PreHiringResult[T] {
+class MissingRequirementResult[T <: WrapsUnit](needs: Set[Class[_ <: Building]]) extends PreHiringResult[T] {
   def success = false
   def canHire = Map.empty
   override def missingRequirements = needs
@@ -401,9 +408,11 @@ abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: 
       noCommandsForTicks -= 1
       Nil
     } else {
+      noCommandsForTicks = everyNth
       ordersForTick
     }
   }
+  def everyNth = 0
   def noCommandsForTicks_!(n: Int): Unit = {
     noCommandsForTicks = n
   }
@@ -419,13 +428,13 @@ abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: 
 
 trait IssueOrderNTimes[T <: WrapsUnit] extends UnitWithJob[T] {
   private var issued = 0
-  def once: Seq[UnitOrder]
+  def getOrder: Seq[UnitOrder]
   override def ordersForTick: Seq[UnitOrder] = {
     if (issued == times)
       Nil
     else {
-      issued += times
-      once
+      issued += 1
+      getOrder
     }
   }
   def times = 1
@@ -476,7 +485,7 @@ class TrainUnit[F <: UnitFactory, T <: Mobile](factory: F, trainType: Class[_ <:
 
   override def proofForFunding = funding
 
-  override def once: Seq[UnitOrder] = {
+  override def getOrder: Seq[UnitOrder] = {
     Orders.Train(unit, trainType).toSeq
   }
 
@@ -507,6 +516,7 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, bu
   private var startedActualConstuction = false
   private var finishedConstruction     = false
   private var resourcesUnlocked        = false
+  override def everyNth: Int = 10
   override def onTick(): Unit = {
     super.onTick()
     if (startedActualConstuction && !resourcesUnlocked) {
@@ -515,37 +525,33 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, bu
     }
   }
 
-  override def once: Seq[UnitOrder] = Orders.Construct(worker, buildingType, buildWhere).toSeq
+  override def getOrder: Seq[UnitOrder] =
+    Orders.Construct(worker, buildingType, buildWhere).toSeq
 
-  override def times = 10
+  override def times = 5
 
   override def shortDebugString: String = s"Build ${buildingType.className}"
-
-  def typeOfBuilding = buildingType
-
   override def proofForFunding = funding
-
   override def canSwitchNow = !startedActualConstuction
-
   override def couldSwitchInTheFuture = !startedActualConstuction
-
   override def hasFailed: Boolean = {
-    val fail = !worker.isInConstructionProcess && age > 50 && !isFinished
+    val fail = !worker.isInConstructionProcess && age > 200 && !isFinished
+    warn(s"Construction of ${typeOfBuilding.className} failed, worker $worker didn't manange", fail)
     fail
   }
-
+  def typeOfBuilding = buildingType
   override def isFinished = {
     if (!startedMovingToSite) {
       startedMovingToSite = worker.isInConstructionProcess
-      trace(s"Worker $worker started to move to construction site")
+      trace(s"Worker $worker started to move to construction site", startedMovingToSite)
     } else if (!startedActualConstuction) {
       startedActualConstuction = worker.isConstructingBuilding
-      trace(s"Worker $worker started to build $buildingType")
+      trace(s"Worker $worker started to build $buildingType", startedActualConstuction)
     } else if (!finishedConstruction) {
       finishedConstruction = !worker.isInConstructionProcess
-      trace(s"Worker $worker finished to build $buildingType")
+      trace(s"Worker $worker finished to build $buildingType", finishedConstruction)
     }
-    age > 50 && startedMovingToSite && finishedConstruction
+    age > 100 && startedMovingToSite && finishedConstruction
   }
 
   override def asRequest: UnitJobRequests[W] = {

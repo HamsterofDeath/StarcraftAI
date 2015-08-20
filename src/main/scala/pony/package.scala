@@ -15,20 +15,25 @@ package object pony {
   private var logLevel: LogLevel = Trace
   def setLogLevel_!(logLevel: LogLevel): Unit = { this.logLevel = logLevel }
   def error(a: => Any, doIt: Boolean = true): Unit = {
-    if (doIt && Error.includes(logLevel)) tinylog.Logger.error(s"[$tick] ${a.toString}")
-  }
-  def warn(a: => Any, doIt: Boolean = true): Unit = {
-    if (doIt && Warn.includes(logLevel)) tinylog.Logger.warn(s"[$tick] ${a.toString}")
-  }
-  def info(a: => Any, doIt: Boolean = true): Unit = {
-    if (doIt && Info.includes(logLevel)) tinylog.Logger.info(s"[$tick] ${a.toString}")
-  }
-  def debug(a: => Any, doIt: Boolean = true): Unit = {
-    if (Debug.includes(logLevel)) tinylog.Logger.debug(s"[$tick] ${a.toString}")
+    if (doIt && Error.includes(logLevel))
+      tinylog.Logger.error(s"[$tick] ${a.toString}")
   }
   def tick = tickCount
+  def warn(a: => Any, doIt: Boolean = true): Unit = {
+    if (doIt && Warn.includes(logLevel))
+      tinylog.Logger.warn(s"[$tick] ${a.toString}")
+  }
+  def info(a: => Any, doIt: Boolean = true): Unit = {
+    if (doIt && Info.includes(logLevel))
+      tinylog.Logger.info(s"[$tick] ${a.toString}")
+  }
+  def debug(a: => Any, doIt: Boolean = true): Unit = {
+    if (Debug.includes(logLevel))
+      tinylog.Logger.debug(s"[$tick] ${a.toString}")
+  }
   def trace(a: => Any, doIt: Boolean = true): Unit = {
-    if (doIt && Trace.includes(logLevel)) tinylog.Logger.trace(s"[$tick] ${a.toString}")
+    if (doIt && Trace.includes(logLevel))
+      tinylog.Logger.trace(s"[$tick] ${a.toString}")
   }
   sealed class LogLevel(val level: Int) {
     def includes(other: LogLevel) = level >= other.level

@@ -14,20 +14,28 @@ abstract class UnitOrder {
   def game = myGame
 
   def isNoop = false
-
+  def myUnit: WrapsUnit
+  def record(): Unit = {
+    myUnit match {
+      case his: OrderHistorySupport =>
+        his.trackOrder(this)
+      case _ =>
+    }
+  }
   def issueOrderToGame(): Unit
   def renderDebug(renderer: Renderer): Unit
 }
 
 object Orders {
-  case class Construct(unit: WorkerUnit, buildingType: Class[_ <: Building], where: MapTilePosition) extends UnitOrder {
+  case class Construct(myUnit: WorkerUnit, buildingType: Class[_ <: Building], where: MapTilePosition)
+    extends UnitOrder {
     val area = {
       val size = Size.shared(buildingType.toUnitType.tileWidth(), buildingType.toUnitType.tileHeight())
       Area(where, size)
     }
 
     override def issueOrderToGame(): Unit = {
-      unit.nativeUnit.build(where.asTilePosition, buildingType.toUnitType)
+      myUnit.nativeUnit.build(where.asTilePosition, buildingType.toUnitType)
     }
 
     override def renderDebug(renderer: Renderer): Unit = {
@@ -35,9 +43,9 @@ object Orders {
     }
   }
 
-  case class Train(unit: UnitFactory, trainType: Class[_ <: Mobile]) extends UnitOrder {
+  case class Train(myUnit: UnitFactory, trainType: Class[_ <: Mobile]) extends UnitOrder {
     override def issueOrderToGame(): Unit = {
-      unit.nativeUnit.train(trainType.toUnitType)
+      myUnit.nativeUnit.train(trainType.toUnitType)
     }
 
     override def renderDebug(renderer: Renderer): Unit = {
@@ -45,61 +53,61 @@ object Orders {
     }
   }
 
-  case class Move(unit: Mobile, to: MapTilePosition) extends UnitOrder {
+  case class Move(myUnit: Mobile, to: MapTilePosition) extends UnitOrder {
     override def issueOrderToGame(): Unit = {
-      unit.nativeUnit.move(to.asMapPosition.toNative)
+      myUnit.nativeUnit.move(to.asMapPosition.toNative)
     }
 
     override def renderDebug(renderer: Renderer): Unit = {
-      renderer.indicateTarget(unit.currentPosition, to)
+      renderer.indicateTarget(myUnit.currentPosition, to)
     }
   }
-  case class AttackMove(unit: Mobile, where: MapTilePosition) extends UnitOrder {
+  case class AttackMove(myUnit: Mobile, where: MapTilePosition) extends UnitOrder {
 
     override def issueOrderToGame(): Unit = {
-      unit.nativeUnit.attack(where.asMapPosition.toNative)
-    }
-
-    override def renderDebug(renderer: Renderer): Unit = {
-
-    }
-  }
-
-  case class Gather(unit: WorkerUnit, minsOrGas: Resource) extends UnitOrder {
-    override def issueOrderToGame(): Unit = {
-      unit.nativeUnit.gather(minsOrGas.nativeUnit)
-    }
-
-    override def renderDebug(renderer: Renderer): Unit = {
-      renderer.in_!(Color.Teal).indicateTarget(unit.currentPosition, minsOrGas.area)
-    }
-  }
-  case class MoveToPatch(unit: WorkerUnit, patch: MineralPatch) extends UnitOrder {
-    override def issueOrderToGame(): Unit = {
-      unit.nativeUnit.move(patch.nativeMapPosition)
-    }
-
-    override def renderDebug(renderer: Renderer): Unit = {
-      renderer.in_!(Color.Blue).indicateTarget(unit.currentPosition, patch.area)
-    }
-  }
-  case class Stop(unit: Mobile) extends UnitOrder {
-    override def issueOrderToGame(): Unit = {
-      unit.nativeUnit.stop()
+      myUnit.nativeUnit.attack(where.asMapPosition.toNative)
     }
 
     override def renderDebug(renderer: Renderer): Unit = {
 
     }
   }
-  case class ReturnMinerals(unit: WorkerUnit, to: MainBuilding) extends UnitOrder {
+
+  case class Gather(myUnit: WorkerUnit, minsOrGas: Resource) extends UnitOrder {
+    override def issueOrderToGame(): Unit = {
+      myUnit.nativeUnit.gather(minsOrGas.nativeUnit)
+    }
+
+    override def renderDebug(renderer: Renderer): Unit = {
+      renderer.in_!(Color.Teal).indicateTarget(myUnit.currentPosition, minsOrGas.area)
+    }
+  }
+  case class MoveToPatch(myUnit: WorkerUnit, patch: MineralPatch) extends UnitOrder {
+    override def issueOrderToGame(): Unit = {
+      myUnit.nativeUnit.move(patch.nativeMapPosition)
+    }
+
+    override def renderDebug(renderer: Renderer): Unit = {
+      renderer.in_!(Color.Blue).indicateTarget(myUnit.currentPosition, patch.area)
+    }
+  }
+  case class Stop(myUnit: Mobile) extends UnitOrder {
+    override def issueOrderToGame(): Unit = {
+      myUnit.nativeUnit.stop()
+    }
+
+    override def renderDebug(renderer: Renderer): Unit = {
+
+    }
+  }
+  case class ReturnMinerals(myUnit: WorkerUnit, to: MainBuilding) extends UnitOrder {
     override def issueOrderToGame(): Unit = {
       // for some reason, other commands are not reliable
-      unit.nativeUnit.returnCargo()
+      myUnit.nativeUnit.returnCargo()
     }
 
     override def renderDebug(renderer: Renderer): Unit = {
-      renderer.indicateTarget(unit.currentPosition, to.tilePosition)
+      renderer.indicateTarget(myUnit.currentPosition, to.tilePosition)
     }
   }
 
@@ -109,6 +117,7 @@ object Orders {
 
     override def issueOrderToGame(): Unit = {}
     override def renderDebug(renderer: Renderer): Unit = {}
+    override def myUnit: WrapsUnit = ???
   }
 }
 
@@ -127,7 +136,10 @@ class OrderQueue(game: Game, debugger: Debugger) {
   }
 
   def issueAll():Unit = {
-    queue.foreach(_.issueOrderToGame())
+    val tickOrders = queue.filterNot(_.isNoop)
+    trace(s"Orders: ${tickOrders.mkString(", ")}", queue.nonEmpty)
+    tickOrders.foreach(_.record())
+    tickOrders.foreach(_.issueOrderToGame())
     queue.clear()
   }
 }

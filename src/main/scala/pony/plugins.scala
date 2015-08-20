@@ -101,7 +101,9 @@ class StatsRenderer(override val universe: Universe) extends AIPlugIn with HasUn
       debugString += {
         val locked = resources.lockedResources
         val locks = resources.detailledLocks
-        s"${locked.minerals}m, ${locked.gas}g, ${locked.supply}s locked, ${locks.size} locks"
+        val counts = locks.map(_.whatFor).groupBy(identity).map { case (c, am) => c -> am.size }
+        val details = counts.toList.map { case (k, v) => s"${k.className}*$v" }.mkString(", ")
+        s"${locked.minerals}m, ${locked.gas}g, ${locked.supply}s locked, ${locks.size} locks, $details"
       }
 
       debugString += {

@@ -173,6 +173,7 @@ class TwilightSparkle(world: DefaultWorld) {
     maps.tick()
     resources.tick()
     unitManager.tick()
+    strategy.tick()
 
     val tick = world.tickCount
 

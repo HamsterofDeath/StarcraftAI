@@ -6,7 +6,8 @@ trait BuildingRequestHelper extends AIModule[WorkerUnit] {
   private val buildingEmployer = new Employer[Building](universe)
 
   def requestBuilding[T <: Building](buildingType: Class[_ <: T],
-                                     forceBuildingPosition: Option[MapTilePosition] = None) = {
+                                     takeCareOfDependencies: Boolean,
+                                     forceBuildingPosition: Option[MapTilePosition] = None): Unit = {
     val req = ResourceRequests.forUnit(universe.race, buildingType)
     val result = resources.request(req, buildingEmployer)
     result match {
@@ -14,7 +15,17 @@ trait BuildingRequestHelper extends AIModule[WorkerUnit] {
         val unitReq = UnitJobRequests.newOfType(universe, buildingEmployer, buildingType, suc,
           forceBuildingPosition = forceBuildingPosition)
         info(s"Financing possible for $buildingType, requesting build")
-        unitManager.request(unitReq)
+        val result = unitManager.request(unitReq)
+        if (takeCareOfDependencies) {
+          if (result.hasMissingRequirements) {
+            resources.unlock_!(suc)
+          }
+          result.missingRequirements.foreach { what =>
+            if (!unitManager.plannedToBuild(what)) {
+              requestBuilding(what, takeCareOfDependencies = false)
+            }
+          }
+        }
       case _ =>
     }
   }
@@ -23,14 +34,29 @@ trait BuildingRequestHelper extends AIModule[WorkerUnit] {
 trait UnitRequestHelper extends AIModule[UnitFactory] {
   private val mobileEmployer = new Employer[Mobile](universe)
 
-  def requestUnit[T <: Mobile](mobileType: Class[_ <: T]) = {
+  private val helper = new OrderlessAIModule[WorkerUnit](universe) with BuildingRequestHelper {
+    override def onTick() = {}
+  }
+
+  def requestUnit[T <: Mobile](mobileType: Class[_ <: T], takeCareOfDependencies: Boolean) = {
     val req = ResourceRequests.forUnit(universe.race, mobileType)
     val result = resources.request(req, mobileEmployer)
     result match {
       case suc: ResourceApprovalSuccess =>
         val unitReq = UnitJobRequests.newOfType(universe, mobileEmployer, mobileType, suc)
         info(s"Financing possible for $mobileType, requesting training")
-        unitManager.request(unitReq)
+        val result = unitManager.request(unitReq)
+        if (takeCareOfDependencies) {
+          if (result.hasMissingRequirements) {
+            // do not forget to unlock the resources again
+            resources.unlock_!(suc)
+          }
+          result.missingRequirements.foreach { requirement =>
+            if (!unitManager.plannedToBuild(requirement)) {
+              helper.requestBuilding(requirement, takeCareOfDependencies = false)
+            }
+          }
+        }
       case _ =>
     }
   }
@@ -44,7 +70,7 @@ class ProvideFactories(universe: Universe) extends OrderlessAIModule[WorkerUnit]
       val existingByType = unitManager.unitsByType(cap.typeOfFactory).size +
                            unitManager.plannedToBuildByClass(cap.typeOfFactory).size
       if (existingByType < cap.maximumSustainable) {
-        requestBuilding(cap.typeOfFactory)
+        requestBuilding(cap.typeOfFactory, takeCareOfDependencies = true)
       }
     }
   }
@@ -57,7 +83,7 @@ class ProvideFactories(universe: Universe) extends OrderlessAIModule[WorkerUnit]
 
 case class IdealProducerCount[T <: UnitFactory](typeOfFactory: Class[_ <: UnitFactory], maximumSustainable: Int)
 case class IdealUnitRatio[T <: Mobile](unitType: Class[_ <: Mobile], amount: Int) {
-  def fixedAmount = amount min 1
+  def fixedAmount = amount max 1
 }
 
 class ProvideArmy(universe: Universe) extends OrderlessAIModule[UnitFactory](universe) with UnitRequestHelper {
@@ -69,7 +95,7 @@ class ProvideArmy(universe: Universe) extends OrderlessAIModule[UnitFactory](uni
       existingRatio - idealRatio
     }
     mostMissing.headOption.foreach { case (thisOne, _) =>
-      requestUnit(thisOne)
+      requestUnit(thisOne, takeCareOfDependencies = true)
     }
   }
   def percentages = {
@@ -89,7 +115,8 @@ class ProvideArmy(universe: Universe) extends OrderlessAIModule[UnitFactory](uni
     }
 
     val totalExisting = existingCounts.values.sum
-    val percentagesExisting = existingCounts.map { case (t, v) => t -> v.toDouble / totalExisting }
+    val percentagesExisting = existingCounts
+                              .map { case (t, v) => t -> (if (totalExisting == 0) 0 else v.toDouble / totalExisting) }
     Percentages(percentagesWanted, percentagesExisting)
   }
   case class Percentages(wanted: Map[Class[_ <: Mobile], Double], existing: Map[Class[_ <: Mobile], Double])
@@ -110,7 +137,7 @@ object Strategy {
                                          Nil
     private var best: LongTermStrategy = new IdleAround(universe)
     def current = best
-    def onTick(): Unit = {
+    def tick(): Unit = {
       ifNth(121) {
         best = available.maxBy(_.determineScore)
       }

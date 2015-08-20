@@ -197,8 +197,8 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
         private val miningTeam = ArrayBuffer.empty[GatherMineralsAtPatch]
         override def toString: String = s"(Mined) $patch"
         def hasOpenSpot: Boolean = miningTeam.size < estimateRequiredWorkers
-        def estimateRequiredWorkers = math.round(patch.area.distanceTo(base.mainBuilding.area) / 2.0).toInt
         def openSpotCount = estimateRequiredWorkers - miningTeam.size
+        def estimateRequiredWorkers = math.round(patch.area.distanceTo(base.mainBuilding.area) / 2.0).toInt
         def lockToPatch_!(job: GatherMineralsAtPatch): Unit = {
           info(s"Added ${job.unit} to mining team of $patch")
           miningTeam += job
@@ -347,6 +347,9 @@ class GatherGas(universe: Universe) extends OrderlessAIModule[WorkerUnit](univer
                                               .isOnIsland(base.mainBuilding.tilePosition)
                                               .ifElse(8, 14)
     private var refinery                    = Option.empty[Refinery]
+
+    override def toString = s"GetGas@${geysir.tilePosition}"
+
     def onTick(): Unit = {
       refinery match {
         case None =>
@@ -356,7 +359,7 @@ class GatherGas(universe: Universe) extends OrderlessAIModule[WorkerUnit](univer
             def jobExists = unitManager.constructionsInProgress[Refinery]
                             .exists(_.buildWhere == geysir.tilePosition)
             if (!requestExists && !jobExists) {
-              requestBuilding(classOf[Refinery], Some(geysir.tilePosition))
+              requestBuilding(classOf[Refinery], false, Some(geysir.tilePosition))
             }
             unitManager.unitsByType[Refinery]
             .find(_.tilePosition == geysir.tilePosition)
