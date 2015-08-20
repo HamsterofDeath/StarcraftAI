@@ -14,6 +14,10 @@ class Renderer(game: Game, private var color: bwapi.Color) {
     game.drawLineMap(from.mapX, from.mapY, to.mapX, to.mapY, color)
   }
 
+  def drawLine(from: MapPosition, to: MapPosition): Unit = {
+    game.drawLineMap(from.x, from.y, to.x, to.y, color)
+  }
+
   def drawTextOnScreen(text: String, row: Int = 0): Unit = {
     game.drawTextScreen(10, 10 + row * 10, text)
   }

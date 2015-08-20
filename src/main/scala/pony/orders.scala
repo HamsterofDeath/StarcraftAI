@@ -40,6 +40,7 @@ object Orders {
 
     override def renderDebug(renderer: Renderer): Unit = {
       renderer.in_!(Color.White).drawOutline(area)
+      renderer.in_!(Color.White).drawLine(myUnit.currentPosition, area.center)
     }
   }
 

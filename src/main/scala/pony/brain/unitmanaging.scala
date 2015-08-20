@@ -54,12 +54,6 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
     }
     byJob
   }
-  def allJobsByType[T <: UnitWithJob[_] : Manifest] = {
-    val wanted = manifest[T].runtimeClass
-    assignments.valuesIterator.filter { job =>
-      wanted.isAssignableFrom(job.getClass)
-    }.map {_.asInstanceOf[T]}.toVector
-  }
   def unitsByType[T <: WrapsUnit : Manifest]: collection.Set[T] = {
     val runtimeClass = manifest[T].runtimeClass.asInstanceOf[Class[_ <: T]]
     unitsByType(runtimeClass)
@@ -82,6 +76,12 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
       case b: BuildUnitRequest[_] => b.typeOfRequestedUnit.toUnitType.supplyProvided()
     }.sum
     byJob + byUnfulfilledRequest
+  }
+  def allJobsByType[T <: UnitWithJob[_] : Manifest] = {
+    val wanted = manifest[T].runtimeClass
+    assignments.valuesIterator.filter { job =>
+      wanted.isAssignableFrom(job.getClass)
+    }.map {_.asInstanceOf[T]}.toVector
   }
   def allJobsByUnitType[T <: WrapsUnit : Manifest] = selectJobs[T, UnitWithJob[T]](_ => true)
   def selectJobs[U <: WrapsUnit : Manifest, T <: UnitWithJob[U] : Manifest](f: T => Boolean) = {
@@ -516,7 +516,6 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, bu
   private var startedActualConstuction = false
   private var finishedConstruction     = false
   private var resourcesUnlocked        = false
-  override def everyNth: Int = 10
   override def onTick(): Unit = {
     super.onTick()
     if (startedActualConstuction && !resourcesUnlocked) {
@@ -527,15 +526,12 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, bu
 
   override def getOrder: Seq[UnitOrder] =
     Orders.Construct(worker, buildingType, buildWhere).toSeq
-
-  override def times = 5
-
   override def shortDebugString: String = s"Build ${buildingType.className}"
   override def proofForFunding = funding
   override def canSwitchNow = !startedActualConstuction
   override def couldSwitchInTheFuture = !startedActualConstuction
   override def hasFailed: Boolean = {
-    val fail = !worker.isInConstructionProcess && age > 200 && !isFinished
+    val fail = !worker.isInConstructionProcess && age > times + 10 && !isFinished
     warn(s"Construction of ${typeOfBuilding.className} failed, worker $worker didn't manange", fail)
     fail
   }
@@ -551,9 +547,9 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, bu
       finishedConstruction = !worker.isInConstructionProcess
       trace(s"Worker $worker finished to build $buildingType", finishedConstruction)
     }
-    age > 100 && startedMovingToSite && finishedConstruction
+    age > times + 10 && startedMovingToSite && finishedConstruction
   }
-
+  override def times = 50
   override def asRequest: UnitJobRequests[W] = {
     val request = AnyUnitRequest[W](worker.getClass, 1)
     val anyUnitRequest = request.withCherryPicker_! { hijackFromThis =>
