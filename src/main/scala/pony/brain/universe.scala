@@ -21,10 +21,15 @@ trait Universe {
 
 class Time(universe: Universe) {
   private val format = new DecimalFormat("00")
-  def formatted = s"${(format.format(hours))}:${format.format(minutes)}:${format.format(seconds)}"
+  def formatted = {
+    val sec = seconds.toInt
+    val min = sec / 60
+    val hour = min / 60
+    s"${format.format(hour)}:${format.format(min % 60)}:${format.format(sec % 60)}"
+  }
+  def seconds = universe.currentTick / 24.0
   def hours = minutes / 60.0
   def minutes = seconds / 60.0
-  def seconds = universe.currentTick / 24.0
   def categoryName = {
     val phase = universe.strategy.current.timingHelpers.phase
     if (phase.isEarly) {

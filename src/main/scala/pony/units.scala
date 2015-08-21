@@ -53,7 +53,9 @@ trait WrapsUnit extends HasNativeSCAttributes {
     if (r == Race.Protoss) Protoss
     else if (r == Race.Terran) Terran
     else if (r == Race.Zerg) Zerg
-    else Other
+    else {
+      throw new IllegalStateException(s"Check this: $this")
+    }
   }
   def isBeingCreated = nativeUnit.getRemainingBuildTime > 0
   def onTick(universe: Universe) = {

@@ -76,11 +76,21 @@ class ProvideFactories(universe: Universe) extends OrderlessAIModule[WorkerUnit]
 
   private def evaluateCapacities = {
     strategy.current.suggestProducers
+    .filter(_.isActive)
+    .groupBy(_.typeOfFactory)
+    .values.map { elems =>
+      val sum = elems.map(_.maximumSustainable).sum
+      val copy = IdealProducerCount(elems.head.typeOfFactory, sum)(true)
+      copy
+    }
   }
 
 }
 
 case class IdealProducerCount[T <: UnitFactory](typeOfFactory: Class[_ <: UnitFactory], maximumSustainable: Int)
+                                               (active: => Boolean) {
+  def isActive = active
+}
 case class IdealUnitRatio[T <: Mobile](unitType: Class[_ <: Mobile], amount: Int)(active: => Boolean) {
   def fixedAmount = amount max 1
 
@@ -95,7 +105,7 @@ class ProvideArmy(universe: Universe) extends OrderlessAIModule[UnitFactory](uni
       val existingRatio = p.existing.getOrElse(t, 0.0)
       existingRatio - idealRatio
     }
-    mostMissing.take(3).foreach { case (thisOne, _) =>
+    mostMissing.foreach { case (thisOne, _) =>
       requestUnit(thisOne, takeCareOfDependencies = true)
     }
   }
@@ -134,14 +144,15 @@ object Strategy {
 
       def phase = new Phase
       class Phase {
-        def isLate = time.minutes <= 9999 && !isLateMid
-        def isLateMid = time.minutes < 20 && !isMid
-        def isMid = time.minutes < 13 && !isEarlyMid
-        def isEarlyMid = time.minutes < 9 && !isEarly
-        def isEarly = time.minutes < 5
+        def isLate = isBetween(20, 9999)
+        def isLateMid = isBetween(13, 20)
+        def isMid = isBetween(9, 13)
+        def isBetween(from: Int, to: Int) = time.minutes >= from && time.minutes < to
+        def isEarlyMid = isBetween(5, 9)
+        def isEarly = isBetween(0, 5)
         def isSinceAlmostMid = time.minutes >= 4
-        def isSinceMid = time.minutes >= 5
-        def isSinceMidMid = time.minutes >= 9
+        def isSinceEarlyMid = time.minutes >= 5
+        def isSinceMid = time.minutes >= 9
         def isSinceLateMid = time.minutes >= 13
 
         def isBeforeLate = time.minutes <= 20
@@ -176,18 +187,18 @@ object Strategy {
     override def suggestProducers = {
       val myBases = bases.myMineralFields.count(_.value > 1000)
 
-      IdealProducerCount(classOf[Barracks], myBases) ::
-      IdealProducerCount(classOf[Factory], myBases * 3) ::
-      IdealProducerCount(classOf[Starport], myBases) ::
+      IdealProducerCount(classOf[Barracks], myBases)(timingHelpers.phase.isAnyTime) ::
+      IdealProducerCount(classOf[Factory], myBases * 3)(timingHelpers.phase.isAnyTime) ::
+      IdealProducerCount(classOf[Starport], myBases)(timingHelpers.phase.isAnyTime) ::
       Nil
     }
     override def suggestUnits = {
       IdealUnitRatio(classOf[Marine], 3)(timingHelpers.phase.isAnyTime) ::
       IdealUnitRatio(classOf[Medic], 1)(timingHelpers.phase.isAnyTime) ::
-      IdealUnitRatio(classOf[Ghost], 1)(timingHelpers.phase.isSinceMid) ::
+      IdealUnitRatio(classOf[Ghost], 1)(timingHelpers.phase.isSinceEarlyMid) ::
       IdealUnitRatio(classOf[Vulture], 3)(timingHelpers.phase.isAnyTime) ::
-      IdealUnitRatio(classOf[Tank], 5)(timingHelpers.phase.isSinceMid) ::
-      IdealUnitRatio(classOf[Goliath], 3)(timingHelpers.phase.isSinceMid) ::
+      IdealUnitRatio(classOf[Tank], 5)(timingHelpers.phase.isSinceEarlyMid) ::
+      IdealUnitRatio(classOf[Goliath], 3)(timingHelpers.phase.isSinceEarlyMid) ::
       IdealUnitRatio(classOf[ScienceVessel], 1)(timingHelpers.phase.isSinceLateMid) ::
       Nil
     }
@@ -211,11 +222,11 @@ object Strategy {
       IdealUnitRatio(classOf[Medic], 1)(timingHelpers.phase.isBeforeLate) ::
       IdealUnitRatio(classOf[Ghost], 1)(timingHelpers.phase.isMid) ::
       IdealUnitRatio(classOf[Vulture], 3)(timingHelpers.phase.isBeforeLate) ::
-      IdealUnitRatio(classOf[Tank], 1)(timingHelpers.phase.isSinceMidMid) ::
-      IdealUnitRatio(classOf[Goliath], 1)(timingHelpers.phase.isSinceMidMid) ::
-      IdealUnitRatio(classOf[Wraith], 8)(timingHelpers.phase.isSinceMid) ::
+      IdealUnitRatio(classOf[Tank], 1)(timingHelpers.phase.isSinceMid) ::
+      IdealUnitRatio(classOf[Goliath], 1)(timingHelpers.phase.isSinceMid) ::
+      IdealUnitRatio(classOf[Wraith], 8)(timingHelpers.phase.isSinceEarlyMid) ::
       IdealUnitRatio(classOf[Battlecruiser], 3)(timingHelpers.phase.isSinceLateMid) ::
-      IdealUnitRatio(classOf[ScienceVessel], 2)(timingHelpers.phase.isSinceMidMid) ::
+      IdealUnitRatio(classOf[ScienceVessel], 2)(timingHelpers.phase.isSinceMid) ::
       Nil
     }
 
@@ -225,9 +236,9 @@ object Strategy {
     override def suggestProducers = {
       val myBases = bases.myMineralFields.count(_.value > 1000)
 
-      IdealProducerCount(classOf[Barracks], myBases) ::
-      IdealProducerCount(classOf[Factory], myBases) ::
-      IdealProducerCount(classOf[Starport], myBases * 3) ::
+      IdealProducerCount(classOf[Barracks], myBases)(timingHelpers.phase.isAnyTime) ::
+      IdealProducerCount(classOf[Factory], myBases)(timingHelpers.phase.isAnyTime) ::
+      IdealProducerCount(classOf[Starport], myBases * 3)(timingHelpers.phase.isAnyTime) ::
       Nil
     }
   }
@@ -236,15 +247,15 @@ object Strategy {
 
     override def suggestUnits = {
       IdealUnitRatio(classOf[Marine], 10)(timingHelpers.phase.isAnyTime) ::
-      IdealUnitRatio(classOf[Firebat], 3)(timingHelpers.phase.isSinceMid) ::
-      IdealUnitRatio(classOf[Medic], 4)(timingHelpers.phase.isSinceMid) ::
+      IdealUnitRatio(classOf[Firebat], 3)(timingHelpers.phase.isSinceEarlyMid) ::
+      IdealUnitRatio(classOf[Medic], 4)(timingHelpers.phase.isSinceAlmostMid) ::
       IdealUnitRatio(classOf[Ghost], 2)(timingHelpers.phase.isSinceLateMid) ::
-      IdealUnitRatio(classOf[Vulture], 1)(timingHelpers.phase.isSinceMidMid) ::
-      IdealUnitRatio(classOf[Tank], 1)(timingHelpers.phase.isSinceMidMid) ::
-      IdealUnitRatio(classOf[Goliath], 1)(timingHelpers.phase.isSinceMidMid) ::
+      IdealUnitRatio(classOf[Vulture], 1)(timingHelpers.phase.isSinceLateMid) ::
+      IdealUnitRatio(classOf[Tank], 1)(timingHelpers.phase.isSinceLateMid) ::
+      IdealUnitRatio(classOf[Goliath], 1)(timingHelpers.phase.isSinceLateMid) ::
       IdealUnitRatio(classOf[Wraith], 1)(timingHelpers.phase.isSinceLateMid) ::
       IdealUnitRatio(classOf[Battlecruiser], 1)(timingHelpers.phase.isLate) ::
-      IdealUnitRatio(classOf[ScienceVessel], 1)(timingHelpers.phase.isSinceMid) ::
+      IdealUnitRatio(classOf[ScienceVessel], 1)(timingHelpers.phase.isSinceLateMid) ::
       Nil
     }
 
@@ -253,9 +264,10 @@ object Strategy {
     override def suggestProducers = {
       val myBases = bases.myMineralFields.count(_.value > 1000)
 
-      IdealProducerCount(classOf[Barracks], myBases * 5) ::
-      IdealProducerCount(classOf[Factory], myBases) ::
-      IdealProducerCount(classOf[Starport], myBases) ::
+      IdealProducerCount(classOf[Barracks], myBases * 3)(timingHelpers.phase.isAnyTime) ::
+      IdealProducerCount(classOf[Barracks], myBases * 2)(timingHelpers.phase.isSinceMid) ::
+      IdealProducerCount(classOf[Factory], myBases)(timingHelpers.phase.isSinceLateMid) ::
+      IdealProducerCount(classOf[Starport], myBases)(timingHelpers.phase.isSinceLateMid) ::
       Nil
     }
 

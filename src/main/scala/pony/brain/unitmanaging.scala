@@ -531,10 +531,10 @@ class TrainUnit[F <: UnitFactory, T <: Mobile](factory: F, trainType: Class[_ <:
   override def shortDebugString: String = s"Train ${trainType.className}"
 }
 
-class ConstructAddon[W <: CanBuildAddons, A <: Addon : Manifest](employer: Employer[W],
-                                                                 basis: W,
-                                                                 what: Class[_ <: A],
-                                                                 funding: ResourceApproval)
+class ConstructAddon[W <: CanBuildAddons, A <: Addon](employer: Employer[W],
+                                                      basis: W,
+                                                      what: Class[_ <: A],
+                                                      funding: ResourceApproval)
   extends UnitWithJob[W](employer, basis, Priority.Addon) with JobHasFunding[W] with CreatesUnit[W] with
           IssueOrderNTimes[W] {
 
@@ -545,7 +545,7 @@ class ConstructAddon[W <: CanBuildAddons, A <: Addon : Manifest](employer: Emplo
     startedConstruction && stoppedConstruction
   }
   override def getOrder = Orders.ConstructAddon(basis, builtWhat).toSeq
-  private def builtWhat = manifest[A].runtimeClass.asInstanceOf[Class[_ <: A]]
+  private def builtWhat = what
   override def proofForFunding = funding
 }
 
