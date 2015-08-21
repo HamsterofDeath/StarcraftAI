@@ -193,7 +193,11 @@ trait GroundUnit extends Killable with Mobile {
 
 trait Floating
 
-trait WorkerUnit extends Killable with Mobile with GroundUnit with GroundWeapon with Floating {
+trait CanBuildAddons extends Building {
+  def canBuildAddon(addon: Class[_ <: Addon]) = race.techTree.canBuildAddon(getClass, addon)
+}
+
+trait WorkerUnit extends Killable with Mobile with GroundUnit with GroundWeapon with Floating with CanBuildAddons {
   def isGatheringGas = currentOrder == Order.HarvestGas || currentOrder == Order.MoveToGas ||
                        currentOrder == Order.ReturnGas || currentOrder == Order.WaitForGas
 
@@ -254,7 +258,7 @@ class Drone(unit: APIUnit) extends AnyUnit(unit) with WorkerUnit
 class Shuttle(unit: APIUnit) extends AnyUnit(unit) with TransporterUnit
 class Dropship(unit: APIUnit) extends AnyUnit(unit) with TransporterUnit
 
-class CommandCenter(unit: APIUnit) extends AnyUnit(unit) with MainBuilding
+class CommandCenter(unit: APIUnit) extends AnyUnit(unit) with MainBuilding with CanBuildAddons
 
 class Comsat(unit: APIUnit) extends AnyUnit(unit) with SpellcasterBuilding with Addon
 class NuclearSilo(unit: APIUnit) extends AnyUnit(unit) with SpellcasterBuilding with Addon
@@ -267,13 +271,13 @@ class ControlTower(unit: APIUnit) extends AnyUnit(unit) with UpgraderBuilding wi
 class RocketTower(unit: APIUnit) extends AnyUnit(unit) with ArmedBuilding
 
 class Barracks(unit: APIUnit) extends AnyUnit(unit) with UnitFactory
-class Factory(unit: APIUnit) extends AnyUnit(unit) with UnitFactory
-class Starport(unit: APIUnit) extends AnyUnit(unit) with UnitFactory
+class Factory(unit: APIUnit) extends AnyUnit(unit) with UnitFactory with CanBuildAddons
+class Starport(unit: APIUnit) extends AnyUnit(unit) with UnitFactory with CanBuildAddons
 
 class Academy(unit: APIUnit) extends AnyUnit(unit) with UpgraderBuilding
 class Armory(unit: APIUnit) extends AnyUnit(unit) with UpgraderBuilding
 class EngineeringBay(unit: APIUnit) extends AnyUnit(unit) with UpgraderBuilding
-class ScienceFacility(unit: APIUnit) extends AnyUnit(unit) with UpgraderBuilding
+class ScienceFacility(unit: APIUnit) extends AnyUnit(unit) with UpgraderBuilding with CanBuildAddons
 
 class MissileTurret(unit: APIUnit) extends AnyUnit(unit) with ArmedBuilding
 
@@ -306,9 +310,11 @@ object UnitWrapper {
       UnitType.Terran_Barracks -> ((new Barracks(_), classOf[Barracks])),
       UnitType.Terran_Academy -> ((new Academy(_), classOf[Academy])),
       UnitType.Terran_Armory -> ((new Armory(_), classOf[Armory])),
+      UnitType.Terran_Science_Facility -> ((new ScienceFacility(_), classOf[ScienceFacility])),
       UnitType.Terran_Bunker -> ((new Bunker(_), classOf[Bunker])),
-      UnitType.Terran_Firebat -> ((new Firebat(_), classOf[Bunker])),
+      UnitType.Terran_Firebat -> ((new Firebat(_), classOf[Firebat])),
       UnitType.Terran_Comsat_Station -> ((new Comsat(_), classOf[Comsat])),
+      UnitType.Terran_Covert_Ops -> ((new CovertOps(_), classOf[CovertOps])),
       UnitType.Terran_Control_Tower -> ((new ControlTower(_), classOf[ControlTower])),
       UnitType.Terran_Engineering_Bay -> ((new EngineeringBay(_), classOf[EngineeringBay])),
       UnitType.Terran_Factory -> ((new Factory(_), classOf[Factory])),
@@ -357,5 +363,6 @@ object TypeMapping {
 
   private val class2UnitType: Map[Class[_ <: WrapsUnit], UnitType] = UnitWrapper.class2UnitType
 
+  // TODO return cached copies to save native calls
   def unitTypeOf[T <: WrapsUnit](c: Class[_ <: T]) = class2UnitType(c)
 }

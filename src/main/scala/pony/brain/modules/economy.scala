@@ -30,7 +30,7 @@ class ProvideNewBuildings(universe: Universe)
         BackgroundComputationResult.result(startJob.toSeq, () => false, () => {
           info(s"Planning to build ${in.buildingType.className} at ${startJob.buildWhere} by ${in.worker}")
           in.jobRequest.clearableInNextTick_!()
-          in.jobRequest.doOnClear_! {
+          in.jobRequest.doOnDispose_! {
             mapLayers.unblockBuilding_!(startJob.area)
           }
           mapLayers.blockBuilding_!(startJob.area)
@@ -44,7 +44,8 @@ class ProvideNewBuildings(universe: Universe)
     // we do them one by one, it's simpler
     val buildingRelated = unitManager.failedToProvideByType[Building]
     val constructionRequests = buildingRelated.collect {
-      case buildIt: BuildUnitRequest[Building] if buildIt.proofForFunding.isFunded => buildIt
+      case buildIt: BuildUnitRequest[Building] if buildIt.proofForFunding.isFunded && !buildIt.isAddon =>
+        buildIt
     }
     val anyOfThese = constructionRequests.headOption
     anyOfThese.flatMap { req =>
@@ -60,6 +61,27 @@ class ProvideNewBuildings(universe: Universe)
 
   case class Data(worker: WorkerUnit, buildingType: Class[_ <: Building], base: Base, helper: ConstructionSiteFinder,
                   jobRequest: BuildUnitRequest[Building])
+}
+
+class ProvideAddons(universe: Universe)
+  extends OrderlessAIModule[CanBuildAddons](universe) {
+  self =>
+
+  override def onTick(): Unit = {
+    val buildingRelated = unitManager.failedToProvideByType[Addon]
+    val constructionRequests = buildingRelated.collect {
+      case buildIt: BuildUnitRequest[Addon] if buildIt.proofForFunding.isFunded && buildIt.isAddon => buildIt
+    }
+    constructionRequests.foreach { req =>
+      val request = UnitJobRequests.addonConstructor(self)
+      unitManager.request(request) match {
+        case success: ExactlyOneSuccess[CanBuildAddons] =>
+          assignJob_!(new ConstructAddon(self, success.onlyOne, req.typeOfRequestedUnit, req.proofForFunding))
+        case _ => None
+      }
+    }
+  }
+
 }
 
 class ProvideExpansions(universe: Universe) extends OrderlessAIModule[WorkerUnit](universe) {
@@ -197,8 +219,8 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
         private val miningTeam = ArrayBuffer.empty[GatherMineralsAtPatch]
         override def toString: String = s"(Mined) $patch"
         def hasOpenSpot: Boolean = miningTeam.size < estimateRequiredWorkers
-        def openSpotCount = estimateRequiredWorkers - miningTeam.size
         def estimateRequiredWorkers = math.round(patch.area.distanceTo(base.mainBuilding.area) / 2.0).toInt
+        def openSpotCount = estimateRequiredWorkers - miningTeam.size
         def lockToPatch_!(job: GatherMineralsAtPatch): Unit = {
           info(s"Added ${job.unit} to mining team of $patch")
           miningTeam += job

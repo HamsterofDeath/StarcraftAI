@@ -186,8 +186,25 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
     }
 
     val mustHave = req.allTypes.flatMap(race.techTree.requiredFor)
-    val missing = mustHave.filterNot(units.ownsByType)
-    val result = if (missing.isEmpty) {
+    val (missing, incomplete) = {
+      val i = mutable.Set.empty[Class[_ <: Building]]
+      val m = mutable.Set.empty[Class[_ <: Building]]
+      val missing = {
+        mustHave.foreach { dependency =>
+          val complete = units.existsComplete(dependency)
+          if (!complete) {
+            val incomplete = units.existsInComplete(dependency)
+            if (!incomplete) {
+              m += dependency
+            } else {
+              i += dependency
+            }
+          }
+        }
+      }
+      (m.toSet, i.toSet)
+    }
+    val result = if (missing.isEmpty && incomplete.isEmpty) {
       val hr = hireResult
       hr match {
         case None =>
@@ -209,7 +226,7 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
           }
       }
     } else {
-      new MissingRequirementResult[T](missing)
+      new MissingRequirementResult[T](missing, incomplete)
     }
 
     trace(s"Result of request: $result")
@@ -227,9 +244,10 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
 }
 
 trait PreHiringResult[T <: WrapsUnit] {
-  def hasMissingRequirements = missingRequirements.nonEmpty
+  def hasAnyMissingRequirements = notExistingMissingRequiments.nonEmpty || inProgressMissingRequirements.nonEmpty
 
-  def missingRequirements: Set[Class[_ <: Building]] = Set.empty
+  def notExistingMissingRequiments: Set[Class[_ <: Building]] = Set.empty
+  def inProgressMissingRequirements: Set[Class[_ <: Building]] = Set.empty
   def success: Boolean
   def canHire: Map[UnitRequest[T], Set[T]]
   def units = canHire.flatMap(_._2)
@@ -242,10 +260,12 @@ class FailedPreHiringResult[T <: WrapsUnit] extends PreHiringResult[T] {
   def canHire = Map.empty
 }
 
-class MissingRequirementResult[T <: WrapsUnit](needs: Set[Class[_ <: Building]]) extends PreHiringResult[T] {
+class MissingRequirementResult[T <: WrapsUnit](needs: Set[Class[_ <: Building]], incomplete: Set[Class[_ <: Building]])
+  extends PreHiringResult[T] {
   def success = false
   def canHire = Map.empty
-  override def missingRequirements = needs
+  override def notExistingMissingRequiments = needs
+  override def inProgressMissingRequirements = incomplete
 }
 
 trait AtLeastOneSuccess[T <: WrapsUnit] extends PreHiringResult[T] {
@@ -483,21 +503,50 @@ class TrainUnit[F <: UnitFactory, T <: Mobile](factory: F, trainType: Class[_ <:
   extends UnitWithJob[F](employer, factory, Priority.Default) with JobHasFunding[F] with IssueOrderNTimes[F] with
           CreatesUnit[F] {
 
+  private var startedToProduce = false
   override def proofForFunding = funding
-
   override def getOrder: Seq[UnitOrder] = {
     Orders.Train(unit, trainType).toSeq
+  }
+  override def onTick(): Unit = {
+    super.onTick()
+
+    if (!startedToProduce && age > 20 && factory.isProducing) {
+      startedToProduce = true
+      unlockManually_!()
+    }
+  }
+
+  override def hasFailed: Boolean = {
+    age > 50 && !startedToProduce
   }
 
   override def isFinished = {
     val idle = !factory.isProducing
-    val delay = age > 10
     val isLazy = !factory.nativeUnit.isTraining
-    val ret = idle && delay && isLazy
+    val ret = idle && isLazy && startedToProduce
     ret
   }
 
   override def shortDebugString: String = s"Train ${trainType.className}"
+}
+
+class ConstructAddon[W <: CanBuildAddons, A <: Addon : Manifest](employer: Employer[W],
+                                                                 basis: W,
+                                                                 what: Class[_ <: A],
+                                                                 funding: ResourceApproval)
+  extends UnitWithJob[W](employer, basis, Priority.Addon) with JobHasFunding[W] with CreatesUnit[W] with
+          IssueOrderNTimes[W] {
+
+  private var startedConstruction = false
+  private var stoppedConstruction = false
+  override def shortDebugString: String = s"Construct ${builtWhat.className}"
+  override def isFinished: Boolean = {
+    startedConstruction && stoppedConstruction
+  }
+  override def getOrder = Orders.ConstructAddon(basis, builtWhat).toSeq
+  private def builtWhat = manifest[A].runtimeClass.asInstanceOf[Class[_ <: A]]
+  override def proofForFunding = funding
 }
 
 class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, buildingType: Class[_ <: B],
@@ -521,6 +570,7 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, bu
     if (startedActualConstuction && !resourcesUnlocked) {
       unlockManually_!()
       resourcesUnlocked = true
+      mapLayers.unblockBuilding_!(area)
     }
   }
 
@@ -620,7 +670,7 @@ object PriorityChain {
 
 trait UnitRequest[T <: WrapsUnit] {
 
-  private val onClearActions      = ArrayBuffer.empty[OnClearAction]
+  private val onDispostActions    = ArrayBuffer.empty[OnClearAction]
   private var picker              = Option.empty[UnitWithJob[T] => PriorityChain]
   private var filter              = Option.empty[T => Boolean]
   private var autoCleanAfterTick  = true
@@ -642,11 +692,11 @@ trait UnitRequest[T <: WrapsUnit] {
                                            acceptable(unit.asInstanceOf[T])
   def acceptable(unit: T) = filter.map(_.apply(unit)).getOrElse(true)
   def clearable = autoCleanAfterTick
-  def onClear(): Unit = {
-    onClearActions.foreach(_.onClear())
+  def dispose(): Unit = {
+    onDispostActions.foreach(_.onClear())
   }
-  def doOnClear_![X](u: => X) = {
-    onClearActions += (() => u)
+  def doOnDispose_![X](u: => X) = {
+    onDispostActions += (() => u)
   }
 
   if (classOf[Building].isAssignableFrom(typeOfRequestedUnit)) {
@@ -663,7 +713,7 @@ trait UnitRequest[T <: WrapsUnit] {
     keepResourcesLocked = true
   }
 
-  def unlocksResourcesOnClean = !keepResourcesLocked
+  def unlocksResourcesOnDispose = !keepResourcesLocked
 
   override def toString = s"UnitRequest($typeOfRequestedUnit, $amount)"
 }
@@ -690,6 +740,8 @@ case class BuildUnitRequest[T <: WrapsUnit](universe: Universe, typeOfRequestedU
                                             forceBuildingPosition: Option[MapTilePosition])
   extends UnitRequest[T] with HasFunding with HasUniverse {
 
+  def isAddon = typeOfRequestedUnit.toUnitType.isAddon
+
   forceBuildingPosition.foreach(_ => assert(typeOfRequestedUnit.toUnitType.isBuilding))
 
   override def proofForFunding = funding
@@ -698,10 +750,10 @@ case class BuildUnitRequest[T <: WrapsUnit](universe: Universe, typeOfRequestedU
 
   def forcedPosition = forceBuildingPosition
 
-  override def onClear(): Unit = {
-    super.onClear()
+  override def dispose(): Unit = {
+    super.dispose()
     // for buildings, the resources need to be locked until the building process has begun
-    if (unlocksResourcesOnClean) {
+    if (unlocksResourcesOnDispose) {
       unlock_!()
     }
   }
@@ -743,7 +795,7 @@ case class UnitJobRequests[T <: WrapsUnit : Manifest](requests: Seq[UnitRequest[
 
   def commonUnitType = manifest[T].runtimeClass.asInstanceOf[Class[_ <: T]]
 
-  def onClear(): Unit = requests.foreach(_.onClear())
+  def onClear(): Unit = requests.foreach(_.dispose())
 }
 
 object UnitJobRequests {
@@ -763,6 +815,16 @@ object UnitJobRequests {
 
     val actualClass = employer.universe.race.specialize(manifest[T].runtimeClass).asInstanceOf[Class[T]]
     val req = AnyUnitRequest(actualClass, 1).withCherryPicker_!(WorkerUnit.currentPriority)
+
+    UnitJobRequests(req.toSeq, employer, priority)
+  }
+
+  def addonConstructor[T <: CanBuildAddons : Manifest](employer: Employer[T],
+                                                       priority: Priority = Priority
+                                                                            .ConstructBuilding): UnitJobRequests[T] = {
+
+    val actualClass = employer.universe.race.specialize(manifest[T].runtimeClass).asInstanceOf[Class[T]]
+    val req = AnyUnitRequest(actualClass, 1)
 
     UnitJobRequests(req.toSeq, employer, priority)
   }

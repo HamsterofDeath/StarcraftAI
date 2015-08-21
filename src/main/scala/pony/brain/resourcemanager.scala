@@ -3,12 +3,21 @@ package brain
 
 import scala.collection.mutable.ArrayBuffer
 
-case class IncomeStats(minerals: Int, gas: Int, frames: Int)
+case class IncomeStats(minerals: Int, gas: Int, frames: Int) {
+  def mineralsPerMinute = 60 * mineralsPerSecond
+  def mineralsPerSecond = 24 * minerals.toDouble / ResourceManager.frameSizeForStats
+  def gasPerMinute = 60 * gasPerSecond
+  def gasPerSecond = 24 * gas.toDouble / ResourceManager.frameSizeForStats
+}
+
+object ResourceManager {
+  val frameSizeForStats = 600
+
+}
 
 class ResourceManager(override val universe: Universe) extends HasUniverse {
 
   private val resourceHistory         = ArrayBuffer.empty[MinsGas]
-  private val frameSizeForStats       = 600
   // should be 10 "seconds" i guess?
   private val empty                   = Resources(0, 0, Supplies(0, 0))
   private val locked                  = ArrayBuffer.empty[LockedResources[_]]
@@ -63,7 +72,7 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
     lockedSums.invalidate()
 
     resourceHistory += MinsGas(resources.gatheredMinerals, resources.gatheredGas)
-    if (resourceHistory.size == frameSizeForStats + 1) {
+    if (resourceHistory.size == ResourceManager.frameSizeForStats + 1) {
       resourceHistory.remove(0)
     }
   }

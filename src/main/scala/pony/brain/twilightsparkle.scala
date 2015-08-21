@@ -10,6 +10,7 @@ import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, Future}
 
 trait HasUniverse {
+  def time = universe.time
   def universe: Universe
   def unitManager = universe.unitManager
   def units = universe.units
@@ -156,6 +157,7 @@ class TwilightSparkle(world: DefaultWorld) {
     new ProvideNewUnits(universe),
     new ProvideNewSupply(universe),
     new ProvideNewBuildings(universe),
+    new ProvideAddons(universe),
     new ProvideFactories(universe),
     new ProvideArmy(universe),
     new JobReAssignments(universe),

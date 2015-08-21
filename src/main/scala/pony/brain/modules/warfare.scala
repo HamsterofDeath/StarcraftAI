@@ -16,11 +16,11 @@ trait BuildingRequestHelper extends AIModule[WorkerUnit] {
           forceBuildingPosition = forceBuildingPosition)
         info(s"Financing possible for $buildingType, requesting build")
         val result = unitManager.request(unitReq)
+        if (result.hasAnyMissingRequirements) {
+          resources.unlock_!(suc)
+        }
         if (takeCareOfDependencies) {
-          if (result.hasMissingRequirements) {
-            resources.unlock_!(suc)
-          }
-          result.missingRequirements.foreach { what =>
+          result.notExistingMissingRequiments.foreach { what =>
             if (!unitManager.plannedToBuild(what)) {
               requestBuilding(what, takeCareOfDependencies = false)
             }
@@ -46,12 +46,12 @@ trait UnitRequestHelper extends AIModule[UnitFactory] {
         val unitReq = UnitJobRequests.newOfType(universe, mobileEmployer, mobileType, suc)
         info(s"Financing possible for $mobileType, requesting training")
         val result = unitManager.request(unitReq)
+        if (result.hasAnyMissingRequirements) {
+          // do not forget to unlock the resources again
+          resources.unlock_!(suc)
+        }
         if (takeCareOfDependencies) {
-          if (result.hasMissingRequirements) {
-            // do not forget to unlock the resources again
-            resources.unlock_!(suc)
-          }
-          result.missingRequirements.foreach { requirement =>
+          result.notExistingMissingRequiments.foreach { requirement =>
             if (!unitManager.plannedToBuild(requirement)) {
               helper.requestBuilding(requirement, takeCareOfDependencies = false)
             }
@@ -63,7 +63,6 @@ trait UnitRequestHelper extends AIModule[UnitFactory] {
 }
 
 class ProvideFactories(universe: Universe) extends OrderlessAIModule[WorkerUnit](universe) with BuildingRequestHelper {
-
 
   override def onTick(): Unit = {
     evaluateCapacities.foreach { cap =>
@@ -82,8 +81,10 @@ class ProvideFactories(universe: Universe) extends OrderlessAIModule[WorkerUnit]
 }
 
 case class IdealProducerCount[T <: UnitFactory](typeOfFactory: Class[_ <: UnitFactory], maximumSustainable: Int)
-case class IdealUnitRatio[T <: Mobile](unitType: Class[_ <: Mobile], amount: Int) {
+case class IdealUnitRatio[T <: Mobile](unitType: Class[_ <: Mobile], amount: Int)(active: => Boolean) {
   def fixedAmount = amount max 1
+
+  def isActive = active
 }
 
 class ProvideArmy(universe: Universe) extends OrderlessAIModule[UnitFactory](universe) with UnitRequestHelper {
@@ -94,12 +95,12 @@ class ProvideArmy(universe: Universe) extends OrderlessAIModule[UnitFactory](uni
       val existingRatio = p.existing.getOrElse(t, 0.0)
       existingRatio - idealRatio
     }
-    mostMissing.headOption.foreach { case (thisOne, _) =>
+    mostMissing.take(3).foreach { case (thisOne, _) =>
       requestUnit(thisOne, takeCareOfDependencies = true)
     }
   }
   def percentages = {
-    val ratios = strategy.current.suggestUnits
+    val ratios = strategy.current.suggestUnits.filter(_.isActive)
     val summed = ratios.groupBy(_.unitType)
                  .map { case (t, v) =>
                    (t, v.map(_.fixedAmount).sum)
@@ -125,10 +126,31 @@ class ProvideArmy(universe: Universe) extends OrderlessAIModule[UnitFactory](uni
 object Strategy {
 
   trait LongTermStrategy extends HasUniverse {
+    val timingHelpers = new TimingHelpers
     def suggestUnits: Seq[IdealUnitRatio[_ <: Mobile]]
     def suggestProducers: Seq[IdealProducerCount[_ <: UnitFactory]]
     def determineScore: Int
+    class TimingHelpers {
+
+      def phase = new Phase
+      class Phase {
+        def isLate = time.minutes <= 9999 && !isLateMid
+        def isLateMid = time.minutes < 20 && !isMid
+        def isMid = time.minutes < 13 && !isEarlyMid
+        def isEarlyMid = time.minutes < 9 && !isEarly
+        def isEarly = time.minutes < 5
+        def isSinceAlmostMid = time.minutes >= 4
+        def isSinceMid = time.minutes >= 5
+        def isSinceMidMid = time.minutes >= 9
+        def isSinceLateMid = time.minutes >= 13
+
+        def isBeforeLate = time.minutes <= 20
+
+        def isAnyTime = true
+      }
+    }
   }
+
   class Strategies(override val universe: Universe) extends HasUniverse {
     private val available              = new TerranHeavyMetal(universe) ::
                                          new TerranAirSuperiority(universe) ::
@@ -160,21 +182,21 @@ object Strategy {
       Nil
     }
     override def suggestUnits = {
-      IdealUnitRatio(classOf[Marine], 3) ::
-      IdealUnitRatio(classOf[Medic], 1) ::
-      IdealUnitRatio(classOf[Ghost], 1) ::
-      IdealUnitRatio(classOf[Vulture], 3) ::
-      IdealUnitRatio(classOf[Tank], 5) ::
-      IdealUnitRatio(classOf[Goliath], 3) ::
-      IdealUnitRatio(classOf[ScienceVessel], 1) ::
+      IdealUnitRatio(classOf[Marine], 3)(timingHelpers.phase.isAnyTime) ::
+      IdealUnitRatio(classOf[Medic], 1)(timingHelpers.phase.isAnyTime) ::
+      IdealUnitRatio(classOf[Ghost], 1)(timingHelpers.phase.isSinceMid) ::
+      IdealUnitRatio(classOf[Vulture], 3)(timingHelpers.phase.isAnyTime) ::
+      IdealUnitRatio(classOf[Tank], 5)(timingHelpers.phase.isSinceMid) ::
+      IdealUnitRatio(classOf[Goliath], 3)(timingHelpers.phase.isSinceMid) ::
+      IdealUnitRatio(classOf[ScienceVessel], 1)(timingHelpers.phase.isSinceLateMid) ::
       Nil
     }
   }
 
   class TerranHeavyAir(override val universe: Universe) extends TerranAirSuperiority(universe) {
     override def suggestUnits: List[IdealUnitRatio[Nothing]] = {
-      IdealUnitRatio(classOf[ScienceVessel], 3) ::
-      IdealUnitRatio(classOf[Battlecruiser], 10) ::
+      IdealUnitRatio(classOf[ScienceVessel], 3)(timingHelpers.phase.isAnyTime) ::
+      IdealUnitRatio(classOf[Battlecruiser], 10)(timingHelpers.phase.isAnyTime) ::
       super.suggestUnits
     }
     override def determineScore: Int = {
@@ -185,15 +207,15 @@ object Strategy {
   class TerranAirSuperiority(override val universe: Universe) extends LongTermStrategy {
 
     override def suggestUnits = {
-      IdealUnitRatio(classOf[Marine], 3) ::
-      IdealUnitRatio(classOf[Medic], 1) ::
-      IdealUnitRatio(classOf[Ghost], 1) ::
-      IdealUnitRatio(classOf[Vulture], 3) ::
-      IdealUnitRatio(classOf[Tank], 1) ::
-      IdealUnitRatio(classOf[Goliath], 1) ::
-      IdealUnitRatio(classOf[Wraith], 5) ::
-      IdealUnitRatio(classOf[Battlecruiser], 3) ::
-      IdealUnitRatio(classOf[ScienceVessel], 2) ::
+      IdealUnitRatio(classOf[Marine], 3)(timingHelpers.phase.isBeforeLate) ::
+      IdealUnitRatio(classOf[Medic], 1)(timingHelpers.phase.isBeforeLate) ::
+      IdealUnitRatio(classOf[Ghost], 1)(timingHelpers.phase.isMid) ::
+      IdealUnitRatio(classOf[Vulture], 3)(timingHelpers.phase.isBeforeLate) ::
+      IdealUnitRatio(classOf[Tank], 1)(timingHelpers.phase.isSinceMidMid) ::
+      IdealUnitRatio(classOf[Goliath], 1)(timingHelpers.phase.isSinceMidMid) ::
+      IdealUnitRatio(classOf[Wraith], 8)(timingHelpers.phase.isSinceMid) ::
+      IdealUnitRatio(classOf[Battlecruiser], 3)(timingHelpers.phase.isSinceLateMid) ::
+      IdealUnitRatio(classOf[ScienceVessel], 2)(timingHelpers.phase.isSinceMidMid) ::
       Nil
     }
 
@@ -213,16 +235,16 @@ object Strategy {
   class TerranFootSoldiers(override val universe: Universe) extends LongTermStrategy {
 
     override def suggestUnits = {
-      IdealUnitRatio(classOf[Marine], 10) ::
-      IdealUnitRatio(classOf[Firebat], 3) ::
-      IdealUnitRatio(classOf[Medic], 4) ::
-      IdealUnitRatio(classOf[Ghost], 2) ::
-      IdealUnitRatio(classOf[Vulture], 1) ::
-      IdealUnitRatio(classOf[Tank], 1) ::
-      IdealUnitRatio(classOf[Goliath], 1) ::
-      IdealUnitRatio(classOf[Wraith], 1) ::
-      IdealUnitRatio(classOf[Battlecruiser], 1) ::
-      IdealUnitRatio(classOf[ScienceVessel], 1) ::
+      IdealUnitRatio(classOf[Marine], 10)(timingHelpers.phase.isAnyTime) ::
+      IdealUnitRatio(classOf[Firebat], 3)(timingHelpers.phase.isSinceMid) ::
+      IdealUnitRatio(classOf[Medic], 4)(timingHelpers.phase.isSinceMid) ::
+      IdealUnitRatio(classOf[Ghost], 2)(timingHelpers.phase.isSinceLateMid) ::
+      IdealUnitRatio(classOf[Vulture], 1)(timingHelpers.phase.isSinceMidMid) ::
+      IdealUnitRatio(classOf[Tank], 1)(timingHelpers.phase.isSinceMidMid) ::
+      IdealUnitRatio(classOf[Goliath], 1)(timingHelpers.phase.isSinceMidMid) ::
+      IdealUnitRatio(classOf[Wraith], 1)(timingHelpers.phase.isSinceLateMid) ::
+      IdealUnitRatio(classOf[Battlecruiser], 1)(timingHelpers.phase.isLate) ::
+      IdealUnitRatio(classOf[ScienceVessel], 1)(timingHelpers.phase.isSinceMid) ::
       Nil
     }
 

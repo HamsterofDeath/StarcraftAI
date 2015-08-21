@@ -3,6 +3,7 @@ package pony
 import bwapi.{Color, Game}
 
 import scala.collection.mutable.ArrayBuffer
+import scala.util.Try
 
 abstract class UnitOrder {
   private var myGame:Game = _
@@ -27,6 +28,17 @@ abstract class UnitOrder {
 }
 
 object Orders {
+  case class ConstructAddon(basis: CanBuildAddons, builtWhat: Class[_ <: Addon]) extends UnitOrder {
+    assert(Try(builtWhat.toUnitType).isSuccess)
+    override def myUnit: WrapsUnit = basis
+    override def issueOrderToGame(): Unit = {
+      basis.nativeUnit.buildAddon(builtWhat.toUnitType)
+    }
+    override def renderDebug(renderer: Renderer): Unit = {
+      renderer.in_!(Color.White).drawOutline(basis.area)
+    }
+  }
+
   case class Construct(myUnit: WorkerUnit, buildingType: Class[_ <: Building], where: MapTilePosition)
     extends UnitOrder {
     val area = {

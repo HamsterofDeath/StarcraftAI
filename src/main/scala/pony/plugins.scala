@@ -99,6 +99,13 @@ class StatsRenderer(override val universe: Universe) extends AIPlugIn with HasUn
       val debugString = ArrayBuffer.empty[String]
 
       debugString += {
+        val time = universe.time.formatted
+        val category = universe.time.categoryName
+
+        s"$category: $time"
+      }
+
+      debugString += {
         val locked = resources.lockedResources
         val locks = resources.detailledLocks
         val counts = locks.map(_.whatFor).groupBy(identity).map { case (c, am) => c -> am.size }
@@ -137,7 +144,7 @@ class StatsRenderer(override val universe: Universe) extends AIPlugIn with HasUn
             val gatherJob = unitManager.allJobsByType[GatherMineralsAtSinglePatch]
                             .filter(e => mins.contains(e.targetPatch))
             val stats = resources.stats
-            val minsGot = stats.minerals
+            val minsGot = stats.mineralsPerMinute.toInt
             val minsGotPerWorker = df.format(minsGot.toDouble / gatherJob.size)
             s"Base ${base.mainBuilding.unitIdText}: ${mins.value}m, ${
               gatherJob.size
@@ -158,8 +165,6 @@ class StatsRenderer(override val universe: Universe) extends AIPlugIn with HasUn
           s"$emp has ${unitManager.jobsOf(emp).size} units"
         }.toList.sorted
       }
-
-
 
       debugString.zipWithIndex.foreach { case (txt, line) => renderer.drawTextOnScreen(txt, line) }
     }
