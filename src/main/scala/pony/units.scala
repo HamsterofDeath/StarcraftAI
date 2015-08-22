@@ -1,6 +1,6 @@
 package pony
 
-import bwapi.{Order, Race, Unit => APIUnit, UnitType}
+import bwapi.{Order, Race, TechType, Unit => APIUnit, UnitType, UpgradeType}
 import pony.brain.{PriorityChain, UnitWithJob, Universe}
 
 import scala.collection.immutable.HashMap
@@ -97,8 +97,46 @@ trait Building extends BlockingTiles {
 
 }
 
-trait Upgrader extends Controllable {
+class Upgrade(nativeType: Either[UpgradeType, TechType]) {
+  def this(u: UpgradeType) {
+    this(Left(u))
+  }
+  def this(t: TechType) {
+    this(Right(t))
+  }
+}
 
+object Upgrade {
+  object Terran {
+    case object WraithEnergy extends Upgrade(UpgradeType.Apollo_Reactor)
+    case object ShipArmor extends Upgrade(UpgradeType.Terran_Ship_Plating)
+    case object VehicleArmor extends Upgrade(UpgradeType.Terran_Vehicle_Plating)
+    case object InfantryArmor extends Upgrade(UpgradeType.Terran_Infantry_Armor)
+    case object InfantryCooldown extends Upgrade(TechType.Stim_Packs)
+    case object InfantryWeapons extends Upgrade(UpgradeType.Terran_Infantry_Weapons)
+    case object VehicleWeapons extends Upgrade(UpgradeType.Terran_Vehicle_Weapons)
+    case object ShipWeapons extends Upgrade(UpgradeType.Terran_Ship_Weapons)
+    case object MarineBatRange extends Upgrade(UpgradeType.U_238_Shells)
+    case object GoliathRange extends Upgrade(UpgradeType.Charon_Boosters)
+    case object SpiderMines extends Upgrade(TechType.Spider_Mines)
+    case object VultureSpeed extends Upgrade(UpgradeType.Ion_Thrusters)
+    case object TankSiegeMode extends Upgrade(TechType.Tank_Siege_Mode)
+    case object EMP extends Upgrade(TechType.EMP_Shockwave)
+    case object Irradiate extends Upgrade(TechType.Irradiate)
+    case object ScienceVesselEnergy extends Upgrade(UpgradeType.Titan_Reactor)
+    case object GhostStop extends Upgrade(TechType.Lockdown)
+    case object GhostVisiblityRange extends Upgrade(UpgradeType.Ocular_Implants)
+    case object GhostEnergy extends Upgrade(UpgradeType.Moebius_Reactor)
+    case object GhostCloak extends Upgrade(TechType.Personnel_Cloaking)
+    case object WraithCloak extends Upgrade(TechType.Cloaking_Field)
+    case object CruiserGun extends Upgrade(TechType.Yamato_Gun)
+    case object CruiserEnergy extends Upgrade(UpgradeType.Colossus_Reactor)
+
+  }
+}
+
+trait Upgrader extends Controllable {
+  def canUpgrade: Set[Upgrade]
 }
 
 trait UpgraderBuilding extends Building with Upgrader {
@@ -135,16 +173,16 @@ trait Mobile extends WrapsUnit with Controllable {
   def isMoving = nativeUnit.isMoving
 
   def currentTileNative = currentTile.asNative
+  def currentTile = {
+    val tp = nativeUnit.getPosition
+    MapTilePosition.shared(tp.getX / 32, tp.getY / 32)
+  }
   def currentPositionNative = currentPosition.toNative
   def currentPosition = {
     val p = nativeUnit.getPosition
     MapPosition(p.getX, p.getY)
   }
   override def toString = s"${super.toString}@$currentTile"
-  def currentTile = {
-    val tp = nativeUnit.getPosition
-    MapTilePosition.shared(tp.getX / 32, tp.getY / 32)
-  }
 }
 
 trait Killable {
@@ -196,10 +234,11 @@ trait GroundUnit extends Killable with Mobile {
 trait Floating
 
 trait CanBuildAddons extends Building {
+  val addonArea = LazyVal.from(Area(area.lowerRight.movedBy(1, -1), Size(2, 2)))
   def canBuildAddon(addon: Class[_ <: Addon]) = race.techTree.canBuildAddon(getClass, addon)
 }
 
-trait WorkerUnit extends Killable with Mobile with GroundUnit with GroundWeapon with Floating with CanBuildAddons {
+trait WorkerUnit extends Killable with Mobile with GroundUnit with GroundWeapon with Floating {
   def isGatheringGas = currentOrder == Order.HarvestGas || currentOrder == Order.MoveToGas ||
                        currentOrder == Order.ReturnGas || currentOrder == Order.WaitForGas
 
@@ -276,7 +315,9 @@ class Barracks(unit: APIUnit) extends AnyUnit(unit) with UnitFactory
 class Factory(unit: APIUnit) extends AnyUnit(unit) with UnitFactory with CanBuildAddons
 class Starport(unit: APIUnit) extends AnyUnit(unit) with UnitFactory with CanBuildAddons
 
-class Academy(unit: APIUnit) extends AnyUnit(unit) with UpgraderBuilding
+class Academy(unit: APIUnit) extends AnyUnit(unit) with UpgraderBuilding {
+  override def canUpgrade: Set[Upgrade] = Set(Upgrade.Terran.MarineBatRange, Upgrade.Terran.MarineBatRange)
+}
 class Armory(unit: APIUnit) extends AnyUnit(unit) with UpgraderBuilding
 class EngineeringBay(unit: APIUnit) extends AnyUnit(unit) with UpgraderBuilding
 class ScienceFacility(unit: APIUnit) extends AnyUnit(unit) with UpgraderBuilding with CanBuildAddons

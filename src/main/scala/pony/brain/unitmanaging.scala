@@ -1,6 +1,7 @@
 package pony
 package brain
 
+import bwapi.Order
 import pony.Orders.Stop
 
 import scala.collection.mutable
@@ -35,6 +36,11 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
     val typeOfFactory = manifest[T].runtimeClass.asInstanceOf[Class[_ <: T]]
     unfulfilledByTargetType(typeOfFactory).size
   }
+  private def unfulfilledByTargetType[T <: WrapsUnit](targetType: Class[_ <: T]) = {
+    unfulfilledRequestsLastTick.flatMap(_.requests).iterator.collect {
+      case b: BuildUnitRequest[_] if b.typeOfRequestedUnit == targetType => b
+    }
+  }
   def plannedToBuildByClass(typeOfFactory: Class[_ <: Building]) = {
     unfulfilledByTargetType(typeOfFactory)
   }
@@ -42,17 +48,18 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
     val typeOfFactory = manifest[T].runtimeClass.asInstanceOf[Class[_ <: T]]
     unfulfilledByTargetType(typeOfFactory)
   }
-  private def unfulfilledByTargetType[T <: WrapsUnit](targetType: Class[_ <: T]) = {
-    unfulfilledRequestsLastTick.flatMap(_.requests).iterator.collect {
-      case b: BuildUnitRequest[_] if b.typeOfRequestedUnit == targetType => b
-    }
-  }
   def constructionsInProgress[T <: Building : Manifest] = {
     val typeOfFactory = manifest[T].runtimeClass
     val byJob = allJobsByType[ConstructBuilding[WorkerUnit, Building]].collect {
       case cr: ConstructBuilding[WorkerUnit, Building] if typeOfFactory.isAssignableFrom(cr.typeOfBuilding) => cr
     }
     byJob
+  }
+  def allJobsByType[T <: UnitWithJob[_] : Manifest] = {
+    val wanted = manifest[T].runtimeClass
+    assignments.valuesIterator.filter { job =>
+      wanted.isAssignableFrom(job.getClass)
+    }.map {_.asInstanceOf[T]}.toVector
   }
   def unitsByType[T <: WrapsUnit : Manifest]: collection.Set[T] = {
     val runtimeClass = manifest[T].runtimeClass.asInstanceOf[Class[_ <: T]]
@@ -76,12 +83,6 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
       case b: BuildUnitRequest[_] => b.typeOfRequestedUnit.toUnitType.supplyProvided()
     }.sum
     byJob + byUnfulfilledRequest
-  }
-  def allJobsByType[T <: UnitWithJob[_] : Manifest] = {
-    val wanted = manifest[T].runtimeClass
-    assignments.valuesIterator.filter { job =>
-      wanted.isAssignableFrom(job.getClass)
-    }.map {_.asInstanceOf[T]}.toVector
   }
   def allJobsByUnitType[T <: WrapsUnit : Manifest] = selectJobs[T, UnitWithJob[T]](_ => true)
   def selectJobs[U <: WrapsUnit : Manifest, T <: UnitWithJob[U] : Manifest](f: T => Boolean) = {
@@ -541,11 +542,11 @@ class ConstructAddon[W <: CanBuildAddons, A <: Addon](employer: Employer[W],
   private var startedConstruction = false
   private var stoppedConstruction = false
   override def shortDebugString: String = s"Construct ${builtWhat.className}"
+  private def builtWhat = what
   override def isFinished: Boolean = {
     startedConstruction && stoppedConstruction
   }
   override def getOrder = Orders.ConstructAddon(basis, builtWhat).toSeq
-  private def builtWhat = what
   override def proofForFunding = funding
 }
 
@@ -624,7 +625,15 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, bu
 class BusyDoingNothing[T <: WrapsUnit](unit: T, employer: Employer[T])
   extends UnitWithJob(employer, unit, Priority.None) {
   override def isIdle = true
-  override def ordersForTick: Seq[UnitOrder] = Nil
+
+  override def ordersForTick: Seq[UnitOrder] = {
+    unit match {
+      case m: Mobile if m.currentOrder != Order.PlayerGuard && m.currentOrder != Order.Stop =>
+        Orders.Stop(m).toSeq
+      case _ => Nil
+    }
+  }
+
   override def isFinished = false
   override def shortDebugString: String = "Idle"
 }

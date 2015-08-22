@@ -56,6 +56,9 @@ object AreaHelper {
       if (grid2D.blocked(x, y)) Some(false) else None
     }, true)
   }
+  def traverseTilesOfLine[T](a: MapTilePosition, b: MapTilePosition, f: (Int, Int) => T): Unit = {
+    traverseTilesOfLine(a, b, (x, y) => {f(x, y); None}, None)
+  }
   def traverseTilesOfLine[T](a: MapTilePosition, b: MapTilePosition, f: (Int, Int) => Option[T],
                              orElse: T): T = {
     var startX = a.x
@@ -108,9 +111,6 @@ object AreaHelper {
       }
     }
     orElse
-  }
-  def traverseTilesOfLine[T](a: MapTilePosition, b: MapTilePosition, f: (Int, Int) => T): Unit = {
-    traverseTilesOfLine(a, b, (x, y) => {f(x, y); None}, None)
   }
   def freeAreaSize(start: MapTilePosition, baseOn: Grid2D) = {
     var count = 0
@@ -287,21 +287,37 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
 
 class ConstructionSiteFinder(universe: Universe) {
   // initialisation happens in the main thread
-  private val tryOnThis = universe.mapLayers.reallyFreeBuildingTiles.mutableCopy
-  private val helper    = new GeometryHelpers(universe.world.map.sizeX, universe.world.map.sizeY)
+  private val withoutStreets = universe.mapLayers.reallyFreeBuildingTiles.mutableCopy
+  private val helper         = new GeometryHelpers(universe.world.map.sizeX, universe.world.map.sizeY)
 
   def findSpotFor[T <: Building](near: MapTilePosition, building: Class[_ <: T]) = {
     // this happens in the background
+
     val unitType = building.toUnitType
-    val necessaryArea = Size.shared(unitType.tileWidth(), unitType.tileHeight())
-    helper.blockSpiralClockWise(near).find { candidate =>
-      val area = Area(candidate, necessaryArea)
-      def containsArea = tryOnThis.includes(area)
+    val necessarySize = Size.shared(unitType.tileWidth(), unitType.tileHeight())
+    val addonSize = Size(2, 2)
+    val necessarySizeAddon = if (unitType.canBuildAddon) {
+      Some(addonSize)
+    } else None
+
+    val withStreets = withoutStreets.mutableCopy
+    // add "streets" to make sure that we don't lock ourselves in too much
+    withStreets.block_!(Line(near.movedBy(-20, 0), near.movedBy(20, 0)))
+    withStreets.block_!(Line(near.movedBy(0, 20), near.movedBy(0, -20)))
+    withStreets.block_!(Line(near.movedBy(-20, -20), near.movedBy(20, 20)))
+    withStreets.block_!(Line(near.movedBy(-20, 20), near.movedBy(20, -20)))
+
+    helper.blockSpiralClockWise(near).find { upperLeft =>
+      val area = Area(upperLeft, necessarySize)
+      val addonArea = necessarySizeAddon.map(Area(upperLeft, _))
+      def containsArea = withoutStreets.includes(area) && addonArea.map(withoutStreets.includes).getOrElse(true)
       def free = {
-        val checkIfBlocksSelf = tryOnThis.mutableCopy
+        val checkIfBlocksSelf = withoutStreets.mutableCopy
         checkIfBlocksSelf.block_!(area)
-        def areaFree = tryOnThis.free(candidate, necessaryArea)
-        def noLock = checkIfBlocksSelf.areaCount == tryOnThis.areaCount
+        addonArea.foreach(checkIfBlocksSelf.block_!)
+        def areaFree = withStreets.free(area) &&
+                       addonArea.map(withStreets.free).getOrElse(true)
+        def noLock = checkIfBlocksSelf.areaCount == withoutStreets.areaCount
         areaFree && noLock
       }
       containsArea && free

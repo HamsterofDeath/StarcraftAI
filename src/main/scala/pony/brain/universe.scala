@@ -6,7 +6,8 @@ import java.text.DecimalFormat
 import pony.brain.modules.Strategy.Strategies
 
 trait Universe {
-  val time = new Time(this)
+  private val myTime = new Time(this)
+  def time = myTime
   def currentTick: Int
   def world: DefaultWorld
   def bases: Bases
