@@ -1,6 +1,8 @@
 package pony
 package brain
 
+import pony.brain.modules.UpgradePrice
+
 import scala.collection.mutable.ArrayBuffer
 
 case class IncomeStats(minerals: Int, gas: Int, frames: Int) {
@@ -99,6 +101,7 @@ trait ResourceApproval {
     assert(success)
     this.asInstanceOf[ResourceApprovalSuccess]
   }
+  def ifSuccess[T](then: ResourceApprovalSuccess => T): T
 }
 
 case class Supplies(used: Int, total: Int) {
@@ -109,6 +112,7 @@ case class Supplies(used: Int, total: Int) {
 
 case class ResourceApprovalSuccess(minerals: Int, gas: Int, supply: Int) extends ResourceApproval {
   def success = true
+  override def ifSuccess[T](then: (ResourceApprovalSuccess) => T): T = then(this)
 }
 
 object ResourceApprovalSuccess {
@@ -121,6 +125,10 @@ object ResourceApprovalFail extends ResourceApproval {
   override def gas = 0
   override def supply = 0
   override def success = false
+  override def ifSuccess[T](then: (ResourceApprovalSuccess) => T): T = {
+    // sorry
+    null.asInstanceOf[T]
+  }
 }
 
 trait ResourceRequest {
@@ -137,6 +145,13 @@ case class ResourceRequests(requests: Seq[ResourceRequest], priority: Priority, 
 
 object ResourceRequests {
   val empty = ResourceRequests(Nil, Priority.None, classOf[Irrelevant])
+  def forUpgrade(upgrader: Upgrader, price: UpgradePrice, priority: Priority = Priority.Upgrades) = {
+    val upgrade = price.forUpgrade
+    val mins = price.nextMineralPrice
+    val gas = price.nextGasPrice
+    ResourceRequests(Seq(MineralsRequest(mins), GasRequest(gas)), priority, upgrader.getClass)
+
+  }
   def forUnit[T <: WrapsUnit](race: SCRace, unspecificType: Class[_ <: T], priority: Priority = Priority.Default) = {
     val unitType = race.specialize(unspecificType)
     val mins = unitType.toUnitType.mineralPrice()

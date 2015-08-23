@@ -15,6 +15,15 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
       mutable.HashMap[Employer[_ <: WrapsUnit], mutable.Set[UnitWithJob[_ <: WrapsUnit]]]
       with mutable.MultiMap[Employer[_ <: WrapsUnit], UnitWithJob[_ <: WrapsUnit]]
   private var unfulfilledRequestsLastTick = unfulfilledRequestsThisTick.toVector
+  def existsOrPlanned(c: Class[_ <: WrapsUnit]) = {
+    units.ownsByType(c) ||
+    plannedToBuild.exists(e => c.isAssignableFrom(e.typeOfRequestedUnit)) ||
+    plannedToTrain.exists(e => c.isAssignableFrom(e.typeOfRequestedUnit))
+  }
+  def plannedToBuild = unfulfilledRequestsLastTick.flatMap(_.requests)
+                       .collect { case b: BuildUnitRequest[_] if b.isBuilding => b }
+  def plannedToTrain = unfulfilledRequestsLastTick.flatMap(_.requests)
+                       .collect { case t: BuildUnitRequest[_] if t.isMobile => t }
   def nextJobReorganisationRequest = {
     val ret = reorganizeJobQueue.lastOption
     if (reorganizeJobQueue.nonEmpty) {
@@ -26,20 +35,11 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
   def tryFindBetterEmployeeFor[T <: WrapsUnit](anyJob: CanAcceptUnitSwitch[T]): Unit = {
     reorganizeJobQueue += anyJob
   }
-
   def plannedToBuild(c: Class[_ <: Building]): Boolean = plannedToBuild
                                                          .exists(e => c.isAssignableFrom(e.typeOfRequestedUnit))
-
-  def plannedToBuild = unfulfilledRequestsLastTick.flatMap(_.requests).collect { case b: BuildUnitRequest[_] => b }
-
   def plannedToBuildByType[T <: Building : Manifest]: Int = {
     val typeOfFactory = manifest[T].runtimeClass.asInstanceOf[Class[_ <: T]]
     unfulfilledByTargetType(typeOfFactory).size
-  }
-  private def unfulfilledByTargetType[T <: WrapsUnit](targetType: Class[_ <: T]) = {
-    unfulfilledRequestsLastTick.flatMap(_.requests).iterator.collect {
-      case b: BuildUnitRequest[_] if b.typeOfRequestedUnit == targetType => b
-    }
   }
   def plannedToBuildByClass(typeOfFactory: Class[_ <: Building]) = {
     unfulfilledByTargetType(typeOfFactory)
@@ -47,6 +47,11 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
   def plannedConstructions[T <: Building : Manifest] = {
     val typeOfFactory = manifest[T].runtimeClass.asInstanceOf[Class[_ <: T]]
     unfulfilledByTargetType(typeOfFactory)
+  }
+  private def unfulfilledByTargetType[T <: WrapsUnit](targetType: Class[_ <: T]) = {
+    unfulfilledRequestsLastTick.flatMap(_.requests).iterator.collect {
+      case b: BuildUnitRequest[_] if b.typeOfRequestedUnit == targetType => b
+    }
   }
   def constructionsInProgress[T <: Building : Manifest] = {
     val typeOfFactory = manifest[T].runtimeClass
@@ -134,7 +139,8 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
       job.onFinish()
     }
 
-    def jobOf[T <: WrapsUnit](unit: T) = {
+    def initialJobOf[T <: WrapsUnit](unit: T) = {
+      unit.init_!(universe)
       if (unit.isBeingCreated) {
         unit match {
           case b: Building =>
@@ -148,13 +154,13 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
       }
     }
 
-    val myOwn = universe.world.units.mine.filterNot(assignments.contains).map(jobOf).toSeq
+    val myOwn = universe.world.units.mine.filterNot(assignments.contains).map(initialJobOf).toSeq
     info(s"Found ${myOwn.size} new units of player", myOwn.nonEmpty)
 
     myOwn.foreach(assignJob_!)
     assignments ++= myOwn.map(e => e.unit -> e)
 
-    val registerUs = universe.world.units.all.filterNot(assignments.contains).map(jobOf).toSeq
+    val registerUs = universe.world.units.all.filterNot(assignments.contains).map(initialJobOf).toSeq
     info(s"Found ${registerUs.size} new units (not of player)", registerUs.nonEmpty)
     assignments ++= registerUs.map(e => e.unit -> e)
 
@@ -233,7 +239,6 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
     trace(s"Result of request: $result")
     result
   }
-  def race = bases.mainBase.mainBuilding.race
   def allOfEmployer[T <: WrapsUnit](employer: Employer[T]) = byEmployer.getOrElse(employer, Set.empty)
   def allNotOfEmployer[T <: WrapsUnit](employer: Employer[T]) = byEmployer.filter(_._1 != employer)
                                                                 .flatMap(_._2)
@@ -347,8 +352,8 @@ class UnitCollector[T <: WrapsUnit : Manifest](req: UnitJobRequests[T], override
   def requests(unit: UnitWithJob[_ <: WrapsUnit]) = {
     req.wantsUnit(unit.unit)
   }
-  def hasPriorityRule = priorityRule.isDefined
   def priorityRule = req.priorityRule
+  def hasPriorityRule = priorityRule.isDefined
   def missingAsRequest: UnitJobRequests[T] = {
     val typesAndAmounts = remainingAmountsPerRequest.filter(_._2 > 0).map { case (req, amount) =>
       BuildUnitRequest[T](universe, req.typeOfRequestedUnit, amount, ResourceApprovalFail, Priority.Default,
@@ -418,7 +423,7 @@ abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: 
   private  val listeners          = ArrayBuffer.empty[JobFinishedListener[T]]
   private  var noCommandsForTicks = 0
   def onTick(): Unit = {
-    unit.onTick(universe)
+    unit.onTick()
   }
   def onStealUnit() = {}
   def shortDebugString: String
@@ -488,6 +493,8 @@ trait HasFunding {
 
 trait JobHasFunding[T <: WrapsUnit] extends UnitWithJob[T] with HasUniverse with HasFunding {
 
+  assert(proofForFunding.isFunded, s"Problem, check $this")
+
   listen_!(() => {
     unlock_!()
   })
@@ -542,12 +549,46 @@ class ConstructAddon[W <: CanBuildAddons, A <: Addon](employer: Employer[W],
   private var startedConstruction = false
   private var stoppedConstruction = false
   override def shortDebugString: String = s"Construct ${builtWhat.className}"
-  private def builtWhat = what
   override def isFinished: Boolean = {
     startedConstruction && stoppedConstruction
   }
   override def getOrder = Orders.ConstructAddon(basis, builtWhat).toSeq
+  private def builtWhat = what
   override def proofForFunding = funding
+}
+
+class ResearchUpgrade[U <: Upgrader](employer: Employer[U],
+                                     basis: U,
+                                     what: Upgrade,
+                                     funding: ResourceApproval)
+  extends UnitWithJob[U](employer, basis, Priority.Addon) with JobHasFunding[U] with IssueOrderNTimes[U] {
+
+  private var startedResearch = false
+  private var stoppedResearch = false
+  override def shortDebugString: String = s"Research $what"
+  override def isFinished: Boolean = {
+    startedResearch && stoppedResearch
+  }
+
+  override def hasFailed: Boolean = {
+    super.hasFailed || (age > 50 && !startedResearch)
+  }
+
+  override def onTick(): Unit = {
+    super.onTick()
+    if (!startedResearch && basis.isDoingResearch) {
+      startedResearch = true
+    }
+    if (startedResearch && !basis.isDoingResearch) {
+      stoppedResearch = true
+    }
+  }
+
+  override def getOrder =
+    Orders.Research(basis, what).toSeq
+
+  override def proofForFunding = funding
+
 }
 
 class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, buildingType: Class[_ <: B],
@@ -623,16 +664,18 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, bu
 }
 
 class BusyDoingNothing[T <: WrapsUnit](unit: T, employer: Employer[T])
-  extends UnitWithJob(employer, unit, Priority.None) {
+  extends UnitWithJob(employer, unit, Priority.None) with IssueOrderNTimes[T] {
   override def isIdle = true
 
-  override def ordersForTick: Seq[UnitOrder] = {
+  override def getOrder: Seq[UnitOrder] = {
     unit match {
       case m: Mobile if m.currentOrder != Order.PlayerGuard && m.currentOrder != Order.Stop =>
         Orders.Stop(m).toSeq
       case _ => Nil
     }
   }
+
+  override def times: Int = 5
 
   override def isFinished = false
   override def shortDebugString: String = "Idle"
@@ -749,7 +792,11 @@ case class BuildUnitRequest[T <: WrapsUnit](universe: Universe, typeOfRequestedU
                                             forceBuildingPosition: Option[MapTilePosition])
   extends UnitRequest[T] with HasFunding with HasUniverse {
 
-  def isAddon = typeOfRequestedUnit.toUnitType.isAddon
+  def isAddon = classOf[Addon].isAssignableFrom(typeOfRequestedUnit)
+
+  def isBuilding = classOf[Building].isAssignableFrom(typeOfRequestedUnit)
+
+  def isMobile = classOf[Mobile].isAssignableFrom(typeOfRequestedUnit)
 
   forceBuildingPosition.foreach(_ => assert(typeOfRequestedUnit.toUnitType.isBuilding))
 
@@ -808,6 +855,12 @@ case class UnitJobRequests[T <: WrapsUnit : Manifest](requests: Seq[UnitRequest[
 }
 
 object UnitJobRequests {
+  def upgraderFor(upgrade: Upgrade, employer: Employer[Upgrader], priority: Priority = Priority.Upgrades) = {
+    val actualClass = employer.race.techTree.upgraderFor(upgrade).asInstanceOf[Class[Upgrader]]
+    val req = AnyUnitRequest(actualClass, 1)
+    UnitJobRequests(req.toSeq, employer, priority)
+  }
+
   def builderOf[T <: Mobile, F <: UnitFactory : Manifest](wantedType: Class[_ <: T],
                                                           employer: Employer[F],
                                                           priority: Priority = Priority.Default): UnitJobRequests[F] = {

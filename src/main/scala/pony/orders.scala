@@ -28,6 +28,17 @@ abstract class UnitOrder {
 }
 
 object Orders {
+  case class Research(basis: Upgrader, what: Upgrade) extends UnitOrder {
+    override def myUnit: WrapsUnit = basis
+    override def issueOrderToGame(): Unit = {
+      what.nativeType match {
+        case Left(upgrade) => basis.nativeUnit.upgrade(upgrade)
+        case Right(tech) => basis.nativeUnit.research(tech)
+      }
+    }
+    override def renderDebug(renderer: Renderer): Unit = {}
+  }
+
   case class ConstructAddon(basis: CanBuildAddons, builtWhat: Class[_ <: Addon]) extends UnitOrder {
     assert(Try(builtWhat.toUnitType).isSuccess)
     override def myUnit: WrapsUnit = basis

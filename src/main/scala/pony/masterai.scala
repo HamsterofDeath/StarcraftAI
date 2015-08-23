@@ -6,7 +6,6 @@ object ConcoctedAI {
   def concoct(world: DefaultWorld) = {
     val mainAi = new MainAI
     new ConcoctedAI(world) {
-      private var lastTickNanos = System.nanoTime()
       override def onTickOnApi(): Unit = {
         val before = System.nanoTime()
         super.onTickOnApi()

@@ -15,10 +15,15 @@ class UnitData(in: bwapi.Unit) {
 trait TechTree {
   protected val builtBy  : Map[Class[_ <: WrapsUnit], Class[_ <: WrapsUnit]]
   protected val dependsOn: Map[Class[_ <: WrapsUnit], Set[_ <: Class[_ <: Building]]]
+  protected val upgrades : Map[Upgrade, Class[_ <: Upgrader]]
+
   private val requirementsCache = mutable.HashMap.empty[Class[_ <: WrapsUnit], Set[Class[_ <: Building]]]
+  def upgraderFor(upgrade: Upgrade) = upgrades(upgrade)
+
   def canBuild(factory: Class[_ <: UnitFactory], mobile: Class[_ <: Mobile]) = {
     builtBy(mobile) == factory
   }
+  def canUpgrade(u: Class[_ <: Upgrader], up: Upgrade) = upgrades(up) == u
   def canBuildAddon(main: Class[_ <: CanBuildAddons], addon: Class[_ <: Addon]) = {
     builtBy(addon) == main
   }
@@ -38,6 +43,35 @@ trait TechTree {
 }
 
 class TerranTechTree extends TechTree {
+
+  override protected val upgrades: Map[Upgrade, Class[_ <: Upgrader]] = Map(
+    Upgrades.Terran.CruiserGun -> classOf[PhysicsLab],
+    Upgrades.Terran.CruiserEnergy -> classOf[PhysicsLab],
+    Upgrades.Terran.Irradiate -> classOf[PhysicsLab],
+    Upgrades.Terran.EMP -> classOf[PhysicsLab],
+    Upgrades.Terran.ScienceVesselEnergy -> classOf[PhysicsLab],
+    Upgrades.Terran.GhostCloak -> classOf[CovertOps],
+    Upgrades.Terran.GhostEnergy -> classOf[CovertOps],
+    Upgrades.Terran.GhostStop -> classOf[CovertOps],
+    Upgrades.Terran.GhostVisiblityRange -> classOf[CovertOps],
+    Upgrades.Terran.TankSiegeMode -> classOf[MachineShop],
+    Upgrades.Terran.VultureSpeed -> classOf[MachineShop],
+    Upgrades.Terran.SpiderMines -> classOf[MachineShop],
+    Upgrades.Terran.WraithCloak -> classOf[ControlTower],
+    Upgrades.Terran.WraithEnergy -> classOf[ControlTower],
+    Upgrades.Terran.MarineBatRange -> classOf[Academy],
+    Upgrades.Terran.MedicEnergy -> classOf[Academy],
+    Upgrades.Terran.MedicHeal -> classOf[Academy],
+    Upgrades.Terran.MedicFlare -> classOf[Academy],
+    Upgrades.Terran.InfantryCooldown -> classOf[Academy],
+    Upgrades.Terran.InfantryArmor -> classOf[EngineeringBay],
+    Upgrades.Terran.InfantryWeapons -> classOf[EngineeringBay],
+    Upgrades.Terran.VehicleWeapons -> classOf[Armory],
+    Upgrades.Terran.VehicleArmor -> classOf[Armory],
+    Upgrades.Terran.ShipArmor -> classOf[Armory],
+    Upgrades.Terran.ShipWeapons -> classOf[Armory]
+
+  )
 
   override protected val builtBy: Map[Class[_ <: WrapsUnit], Class[_ <: Building]] = Map(
     classOf[Comsat] -> classOf[CommandCenter],
@@ -78,7 +112,7 @@ class TerranTechTree extends TechTree {
       classOf[Goliath] -> classOf[MachineShop].toSet,
       classOf[Battlecruiser] -> Set(classOf[ControlTower], classOf[PhysicsLab]),
       classOf[ScienceVessel] -> Set(classOf[ScienceFacility], classOf[ControlTower]),
-      classOf[Valkery] -> classOf[ControlTower].toSet
+      classOf[Valkery] -> Set(classOf[ControlTower], classOf[Armory])
     )
 
     (inferred ++ additional.toList).groupBy(_._1).map { case (k, vs) => k -> vs.flatMap(_._2).toSet }
@@ -290,6 +324,7 @@ class Debugger(game: Game) {
 }
 
 class Units(game: Game) {
+
   private val knownUnits = mutable.HashMap.empty[Long, WrapsUnit]
   private var initial    = true
   def existsInComplete(c: Class[_ <: WrapsUnit]) = allByClass(c).exists(_.isBeingCreated)
@@ -310,15 +345,16 @@ class Units(game: Game) {
   def all = knownUnits.valuesIterator
 
   import scala.collection.JavaConverters._
+
   def firstByType[T: Manifest]: Option[T] = {
     val lookFor = manifest[T].runtimeClass
     mine.find(lookFor.isInstance).map(_.asInstanceOf[T])
   }
-  def mine = all.filter(_.nativeUnit.getPlayer == game.self())
   def mineByType[T: Manifest]: Iterator[T] = {
     val lookFor = manifest[T].runtimeClass
     mine.filter(lookFor.isInstance).map(_.asInstanceOf[T])
   }
+  def mine = all.filter(_.nativeUnit.getPlayer == game.self())
   def minerals = allByType[MineralPatch]
   def tick(): Unit = {
     if (initial) {
@@ -353,7 +389,6 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
 
   private val lazyAreas = LazyVal.from {new AreaHelper(self).findFreeAreas}
   def free(a: Area): Boolean = a.tiles.forall(free)
-  def free(p: MapTilePosition): Boolean = free(p.x, p.y)
   def free(p: TilePosition): Boolean = free(p.getX, p.getY)
   def anyBlockedOnLine(center: MapTilePosition, from: HasXY, to: HasXY): Boolean = {
     val absoluteFrom = center.movedBy(from)
@@ -366,6 +401,11 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
   def blocked(x: Int, y: Int): Boolean = !free(x, y)
   def areaWhichContains(tile: MapTilePosition) = areas.find(_.containsAsData(tile))
   def containsAsData(p: MapTilePosition): Boolean = !free(p)
+  def free(p: MapTilePosition): Boolean = free(p.x, p.y)
+  def free(x: Int, y: Int): Boolean = {
+    val coord = x + y * cols
+    if (containsBlocked) !areaDataBitSet(coord) else areaDataBitSet(coord)
+  }
   def areas = lazyAreas.get
   def includes(area: Area): Boolean = area.outline.forall(includes)
   def includes(p: MapTilePosition): Boolean = includes(p.x, p.y)
@@ -373,6 +413,7 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
   def connectedByLine(a: MapTilePosition, b: MapTilePosition) = AreaHelper.directLineOfSight(a, b, this)
   def blockedCount = size - freeCount
   def freeCount = if (containsBlocked) size - areaDataBitSet.size else areaDataBitSet.size
+  def size = cols * rows
   def mkString: String = mkString('x')
   def mkString(blockedDisplay: Char) = {
     0 until rows map { y =>
@@ -390,6 +431,7 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
   }
   def blocked(index: Int) = !free(index)
   def free(index: Int) = if (containsBlocked) !areaDataBitSet(index) else areaDataBitSet(index)
+  private def allIndexes = Iterator.range(0, size)
   def minAreaSize(i: Int) = {
     val mut = mutableCopy
     areas.filter(_.allContained.size < i).foreach { area =>
@@ -400,6 +442,8 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
   def mutableCopy = new MutableGrid2D(cols, rows, mutable.BitSet.empty ++ areaDataBitSet)
   def allContained = allBlocked
   def allBlocked = if (containsBlocked) bitSetToTiles else allIndexes.filterNot(areaDataBitSet).map(indexToTile)
+  private def indexToTile(index: Int) = MapTilePosition.shared(index % cols, index / rows)
+  private def bitSetToTiles = areaDataBitSet.iterator.map(index => MapTilePosition.shared(index % cols, index / rows))
   def containedCount = areaDataBitSet.size
   def free(position: MapTilePosition, area: Size): Boolean = {
     area.points.forall { p =>
@@ -418,20 +462,12 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
     }
     new Grid2D(subCols, subRows, bits)
   }
-  def free(x: Int, y: Int): Boolean = {
-    val coord = x + y * cols
-    if (containsBlocked) !areaDataBitSet(coord) else areaDataBitSet(coord)
-  }
   override def toString: String = s"Grid2D(${areaDataBitSet.size} of ${size})"
   def blocked = size - walkable
   def walkable = areaDataBitSet.size
   def blocked(p: MapTilePosition): Boolean = !free(p)
   def containsAsData(x: Int, y: Int): Boolean = !free(x, y)
   def allFree = if (containsBlocked) allIndexes.filterNot(areaDataBitSet).map(indexToTile) else bitSetToTiles
-  private def allIndexes = Iterator.range(0, size)
-  def size = cols * rows
-  private def indexToTile(index: Int) = MapTilePosition.shared(index % cols, index / rows)
-  private def bitSetToTiles = areaDataBitSet.iterator.map(index => MapTilePosition.shared(index % cols, index / rows))
   def all: Iterator[MapTilePosition] = new Iterator[MapTilePosition] {
     private var index = 0
     private val max   = self.size
@@ -459,16 +495,6 @@ class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet) extends Grid2D
 
   def block_!(a: MapTilePosition, b: MapTilePosition): Unit = {
     AreaHelper.traverseTilesOfLine(a, b, block_!)
-  }
-  def block_!(x: Int, y: Int): Unit = {
-    if (inArea(x, y)) {
-      val where = xyToIndex(x, y)
-      if (containsBlocked) {
-        bitSet += where
-      } else {
-        bitSet -= where
-      }
-    }
   }
   def block_!(center: MapTilePosition, from: HasXY, to: HasXY): Unit = {
     val absoluteFrom = center.movedBy(from)
@@ -501,11 +527,21 @@ class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet) extends Grid2D
       }
     }
   }
-  private def xyToIndex(x: Int, y: Int) = x + y * cols
-  def inArea(x: Int, y: Int) = x >= 0 && y >= 0 && x < cols && y < rows
   def block_!(tile: MapTilePosition): Unit = {
     block_!(tile.x, tile.y)
   }
+  def block_!(x: Int, y: Int): Unit = {
+    if (inArea(x, y)) {
+      val where = xyToIndex(x, y)
+      if (containsBlocked) {
+        bitSet += where
+      } else {
+        bitSet -= where
+      }
+    }
+  }
+  private def xyToIndex(x: Int, y: Int) = x + y * cols
+  def inArea(x: Int, y: Int) = x >= 0 && y >= 0 && x < cols && y < rows
 }
 
 class MineralAnalyzer(map: AnalyzedMap, myUnits: Units) {

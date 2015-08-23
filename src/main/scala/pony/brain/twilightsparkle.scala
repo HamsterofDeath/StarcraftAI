@@ -11,6 +11,7 @@ import scala.concurrent.{Await, Future}
 
 trait HasUniverse {
   def time = universe.time
+  def race = universe.race
   def universe: Universe
   def unitManager = universe.unitManager
   def units = universe.units
@@ -116,6 +117,10 @@ abstract class AIModule[T <: WrapsUnit : Manifest](override val universe: Univer
 abstract class OrderlessAIModule[T <: WrapsUnit : Manifest](universe: Universe)
   extends AIModule[T](universe) with Orderless[T]
 
+class HelperAIModule[T <: WrapsUnit : Manifest](universe: Universe) extends OrderlessAIModule[T](universe) {
+  override def onTick(): Unit = {}
+}
+
 trait Orderless[T <: WrapsUnit] extends AIModule[T] {
   override def ordersForTick: Traversable[UnitOrder] = {
     onTick()
@@ -144,7 +149,6 @@ class TwilightSparkle(world: DefaultWorld) {
     override def units = world.units
     override def strategicMap = world.strategicMap
     override def strategy = self.strategy
-
   }
 
   private val bases     = new Bases(world)
@@ -160,6 +164,7 @@ class TwilightSparkle(world: DefaultWorld) {
     new ProvideAddons(universe),
     new ProvideFactories(universe),
     new ProvideArmy(universe),
+    new ProvideUpgrades(universe),
     new JobReAssignments(universe),
     new OrderBridge(universe),
     AIModule.noop(universe)

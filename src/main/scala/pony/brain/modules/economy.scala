@@ -102,8 +102,7 @@ class ProvideNewSupply(universe: Universe) extends OrderlessAIModule[WorkerUnit]
       // can't use helper because overlords are not buildings :|
       val race = universe.bases.mainBase.mainBuilding.race
       val result = resources.request(ResourceRequests.forUnit(race, classOf[SupplyProvider], Priority.Supply), this)
-      result match {
-        case suc: ResourceApprovalSuccess =>
+      result.ifSuccess { suc =>
           trace(s"More supply approved! $suc, requesting ${race.supplyClass.className}")
           val ofType = UnitJobRequests
                        .newOfType(universe, supplyEmployer, classOf[SupplyProvider], suc, priority = Priority.Supply)
@@ -111,7 +110,6 @@ class ProvideNewSupply(universe: Universe) extends OrderlessAIModule[WorkerUnit]
           // this will always be unfulfilled
           val result = unitManager.request(ofType)
           assert(!result.success, s"Impossible success: $result")
-        case _ =>
       }
     }
   }
@@ -364,7 +362,7 @@ class GatherGas(universe: Universe) extends OrderlessAIModule[WorkerUnit](univer
 
   class GetGas(base: Base, geysir: Geysir) extends Employer[WorkerUnit](universe) {
     self =>
-    private val idealWorkerCount            = 4 + (base.mainBuilding.area.distanceTo(geysir.area) / 3).toInt
+    private val idealWorkerCount            = 3 + (base.mainBuilding.area.distanceTo(geysir.area) / 3).toInt
     private val workerCountBeforeWantingGas = universe.mapLayers
                                               .isOnIsland(base.mainBuilding.tilePosition)
                                               .ifElse(8, 14)

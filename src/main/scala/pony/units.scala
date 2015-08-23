@@ -1,7 +1,7 @@
 package pony
 
 import bwapi.{Order, Race, TechType, Unit => APIUnit, UnitType, UpgradeType}
-import pony.brain.{PriorityChain, UnitWithJob, Universe}
+import pony.brain.{HasUniverse, PriorityChain, UnitWithJob, Universe}
 
 import scala.collection.immutable.HashMap
 import scala.collection.mutable.ListBuffer
@@ -24,8 +24,8 @@ trait OrderHistorySupport extends WrapsUnit {
   def trackOrder(order: UnitOrder): Unit = {
     history.lastOption.foreach(_.trackOrder_!(order))
   }
-  override def onTick(universe: Universe): Unit = {
-    super.onTick(universe)
+  override def onTick(): Unit = {
+    super.onTick()
     history += HistoryElement(nativeUnit.getOrder, nativeUnit.getOrderTarget, universe.unitManager.jobOf(this))
     if (history.size > maxHistory) {
       history.remove(0)
@@ -43,12 +43,19 @@ trait OrderHistorySupport extends WrapsUnit {
 
 }
 
-trait WrapsUnit extends HasNativeSCAttributes {
+trait WrapsUnit extends HasNativeSCAttributes with HasUniverse {
   val unitId      = WrapsUnit.nextId
   val initialType = nativeUnit.getType
+  private var myUniverse: Universe = _
+
+  override def universe: Universe = myUniverse
+
+  def init_!(universe: Universe): Unit = {
+    myUniverse = universe
+  }
   def nativeUnit: APIUnit
   def unitIdText = Integer.toString(unitId, 36)
-  def race = {
+  def mySCRace = {
     val r = nativeUnit.getType.getRace
     if (r == Race.Protoss) Protoss
     else if (r == Race.Terran) Terran
@@ -58,7 +65,7 @@ trait WrapsUnit extends HasNativeSCAttributes {
     }
   }
   def isBeingCreated = nativeUnit.getRemainingBuildTime > 0
-  def onTick(universe: Universe) = {
+  def onTick() = {
 
   }
 
@@ -97,16 +104,24 @@ trait Building extends BlockingTiles {
 
 }
 
-class Upgrade(nativeType: Either[UpgradeType, TechType]) {
+class Upgrade(val nativeType: Either[UpgradeType, TechType]) {
+  def mineralPriceForStep(step: Int) =
+    nativeType.fold(_.mineralPrice(step), _.mineralPrice())
+
+  def gasPriceForStep(step: Int) =
+    nativeType.fold(_.gasPrice(step), _.gasPrice())
+
   def this(u: UpgradeType) {
     this(Left(u))
   }
   def this(t: TechType) {
     this(Right(t))
   }
+
+  override def toString = s"Upgrade: ${nativeType.fold(_.c_str(), _.c_str())}"
 }
 
-object Upgrade {
+object Upgrades {
   object Terran {
     case object WraithEnergy extends Upgrade(UpgradeType.Apollo_Reactor)
     case object ShipArmor extends Upgrade(UpgradeType.Terran_Ship_Plating)
@@ -117,8 +132,12 @@ object Upgrade {
     case object VehicleWeapons extends Upgrade(UpgradeType.Terran_Vehicle_Weapons)
     case object ShipWeapons extends Upgrade(UpgradeType.Terran_Ship_Weapons)
     case object MarineBatRange extends Upgrade(UpgradeType.U_238_Shells)
+    case object MedicEnergy extends Upgrade(UpgradeType.Caduceus_Reactor)
+    case object MedicFlare extends Upgrade(TechType.Optical_Flare)
+    case object MedicHeal extends Upgrade(TechType.Restoration)
     case object GoliathRange extends Upgrade(UpgradeType.Charon_Boosters)
     case object SpiderMines extends Upgrade(TechType.Spider_Mines)
+    case object Defensematrix extends Upgrade(TechType.Defensive_Matrix)
     case object VultureSpeed extends Upgrade(UpgradeType.Ion_Thrusters)
     case object TankSiegeMode extends Upgrade(TechType.Tank_Siege_Mode)
     case object EMP extends Upgrade(TechType.EMP_Shockwave)
@@ -135,12 +154,9 @@ object Upgrade {
   }
 }
 
-trait Upgrader extends Controllable {
-  def canUpgrade: Set[Upgrade]
-}
-
-trait UpgraderBuilding extends Building with Upgrader {
-
+trait Upgrader extends Controllable with Building {
+  def canUpgrade(upgrade: Upgrade) = race.techTree.canUpgrade(getClass, upgrade)
+  def isDoingResearch = currentOrder == Order.ResearchTech || currentOrder == Order.Upgrade
 }
 
 trait Addon extends Building {
@@ -303,24 +319,21 @@ class CommandCenter(unit: APIUnit) extends AnyUnit(unit) with MainBuilding with 
 
 class Comsat(unit: APIUnit) extends AnyUnit(unit) with SpellcasterBuilding with Addon
 class NuclearSilo(unit: APIUnit) extends AnyUnit(unit) with SpellcasterBuilding with Addon
-class PhysicsLab(unit: APIUnit) extends AnyUnit(unit) with UpgraderBuilding with Addon
+class PhysicsLab(unit: APIUnit) extends AnyUnit(unit) with Upgrader with Addon
 class Refinery(unit: APIUnit) extends AnyUnit(unit) with GasProvider
-class CovertOps(unit: APIUnit) extends AnyUnit(unit) with UpgraderBuilding with Addon
-class MachineShop(unit: APIUnit) extends AnyUnit(unit) with UpgraderBuilding with Addon
-class ControlTower(unit: APIUnit) extends AnyUnit(unit) with UpgraderBuilding with Addon
-
+class CovertOps(unit: APIUnit) extends AnyUnit(unit) with Upgrader with Addon
+class MachineShop(unit: APIUnit) extends AnyUnit(unit) with Upgrader with Addon
+class ControlTower(unit: APIUnit) extends AnyUnit(unit) with Upgrader with Addon
 class RocketTower(unit: APIUnit) extends AnyUnit(unit) with ArmedBuilding
 
 class Barracks(unit: APIUnit) extends AnyUnit(unit) with UnitFactory
 class Factory(unit: APIUnit) extends AnyUnit(unit) with UnitFactory with CanBuildAddons
 class Starport(unit: APIUnit) extends AnyUnit(unit) with UnitFactory with CanBuildAddons
 
-class Academy(unit: APIUnit) extends AnyUnit(unit) with UpgraderBuilding {
-  override def canUpgrade: Set[Upgrade] = Set(Upgrade.Terran.MarineBatRange, Upgrade.Terran.MarineBatRange)
-}
-class Armory(unit: APIUnit) extends AnyUnit(unit) with UpgraderBuilding
-class EngineeringBay(unit: APIUnit) extends AnyUnit(unit) with UpgraderBuilding
-class ScienceFacility(unit: APIUnit) extends AnyUnit(unit) with UpgraderBuilding with CanBuildAddons
+class Academy(unit: APIUnit) extends AnyUnit(unit) with Upgrader
+class Armory(unit: APIUnit) extends AnyUnit(unit) with Upgrader
+class EngineeringBay(unit: APIUnit) extends AnyUnit(unit) with Upgrader
+class ScienceFacility(unit: APIUnit) extends AnyUnit(unit) with Upgrader with CanBuildAddons
 
 class MissileTurret(unit: APIUnit) extends AnyUnit(unit) with ArmedBuilding
 
