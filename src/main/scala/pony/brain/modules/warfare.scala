@@ -95,6 +95,7 @@ class ProvideUpgrades(universe: Universe) extends OrderlessAIModule[Upgrader](un
             info(s"Starting research of $wantedUpgrade")
             val researchUpgrade = new ResearchUpgrade(self, up, wantedUpgrade, app)
             researchUpgrade.listen_!(() => {
+              info(s"Research of $wantedUpgrade completed")
               val current = researched.getOrElse(wantedUpgrade, 0)
               researched.put(wantedUpgrade, current + 1)
             })
@@ -348,7 +349,7 @@ object Strategy {
       Nil
 
     override def suggestUnits = {
-      IdealUnitRatio(classOf[Marine], 10)(timingHelpers.phase.isAnyTime) ::
+      IdealUnitRatio(classOf[Marine], 15)(timingHelpers.phase.isAnyTime) ::
       IdealUnitRatio(classOf[Firebat], 3)(timingHelpers.phase.isSinceEarlyMid) ::
       IdealUnitRatio(classOf[Medic], 4)(timingHelpers.phase.isSinceVeryEarlyMid) ::
       IdealUnitRatio(classOf[Ghost], 2)(timingHelpers.phase.isSinceLateMid) ::

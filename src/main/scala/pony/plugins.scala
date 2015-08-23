@@ -85,6 +85,9 @@ class UnitJobRenderer(override val universe: Universe) extends AIPlugIn with Has
       unitManager.allJobsByUnitType[Mobile].foreach { job =>
         renderer.drawTextAtMobileUnit(job.unit, s"${job.shortDebugString} -> ${job.unit.nativeUnit.getOrder}", 1)
       }
+      unitManager.allJobsByUnitType[Building].foreach { job =>
+        renderer.drawTextAtStaticUnit(job.unit, s"${job.shortDebugString} -> ${job.unit.nativeUnit.getOrder}", 1)
+      }
     }
   }
   override def lazyWorld: DefaultWorld = universe.world
@@ -250,6 +253,10 @@ class DebugHelper(main: AIAPIEventDispatcher with HasUniverse) extends AIPlugIn 
       Try(words match {
         case command :: params =>
           command match {
+            case "debugoff" =>
+              universe.world.debugger.off()
+            case "debugon" =>
+              universe.world.debugger.on()
             case "debug" =>
               params match {
                 case List(id) =>

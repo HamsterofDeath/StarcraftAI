@@ -298,9 +298,16 @@ class DefaultWorld(game: Game) extends WorldListener with WorldEventDispatcher {
 }
 
 class Debugger(game: Game) {
-  private val debugging  = true
   private val renderer   = new Renderer(game, Color.Green)
+  private var debugging  = true
   private var countTicks = 0
+  def on(): Unit = {
+    debugging = true
+  }
+  def off(): Unit = {
+    debugging = false
+  }
+
   def faster(): Unit = {
     game.setLocalSpeed(3)
   }
@@ -333,14 +340,11 @@ class Units(game: Game) {
       lookFor.isAssignableFrom(e.getClass)
     }.map(_.asInstanceOf[T])
   }
+  def all = knownUnits.valuesIterator
   def ownsByType(c: Class[_ <: WrapsUnit]) = {
     knownUnits.values.exists(c.isInstance)
   }
   def geysirs = allByType[Geysir]
-  def allByType[T <: WrapsUnit : Manifest]: Iterator[T] = {
-    val lookFor = manifest[T].runtimeClass.asInstanceOf[Class[_ <: T]]
-    allByClass(lookFor)
-  }
   def firstByType[T: Manifest]: Option[T] = {
     val lookFor = manifest[T].runtimeClass
     mine.find(lookFor.isInstance).map(_.asInstanceOf[T])
@@ -352,8 +356,11 @@ class Units(game: Game) {
     mine.filter(lookFor.isInstance).map(_.asInstanceOf[T])
   }
   def mine = all.filter(_.nativeUnit.getPlayer == game.self())
-  def all = knownUnits.valuesIterator
   def minerals = allByType[MineralPatch]
+  def allByType[T <: WrapsUnit : Manifest]: Iterator[T] = {
+    val lookFor = manifest[T].runtimeClass.asInstanceOf[Class[_ <: T]]
+    allByClass(lookFor)
+  }
   def tick(): Unit = {
     if (initial) {
       initial = false
@@ -389,6 +396,10 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
   def free(a: Area): Boolean = a.tiles.forall(free)
   def free(p: MapTilePosition): Boolean = free(p.x, p.y)
   def free(p: TilePosition): Boolean = free(p.getX, p.getY)
+  def free(x: Int, y: Int): Boolean = {
+    val coord = x + y * cols
+    if (containsBlocked) !areaDataBitSet(coord) else areaDataBitSet(coord)
+  }
   def anyBlockedOnLine(center: MapTilePosition, from: HasXY, to: HasXY): Boolean = {
     val absoluteFrom = center.movedBy(from)
     val absoluteTo = center.movedBy(to)
@@ -398,12 +409,9 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
     AreaHelper.traverseTilesOfLine(line.a, line.b, (x, y) => if (blocked(x, y)) Some(true) else None, false)
   }
   def blocked(x: Int, y: Int): Boolean = !free(x, y)
-  def free(x: Int, y: Int): Boolean = {
-    val coord = x + y * cols
-    if (containsBlocked) !areaDataBitSet(coord) else areaDataBitSet(coord)
-  }
   def areaWhichContains(tile: MapTilePosition) = areas.find(_.containsAsData(tile))
   def containsAsData(p: MapTilePosition): Boolean = !free(p)
+  def areas = lazyAreas.get
   def includes(area: Area): Boolean = area.outline.forall(includes)
   def includes(p: MapTilePosition): Boolean = includes(p.x, p.y)
   def includes(x: Int, y: Int): Boolean = x >= 0 && x < cols && y >= 0 && y < rows
@@ -427,7 +435,6 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
   }
   def blocked(index: Int) = !free(index)
   def free(index: Int) = if (containsBlocked) !areaDataBitSet(index) else areaDataBitSet(index)
-  private def allIndexes = Iterator.range(0, size)
   def minAreaSize(i: Int) = {
     val mut = mutableCopy
     areas.filter(_.allContained.size < i).foreach { area =>
@@ -438,6 +445,7 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
   def mutableCopy = new MutableGrid2D(cols, rows, mutable.BitSet.empty ++ areaDataBitSet)
   def allContained = allBlocked
   def allBlocked = if (containsBlocked) bitSetToTiles else allIndexes.filterNot(areaDataBitSet).map(indexToTile)
+  private def allIndexes = Iterator.range(0, size)
   private def indexToTile(index: Int) = MapTilePosition.shared(index % cols, index / rows)
   private def bitSetToTiles = areaDataBitSet.iterator.map(index => MapTilePosition.shared(index % cols, index / rows))
   def containedCount = areaDataBitSet.size
@@ -459,8 +467,8 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
     new Grid2D(subCols, subRows, bits)
   }
   override def toString: String = s"Grid2D(${areaDataBitSet.size} of ${size})"
-  def size = cols * rows
   def blocked = size - walkable
+  def size = cols * rows
   def walkable = areaDataBitSet.size
   def blocked(p: MapTilePosition): Boolean = !free(p)
   def containsAsData(x: Int, y: Int): Boolean = !free(x, y)
@@ -476,7 +484,6 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
     }
   }
   def areaCount = areas.size
-  def areas = lazyAreas.get
 }
 
 class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet) extends Grid2D(cols, rows, bitSet) {
@@ -494,6 +501,14 @@ class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet) extends Grid2D
   def block_!(a: MapTilePosition, b: MapTilePosition): Unit = {
     AreaHelper.traverseTilesOfLine(a, b, block_!)
   }
+  def block_!(center: MapTilePosition, from: HasXY, to: HasXY): Unit = {
+    val absoluteFrom = center.movedBy(from)
+    val absoluteTo = center.movedBy(to)
+    block_!(Line(absoluteFrom, absoluteTo))
+  }
+  def block_!(line: Line): Unit = {
+    AreaHelper.traverseTilesOfLine(line.a, line.b, block_!)
+  }
   def block_!(x: Int, y: Int): Unit = {
     if (inArea(x, y)) {
       val where = xyToIndex(x, y)
@@ -506,14 +521,6 @@ class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet) extends Grid2D
   }
   private def xyToIndex(x: Int, y: Int) = x + y * cols
   def inArea(x: Int, y: Int) = x >= 0 && y >= 0 && x < cols && y < rows
-  def block_!(center: MapTilePosition, from: HasXY, to: HasXY): Unit = {
-    val absoluteFrom = center.movedBy(from)
-    val absoluteTo = center.movedBy(to)
-    block_!(Line(absoluteFrom, absoluteTo))
-  }
-  def block_!(line: Line): Unit = {
-    AreaHelper.traverseTilesOfLine(line.a, line.b, block_!)
-  }
   def asReadOnly: Grid2D = this
   def or_!(other: MutableGrid2D) = {
     assert(containsBlocked == other.containsBlocked)
