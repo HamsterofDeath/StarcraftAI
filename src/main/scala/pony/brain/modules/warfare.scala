@@ -13,7 +13,7 @@ trait BuildingRequestHelper extends AIModule[WorkerUnit] {
     result.ifSuccess { suc =>
         val unitReq = UnitJobRequests.newOfType(universe, buildingEmployer, buildingType, suc,
           forceBuildingPosition = forceBuildingPosition)
-        info(s"Financing possible for $buildingType, requesting build")
+      debug(s"Financing possible for $buildingType, requesting build")
         val result = unitManager.request(unitReq)
         if (result.hasAnyMissingRequirements) {
           resources.unlock_!(suc)
@@ -39,7 +39,7 @@ trait UnitRequestHelper extends AIModule[UnitFactory] {
     val result = resources.request(req, mobileEmployer)
     result.ifSuccess { suc =>
         val unitReq = UnitJobRequests.newOfType(universe, mobileEmployer, mobileType, suc)
-        info(s"Financing possible for $mobileType, requesting training")
+      debug(s"Financing possible for $mobileType, requesting training")
         val result = unitManager.request(unitReq)
         if (result.hasAnyMissingRequirements) {
           // do not forget to unlock the resources again
@@ -192,9 +192,9 @@ object Strategy {
         def isLate = isBetween(20, 9999)
         def isLateMid = isBetween(13, 20)
         def isMid = isBetween(9, 13)
+        def isBetween(from: Int, to: Int) = time.minutes >= from && time.minutes < to
         def isEarlyMid = isBetween(5, 9)
         def isEarly = isBetween(0, 5)
-        def isBetween(from: Int, to: Int) = time.minutes >= from && time.minutes < to
         def isSinceVeryEarlyMid = time.minutes >= 4
         def isSinceEarlyMid = time.minutes >= 5
         def isSinceMid = time.minutes >= 8
