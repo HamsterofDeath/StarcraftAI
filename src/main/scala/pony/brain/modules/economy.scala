@@ -214,11 +214,15 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
 
       class MinedPatch(val patch: MineralPatch) {
 
-        private val miningTeam = ArrayBuffer.empty[GatherMineralsAtPatch]
+        private val miningTeam            = ArrayBuffer.empty[GatherMineralsAtPatch]
+        private val workerCountByDistance = LazyVal
+                                            .from(math.round(patch.area.distanceTo(base.mainBuilding.area) / 2.0).toInt)
         override def toString: String = s"(Mined) $patch"
         def hasOpenSpot: Boolean = miningTeam.size < estimateRequiredWorkers
-        def estimateRequiredWorkers = math.round(patch.area.distanceTo(base.mainBuilding.area) / 2.0).toInt
         def openSpotCount = estimateRequiredWorkers - miningTeam.size
+        def estimateRequiredWorkers = {
+          if (patch.remainingMinerals > 0) workerCountByDistance.get else 0
+        }
         def lockToPatch_!(job: GatherMineralsAtPatch): Unit = {
           info(s"Added ${job.unit} to mining team of $patch")
           miningTeam += job

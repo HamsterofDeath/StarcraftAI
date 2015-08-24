@@ -56,9 +56,6 @@ object AreaHelper {
       if (grid2D.blocked(x, y)) Some(false) else None
     }, true)
   }
-  def traverseTilesOfLine[T](a: MapTilePosition, b: MapTilePosition, f: (Int, Int) => T): Unit = {
-    traverseTilesOfLine(a, b, (x, y) => {f(x, y); None}, None)
-  }
   def traverseTilesOfLine[T](a: MapTilePosition, b: MapTilePosition, f: (Int, Int) => Option[T],
                              orElse: T): T = {
     var startX = a.x
@@ -111,6 +108,9 @@ object AreaHelper {
       }
     }
     orElse
+  }
+  def traverseTilesOfLine[T](a: MapTilePosition, b: MapTilePosition, f: (Int, Int) => T): Unit = {
+    traverseTilesOfLine(a, b, (x, y) => {f(x, y); None}, None)
   }
   def freeAreaSize(start: MapTilePosition, baseOn: Grid2D) = {
     var count = 0
@@ -205,6 +205,10 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
     update()
     justBuildings.asReadOnly
   }
+  def blockedByResources = {
+    update()
+    justMineralsAndGas.asReadOnly
+  }
   private def update(): Unit = {
     if (lastUpdatePerformedInTick != universe.currentTick) {
       lastUpdatePerformedInTick = universe.currentTick
@@ -220,16 +224,9 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   private def evalWithBuildings = rawMapBuild.mutableCopy.or_!(justBuildings)
   private def evalWithBuildingsAndResources = justBuildings.mutableCopy.or_!(justMineralsAndGas)
   private def evalOnlyBuildings = evalOnlyUnits(units.allByType[Building])
-  private def evalOnlyUnits(units: TraversableOnce[StaticallyPositioned]) = {
-    val ret = world.map.empty.zoomedOut.mutableCopy
-    units.foreach { b =>
-      ret.block_!(b.area)
-    }
-    ret
-  }
   private def evalOnlyMobileBlockingUnits = evalOnlyMobileUnits(units.allByType[GroundUnit])
   private def evalOnlyMobileUnits(units: TraversableOnce[GroundUnit]) = {
-    val ret = world.map.empty.zoomedOut.mutableCopy
+    val ret = world.map.emptyZoomed.mutableCopy
     units.foreach { b =>
       ret.block_!(b.currentTile)
     }
@@ -237,15 +234,18 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   }
   private def evalOnlyResources = evalOnlyUnits(units.allByType[MineralPatch].filter(_.remaining > 0))
                                   .or_!(evalOnlyUnits(units.allByType[Geysir]))
+  private def evalOnlyUnits(units: TraversableOnce[StaticallyPositioned]) = {
+    val ret = world.map.emptyZoomed.mutableCopy
+    units.foreach { b =>
+      ret.block_!(b.area)
+    }
+    ret
+  }
   private def evalEverythingStatic = withBuildingsAndResources.mutableCopy
                                      .or_!(plannedBuildings)
                                      .or_!(justWorkerPaths)
                                      .or_!(rawMapBuild)
   private def evalEverythingBlocking = withEverythingStatic.mutableCopy.or_!(justBlockingMobiles)
-  def blockedByResources = {
-    update()
-    justMineralsAndGas.asReadOnly
-  }
   def blockedByWorkerPaths = {
     update()
     justWorkerPaths.asReadOnly
@@ -268,7 +268,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   }
   private def evalWorkerPaths = {
     trace("Re-evaluation of worker paths")
-    val ret = world.map.empty.zoomedOut.mutableCopy
+    val ret = world.map.emptyZoomed.mutableCopy
     bases.bases.foreach { base =>
       base.myMineralGroup.foreach { group =>
         group.patches.foreach { patch =>
