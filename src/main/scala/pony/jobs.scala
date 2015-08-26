@@ -12,10 +12,10 @@ object Priority {
   val Default           = Priority(0.49)
   val CollectMinerals   = Priority(0.5)
   val CollectGas        = Priority(0.55)
-  val Addon             = Priority(0.61)
   val ConstructUnit     = Priority(0.64)
   val ConstructBuilding = Priority(0.63)
   val Upgrades          = Priority(0.65)
+  val Addon             = Priority(0.66)
   val Supply            = Priority(0.7)
   val Max               = Priority(1)
 

@@ -18,7 +18,7 @@ class MapReveal extends AIPluginRunOnce {
 
 class FastSpeed extends AIPluginRunOnce {
   override def runOnce(): Unit = {
-    debugger.faster()
+    debugger.fastest()
   }
 }
 

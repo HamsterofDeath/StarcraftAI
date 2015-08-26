@@ -161,14 +161,15 @@ class TwilightSparkle(world: DefaultWorld) {
     new ProvideNewUnits(universe),
     new ProvideNewSupply(universe),
     new ProvideNewBuildings(universe),
-    new ProvideAddons(universe),
-    new ProvideFactories(universe),
-    new ProvideArmy(universe),
+    new ProvideSuggestedAddons(universe),
+    new EnqueueFactories(universe),
+    new EnqueueArmy(universe),
     new ProvideUpgrades(universe),
     new JobReAssignments(universe),
-    new OrderBridge(universe),
+    new SendOrdersToStarcraft(universe),
     AIModule.noop(universe)
   )
+
   private val unitManager = new UnitManager(universe)
   private val maps        = new MapLayers(universe)
 

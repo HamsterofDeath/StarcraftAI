@@ -63,27 +63,6 @@ class ProvideNewBuildings(universe: Universe)
                   jobRequest: BuildUnitRequest[Building])
 }
 
-class ProvideAddons(universe: Universe)
-  extends OrderlessAIModule[CanBuildAddons](universe) {
-  self =>
-
-  override def onTick(): Unit = {
-    val buildingRelated = unitManager.failedToProvideByType[Addon]
-    val constructionRequests = buildingRelated.collect {
-      case buildIt: BuildUnitRequest[Addon] if buildIt.proofForFunding.isFunded && buildIt.isAddon => buildIt
-    }
-    constructionRequests.foreach { req =>
-      val request = UnitJobRequests.addonConstructor(self)
-      unitManager.request(request) match {
-        case success: ExactlyOneSuccess[CanBuildAddons] =>
-          assignJob_!(new ConstructAddon(self, success.onlyOne, req.typeOfRequestedUnit, req.proofForFunding))
-        case _ => None
-      }
-    }
-  }
-
-}
-
 class ProvideExpansions(universe: Universe) extends OrderlessAIModule[WorkerUnit](universe) {
   override def onTick(): Unit = {
 
@@ -237,7 +216,7 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
       }
 
       class GatherMineralsAtPatch(myWorker: WorkerUnit, miningTarget: MinedPatch)
-        extends UnitWithJob(emp, myWorker, Priority.Default) with GatherMineralsAtSinglePatch {
+        extends UnitWithJob(emp, myWorker, Priority.Default) with GatherMineralsAtSinglePatch with Interruptable {
 
         listen_!(() => {
           miningTarget.removeFromPatch_!(myWorker)
@@ -405,7 +384,7 @@ class GatherGas(universe: Universe) extends OrderlessAIModule[WorkerUnit](univer
     def covers(base: Base) = this.base.mainBuilding == base.mainBuilding
 
     class GatherGasAtRefinery(worker: WorkerUnit)
-      extends UnitWithJob[WorkerUnit](self, worker, Priority.ConstructBuilding) {
+      extends UnitWithJob[WorkerUnit](self, worker, Priority.ConstructBuilding) with Interruptable {
 
       private var state: State = Idle
       override def shortDebugString: String = state.getClass.className

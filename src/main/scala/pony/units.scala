@@ -250,8 +250,28 @@ trait GroundUnit extends Killable with Mobile {
 trait Floating
 
 trait CanBuildAddons extends Building {
-  val addonArea = LazyVal.from(Area(area.lowerRight.movedBy(1, -1), Size(2, 2)))
+  private val myAddonArea = LazyVal.from(Area(area.lowerRight.movedBy(1, -1), Size(2, 2)))
+  private var attached    = Option.empty[Addon]
+  def positionedNextTo(addon: Addon) = {
+    myAddonArea.get.upperLeft == addon.tilePosition
+  }
+  def addonArea = myAddonArea.get
   def canBuildAddon(addon: Class[_ <: Addon]) = race.techTree.canBuildAddon(getClass, addon)
+  def isBuildingAddon = Option(nativeUnit.getAddon).exists(_.getRemainingBuildTime > 0)
+
+  def hasCompleteAddon = Option(nativeUnit.getAddon).exists(_.getRemainingBuildTime == 0)
+
+  def notifyAttach_!(addon: Addon): Unit = {
+    trace(s"Addon $addon attached to $this")
+    assert(attached.isEmpty)
+    attached = Some(addon)
+  }
+  def notifyDetach_!(addon: Addon): Unit = {
+    trace(s"Addon $addon detached from $this")
+    assert(attached.isDefined)
+    attached = Some(addon)
+  }
+  def hasAddonAttached = attached.isDefined
 }
 
 trait WorkerUnit extends Killable with Mobile with GroundUnit with GroundWeapon with Floating {

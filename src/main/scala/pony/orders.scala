@@ -50,7 +50,7 @@ object Orders {
     }
   }
 
-  case class Construct(myUnit: WorkerUnit, buildingType: Class[_ <: Building], where: MapTilePosition)
+  case class ConstructBuilding(myUnit: WorkerUnit, buildingType: Class[_ <: Building], where: MapTilePosition)
     extends UnitOrder {
     val area = {
       val size = Size.shared(buildingType.toUnitType.tileWidth(), buildingType.toUnitType.tileHeight())

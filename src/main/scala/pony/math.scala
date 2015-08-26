@@ -54,7 +54,6 @@ object MapTilePosition {
     else {
       strange.computeIfAbsent((x, y), computer)
     }
-  private def inRange(x: Int, y: Int) = x > -max && y > -max && x < max && y < max
   def nativeShared(xy: (Int, Int)): Position = nativeShared(xy._1, xy._2)
   def nativeShared(x: Int, y: Int): Position =
     if (inRange(x, y))
@@ -62,6 +61,7 @@ object MapTilePosition {
     else {
       nativeStrange.computeIfAbsent((x, y), nativeComputer)
     }
+  private def inRange(x: Int, y: Int) = x > -max && y > -max && x < max && y < max
 }
 
 case class Size(x: Int, y: Int) extends HasXY {
@@ -89,7 +89,7 @@ case class Line(a: MapTilePosition, b: MapTilePosition) {
 
 case class Area(upperLeft: MapTilePosition, sizeOfArea: Size) {
 
-  val lowerRight = upperLeft.movedBy(sizeOfArea)
+  val lowerRight = upperLeft.movedBy(sizeOfArea).movedBy(-1, -1)
   val center     = MapPosition((upperLeft.mapX + lowerRight.mapX) / 2, (upperLeft.mapY + lowerRight.mapY) / 2)
   def distanceTo(tilePosition: MapTilePosition) = {
     // TODO optimize
@@ -113,6 +113,9 @@ case class Area(upperLeft: MapTilePosition, sizeOfArea: Size) {
   def distanceTo(area: Area) = {
     closestDirectConnection(area).length
   }
+  def anyTile = upperLeft
+  def closestDirectConnection(elem: StaticallyPositioned): Line =
+    closestDirectConnection(elem.area)
   def closestDirectConnection(area: Area): Line = {
     // TODO optimize
     val from = outline.minBy { p =>
@@ -125,9 +128,6 @@ case class Area(upperLeft: MapTilePosition, sizeOfArea: Size) {
     Line(from, to)
 
   }
-  def anyTile = upperLeft
-  def closestDirectConnection(elem: StaticallyPositioned): Line =
-    closestDirectConnection(elem.area)
   def tiles: Traversable[MapTilePosition] = new Traversable[MapTilePosition] {
     override def foreach[U](f: (MapTilePosition) => U): Unit = {
       sizeOfArea.points.map { p => f(p.movedBy(upperLeft)) }

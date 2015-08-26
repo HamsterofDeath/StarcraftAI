@@ -27,7 +27,8 @@ class Renderer(game: Game, private var color: bwapi.Color) {
   }
 
   def drawOutline(where: Area): Unit = {
-    drawOutline(where.upperLeft.mapX, where.upperLeft.mapY, where.lowerRight.mapX, where.lowerRight.mapY)
+    drawOutline(where.upperLeft.mapX, where.upperLeft.mapY, where.lowerRight.mapX + tileSize,
+      where.lowerRight.mapY + tileSize)
   }
 
   def drawOutline(x1: Int, y1: Int, x2: Int, y2: Int): Unit = {

@@ -169,6 +169,7 @@ object AreaHelper {
 }
 
 class MapLayers(override val universe: Universe) extends HasUniverse {
+
   private val rawMapWalk                = world.map.walkableGrid
   private val rawMapBuild               = world.map.buildableGrid.mutableCopy
   private val plannedBuildings          = world.map.empty.zoomedOut.mutableCopy
@@ -176,6 +177,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   private var justMineralsAndGas        = evalOnlyResources
   private var justWorkerPaths           = evalWorkerPaths
   private var justBlockingMobiles       = evalOnlyMobileBlockingUnits
+  private var justAddonLocations        = evalPotentialAddonLocations
   private var withBuildings             = evalWithBuildings
   private var withBuildingsAndResources = evalWithBuildingsAndResources
   private var withEverythingStatic      = evalEverythingStatic
@@ -192,6 +194,10 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
     others.size <= 1 // one or less starting positions = "island"
   }
   def rawWalkableMap = rawMapWalk
+  def blockedByPotentialAddons = {
+    update()
+    justAddonLocations.asReadOnly
+  }
   def blockedByPlannedBuildings = plannedBuildings.asReadOnly
   def freeBuildingTiles = {
     update()
@@ -215,6 +221,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
       justBuildings = evalOnlyBuildings
       justMineralsAndGas = evalOnlyResources
       justBlockingMobiles = evalOnlyMobileBlockingUnits
+      justAddonLocations = evalPotentialAddonLocations
       withEverythingBlocking = evalEverythingBlocking
       withBuildings = evalWithBuildings
       withBuildingsAndResources = evalWithBuildingsAndResources
@@ -224,6 +231,14 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   private def evalWithBuildings = rawMapBuild.mutableCopy.or_!(justBuildings)
   private def evalWithBuildingsAndResources = justBuildings.mutableCopy.or_!(justMineralsAndGas)
   private def evalOnlyBuildings = evalOnlyUnits(units.allByType[Building])
+  private def evalPotentialAddonLocations = evalOnlyAddonAreas(units.allByType[CanBuildAddons])
+  private def evalOnlyAddonAreas(units: TraversableOnce[CanBuildAddons]) = {
+    val ret = world.map.emptyZoomed.mutableCopy
+    units.foreach { b =>
+      ret.block_!(b.addonArea)
+    }
+    ret
+  }
   private def evalOnlyMobileBlockingUnits = evalOnlyMobileUnits(units.allByType[GroundUnit])
   private def evalOnlyMobileUnits(units: TraversableOnce[GroundUnit]) = {
     val ret = world.map.emptyZoomed.mutableCopy
@@ -282,17 +297,16 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
     }
     ret
   }
-
 }
 
 class ConstructionSiteFinder(universe: Universe) {
   // initialisation happens in the main thread
   private val withoutStreets = universe.mapLayers.reallyFreeBuildingTiles.mutableCopy
+                               .or_!(universe.mapLayers.blockedByPotentialAddons.mutableCopy)
   private val helper         = new GeometryHelpers(universe.world.map.sizeX, universe.world.map.sizeY)
 
   def findSpotFor[T <: Building](near: MapTilePosition, building: Class[_ <: T]) = {
     // this happens in the background
-
     val unitType = building.toUnitType
     val necessarySize = Size.shared(unitType.tileWidth(), unitType.tileHeight())
     val addonSize = Size(2, 2)
@@ -309,7 +323,7 @@ class ConstructionSiteFinder(universe: Universe) {
 
     helper.blockSpiralClockWise(near).find { upperLeft =>
       val area = Area(upperLeft, necessarySize)
-      val addonArea = necessarySizeAddon.map(Area(upperLeft, _))
+      val addonArea = necessarySizeAddon.map(Area(area.lowerRight.movedBy(1, -1), _))
       def containsArea = withoutStreets.includes(area) && addonArea.map(withoutStreets.includes).getOrElse(true)
       def free = {
         val checkIfBlocksSelf = withoutStreets.mutableCopy

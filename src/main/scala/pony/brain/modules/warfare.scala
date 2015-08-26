@@ -2,6 +2,27 @@ package pony
 package brain
 package modules
 
+trait AddonRequestHelper extends AIModule[CanBuildAddons] {
+  self =>
+
+  def requestAddon[T <: Addon](addonType: Class[_ <: T]): Unit = {
+    val req = ResourceRequests.forUnit(universe.race, addonType, Priority.Addon)
+    val result = resources.request(req, self)
+    result.ifSuccess { suc =>
+      val unitReq = UnitJobRequests.addonConstructor(self, addonType)
+      debug(s"Financing possible for $addonType, requesting build")
+      val result = unitManager.request(unitReq)
+      if (result.hasAnyMissingRequirements || !result.success) {
+        resources.unlock_!(suc)
+      } else {
+        result.ifOne { one =>
+          assignJob_!(new ConstructAddon(self, one, addonType, suc))
+        }
+      }
+    }
+  }
+}
+
 trait BuildingRequestHelper extends AIModule[WorkerUnit] {
   private val buildingEmployer = new Employer[Building](universe)
 
@@ -32,7 +53,8 @@ trait BuildingRequestHelper extends AIModule[WorkerUnit] {
 trait UnitRequestHelper extends AIModule[UnitFactory] {
   private val mobileEmployer = new Employer[Mobile](universe)
 
-  private val helper = new HelperAIModule[WorkerUnit](universe) with BuildingRequestHelper
+  private val buildingHelper = new HelperAIModule[WorkerUnit](universe) with BuildingRequestHelper
+  private val addonHelper    = new HelperAIModule[CanBuildAddons](universe) with AddonRequestHelper
 
   def requestUnit[T <: Mobile](mobileType: Class[_ <: T], takeCareOfDependencies: Boolean) = {
     val req = ResourceRequests.forUnit(universe.race, mobileType)
@@ -48,7 +70,12 @@ trait UnitRequestHelper extends AIModule[UnitFactory] {
         if (takeCareOfDependencies) {
           result.notExistingMissingRequiments.foreach { requirement =>
             if (!unitManager.plannedToBuild(requirement)) {
-              helper.requestBuilding(requirement, takeCareOfDependencies = false)
+              def isAddon = classOf[Addon].isAssignableFrom(requirement)
+              if (isAddon) {
+                addonHelper.requestAddon(requirement.asInstanceOf[Class[_ <: Addon]])
+              } else {
+                buildingHelper.requestBuilding(requirement, takeCareOfDependencies = false)
+              }
             }
           }
         }
@@ -66,6 +93,21 @@ trait UpgradePrice {
 
 }
 
+class ProvideSuggestedAddons(universe: Universe)
+  extends OrderlessAIModule[CanBuildAddons](universe) with AddonRequestHelper {
+
+  override def onTick(): Unit = {
+    val buildUs = strategy.current.suggestAddons
+                  .filter(_.isActive)
+    val todo = for (builder <- units.allAddonBuilders;
+                    addon <- buildUs
+                    if builder.canBuildAddon(addon.addon) & !builder.hasAddonAttached) yield (builder, addon)
+    todo.foreach { case (builder, what) =>
+      requestAddon(what.addon)
+    }
+  }
+}
+
 class ProvideUpgrades(universe: Universe) extends OrderlessAIModule[Upgrader](universe) {
   self =>
   private val helper     = new HelperAIModule[WorkerUnit](universe) with BuildingRequestHelper
@@ -73,8 +115,8 @@ class ProvideUpgrades(universe: Universe) extends OrderlessAIModule[Upgrader](un
 
   override def onTick(): Unit = {
     strategy.current.suggestUpgrades
-    .filter(_.isActive)
     .filterNot(e => researched.contains(e.upgrade))
+    .filter(_.isActive)
     .foreach { request =>
       val wantedUpgrade = request.upgrade
       val needs = race.techTree.upgraderFor(wantedUpgrade)
@@ -107,7 +149,7 @@ class ProvideUpgrades(universe: Universe) extends OrderlessAIModule[Upgrader](un
   }
 }
 
-class ProvideFactories(universe: Universe) extends OrderlessAIModule[WorkerUnit](universe) with BuildingRequestHelper {
+class EnqueueFactories(universe: Universe) extends OrderlessAIModule[WorkerUnit](universe) with BuildingRequestHelper {
 
   override def onTick(): Unit = {
     evaluateCapacities.foreach { cap =>
@@ -129,7 +171,6 @@ class ProvideFactories(universe: Universe) extends OrderlessAIModule[WorkerUnit]
       copy
     }
   }
-
 }
 
 case class IdealProducerCount[T <: UnitFactory](typeOfFactory: Class[_ <: UnitFactory], maximumSustainable: Int)
@@ -142,7 +183,7 @@ case class IdealUnitRatio[T <: Mobile](unitType: Class[_ <: Mobile], amount: Int
   def isActive = active
 }
 
-class ProvideArmy(universe: Universe) extends OrderlessAIModule[UnitFactory](universe) with UnitRequestHelper {
+class EnqueueArmy(universe: Universe) extends OrderlessAIModule[UnitFactory](universe) with UnitRequestHelper {
 
   override def onTick(): Unit = {
     val p = percentages
@@ -185,15 +226,16 @@ object Strategy {
     def suggestUpgrades: Seq[UpgradeToResearch]
     def suggestUnits: Seq[IdealUnitRatio[_ <: Mobile]]
     def suggestProducers: Seq[IdealProducerCount[_ <: UnitFactory]]
+    def suggestAddons: Seq[AddonToAdd] = Nil
     def determineScore: Int
     class TimingHelpers {
 
       def phase = new Phase
       class Phase {
         def isLate = isBetween(20, 9999)
+        def isBetween(from: Int, to: Int) = time.minutes >= from && time.minutes < to
         def isLateMid = isBetween(13, 20)
         def isMid = isBetween(9, 13)
-        def isBetween(from: Int, to: Int) = time.minutes >= from && time.minutes < to
         def isEarlyMid = isBetween(5, 9)
         def isEarly = isBetween(0, 5)
         def isSinceVeryEarlyMid = time.minutes >= 4
@@ -208,7 +250,17 @@ object Strategy {
     }
   }
 
+  trait TerranDefaults extends LongTermStrategy {
+    override def suggestAddons: Seq[AddonToAdd] = {
+      AddonToAdd(classOf[Comsat], false)(unitManager.existsAndDone(classOf[Academy])) ::
+      Nil
+    }
+  }
+
   case class UpgradeToResearch(upgrade: Upgrade)(active: => Boolean) {
+    def isActive = active
+  }
+  case class AddonToAdd(addon: Class[_ <: Addon], requestNewBuildings: Boolean)(active: => Boolean) {
     def isActive = active
   }
 
@@ -233,7 +285,7 @@ object Strategy {
     override def suggestUpgrades = Nil
   }
 
-  class TerranHeavyMetal(override val universe: Universe) extends LongTermStrategy {
+  class TerranHeavyMetal(override val universe: Universe) extends LongTermStrategy with TerranDefaults {
     override def determineScore: Int = 50
     override def suggestProducers = {
       val myBases = bases.myMineralFields.count(_.value > 1000)
@@ -262,7 +314,7 @@ object Strategy {
       Nil
   }
 
-  class TerranHeavyAir(override val universe: Universe) extends TerranAirSuperiority(universe) {
+  class TerranHeavyAir(override val universe: Universe) extends TerranAirSuperiority(universe) with TerranDefaults {
     override def suggestUnits: List[IdealUnitRatio[Nothing]] = {
       IdealUnitRatio(classOf[ScienceVessel], 3)(timingHelpers.phase.isAnyTime) ::
       IdealUnitRatio(classOf[Battlecruiser], 10)(timingHelpers.phase.isAnyTime) ::
@@ -282,7 +334,7 @@ object Strategy {
 
   }
 
-  class TerranAirSuperiority(override val universe: Universe) extends LongTermStrategy {
+  class TerranAirSuperiority(override val universe: Universe) extends LongTermStrategy with TerranDefaults {
 
     override def suggestUnits = {
       IdealUnitRatio(classOf[Marine], 3)(timingHelpers.phase.isBeforeLate) ::
@@ -339,7 +391,7 @@ object Strategy {
       Nil
   }
 
-  class TerranFootSoldiers(override val universe: Universe) extends LongTermStrategy {
+  class TerranFootSoldiers(override val universe: Universe) extends LongTermStrategy with TerranDefaults {
 
     override def suggestUpgrades =
       UpgradeToResearch(Upgrades.Terran.MarineBatRange)(timingHelpers.phase.isSinceEarlyMid) ::
