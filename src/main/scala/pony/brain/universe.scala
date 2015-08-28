@@ -10,6 +10,7 @@ trait Universe {
   def time = myTime
   def currentTick: Int
   def world: DefaultWorld
+  def upgrades: UpgradeManager
   def bases: Bases
   def resources: ResourceManager
   def unitManager: UnitManager

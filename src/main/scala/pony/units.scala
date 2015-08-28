@@ -224,7 +224,8 @@ trait AirWeapon extends Weapon {
 }
 
 trait Weapon extends Controllable {
-
+  def isAttacking = isStartingToAttack || nativeUnit.getAirWeaponCooldown > 0 || nativeUnit.getGroundWeaponCooldown > 0
+  def isStartingToAttack = nativeUnit.isStartingAttack
 }
 
 trait RangeWeapon extends Weapon {
@@ -325,16 +326,18 @@ class MineralPatch(unit: APIUnit) extends AnyUnit(unit) with Resource {
 class VespeneGeysir(unit: APIUnit) extends AnyUnit(unit) with Geysir with Resource {
 }
 
+trait SupportUnit extends Mobile
+
 class SupplyDepot(unit: APIUnit) extends AnyUnit(unit) with ImmobileSupplyProvider
 class Pylon(unit: APIUnit) extends AnyUnit(unit) with ImmobileSupplyProvider
-class Overlord(unit: APIUnit) extends AnyUnit(unit) with MobileSupplyProvider with TransporterUnit
+class Overlord(unit: APIUnit) extends AnyUnit(unit) with MobileSupplyProvider with TransporterUnit with CanDetectHidden
 
 class SCV(unit: APIUnit) extends AnyUnit(unit) with WorkerUnit
 class Probe(unit: APIUnit) extends AnyUnit(unit) with WorkerUnit
 class Drone(unit: APIUnit) extends AnyUnit(unit) with WorkerUnit
 
-class Shuttle(unit: APIUnit) extends AnyUnit(unit) with TransporterUnit
-class Dropship(unit: APIUnit) extends AnyUnit(unit) with TransporterUnit
+class Shuttle(unit: APIUnit) extends AnyUnit(unit) with TransporterUnit with SupportUnit
+class Dropship(unit: APIUnit) extends AnyUnit(unit) with TransporterUnit with SupportUnit
 
 class CommandCenter(unit: APIUnit) extends AnyUnit(unit) with MainBuilding with CanBuildAddons
 
@@ -356,21 +359,32 @@ class Armory(unit: APIUnit) extends AnyUnit(unit) with Upgrader
 class EngineeringBay(unit: APIUnit) extends AnyUnit(unit) with Upgrader
 class ScienceFacility(unit: APIUnit) extends AnyUnit(unit) with Upgrader with CanBuildAddons
 
-class MissileTurret(unit: APIUnit) extends AnyUnit(unit) with ArmedBuilding
+class MissileTurret(unit: APIUnit) extends AnyUnit(unit) with ArmedBuilding with CanDetectHidden
 
 class Bunker(unit: APIUnit) extends AnyUnit(unit)
 
-class Marine(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon
-class Firebat(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundWeapon
-class Ghost(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon
-class Medic(unit: APIUnit) extends AnyUnit(unit) with GroundUnit
-class Vulture(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundWeapon with SpiderMines
-class Tank(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundWeapon
-class Goliath(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon
-class Wraith(unit: APIUnit) extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon
+trait InstantAttack extends Mobile
+trait CanDetectHidden extends WrapsUnit
+trait CanUseStimpack extends Mobile with Weapon {
+  def isStimmed = nativeUnit.isStimmed
+  def stimTime = nativeUnit.getStimTimer
+}
+trait CanCloak extends Mobile {
+  def isCloaked = nativeUnit.isCloaked
+}
+
+class Marine(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with CanUseStimpack
+class Firebat(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundWeapon with CanUseStimpack
+class Ghost(unit: APIUnit)
+  extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with CanCloak with InstantAttack
+class Medic(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with SupportUnit
+class Vulture(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundWeapon with SpiderMines with InstantAttack
+class Tank(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundWeapon with InstantAttack
+class Goliath(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with InstantAttack
+class Wraith(unit: APIUnit) extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with CanCloak with InstantAttack
 class Valkery(unit: APIUnit) extends AnyUnit(unit) with AirUnit with AirWeapon
-class Battlecruiser(unit: APIUnit) extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon
-class ScienceVessel(unit: APIUnit) extends AnyUnit(unit) with AirUnit
+class Battlecruiser(unit: APIUnit) extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with InstantAttack
+class ScienceVessel(unit: APIUnit) extends AnyUnit(unit) with AirUnit with SupportUnit with CanDetectHidden
 
 class Irrelevant(unit: APIUnit) extends AnyUnit(unit)
 

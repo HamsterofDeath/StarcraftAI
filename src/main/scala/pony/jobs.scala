@@ -9,6 +9,7 @@ case class Priority(importance: Double) {
 
 object Priority {
   val None              = Priority(0)
+  val DefaultBehaviour  = Priority(0.48)
   val Default           = Priority(0.49)
   val CollectMinerals   = Priority(0.5)
   val CollectGas        = Priority(0.55)

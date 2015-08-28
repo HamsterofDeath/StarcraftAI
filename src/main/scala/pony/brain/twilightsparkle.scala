@@ -10,6 +10,7 @@ import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, Future}
 
 trait HasUniverse {
+  def upgrades = universe.upgrades
   def time = universe.time
   def race = universe.race
   def universe: Universe
@@ -140,10 +141,11 @@ class TwilightSparkle(world: DefaultWorld) {
   self =>
 
   val universe: Universe = new Universe {
-    override def bases: Bases = self.bases
-    override def world: DefaultWorld = self.world
-    override def resources: ResourceManager = self.resources
-    override def unitManager: UnitManager = self.unitManager
+    override def bases = self.bases
+    override def world = self.world
+    override def upgrades = self.upgradeManager
+    override def resources = self.resources
+    override def unitManager = self.unitManager
     override def currentTick = world.tickCount
     override def mapLayers = self.maps
     override def units = world.units
@@ -156,6 +158,7 @@ class TwilightSparkle(world: DefaultWorld) {
   private val strategy  = new Strategies(universe)
 
   private val aiModules   = List(
+    new DefaultBehaviours(universe),
     new GatherMinerals(universe),
     new GatherGas(universe),
     new ProvideNewUnits(universe),
@@ -170,8 +173,9 @@ class TwilightSparkle(world: DefaultWorld) {
     AIModule.noop(universe)
   )
 
-  private val unitManager = new UnitManager(universe)
-  private val maps        = new MapLayers(universe)
+  private val unitManager    = new UnitManager(universe)
+  private val upgradeManager = new UpgradeManager(universe)
+  private val maps           = new MapLayers(universe)
 
   def queueOrdersForTick(): Unit = {
     if (world.isFirstTick) {

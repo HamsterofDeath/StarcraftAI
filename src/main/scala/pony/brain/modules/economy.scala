@@ -141,6 +141,18 @@ class ProvideNewUnits(universe: Universe) extends OrderlessAIModule[UnitFactory]
   }
 }
 
+class DefaultBehaviours(universe: Universe) extends AIModule[WrapsUnit](universe) {
+  private val rules = Terran.all(universe)
+
+  override def ordersForTick: Traversable[UnitOrder] = {
+    unitManager.allIdleMobiles.foreach { free =>
+
+    }
+
+    rules.flatMap(_.commands)
+  }
+}
+
 class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
 
   private val gatheringJobs = ArrayBuffer.empty[GetMinerals]
@@ -198,10 +210,10 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
                                             .from(math.round(patch.area.distanceTo(base.mainBuilding.area) / 2.0).toInt)
         override def toString: String = s"(Mined) $patch"
         def hasOpenSpot: Boolean = miningTeam.size < estimateRequiredWorkers
-        def openSpotCount = estimateRequiredWorkers - miningTeam.size
         def estimateRequiredWorkers = {
           if (patch.remainingMinerals > 0) workerCountByDistance.get else 0
         }
+        def openSpotCount = estimateRequiredWorkers - miningTeam.size
         def lockToPatch_!(job: GatherMineralsAtPatch): Unit = {
           info(s"Added ${job.unit} to mining team of $patch")
           miningTeam += job

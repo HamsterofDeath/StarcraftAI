@@ -8,7 +8,6 @@ import scala.collection.mutable
 import scala.collection.mutable.{ArrayBuffer, ListBuffer}
 
 class UnitManager(override val universe: Universe) extends HasUniverse {
-
   private val reorganizeJobQueue          = ListBuffer.empty[CanAcceptUnitSwitch[_ <: WrapsUnit]]
   private val unfulfilledRequestsThisTick = ArrayBuffer.empty[UnitJobRequests[_ <: WrapsUnit]]
   private val assignments                 = mutable.HashMap.empty[WrapsUnit, UnitWithJob[_ <: WrapsUnit]]
@@ -16,6 +15,7 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
       mutable.HashMap[Employer[_ <: WrapsUnit], mutable.Set[UnitWithJob[_ <: WrapsUnit]]]
       with mutable.MultiMap[Employer[_ <: WrapsUnit], UnitWithJob[_ <: WrapsUnit]]
   private var unfulfilledRequestsLastTick = unfulfilledRequestsThisTick.toVector
+  def allIdleMobiles = allJobsByType[BusyDoingNothing[Mobile]]
   def allFundedJobs = assignments.values.collect { case f: JobHasFunding[_] => f }
   def existsOrPlanned(c: Class[_ <: WrapsUnit]) = {
     units.ownsByType(c) ||
@@ -46,6 +46,11 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
     val typeOfFactory = manifest[T].runtimeClass.asInstanceOf[Class[_ <: T]]
     unfulfilledByTargetType(typeOfFactory).size
   }
+  private def unfulfilledByTargetType[T <: WrapsUnit](targetType: Class[_ <: T]) = {
+    allUnfulfilled.flatMap(_.requests).iterator.collect {
+      case b: BuildUnitRequest[_] if b.typeOfRequestedUnit == targetType => b
+    }
+  }
   def plannedToBuildByClass(typeOfFactory: Class[_ <: Building]) = {
     unfulfilledByTargetType(typeOfFactory)
   }
@@ -53,12 +58,6 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
     val typeOfFactory = manifest[T].runtimeClass.asInstanceOf[Class[_ <: T]]
     unfulfilledByTargetType(typeOfFactory)
   }
-  private def unfulfilledByTargetType[T <: WrapsUnit](targetType: Class[_ <: T]) = {
-    allUnfulfilled.flatMap(_.requests).iterator.collect {
-      case b: BuildUnitRequest[_] if b.typeOfRequestedUnit == targetType => b
-    }
-  }
-  private def allUnfulfilled = unfulfilledRequestsLastTick.toSet ++ unfulfilledRequestsThisTick.toSet
   def constructionsInProgress[T <: Building : Manifest] = {
     val typeOfFactory = manifest[T].runtimeClass
     val byJob = allJobsByType[ConstructBuilding[WorkerUnit, Building]].collect {
@@ -95,6 +94,7 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
     }.sum
     byJob + byUnfulfilledRequest
   }
+  private def allUnfulfilled = unfulfilledRequestsLastTick.toSet ++ unfulfilledRequestsThisTick.toSet
   def allJobsByUnitType[T <: WrapsUnit : Manifest] = selectJobs[T, UnitWithJob[T]](_ => true)
   def selectJobs[U <: WrapsUnit : Manifest, T <: UnitWithJob[U] : Manifest](f: T => Boolean) = {
     val wanted = manifest[U].runtimeClass
@@ -581,7 +581,6 @@ class ConstructAddon[W <: CanBuildAddons, A <: Addon](employer: Employer[W],
   override def times: Int = 10
 
   override def shortDebugString: String = s"Construct ${builtWhat.className}"
-  private def builtWhat = what
   override def isFinished: Boolean = {
     startedConstruction && stoppedConstruction
   }
@@ -605,6 +604,7 @@ class ConstructAddon[W <: CanBuildAddons, A <: Addon](employer: Employer[W],
     super.hasFailed || myFail
   }
   override def getOrder = Orders.ConstructAddon(basis, builtWhat).toSeq
+  private def builtWhat = what
   override def proofForFunding = funding
 }
 
@@ -712,6 +712,14 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, bu
   }
 
   override def newFor(replacement: W) = new ConstructBuilding(replacement, buildingType, employer, buildWhere, funding)
+}
+
+class BusyDoingSomething[T <: WrapsUnit](unit: T, employer: Employer[T])
+  extends UnitWithJob(employer, unit, Priority.DefaultBehaviour) {
+
+  override def shortDebugString: String = ???
+  override def isFinished: Boolean = ???
+  override protected def ordersForTick: Seq[UnitOrder] = ???
 }
 
 class BusyDoingNothing[T <: WrapsUnit](unit: T, employer: Employer[T])

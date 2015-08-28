@@ -1,6 +1,6 @@
 package pony
 
-import bwapi.{Color, Game}
+import bwapi.{Color, Game, TechType}
 
 import scala.collection.mutable.ArrayBuffer
 import scala.util.Try
@@ -28,6 +28,16 @@ abstract class UnitOrder {
 }
 
 object Orders {
+  case class Stimpack(u: CanUseStimpack) extends UnitOrder {
+    override def myUnit: WrapsUnit = u
+    override def issueOrderToGame(): Unit = {
+      u.nativeUnit.useTech(TechType.Stim_Packs)
+    }
+    override def renderDebug(renderer: Renderer): Unit = {
+      renderer.in_!(Color.Red).drawTextAtMobileUnit(u, "Stim!", -1)
+    }
+  }
+
   case class Research(basis: Upgrader, what: Upgrade) extends UnitOrder {
     override def myUnit: WrapsUnit = basis
     override def issueOrderToGame(): Unit = {
