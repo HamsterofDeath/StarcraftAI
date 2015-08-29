@@ -61,7 +61,7 @@ class TerranTechTree extends TechTree {
     Upgrades.Terran.SpiderMines -> classOf[MachineShop],
     Upgrades.Terran.WraithCloak -> classOf[ControlTower],
     Upgrades.Terran.WraithEnergy -> classOf[ControlTower],
-    Upgrades.Terran.MarineBatRange -> classOf[Academy],
+    Upgrades.Terran.MarineRange -> classOf[Academy],
     Upgrades.Terran.MedicEnergy -> classOf[Academy],
     Upgrades.Terran.MedicHeal -> classOf[Academy],
     Upgrades.Terran.MedicFlare -> classOf[Academy],
@@ -310,8 +310,8 @@ class Debugger(game: Game) {
     debugging = false
   }
 
-  def faster(): Unit = {
-    game.setLocalSpeed(3)
+  def speed(int: Int): Unit = {
+    game.setLocalSpeed(int)
   }
   def fastest(): Unit = {
     game.setLocalSpeed(0)
@@ -339,28 +339,6 @@ class Units(game: Game) {
   private val knownUnits = mutable.HashMap.empty[Long, WrapsUnit]
   private var initial    = true
   def allMobiles = allByType[Mobile]
-  def allBuildings = allByType[Building]
-  def allAddonBuilders = allByType[CanBuildAddons]
-  def allAddons = allByType[Addon]
-  def existsIncomplete(c: Class[_ <: WrapsUnit]) = allByClass(c).exists(_.isBeingCreated)
-  def existsComplete(c: Class[_ <: WrapsUnit]) = allByClass(c).exists(!_.isBeingCreated)
-  def ownsByType(c: Class[_ <: WrapsUnit]) = {
-    knownUnits.values.exists(c.isInstance)
-  }
-  def geysirs = allByType[Geysir]
-  def firstByType[T: Manifest]: Option[T] = {
-    val lookFor = manifest[T].runtimeClass
-    mine.find(lookFor.isInstance).map(_.asInstanceOf[T])
-  }
-  def mineByType[T: Manifest]: Iterator[T] = {
-    val lookFor = manifest[T].runtimeClass
-    mine.filter(lookFor.isInstance).map(_.asInstanceOf[T])
-  }
-  def mine = all.filter(_.nativeUnit.getPlayer == game.self())
-
-  import scala.collection.JavaConverters._
-
-  def minerals = allByType[MineralPatch]
   def allByType[T <: WrapsUnit : Manifest]: Iterator[T] = {
     val lookFor = manifest[T].runtimeClass.asInstanceOf[Class[_ <: T]]
     allByClass(lookFor)
@@ -371,6 +349,28 @@ class Units(game: Game) {
     }.map(_.asInstanceOf[T])
   }
   def all = knownUnits.valuesIterator
+  def allBuildings = allByType[Building]
+  def allAddonBuilders = allByType[CanBuildAddons]
+  def allAddons = allByType[Addon]
+  def existsIncomplete(c: Class[_ <: WrapsUnit]) = allByClass(c).exists(_.isBeingCreated)
+  def existsComplete(c: Class[_ <: WrapsUnit]) = allByClass(c).exists(!_.isBeingCreated)
+  def ownsByType(c: Class[_ <: WrapsUnit]) = {
+    knownUnits.values.exists(c.isInstance)
+  }
+  def geysirs = allByType[Geysir]
+
+  import scala.collection.JavaConverters._
+
+  def firstByType[T: Manifest]: Option[T] = {
+    val lookFor = manifest[T].runtimeClass
+    mine.find(lookFor.isInstance).map(_.asInstanceOf[T])
+  }
+  def mineByType[T: Manifest]: Iterator[T] = {
+    val lookFor = manifest[T].runtimeClass
+    mine.filter(lookFor.isInstance).map(_.asInstanceOf[T])
+  }
+  def mine = all.filter(_.nativeUnit.getPlayer == game.self())
+  def minerals = allByType[MineralPatch]
   def tick(): Unit = {
     if (initial) {
       initial = false
@@ -422,7 +422,6 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
   def connectedByLine(a: MapTilePosition, b: MapTilePosition) = AreaHelper.directLineOfSight(a, b, this)
   def blockedCount = size - freeCount
   def freeCount = if (containsBlocked) size - areaDataBitSet.size else areaDataBitSet.size
-  def size = cols * rows
   def mkString: String = mkString('x')
   def mkString(blockedDisplay: Char) = {
     0 until rows map { y =>
@@ -431,6 +430,10 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
       } mkString
     } mkString "\n"
 
+  }
+  def free(x: Int, y: Int): Boolean = {
+    val coord = x + y * cols
+    if (containsBlocked) !areaDataBitSet(coord) else areaDataBitSet(coord)
   }
   def ensureContainsBlocked = if (containsBlocked)
     this
@@ -441,6 +444,7 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
   def blocked(index: Int) = !free(index)
   def free(index: Int) = if (containsBlocked) !areaDataBitSet(index) else areaDataBitSet(index)
   private def allIndexes = Iterator.range(0, size)
+  def size = cols * rows
   def minAreaSize(i: Int) = {
     val mut = mutableCopy
     areas.filter(_.allContained.size < i).foreach { area =>
@@ -451,12 +455,16 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
   def mutableCopy = new MutableGrid2D(cols, rows, mutable.BitSet.empty ++ areaDataBitSet)
   def allContained = allBlocked
   def allBlocked = if (containsBlocked) bitSetToTiles else allIndexes.filterNot(areaDataBitSet).map(indexToTile)
+  private def indexToTile(index: Int) = MapTilePosition.shared(index % cols, index / rows)
+  private def bitSetToTiles = areaDataBitSet.iterator.map(index => MapTilePosition.shared(index % cols, index / rows))
+  def areas = lazyAreas.get
   def containedCount = areaDataBitSet.size
   def free(position: MapTilePosition, area: Size): Boolean = {
     area.points.forall { p =>
       free(p.movedBy(position))
     }
   }
+  def free(p: MapTilePosition): Boolean = free(p.x, p.y)
   def zoomedOut = {
     val bits = mutable.BitSet.empty
     val subCols = cols / 4
@@ -473,15 +481,8 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
   def blocked = size - walkable
   def walkable = areaDataBitSet.size
   def blocked(p: MapTilePosition): Boolean = !free(p)
-  def free(p: MapTilePosition): Boolean = free(p.x, p.y)
-  def free(x: Int, y: Int): Boolean = {
-    val coord = x + y * cols
-    if (containsBlocked) !areaDataBitSet(coord) else areaDataBitSet(coord)
-  }
   def containsAsData(x: Int, y: Int): Boolean = !free(x, y)
   def allFree = if (containsBlocked) allIndexes.filterNot(areaDataBitSet).map(indexToTile) else bitSetToTiles
-  private def indexToTile(index: Int) = MapTilePosition.shared(index % cols, index / rows)
-  private def bitSetToTiles = areaDataBitSet.iterator.map(index => MapTilePosition.shared(index % cols, index / rows))
   def all: Iterator[MapTilePosition] = new Iterator[MapTilePosition] {
     private var index = 0
     private val max   = self.size
@@ -493,7 +494,6 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
     }
   }
   def areaCount = areas.size
-  def areas = lazyAreas.get
 }
 
 class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet) extends Grid2D(cols, rows, bitSet) {

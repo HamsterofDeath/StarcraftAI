@@ -64,8 +64,12 @@ class ProvideNewBuildings(universe: Universe)
 }
 
 class ProvideExpansions(universe: Universe) extends OrderlessAIModule[WorkerUnit](universe) {
-  override def onTick(): Unit = {
+  private var plannedExpansionPoint: Option[MineralPatchGroup]
 
+  override def onTick(): Unit = {
+    ifNth(127) {
+
+    }
   }
 }
 
@@ -141,15 +145,26 @@ class ProvideNewUnits(universe: Universe) extends OrderlessAIModule[UnitFactory]
   }
 }
 
-class DefaultBehaviours(universe: Universe) extends AIModule[WrapsUnit](universe) {
-  private val rules = Terran.all(universe)
+class DefaultBehaviours(universe: Universe) extends OrderlessAIModule[Mobile](universe) {
+  self =>
+  private val rules  = Terran.allBehaviours(universe)
+  private val ignore = mutable.HashSet.empty[Mobile]
 
-  override def ordersForTick: Traversable[UnitOrder] = {
-    unitManager.allIdleMobiles.foreach { free =>
-
+  override def onTick(): Unit = {
+    // fetch all idles and assign "always on" background tasks to them
+    val hireUs = unitManager.allIdleMobiles.filterNot(e => ignore(e.unit)).flatMap { free =>
+      val unit = free.unit
+      rules.filter(_.canControl(unit)).foreach(_.add_!(unit, Objective.initial))
+      val behaviours = rules.filter(_.controls(unit)).flatMap(_.behaviourOf(unit))
+      if (behaviours.nonEmpty) {
+        Some(new BusyDoingSomething(self, behaviours, Objective.initial))
+      } else {
+        ignore += unit
+        None
+      }
     }
-
-    rules.flatMap(_.commands)
+    info(s"Attaching default behaviour to new ${hireUs.size} units", hireUs.nonEmpty)
+    hireUs.foreach {unitManager.assignJob_!}
   }
 }
 
@@ -210,10 +225,10 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
                                             .from(math.round(patch.area.distanceTo(base.mainBuilding.area) / 2.0).toInt)
         override def toString: String = s"(Mined) $patch"
         def hasOpenSpot: Boolean = miningTeam.size < estimateRequiredWorkers
+        def openSpotCount = estimateRequiredWorkers - miningTeam.size
         def estimateRequiredWorkers = {
           if (patch.remainingMinerals > 0) workerCountByDistance.get else 0
         }
-        def openSpotCount = estimateRequiredWorkers - miningTeam.size
         def lockToPatch_!(job: GatherMineralsAtPatch): Unit = {
           info(s"Added ${job.unit} to mining team of $patch")
           miningTeam += job

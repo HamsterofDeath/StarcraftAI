@@ -131,7 +131,7 @@ object Upgrades {
     case object InfantryWeapons extends Upgrade(UpgradeType.Terran_Infantry_Weapons)
     case object VehicleWeapons extends Upgrade(UpgradeType.Terran_Vehicle_Weapons)
     case object ShipWeapons extends Upgrade(UpgradeType.Terran_Ship_Weapons)
-    case object MarineBatRange extends Upgrade(UpgradeType.U_238_Shells)
+    case object MarineRange extends Upgrade(UpgradeType.U_238_Shells)
     case object MedicEnergy extends Upgrade(UpgradeType.Caduceus_Reactor)
     case object MedicFlare extends Upgrade(TechType.Optical_Flare)
     case object MedicHeal extends Upgrade(TechType.Restoration)
@@ -227,6 +227,8 @@ trait Weapon extends Controllable {
   def isAttacking = isStartingToAttack || nativeUnit.getAirWeaponCooldown > 0 || nativeUnit.getGroundWeaponCooldown > 0
   def isStartingToAttack = nativeUnit.isStartingAttack
 }
+
+trait MobileRangeWeapon extends RangeWeapon with Mobile
 
 trait RangeWeapon extends Weapon {
 
@@ -364,9 +366,10 @@ class MissileTurret(unit: APIUnit) extends AnyUnit(unit) with ArmedBuilding with
 class Bunker(unit: APIUnit) extends AnyUnit(unit)
 
 trait InstantAttack extends Mobile
+trait MobileDetector extends CanDetectHidden with Mobile
 trait CanDetectHidden extends WrapsUnit
 trait CanUseStimpack extends Mobile with Weapon {
-  def isStimmed = nativeUnit.isStimmed
+  def isStimmed = nativeUnit.isStimmed || stimTime > 0
   def stimTime = nativeUnit.getStimTimer
 }
 trait CanCloak extends Mobile {

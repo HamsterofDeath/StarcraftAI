@@ -94,7 +94,7 @@ class UnitJobRenderer(override val universe: Universe) extends AIPlugIn with Has
 }
 
 class StatsRenderer(override val universe: Universe) extends AIPlugIn with HasUniverse {
-  override val lazyWorld       = universe.world
+  override val lazyWorld = universe.world
 
   override protected def tickPlugIn(): Unit = {
 
@@ -253,6 +253,11 @@ class DebugHelper(main: AIAPIEventDispatcher with HasUniverse) extends AIPlugIn 
       Try(words match {
         case command :: params =>
           command match {
+            case "speed" =>
+              params match {
+                case List(integer) =>
+                  universe.world.debugger.speed(integer.toInt)
+              }
             case "debugoff" =>
               universe.world.debugger.off()
             case "debugon" =>

@@ -140,6 +140,7 @@ class ProvideUpgrades(universe: Universe) extends OrderlessAIModule[Upgrader](un
               info(s"Research of $wantedUpgrade completed")
               val current = researched.getOrElse(wantedUpgrade, 0)
               researched.put(wantedUpgrade, current + 1)
+              upgrades.notifyResearched_!(wantedUpgrade)
             })
             assignJob_!(researchUpgrade)
           }
@@ -394,8 +395,8 @@ object Strategy {
   class TerranFootSoldiers(override val universe: Universe) extends LongTermStrategy with TerranDefaults {
 
     override def suggestUpgrades =
-      UpgradeToResearch(Upgrades.Terran.MarineBatRange)(timingHelpers.phase.isSinceEarlyMid) ::
-      UpgradeToResearch(Upgrades.Terran.InfantryCooldown)(timingHelpers.phase.isSinceEarlyMid) ::
+      UpgradeToResearch(Upgrades.Terran.InfantryCooldown)(timingHelpers.phase.isSinceVeryEarlyMid) ::
+      UpgradeToResearch(Upgrades.Terran.MarineRange)(timingHelpers.phase.isSinceEarlyMid) ::
       UpgradeToResearch(Upgrades.Terran.InfantryWeapons)(timingHelpers.phase.isSinceMid) ::
       UpgradeToResearch(Upgrades.Terran.InfantryArmor)(timingHelpers.phase.isSinceMid) ::
       Nil
