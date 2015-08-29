@@ -335,7 +335,7 @@ class ConstructionSiteFinder(universe: Universe) {
         val possible = helper.blockSpiralClockWise(resources.center)
         .filter { candidate =>
           val area = Area(candidate, size)
-          grid.free(area)
+          grid.free(area) && grid.includes(area)
         }
 
         if (possible.isEmpty) {

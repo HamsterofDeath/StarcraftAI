@@ -486,8 +486,9 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
     new Grid2D(subCols, subRows, bits)
   }
   def free(x: Int, y: Int): Boolean = {
-    val coord = x + y * cols
-    if (containsBlocked) !areaDataBitSet(coord) else areaDataBitSet(coord)
+    assert(includes(x,y))
+      val coord = x + y * cols
+      if (containsBlocked) !areaDataBitSet(coord) else areaDataBitSet(coord)
   }
   override def toString: String = s"Grid2D(${areaDataBitSet.size} of ${size})"
   def blocked = size - walkable
