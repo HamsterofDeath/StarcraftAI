@@ -24,7 +24,7 @@ case class CuttingLine(line: Line) {
 }
 
 class StrategicMap(resources: Seq[ResourceArea], walkable: Grid2D, game: Game) {
-  val domains = LazyVal.from({
+  private val myDomains = LazyVal.from({
     info(s"Analyzing map ${game.mapFileName()}")
     val tooMany = {
       val lineLength = 4
@@ -100,6 +100,6 @@ class StrategicMap(resources: Seq[ResourceArea], walkable: Grid2D, game: Game) {
     val complete = reduced.zipWithIndex.map { case ((choke, value), index) => choke.copy(index = index) -> value }
     complete
   })
-
+  def domains = myDomains.get
   private def fileName = s"${game.mapFileName()}_${game.mapHash()}"
 }

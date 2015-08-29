@@ -28,12 +28,12 @@ trait BuildingRequestHelper extends AIModule[WorkerUnit] {
 
   def requestBuilding[T <: Building](buildingType: Class[_ <: T],
                                      takeCareOfDependencies: Boolean,
-                                     forceBuildingPosition: Option[MapTilePosition] = None): Unit = {
+                                     customBuildingPosition: Option[() => Option[MapTilePosition]] = None): Unit = {
     val req = ResourceRequests.forUnit(universe.race, buildingType)
     val result = resources.request(req, buildingEmployer)
     result.ifSuccess { suc =>
         val unitReq = UnitJobRequests.newOfType(universe, buildingEmployer, buildingType, suc,
-          forceBuildingPosition = forceBuildingPosition)
+          customBuildingPosition = customBuildingPosition)
       debug(s"Financing possible for $buildingType, requesting build")
         val result = unitManager.request(unitReq)
         if (result.hasAnyMissingRequirements) {
@@ -224,6 +224,7 @@ object Strategy {
 
   trait LongTermStrategy extends HasUniverse {
     val timingHelpers = new TimingHelpers
+    def suggestNextExpansion:Option[ResourceArea]
     def suggestUpgrades: Seq[UpgradeToResearch]
     def suggestUnits: Seq[IdealUnitRatio[_ <: Mobile]]
     def suggestProducers: Seq[IdealProducerCount[_ <: UnitFactory]]
@@ -234,9 +235,9 @@ object Strategy {
       def phase = new Phase
       class Phase {
         def isLate = isBetween(20, 9999)
-        def isBetween(from: Int, to: Int) = time.minutes >= from && time.minutes < to
         def isLateMid = isBetween(13, 20)
         def isMid = isBetween(9, 13)
+        def isBetween(from: Int, to: Int) = time.minutes >= from && time.minutes < to
         def isEarlyMid = isBetween(5, 9)
         def isEarly = isBetween(0, 5)
         def isSinceVeryEarlyMid = time.minutes >= 4
@@ -253,9 +254,24 @@ object Strategy {
 
   trait TerranDefaults extends LongTermStrategy {
     override def suggestAddons: Seq[AddonToAdd] = {
-      AddonToAdd(classOf[Comsat], false)(unitManager.existsAndDone(classOf[Academy])) ::
+      AddonToAdd(classOf[Comsat], requestNewBuildings = false)(unitManager.existsAndDone(classOf[Academy])) ::
       Nil
     }
+    override def suggestNextExpansion = {
+      def shouldExpand = expandNow
+      if (shouldExpand) {
+        val where = bases.mainBase.mainBuilding.tilePosition
+        val (choke, what) = strategicMap.domains.minBy(_._1.center.distanceToSquared(where))
+        val target = what.values.flatten.minBy(_.patches.center.distanceToSquared(where))
+        Some(target)
+      } else {
+        None
+      }
+    }
+    protected def expandNow = {
+      bases.myMineralFields.forall(_.remainingPercentage < expansionThreshold)
+    }
+    protected def expansionThreshold = 0.5
   }
 
   case class UpgradeToResearch(upgrade: Upgrade)(active: => Boolean) {
@@ -284,6 +300,7 @@ object Strategy {
     override def suggestProducers = Nil
     override def suggestUnits = Nil
     override def suggestUpgrades = Nil
+    override def suggestNextExpansion = None
   }
 
   class TerranHeavyMetal(override val universe: Universe) extends LongTermStrategy with TerranDefaults {

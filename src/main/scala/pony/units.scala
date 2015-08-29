@@ -189,16 +189,16 @@ trait Mobile extends WrapsUnit with Controllable {
   def isMoving = nativeUnit.isMoving
 
   def currentTileNative = currentTile.asNative
+  def currentTile = {
+    val tp = nativeUnit.getPosition
+    MapTilePosition.shared(tp.getX / 32, tp.getY / 32)
+  }
   def currentPositionNative = currentPosition.toNative
   def currentPosition = {
     val p = nativeUnit.getPosition
     MapPosition(p.getX, p.getY)
   }
   override def toString = s"${super.toString}@$currentTile"
-  def currentTile = {
-    val tp = nativeUnit.getPosition
-    MapTilePosition.shared(tp.getX / 32, tp.getY / 32)
-  }
 }
 
 trait Killable {
@@ -310,6 +310,12 @@ trait TransporterUnit extends AirUnit {
 trait Ignored extends WrapsUnit
 
 trait Resource extends BlockingTiles {
+  val blockingAreaForMainBuilding = {
+    val ul = area.upperLeft.movedBy(-3,-3)
+    val lr = area.lowerRight.movedBy(3,3)
+    Area(ul, lr)
+  }
+
   def remaining = nativeUnit.getResources
 }
 
@@ -342,6 +348,8 @@ class Shuttle(unit: APIUnit) extends AnyUnit(unit) with TransporterUnit with Sup
 class Dropship(unit: APIUnit) extends AnyUnit(unit) with TransporterUnit with SupportUnit
 
 class CommandCenter(unit: APIUnit) extends AnyUnit(unit) with MainBuilding with CanBuildAddons
+class Nexus(unit: APIUnit) extends AnyUnit(unit) with MainBuilding
+class Hive(unit: APIUnit) extends AnyUnit(unit) with MainBuilding
 
 class Comsat(unit: APIUnit) extends AnyUnit(unit) with SpellcasterBuilding with Addon
 class NuclearSilo(unit: APIUnit) extends AnyUnit(unit) with SpellcasterBuilding with Addon

@@ -139,7 +139,6 @@ object AIModule {
 
 class TwilightSparkle(world: DefaultWorld) {
   self =>
-
   val universe: Universe = new Universe {
     override def bases = self.bases
     override def world = self.world
@@ -152,17 +151,16 @@ class TwilightSparkle(world: DefaultWorld) {
     override def strategicMap = world.strategicMap
     override def strategy = self.strategy
   }
-
   private val bases     = new Bases(world)
   private val resources = new ResourceManager(universe)
   private val strategy  = new Strategies(universe)
-
   private val aiModules   = List(
     new DefaultBehaviours(universe),
     new GatherMinerals(universe),
     new GatherGas(universe),
     new ProvideNewUnits(universe),
     new ProvideNewSupply(universe),
+    new ProvideExpansions(universe),
     new ProvideNewBuildings(universe),
     new ProvideSuggestedAddons(universe),
     new EnqueueFactories(universe),
@@ -172,11 +170,13 @@ class TwilightSparkle(world: DefaultWorld) {
     new SendOrdersToStarcraft(universe),
     AIModule.noop(universe)
   )
-
   private val unitManager    = new UnitManager(universe)
   private val upgradeManager = new UpgradeManager(universe)
   private val maps           = new MapLayers(universe)
-
+  def pluginByType[T <: AIModule[_]:Manifest] = {
+    val c = manifest[T].runtimeClass
+    aiModules.find(e => c.isAssignableFrom(e.getClass)).get.asInstanceOf[T]
+  }
   def queueOrdersForTick(): Unit = {
     if (world.isFirstTick) {
       bases.findMainBase()

@@ -128,6 +128,12 @@ sealed trait SCRace {
     (if (classOf[WorkerUnit].isAssignableFrom(unitType)) {
       workerClass
     } else
+    if (classOf[ResourceGatherPoint].isAssignableFrom(unitType)) {
+        resourceDepositClass
+    } else
+    if (classOf[MainBuilding].isAssignableFrom(unitType)) {
+        resourceDepositClass
+    } else
     if (classOf[SupplyProvider].isAssignableFrom(unitType)) {
       supplyClass
     } else
@@ -136,6 +142,7 @@ sealed trait SCRace {
     } else
       unitType).asInstanceOf[Class[_ <: T]]
   }
+  def resourceDepositClass: Class[_ <: MainBuilding]
   def workerClass: Class[_ <: WorkerUnit]
   def transporterClass: Class[_ <: TransporterUnit]
   def supplyClass: Class[_ <: SupplyProvider]
@@ -146,6 +153,7 @@ case object Terran extends SCRace {
   override def workerClass: Class[_ <: WorkerUnit] = classOf[SCV]
   override def transporterClass: Class[_ <: TransporterUnit] = classOf[Dropship]
   override def supplyClass: Class[_ <: SupplyProvider] = classOf[SupplyDepot]
+  override def resourceDepositClass: Class[_ <: MainBuilding] = classOf[CommandCenter]
 }
 
 case object Zerg extends SCRace {
@@ -153,6 +161,7 @@ case object Zerg extends SCRace {
   override def workerClass: Class[_ <: WorkerUnit] = classOf[Drone]
   override def transporterClass: Class[_ <: TransporterUnit] = classOf[Overlord]
   override def supplyClass: Class[_ <: SupplyProvider] = classOf[Overlord]
+  override def resourceDepositClass: Class[_ <: MainBuilding] = classOf[Hive]
 }
 
 case object Protoss extends SCRace {
@@ -160,6 +169,7 @@ case object Protoss extends SCRace {
   override def workerClass: Class[_ <: WorkerUnit] = classOf[Probe]
   override def transporterClass: Class[_ <: TransporterUnit] = classOf[Shuttle]
   override def supplyClass: Class[_ <: SupplyProvider] = classOf[Pylon]
+  override def resourceDepositClass: Class[_ <: MainBuilding] = classOf[Nexus]
 }
 
 case object Other extends SCRace {
@@ -167,6 +177,7 @@ case object Other extends SCRace {
   override def workerClass: Class[_ <: WorkerUnit] = ???
   override def transporterClass: Class[_ <: TransporterUnit] = ???
   override def supplyClass: Class[_ <: SupplyProvider] = ???
+  override def resourceDepositClass: Class[_ <: MainBuilding] = ???
 }
 
 trait WorldListener {
@@ -338,7 +349,19 @@ class Units(game: Game) {
 
   private val knownUnits = mutable.HashMap.empty[Long, WrapsUnit]
   private var initial    = true
+  def buildingAt(upperLeft:MapTilePosition) = {
+    allBuildings.find(_.area.upperLeft == upperLeft)
+  }
+  def allBuildings = allByType[Building]
   def allMobiles = allByType[Mobile]
+  def allAddonBuilders = allByType[CanBuildAddons]
+  def allAddons = allByType[Addon]
+  def existsIncomplete(c: Class[_ <: WrapsUnit]) = allByClass(c).exists(_.isBeingCreated)
+  def existsComplete(c: Class[_ <: WrapsUnit]) = allByClass(c).exists(!_.isBeingCreated)
+  def ownsByType(c: Class[_ <: WrapsUnit]) = {
+    knownUnits.values.exists(c.isInstance)
+  }
+  def geysirs = allByType[Geysir]
   def allByType[T <: WrapsUnit : Manifest]: Iterator[T] = {
     val lookFor = manifest[T].runtimeClass.asInstanceOf[Class[_ <: T]]
     allByClass(lookFor)
@@ -349,18 +372,8 @@ class Units(game: Game) {
     }.map(_.asInstanceOf[T])
   }
   def all = knownUnits.valuesIterator
-  def allBuildings = allByType[Building]
-  def allAddonBuilders = allByType[CanBuildAddons]
-  def allAddons = allByType[Addon]
-  def existsIncomplete(c: Class[_ <: WrapsUnit]) = allByClass(c).exists(_.isBeingCreated)
-  def existsComplete(c: Class[_ <: WrapsUnit]) = allByClass(c).exists(!_.isBeingCreated)
-  def ownsByType(c: Class[_ <: WrapsUnit]) = {
-    knownUnits.values.exists(c.isInstance)
-  }
-  def geysirs = allByType[Geysir]
 
   import scala.collection.JavaConverters._
-
   def firstByType[T: Manifest]: Option[T] = {
     val lookFor = manifest[T].runtimeClass
     mine.find(lookFor.isInstance).map(_.asInstanceOf[T])
@@ -431,10 +444,6 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
     } mkString "\n"
 
   }
-  def free(x: Int, y: Int): Boolean = {
-    val coord = x + y * cols
-    if (containsBlocked) !areaDataBitSet(coord) else areaDataBitSet(coord)
-  }
   def ensureContainsBlocked = if (containsBlocked)
     this
   else {
@@ -443,8 +452,6 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
   }
   def blocked(index: Int) = !free(index)
   def free(index: Int) = if (containsBlocked) !areaDataBitSet(index) else areaDataBitSet(index)
-  private def allIndexes = Iterator.range(0, size)
-  def size = cols * rows
   def minAreaSize(i: Int) = {
     val mut = mutableCopy
     areas.filter(_.allContained.size < i).foreach { area =>
@@ -455,6 +462,8 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
   def mutableCopy = new MutableGrid2D(cols, rows, mutable.BitSet.empty ++ areaDataBitSet)
   def allContained = allBlocked
   def allBlocked = if (containsBlocked) bitSetToTiles else allIndexes.filterNot(areaDataBitSet).map(indexToTile)
+  private def allIndexes = Iterator.range(0, size)
+  def size = cols * rows
   private def indexToTile(index: Int) = MapTilePosition.shared(index % cols, index / rows)
   private def bitSetToTiles = areaDataBitSet.iterator.map(index => MapTilePosition.shared(index % cols, index / rows))
   def areas = lazyAreas.get
@@ -464,7 +473,6 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
       free(p.movedBy(position))
     }
   }
-  def free(p: MapTilePosition): Boolean = free(p.x, p.y)
   def zoomedOut = {
     val bits = mutable.BitSet.empty
     val subCols = cols / 4
@@ -477,10 +485,15 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
     }
     new Grid2D(subCols, subRows, bits)
   }
+  def free(x: Int, y: Int): Boolean = {
+    val coord = x + y * cols
+    if (containsBlocked) !areaDataBitSet(coord) else areaDataBitSet(coord)
+  }
   override def toString: String = s"Grid2D(${areaDataBitSet.size} of ${size})"
   def blocked = size - walkable
   def walkable = areaDataBitSet.size
   def blocked(p: MapTilePosition): Boolean = !free(p)
+  def free(p: MapTilePosition): Boolean = free(p.x, p.y)
   def containsAsData(x: Int, y: Int): Boolean = !free(x, y)
   def allFree = if (containsBlocked) allIndexes.filterNot(areaDataBitSet).map(indexToTile) else bitSetToTiles
   def all: Iterator[MapTilePosition] = new Iterator[MapTilePosition] {
@@ -594,10 +607,12 @@ class MineralAnalyzer(map: AnalyzedMap, myUnits: Units) {
      """.stripMargin)
 }
 
+
 case class MineralPatchGroup(patchId: Int) {
   private val myPatches = mutable.HashSet.empty[MineralPatch]
   private val myCenter  = new LazyVal[MapTilePosition](calcCenter)
   private val myValue   = new LazyVal[Int](myPatches.foldLeft(0)((acc, mp) => acc + mp.remaining))
+  private val myInitialValue   = myPatches.foldLeft(0)((acc, mp) => acc + mp.remaining)
   def tick() = {
     myValue.invalidate()
   }
@@ -605,6 +620,8 @@ case class MineralPatchGroup(patchId: Int) {
     myPatches += mp
     myCenter.invalidate()
   }
+
+  def remainingPercentage =  myValue.get / myInitialValue.toDouble
 
   override def toString = s"Minerals($value)@$center"
   def center = myCenter.get

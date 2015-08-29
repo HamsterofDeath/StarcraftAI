@@ -17,9 +17,13 @@ class ProvideNewBuildings(universe: Universe)
       def newJob(where: MapTilePosition) =
         new ConstructBuilding(in.worker, in.buildingType, self, where, in.jobRequest.proofForFunding.assumeSuccessful)
 
-      in.jobRequest.forceBuildingPosition
-      .orElse(helper.findSpotFor(in.base.mainBuilding.tilePosition, in.buildingType))
-      .map(newJob)
+      val customPosition = in.jobRequest.customPosition match {
+        case Some(customEval) =>
+          customEval()
+        case None =>
+          helper.findSpotFor(in.base.mainBuilding.tilePosition, in.buildingType)
+      }
+      customPosition.map(newJob)
     }
     job match {
       case None =>
@@ -63,12 +67,28 @@ class ProvideNewBuildings(universe: Universe)
                   jobRequest: BuildUnitRequest[Building])
 }
 
-class ProvideExpansions(universe: Universe) extends OrderlessAIModule[WorkerUnit](universe) {
-  private var plannedExpansionPoint: Option[MineralPatchGroup]
-
+class ProvideExpansions(universe: Universe) extends OrderlessAIModule[WorkerUnit](universe) with BuildingRequestHelper {
+  private var plannedExpansionPoint = Option.empty[ResourceArea]
+  def forceExpand(patch: MineralPatchGroup) = {
+    plannedExpansionPoint = strategicMap.domains.flatMap(_._2.values.flatten).find(_.patches == patch)
+  }
   override def onTick(): Unit = {
     ifNth(127) {
+      plannedExpansionPoint = plannedExpansionPoint.orElse(strategy.current.suggestNextExpansion)
+      info(s"AI wants to expand to ${plannedExpansionPoint.get}", plannedExpansionPoint.isDefined)
+    }
 
+    plannedExpansionPoint.foreach { resources =>
+      val plannedMainBuildings = unitManager.constructionsInProgress(race.resourceDepositClass)
+      plannedMainBuildings.find(_.belongsTo.contains(resources)) match {
+        case Some(planned) =>
+          if (planned.building.isDefined) {
+            plannedExpansionPoint = None
+          }
+        case None =>
+          val finder = new ConstructionSiteFinder(universe).forResourceArea(resources)
+          requestBuilding(race.resourceDepositClass, false, Some(() => finder.find))
+      }
     }
   }
 }
@@ -225,10 +245,10 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
                                             .from(math.round(patch.area.distanceTo(base.mainBuilding.area) / 2.0).toInt)
         override def toString: String = s"(Mined) $patch"
         def hasOpenSpot: Boolean = miningTeam.size < estimateRequiredWorkers
-        def openSpotCount = estimateRequiredWorkers - miningTeam.size
         def estimateRequiredWorkers = {
           if (patch.remainingMinerals > 0) workerCountByDistance.get else 0
         }
+        def openSpotCount = estimateRequiredWorkers - miningTeam.size
         def lockToPatch_!(job: GatherMineralsAtPatch): Unit = {
           info(s"Added ${job.unit} to mining team of $patch")
           miningTeam += job
@@ -384,12 +404,12 @@ class GatherGas(universe: Universe) extends OrderlessAIModule[WorkerUnit](univer
       refinery match {
         case None =>
           if (unitManager.unitsByType[WorkerUnit].size >= workerCountBeforeWantingGas) {
-            def requestExists = unitManager.plannedConstructions[Refinery]
-                                .exists(_.forcedPosition.contains(geysir.tilePosition))
+            def requestExists = unitManager.requestedConstructions[Refinery]
+                                .exists(_.customPosition.contains(geysir.tilePosition))
             def jobExists = unitManager.constructionsInProgress[Refinery]
                             .exists(_.buildWhere == geysir.tilePosition)
             if (!requestExists && !jobExists) {
-              requestBuilding(classOf[Refinery], false, Some(geysir.tilePosition))
+              requestBuilding(classOf[Refinery], false, Some(() => Some(geysir.tilePosition)))
             }
             unitManager.unitsByType[Refinery]
             .find(_.tilePosition == geysir.tilePosition)

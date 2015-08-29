@@ -170,19 +170,20 @@ object AreaHelper {
 
 class MapLayers(override val universe: Universe) extends HasUniverse {
 
-  private val rawMapWalk                = world.map.walkableGrid
-  private val rawMapBuild               = world.map.buildableGrid.mutableCopy
-  private val plannedBuildings          = world.map.empty.zoomedOut.mutableCopy
-  private var justBuildings             = evalOnlyBuildings
-  private var justMineralsAndGas        = evalOnlyResources
-  private var justWorkerPaths           = evalWorkerPaths
-  private var justBlockingMobiles       = evalOnlyMobileBlockingUnits
-  private var justAddonLocations        = evalPotentialAddonLocations
-  private var withBuildings             = evalWithBuildings
-  private var withBuildingsAndResources = evalWithBuildingsAndResources
-  private var withEverythingStatic      = evalEverythingStatic
-  private var withEverythingBlocking    = evalEverythingBlocking
-  private var lastUpdatePerformedInTick = universe.currentTick
+  private val rawMapWalk                 = world.map.walkableGrid
+  private val rawMapBuild                = world.map.buildableGrid.mutableCopy
+  private val plannedBuildings           = world.map.empty.zoomedOut.mutableCopy
+  private var justBuildings              = evalOnlyBuildings
+  private var justBlockedForMainBuilding = evalOnlyBlockedForMainBuildings
+  private var justMineralsAndGas         = evalOnlyResources
+  private var justWorkerPaths            = evalWorkerPaths
+  private var justBlockingMobiles        = evalOnlyMobileBlockingUnits
+  private var justAddonLocations         = evalPotentialAddonLocations
+  private var withBuildings              = evalWithBuildings
+  private var withBuildingsAndResources  = evalWithBuildingsAndResources
+  private var withEverythingStatic       = evalEverythingStatic
+  private var withEverythingBlocking     = evalEverythingBlocking
+  private var lastUpdatePerformedInTick  = universe.currentTick
   def isOnIsland(tilePosition: MapTilePosition) = {
 
     val others = world.nativeGame
@@ -215,52 +216,10 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
     update()
     justMineralsAndGas.asReadOnly
   }
-  private def update(): Unit = {
-    if (lastUpdatePerformedInTick != universe.currentTick) {
-      lastUpdatePerformedInTick = universe.currentTick
-      justBuildings = evalOnlyBuildings
-      justMineralsAndGas = evalOnlyResources
-      justBlockingMobiles = evalOnlyMobileBlockingUnits
-      justAddonLocations = evalPotentialAddonLocations
-      withEverythingBlocking = evalEverythingBlocking
-      withBuildings = evalWithBuildings
-      withBuildingsAndResources = evalWithBuildingsAndResources
-      withEverythingStatic = evalEverythingStatic
-    }
+  def blockedForResourceDeposit = {
+    update()
+    justBlockedForMainBuilding.asReadOnly
   }
-  private def evalWithBuildings = rawMapBuild.mutableCopy.or_!(justBuildings)
-  private def evalWithBuildingsAndResources = justBuildings.mutableCopy.or_!(justMineralsAndGas)
-  private def evalOnlyBuildings = evalOnlyUnits(units.allByType[Building])
-  private def evalPotentialAddonLocations = evalOnlyAddonAreas(units.allByType[CanBuildAddons])
-  private def evalOnlyAddonAreas(units: TraversableOnce[CanBuildAddons]) = {
-    val ret = world.map.emptyZoomed.mutableCopy
-    units.foreach { b =>
-      ret.block_!(b.addonArea)
-    }
-    ret
-  }
-  private def evalOnlyMobileBlockingUnits = evalOnlyMobileUnits(units.allByType[GroundUnit])
-  private def evalOnlyMobileUnits(units: TraversableOnce[GroundUnit]) = {
-    val ret = world.map.emptyZoomed.mutableCopy
-    units.foreach { b =>
-      ret.block_!(b.currentTile)
-    }
-    ret
-  }
-  private def evalOnlyResources = evalOnlyUnits(units.allByType[MineralPatch].filter(_.remaining > 0))
-                                  .or_!(evalOnlyUnits(units.allByType[Geysir]))
-  private def evalOnlyUnits(units: TraversableOnce[StaticallyPositioned]) = {
-    val ret = world.map.emptyZoomed.mutableCopy
-    units.foreach { b =>
-      ret.block_!(b.area)
-    }
-    ret
-  }
-  private def evalEverythingStatic = withBuildingsAndResources.mutableCopy
-                                     .or_!(plannedBuildings)
-                                     .or_!(justWorkerPaths)
-                                     .or_!(rawMapBuild)
-  private def evalEverythingBlocking = withEverythingStatic.mutableCopy.or_!(justBlockingMobiles)
   def blockedByWorkerPaths = {
     update()
     justWorkerPaths.asReadOnly
@@ -283,7 +242,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   }
   private def evalWorkerPaths = {
     trace("Re-evaluation of worker paths")
-    val ret = world.map.emptyZoomed.mutableCopy
+    val ret = emptyGrid
     bases.bases.foreach { base =>
       base.myMineralGroup.foreach { group =>
         group.patches.foreach { patch =>
@@ -297,14 +256,100 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
     }
     ret
   }
+  private def emptyGrid = world.map.emptyZoomed.mutableCopy
+  private def update(): Unit = {
+    if (lastUpdatePerformedInTick != universe.currentTick) {
+      lastUpdatePerformedInTick = universe.currentTick
+      justBuildings = evalOnlyBuildings
+      justBlockedForMainBuilding = evalOnlyBlockedForMainBuildings
+      justMineralsAndGas = evalOnlyResources
+      justBlockingMobiles = evalOnlyMobileBlockingUnits
+      justAddonLocations = evalPotentialAddonLocations
+      withEverythingBlocking = evalEverythingBlocking
+      withBuildings = evalWithBuildings
+      withBuildingsAndResources = evalWithBuildingsAndResources
+      withEverythingStatic = evalEverythingStatic
+    }
+  }
+  private def evalWithBuildings = rawMapBuild.mutableCopy.or_!(justBuildings)
+  private def evalWithBuildingsAndResources = justBuildings.mutableCopy.or_!(justMineralsAndGas)
+  private def evalOnlyBuildings = evalOnlyUnits(units.allByType[Building])
+  private def evalOnlyBlockedForMainBuildings = evalOnlyBlockedResourceAreas(units.allByType[Resource])
+  private def evalPotentialAddonLocations = evalOnlyAddonAreas(units.allByType[CanBuildAddons])
+  private def evalOnlyAddonAreas(units: TraversableOnce[CanBuildAddons]) = {
+    val ret = emptyGrid
+    units.foreach { b =>
+      ret.block_!(b.addonArea)
+    }
+    ret
+  }
+  private def evalOnlyMobileBlockingUnits = evalOnlyMobileUnits(units.allByType[GroundUnit])
+  private def evalOnlyMobileUnits(units: TraversableOnce[GroundUnit]) = {
+    val ret = emptyGrid
+    units.foreach { b =>
+      ret.block_!(b.currentTile)
+    }
+    ret
+  }
+  private def evalOnlyResources = evalOnlyUnits(units.allByType[MineralPatch].filter(_.remaining > 0))
+                                  .or_!(evalOnlyUnits(units.allByType[Geysir]))
+  private def evalOnlyUnits(units: TraversableOnce[StaticallyPositioned]) = {
+    val ret = emptyGrid
+    units.foreach { b =>
+      ret.block_!(b.area)
+    }
+    ret
+  }
+  private def evalOnlyBlockedResourceAreas(units: TraversableOnce[Resource]) = {
+    val ret = emptyGrid
+    units.foreach { b =>
+      ret.block_!(b.blockingAreaForMainBuilding)
+    }
+    ret
+  }
+  private def evalEverythingStatic = withBuildingsAndResources.mutableCopy
+                                     .or_!(plannedBuildings)
+                                     .or_!(justWorkerPaths)
+                                     .or_!(rawMapBuild)
+  private def evalEverythingBlocking = withEverythingStatic.mutableCopy.or_!(justBlockingMobiles)
+}
+
+trait SubFinder {
+  def find:Option[MapTilePosition]
 }
 
 class ConstructionSiteFinder(universe: Universe) {
+
   // initialisation happens in the main thread
   private val withoutStreets = universe.mapLayers.reallyFreeBuildingTiles.mutableCopy
                                .or_!(universe.mapLayers.blockedByPotentialAddons.mutableCopy)
   private val helper         = new GeometryHelpers(universe.world.map.sizeX, universe.world.map.sizeY)
+  def forResourceArea(resources: ResourceArea):SubFinder = {
+    // we magically know this by now
+    val size = Size(4,3)
+    //main thread
+    val grid = withoutStreets.or_!(universe.mapLayers.blockedForResourceDeposit.mutableCopy)
+    new SubFinder {
+      override def find: Option[MapTilePosition] = {
+        // background
+        val possible = helper.blockSpiralClockWise(resources.center)
+        .filter { candidate =>
+          val area = Area(candidate, size)
+          grid.free(area)
+        }
 
+        if (possible.isEmpty) {
+          None
+        } else {
+          val closest = possible.minBy { elem =>
+            val area = Area(elem, size)
+            resources.patches.patches.map(_.area.distanceTo(area)).sum
+          }
+          Some(closest)
+        }
+      }
+    }
+  }
   def findSpotFor[T <: Building](near: MapTilePosition, building: Class[_ <: T]) = {
     // this happens in the background
     val unitType = building.toUnitType

@@ -4,7 +4,7 @@ import java.text.DecimalFormat
 
 import bwapi.Color
 import pony.Orders.AttackMove
-import pony.brain.modules.GatherMineralsAtSinglePatch
+import pony.brain.modules.{GatherMineralsAtSinglePatch, ProvideExpansions}
 import pony.brain.{HasUniverse, TwilightSparkle, UnitWithJob, Universe}
 
 import scala.collection.mutable.ArrayBuffer
@@ -26,7 +26,7 @@ class ChokePointRenderer(override val universe: Universe) extends AIPlugIn with 
   override protected def tickPlugIn(): Unit = {
     lazyWorld.debugger.debugRender { renderer =>
       renderer.in_!(Color.Green)
-      strategicMap.domains.get.foreach { case (choke, _) =>
+      strategicMap.domains.foreach { case (choke, _) =>
         choke.lines.foreach { line =>
           renderer.drawLine(line.absoluteFrom, line.absoluteTo)
           renderer.drawTextAtTile(s"Chokepoint ${choke.index}", line.center)
@@ -243,7 +243,7 @@ class MineralDebugRenderer(override val universe: Universe) extends AIPlugIn wit
   }
 }
 
-class DebugHelper(main: AIAPIEventDispatcher with HasUniverse) extends AIPlugIn with HasUniverse {
+class DebugHelper(main: MainAI) extends AIPlugIn with HasUniverse {
 
   main.listen_!(new AIAPI {
     override def world: DefaultWorld = main.world
@@ -253,6 +253,13 @@ class DebugHelper(main: AIAPIEventDispatcher with HasUniverse) extends AIPlugIn 
       Try(words match {
         case command :: params =>
           command match {
+            case "expand" =>
+              params match {
+                case List(mineralsId) =>
+                  val patch = world.mineralPatches.groups.find(_.patchId.toString == mineralsId).get
+                  main.brain.pluginByType[ProvideExpansions].forceExpand(patch)
+              }
+
             case "speed" =>
               params match {
                 case List(integer) =>
@@ -277,7 +284,7 @@ class DebugHelper(main: AIAPIEventDispatcher with HasUniverse) extends AIPlugIn 
                   }
 
                 case List("choke", id) =>
-                  strategicMap.domains.get.find(_._1.index.toString == id).foreach { choke =>
+                  strategicMap.domains.find(_._1.index.toString == id).foreach { choke =>
                     units.mineByType[Mobile].filterNot(_.isInstanceOf[WorkerUnit]).foreach { u =>
                       world.orderQueue.queue_!(new AttackMove(u, choke._1.center.randomized(3)))
                     }

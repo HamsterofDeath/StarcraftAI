@@ -54,6 +54,7 @@ object MapTilePosition {
     else {
       strange.computeIfAbsent((x, y), computer)
     }
+  private def inRange(x: Int, y: Int) = x > -max && y > -max && x < max && y < max
   def nativeShared(xy: (Int, Int)): Position = nativeShared(xy._1, xy._2)
   def nativeShared(x: Int, y: Int): Position =
     if (inRange(x, y))
@@ -61,7 +62,6 @@ object MapTilePosition {
     else {
       nativeStrange.computeIfAbsent((x, y), nativeComputer)
     }
-  private def inRange(x: Int, y: Int) = x > -max && y > -max && x < max && y < max
 }
 
 case class Size(x: Int, y: Int) extends HasXY {
@@ -75,7 +75,7 @@ case class Size(x: Int, y: Int) extends HasXY {
 }
 
 object Size {
-  val sizes = Array.tabulate(5, 5)((x, y) => Size(x, y))
+  val sizes = Array.tabulate(20, 20)((x, y) => Size(x, y))
   def shared(x: Int, y: Int) = sizes(x)(y)
 }
 
@@ -87,6 +87,7 @@ case class Line(a: MapTilePosition, b: MapTilePosition) {
   }
 }
 
+
 case class Area(upperLeft: MapTilePosition, sizeOfArea: Size) {
 
   val lowerRight = upperLeft.movedBy(sizeOfArea).movedBy(-1, -1)
@@ -94,21 +95,6 @@ case class Area(upperLeft: MapTilePosition, sizeOfArea: Size) {
   def distanceTo(tilePosition: MapTilePosition) = {
     // TODO optimize
     outline.minBy(_.distanceToSquared(tilePosition)).distanceTo(tilePosition)
-  }
-  def outline: Traversable[MapTilePosition] = {
-    new Traversable[MapTilePosition] {
-      override def foreach[U](f: (MapTilePosition) => U): Unit = {
-        (0 until sizeOfArea.x).foreach { x =>
-          f(MapTilePosition.shared(upperLeft.x + x, upperLeft.y))
-          f(MapTilePosition.shared(upperLeft.x + x, upperLeft.y + sizeOfArea.y))
-        }
-        (1 until sizeOfArea.y - 1).foreach { y =>
-          f(MapTilePosition.shared(upperLeft.x, upperLeft.y + y))
-          f(MapTilePosition.shared(upperLeft.x + sizeOfArea.x, upperLeft.y + y))
-        }
-      }
-    }
-
   }
   def distanceTo(area: Area) = {
     closestDirectConnection(area).length
@@ -128,6 +114,21 @@ case class Area(upperLeft: MapTilePosition, sizeOfArea: Size) {
     Line(from, to)
 
   }
+  def outline: Traversable[MapTilePosition] = {
+    new Traversable[MapTilePosition] {
+      override def foreach[U](f: (MapTilePosition) => U): Unit = {
+        (0 until sizeOfArea.x).foreach { x =>
+          f(MapTilePosition.shared(upperLeft.x + x, upperLeft.y))
+          f(MapTilePosition.shared(upperLeft.x + x, upperLeft.y + sizeOfArea.y))
+        }
+        (1 until sizeOfArea.y - 1).foreach { y =>
+          f(MapTilePosition.shared(upperLeft.x, upperLeft.y + y))
+          f(MapTilePosition.shared(upperLeft.x + sizeOfArea.x, upperLeft.y + y))
+        }
+      }
+    }
+
+  }
   def tiles: Traversable[MapTilePosition] = new Traversable[MapTilePosition] {
     override def foreach[U](f: (MapTilePosition) => U): Unit = {
       sizeOfArea.points.map { p => f(p.movedBy(upperLeft)) }
@@ -135,6 +136,13 @@ case class Area(upperLeft: MapTilePosition, sizeOfArea: Size) {
   }
   def describe = s"$upperLeft/$lowerRight"
 }
+
+object Area {
+  def apply(upperLeft:MapTilePosition, lowerRight:MapTilePosition):Area = {
+    Area(upperLeft, Size.shared(lowerRight.x - upperLeft.x + 1, lowerRight.y - upperLeft.y + 1))
+  }
+}
+
 
 class MultiArea(areas: Seq[Area])
 
