@@ -1018,6 +1018,7 @@ object UnitJobRequests {
     val actualClass = employer.universe.race.specialize(what)
     val mainType = employer.race.techTree.mainBuildingOf(what).asInstanceOf[Class[T]]
     val req = AnyUnitRequest(mainType, 1)
+              .withFilter_!(e => !e.isBeingCreated && !e.hasAddonAttached && !e.isBuildingAddon)
 
     UnitJobRequests(req.toSeq, employer, priority)
   }
