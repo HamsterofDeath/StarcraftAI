@@ -45,6 +45,7 @@ trait OrderHistorySupport extends WrapsUnit {
 
 trait WrapsUnit extends HasNativeSCAttributes with HasUniverse {
   val unitId      = WrapsUnit.nextId
+  val nativeUnitId      = nativeUnit.getID
   val initialType = nativeUnit.getType
   private var myUniverse: Universe = _
 

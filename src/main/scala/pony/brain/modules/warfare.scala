@@ -23,17 +23,53 @@ trait AddonRequestHelper extends AIModule[CanBuildAddons] {
   }
 }
 
+
+trait AlternativeBuildingSpot {
+  def isEmpty = !shouldUse
+
+  def shouldUse: Boolean
+
+  def evaluateCostly: Option[MapTilePosition]
+
+  def predefined:Option[MapTilePosition]
+}
+
+object AlternativeBuildingSpot {
+  def fromExpensive(evalPosition: => Option[MapTilePosition]): AlternativeBuildingSpot = new AlternativeBuildingSpot {
+    override def shouldUse = true
+    override def evaluateCostly = evalPosition
+    override def predefined = None
+  }
+
+  def fromPreset(fixedPosition: MapTilePosition):AlternativeBuildingSpot = fromPreset(Some(fixedPosition))
+
+  def fromPreset(fixedPosition: Option[MapTilePosition]): AlternativeBuildingSpot = new AlternativeBuildingSpot {
+    override def shouldUse = true
+    override def evaluateCostly = throw new RuntimeException("This should not be called")
+    override def predefined = fixedPosition
+  }
+
+  val useDefault = new AlternativeBuildingSpot {
+    override def evaluateCostly = None
+    override def shouldUse = false
+    override def predefined= None
+  }
+}
+
+
 trait BuildingRequestHelper extends AIModule[WorkerUnit] {
   private val buildingEmployer = new Employer[Building](universe)
 
   def requestBuilding[T <: Building](buildingType: Class[_ <: T],
-                                     takeCareOfDependencies: Boolean,
-                                     customBuildingPosition: Option[() => Option[MapTilePosition]] = None): Unit = {
+                                     takeCareOfDependencies: Boolean = false,
+                                     saveMoneyIfPoor:Boolean = false,
+                                     customBuildingPosition: AlternativeBuildingSpot = AlternativeBuildingSpot.useDefault,
+                                     belongsTo:Option[ResourceArea] = None): Unit = {
     val req = ResourceRequests.forUnit(universe.race, buildingType)
     val result = resources.request(req, buildingEmployer)
     result.ifSuccess { suc =>
         val unitReq = UnitJobRequests.newOfType(universe, buildingEmployer, buildingType, suc,
-          customBuildingPosition = customBuildingPosition)
+          customBuildingPosition = customBuildingPosition, belongsTo = belongsTo)
       debug(s"Financing possible for $buildingType, requesting build")
         val result = unitManager.request(unitReq)
         if (result.hasAnyMissingRequirements) {
@@ -42,10 +78,14 @@ trait BuildingRequestHelper extends AIModule[WorkerUnit] {
         if (takeCareOfDependencies) {
           result.notExistingMissingRequiments.foreach { what =>
             if (!unitManager.plannedToBuild(what)) {
-              requestBuilding(what, takeCareOfDependencies = false)
+              assert(customBuildingPosition.isEmpty, s"Does not make sense...")
+              requestBuilding(what, takeCareOfDependencies, saveMoneyIfPoor, customBuildingPosition, belongsTo)
             }
           }
         }
+    }
+    if (result.failed && saveMoneyIfPoor) {
+      resources.forceLock_!(req, buildingEmployer)
     }
   }
 }
@@ -260,9 +300,11 @@ object Strategy {
     override def suggestNextExpansion = {
       def shouldExpand = expandNow
       if (shouldExpand) {
+        val covered = bases.bases.map(_.resourceArea).toSet
         val where = bases.mainBase.mainBuilding.tilePosition
-        val (choke, what) = strategicMap.domains.minBy(_._1.center.distanceToSquared(where))
-        val target = what.values.flatten.minBy(_.patches.center.distanceToSquared(where))
+        val (choke, what) = strategicMap.domainsButWithout(covered)
+                            .minBy(_._1.center.distanceToSquared(where))
+        val target = what.values.flatten.minBy(_.patches.map(_.center.distanceToSquared(where)).getOrElse(999999))
         Some(target)
       } else {
         None

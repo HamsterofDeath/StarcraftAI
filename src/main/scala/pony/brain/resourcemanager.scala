@@ -14,14 +14,24 @@ case class IncomeStats(minerals: Int, gas: Int, frames: Int) {
 
 object ResourceManager {
   val frameSizeForStats = 600
-
 }
 
 class ResourceManager(override val universe: Universe) extends HasUniverse {
+  def forceLock_![T <: WrapsUnit](req: ResourceRequests, employer: Employer[T]) = {
+    if (!isAlreadyForceLocked(req, employer)) {
+      lockedWithoutFunds += LockedResources(req, employer)
+    }
+  }
+
+  def isAlreadyForceLocked[T <: WrapsUnit](req: ResourceRequests, employer: Employer[T]) = {
+    val compareTo = LockedResources(req, employer)
+    lockedWithoutFunds.contains(compareTo)
+  }
 
   private val resourceHistory         = ArrayBuffer.empty[MinsGas]
   private val empty                   = Resources(0, 0, Supplies(0, 0))
   private val locked                  = ArrayBuffer.empty[LockedResources[_]]
+  private val lockedWithoutFunds      = ArrayBuffer.empty[LockedResources[_]]
   private val lockedSums              = LazyVal.from(calcLockedSums)
   private val failedToProvideThisTick = ArrayBuffer.empty[ResourceRequests]
   private var myResources             = empty
@@ -36,72 +46,95 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
     IncomeStats(minPlus, gasPlus, resourceHistory.size)
   }
   def unlock_!(proofForFunding: ResourceApprovalSuccess): Unit = {
-    locked.removeFirstMatch(_.reqs.sum.equalValue(proofForFunding))
+    // forced locks first
+    val isForced = lockedWithoutFunds.exists(_.reqs.sum.equalValue(proofForFunding))
+    if (isForced) {
+      lockedWithoutFunds.removeFirstMatch(_.reqs.sum.equalValue(proofForFunding))
+    } else {
+      locked.removeFirstMatch(_.reqs.sum.equalValue(proofForFunding))
+    }
     trace(s"Unlocked $proofForFunding")
     lockedSums.invalidate()
   }
+
+  def forceUnlock_![T <: WrapsUnit](requests: ResourceRequests, employer: Employer[T]) = {
+    val lock = LockedResources(requests, employer)
+    assert(isAlreadyForceLocked(requests, employer))
+    lockedWithoutFunds -= LockedResources(requests, employer)
+  }
+
   def request[T <: WrapsUnit](requests: ResourceRequests, employer: Employer[T], lock: Boolean = true) = {
-    trace(s"Incoming resource request: $requests")
-    // first check if we have enough resources
-    val hasEnoughDespiteLocking = myUnlockedResources.asSum canCoverCost requests.sum
-    def approvalFail = {
-      failedToProvideThisTick += requests
-      ResourceApprovalFail
+    val forcedLocked = isAlreadyForceLocked(requests, employer)
+    if (forcedLocked) {
+      forceUnlock_!(requests, employer)
     }
-    if (hasEnoughDespiteLocking) {
-      if (lock) lock_!(requests, employer)
-      ResourceApprovalSuccess(requests.sum)
-    } else {
-      val mightGatherEnough = myResources.asSum canCoverCost requests.sum
-      if (mightGatherEnough) {
-        // check if enough resources could be unlocked
-        val unlockOrder = detailedLocks
-                          .filter(requests.priority > _.priority)
-                          .sortBy { e =>
-                            (e.reqs.priority, e.reqs.sum.mineralGasSum)
-                          }
-        var freed = ResourceRequestSums(0, 0, 0)
-        val available = myUnlockedResources.asSum
-        def needsMore = !((freed + available) canCoverCost requests.sum)
-        val requiredToFree = unlockOrder.takeWhile { resourcesToFree =>
-          val stillNeedsMore = needsMore
-          if (stillNeedsMore) {
-            freed += resourcesToFree
-          }
-          stillNeedsMore
-        }
-        if (needsMore) {
-          approvalFail
-        } else {
-          //now ask each locking job if they really allow the unlocking
-          val pool = collection.mutable.HashSet.empty ++ requiredToFree
-          val notGreedy = unitManager.allFundedJobs.filter {_.canReleaseResources}
-          val matched = notGreedy.map { j =>
-            val foundMatch = pool.find(_ == j.proofForFunding)
-            foundMatch.foreach { e =>
-              pool -= e
-            }
-            j -> foundMatch
-          }
-
-          val ok = matched.nonEmpty && matched.forall(_._2.isDefined)
-          if (ok) {
-            trace(s"Unlocking a bunch of resources ${matched.mkString(", ")} to satisfy ${requests} of $employer")
-            matched.foreach { case (j, _) =>
-              j.unlockManually_!()
-              val targetUnit = j.unit
-              unitManager.nobody.assignJob_!(new BusyDoingNothing(targetUnit, unitManager.nobody))
-            }
-            ResourceApprovalSuccess(requests.sum)
-
-          } else {
-            approvalFail
-          }
-        }
+    val result = {
+      trace(s"Incoming resource request: $requests")
+      // first check if we have enough resources
+      val hasEnoughDespiteLocking = myUnlockedResources.asSum.canCoverCost(requests.sum)
+      def approvalFail = {
+        failedToProvideThisTick += requests
+        ResourceApprovalFail
+      }
+      if (hasEnoughDespiteLocking) {
+        if (lock) lock_!(requests, employer)
+        ResourceApprovalSuccess(requests.sum)
       } else {
-        approvalFail
+        val mightGatherEnough = myResources.asSum canCoverCost requests.sum
+        if (mightGatherEnough) {
+          // check if enough resources could be unlocked
+          val unlockOrder = detailedLocks
+                            .filter(requests.priority > _.priority)
+                            .sortBy { e =>
+                              (e.reqs.priority, e.reqs.sum.mineralGasSum)
+                            }
+          var freed = ResourceRequestSums(0, 0, 0)
+          val available = myUnlockedResources.asSum
+          def needsMore = !((freed + available) canCoverCost requests.sum)
+          val requiredToFree = unlockOrder.takeWhile { resourcesToFree =>
+            val stillNeedsMore = needsMore
+            if (stillNeedsMore) {
+              freed += resourcesToFree
+            }
+            stillNeedsMore
+          }
+          if (needsMore) {
+            approvalFail
+          } else {
+            //now ask each locking job if they really allow the unlocking
+            val pool = collection.mutable.HashSet.empty ++ requiredToFree
+            val notGreedy = unitManager.allFundedJobs.filter {_.canReleaseResources}
+            val matched = notGreedy.map { j =>
+              val foundMatch = pool.find(_ == j.proofForFunding)
+              foundMatch.foreach { e =>
+                pool -= e
+              }
+              j -> foundMatch
+            }
+
+            val ok = matched.nonEmpty && matched.forall(_._2.isDefined)
+            if (ok) {
+              trace(s"Unlocking a bunch of resources ${matched.mkString(", ")} to satisfy ${requests} of $employer")
+              matched.foreach { case (j, _) =>
+                j.unlockManually_!()
+                val targetUnit = j.unit
+                unitManager.nobody.assignJob_!(new BusyDoingNothing(targetUnit, unitManager.nobody))
+              }
+              ResourceApprovalSuccess(requests.sum)
+
+            } else {
+              approvalFail
+            }
+          }
+        } else {
+          approvalFail
+        }
       }
     }
+    if (forcedLocked && result.failed) {
+      forceLock_!(requests, employer)
+    }
+    result
   }
   def detailedLocks = locked.toSeq
   private def lock_![T <: WrapsUnit](requests: ResourceRequests, employer: Employer[T]): Unit = {
@@ -132,9 +165,11 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
     unitManager
     .selectJobs((e: ConstructBuilding[WorkerUnit, Building]) => e.typeOfBuilding == unitManager.race.supplyClass)
   }
-  private def calcLockedSums = locked.foldLeft(ResourceRequestSums.empty)((acc, e) => {
-    acc + e
-  })
+  private def calcLockedSums = {
+    val normallyLocked = locked.foldLeft(ResourceRequestSums.empty)(_ + _)
+    val highPrioLocks = lockedWithoutFunds.foldLeft(ResourceRequestSums.empty)(_ + _)
+    normallyLocked + highPrioLocks
+  }
 }
 
 trait ResourceApproval {
@@ -142,6 +177,7 @@ trait ResourceApproval {
   def gas: Int
   def supply: Int
   def success: Boolean
+  def failed = !success
   def isFunded = success
   def assumeSuccessful = {
     assert(success)
@@ -209,6 +245,8 @@ object ResourceRequests {
 }
 
 case class LockedResources[T <: WrapsUnit](reqs: ResourceRequests, employer: Employer[T]) {
+  def equalTo(req: ResourceRequests, employer: Employer[T]) = req == reqs && this.employer == employer
+
   def priority = reqs.priority
 
   def whatFor = reqs.whatFor

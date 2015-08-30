@@ -190,7 +190,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
                  .getPlayers
                  .asScala
                  .map(_.getStartLocation)
-                 .map { p => p -> rawMapWalk.areas.find(_.free(p)) }
+                 .map { p => p -> rawMapWalk.areas.find(_.free(p.getX / 32, p.getY / 32)) }
                  .filter(_._2.exists(_.free(tilePosition)))
     others.size <= 1 // one or less starting positions = "island"
   }
@@ -332,10 +332,10 @@ class ConstructionSiteFinder(universe: Universe) {
     new SubFinder {
       override def find: Option[MapTilePosition] = {
         // background
-        val possible = helper.blockSpiralClockWise(resources.center)
+        val possible = helper.blockSpiralClockWise(resources.center, 25)
         .filter { candidate =>
           val area = Area(candidate, size)
-          grid.free(area) && grid.includes(area)
+          grid.includes(area) && grid.free(area)
         }
 
         if (possible.isEmpty) {
@@ -343,7 +343,7 @@ class ConstructionSiteFinder(universe: Universe) {
         } else {
           val closest = possible.minBy { elem =>
             val area = Area(elem, size)
-            resources.patches.patches.map(_.area.distanceTo(area)).sum
+            resources.patches.map(_.patches.map(_.area.distanceTo(area)).sum).get
           }
           Some(closest)
         }

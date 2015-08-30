@@ -15,14 +15,12 @@ class ProvideNewBuildings(universe: Universe)
     val helper = in.helper
     val job = {
       def newJob(where: MapTilePosition) =
-        new ConstructBuilding(in.worker, in.buildingType, self, where, in.jobRequest.proofForFunding.assumeSuccessful)
+        new ConstructBuilding(in.worker, in.buildingType, self, where, in.jobRequest.proofForFunding.assumeSuccessful,
+          in.jobRequest.belongsTo)
 
-      val customPosition = in.jobRequest.customPosition match {
-        case Some(customEval) =>
-          customEval()
-        case None =>
-          helper.findSpotFor(in.base.mainBuilding.tilePosition, in.buildingType)
-      }
+      val customPosition = in.jobRequest.customPosition.predefined
+                           .orElse(in.jobRequest.customPosition.evaluateCostly)
+                           .orElse(helper.findSpotFor(in.base.mainBuilding.tilePosition, in.buildingType))
       customPosition.map(newJob)
     }
     job match {
@@ -70,7 +68,10 @@ class ProvideNewBuildings(universe: Universe)
 class ProvideExpansions(universe: Universe) extends OrderlessAIModule[WorkerUnit](universe) with BuildingRequestHelper {
   private var plannedExpansionPoint = Option.empty[ResourceArea]
   def forceExpand(patch: MineralPatchGroup) = {
-    plannedExpansionPoint = strategicMap.domains.flatMap(_._2.values.flatten).find(_.patches == patch)
+    plannedExpansionPoint = {
+      val all = strategicMap.domains.flatMap(_._2.values.flatten)
+      all.find(_.isPatchId(patch.patchId))
+    }
   }
   override def onTick(): Unit = {
     ifNth(127) {
@@ -87,7 +88,9 @@ class ProvideExpansions(universe: Universe) extends OrderlessAIModule[WorkerUnit
           }
         case None =>
           val finder = new ConstructionSiteFinder(universe).forResourceArea(resources)
-          requestBuilding(race.resourceDepositClass, false, Some(() => finder.find))
+          val buildingSpot = AlternativeBuildingSpot.fromExpensive(finder.find)
+          requestBuilding(race.resourceDepositClass, takeCareOfDependencies = false, saveMoneyIfPoor = true,
+            buildingSpot, belongsTo = plannedExpansionPoint)
       }
     }
   }
@@ -198,7 +201,10 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
   }
 
   private def createJobsForBases(): Unit = {
-    val add = universe.bases.bases.filterNot(e => gatheringJobs.exists(_.covers(e))).flatMap { base =>
+    val add = universe.bases.bases
+              .filterNot(e => gatheringJobs.exists(_.covers(e)))
+              .filterNot(_.mainBuilding.isBeingCreated)
+              .flatMap { base =>
       base.myMineralGroup.map { minerals =>
         new GetMinerals(base, minerals)
       }
@@ -254,6 +260,8 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
           miningTeam += job
         }
 
+        def isInTeam(worker:WorkerUnit) = miningTeam.exists(_.unit == worker)
+
         def removeFromPatch_!(worker: WorkerUnit): Unit = {
           info(s"Removing $worker from mining team of $patch")
           val found = miningTeam.find(_.unit == worker)
@@ -266,7 +274,9 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
         extends UnitWithJob(emp, myWorker, Priority.Default) with GatherMineralsAtSinglePatch with Interruptable {
 
         listen_!(() => {
-          miningTarget.removeFromPatch_!(myWorker)
+          if (miningTarget.isInTeam(myWorker)) {
+            miningTarget.removeFromPatch_!(myWorker)
+          }
         })
 
         import States._
@@ -405,11 +415,12 @@ class GatherGas(universe: Universe) extends OrderlessAIModule[WorkerUnit](univer
         case None =>
           if (unitManager.unitsByType[WorkerUnit].size >= workerCountBeforeWantingGas) {
             def requestExists = unitManager.requestedConstructions[Refinery]
-                                .exists(_.customPosition.contains(geysir.tilePosition))
+                                .exists(_.customPosition.predefined.contains(geysir.tilePosition))
             def jobExists = unitManager.constructionsInProgress[Refinery]
                             .exists(_.buildWhere == geysir.tilePosition)
             if (!requestExists && !jobExists) {
-              requestBuilding(classOf[Refinery], false, Some(() => Some(geysir.tilePosition)))
+              val where = AlternativeBuildingSpot.fromPreset(geysir.tilePosition)
+              requestBuilding(classOf[Refinery], customBuildingPosition = where)
             }
             unitManager.unitsByType[Refinery]
             .find(_.tilePosition == geysir.tilePosition)

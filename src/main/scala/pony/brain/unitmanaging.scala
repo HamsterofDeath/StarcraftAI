@@ -3,6 +3,7 @@ package brain
 
 import bwapi.Order
 import pony.Orders.Stop
+import pony.brain.modules.AlternativeBuildingSpot
 
 import scala.collection.mutable
 import scala.collection.mutable.{ArrayBuffer, ListBuffer}
@@ -374,7 +375,7 @@ class UnitCollector[T <: WrapsUnit : Manifest](req: UnitJobRequests[T], override
   def missingAsRequest: UnitJobRequests[T] = {
     val typesAndAmounts = remainingAmountsPerRequest.filter(_._2 > 0).map { case (req, amount) =>
       BuildUnitRequest[T](universe, req.typeOfRequestedUnit, amount, ResourceApprovalFail, Priority.Default,
-      None)
+      AlternativeBuildingSpot.useDefault)
     }
     UnitJobRequests[T](typesAndAmounts.toSeq, req.employer, req.priority)
   }
@@ -444,6 +445,14 @@ abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: 
   private  val creationTick       = currentTick
   private  val listeners          = ArrayBuffer.empty[JobFinishedListener[T]]
   private  var noCommandsForTicks = 0
+
+  private var dead = false
+
+  units.registerKill_!( OnKillListener.on(unit, () => {
+    debug(s"Unit $unit died, aborting $this")
+    dead = true
+  }))
+
   def hasNotYetSpendResources: Boolean = true
   def onTick(): Unit = {
     unit.onTick()
@@ -471,7 +480,9 @@ abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: 
     listeners.foreach(_.onFinishOrFail())
   }
   def listen_!(listener: JobFinishedListener[T]): Unit = listeners += listener
-  def hasFailed: Boolean = false
+  def hasFailed = dead || myHasFailed
+
+  protected def myHasFailed:Boolean = false
   protected def ordersForTick: Seq[UnitOrder]
 }
 
@@ -553,7 +564,7 @@ class TrainUnit[F <: UnitFactory, T <: Mobile](factory: F, trainType: Class[_ <:
     }
   }
 
-  override def hasFailed: Boolean = {
+  override def myHasFailed: Boolean = {
     age > 50 && !startedToProduce
   }
 
@@ -602,9 +613,9 @@ class ConstructAddon[W <: CanBuildAddons, A <: Addon](employer: Employer[W],
       basis.notifyAttach_!(e)
     }
   }
-  override def hasFailed: Boolean = {
+  override def myHasFailed: Boolean = {
     def myFail = age > 50 && !startedConstruction
-    super.hasFailed || myFail
+    super.myHasFailed || myFail
   }
   override def getOrder = Orders.ConstructAddon(basis, builtWhat).toSeq
   override def proofForFunding = funding
@@ -623,8 +634,8 @@ class ResearchUpgrade[U <: Upgrader](employer: Employer[U],
     startedResearch && stoppedResearch
   }
 
-  override def hasFailed: Boolean = {
-    super.hasFailed || (age > 50 && !startedResearch)
+  override def myHasFailed: Boolean = {
+    super.myHasFailed || (age > 50 && !startedResearch)
   }
 
   override def onTick(): Unit = {
@@ -648,8 +659,7 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, bu
                                                                    employer: Employer[W],
                                                                    val buildWhere: MapTilePosition,
                                                                    funding: ResourceApprovalSuccess,
-                                                                   val belongsTo:Option[ResourceArea] = None
-                                                                  )
+                                                                   val belongsTo:Option[ResourceArea] = None)
   extends UnitWithJob[W](employer, worker, Priority.ConstructBuilding) with JobHasFunding[W] with CreatesUnit[W] with
           IssueOrderNTimes[W] with CanAcceptUnitSwitch[W] {
 
@@ -677,7 +687,7 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, bu
   override def proofForFunding = funding
   override def canSwitchNow = !startedActualConstuction
   override def couldSwitchInTheFuture = !startedActualConstuction
-  override def hasFailed: Boolean = {
+  override def myHasFailed: Boolean = {
     val fail = !worker.isInConstructionProcess && age > times + 10 && !isFinished
     warn(s"Construction of ${typeOfBuilding.className} failed, worker $worker didn't manange", fail)
     fail
@@ -720,7 +730,7 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, bu
     UnitJobRequests(anyUnitRequest.toSeq, employer, priority)
   }
 
-  override def newFor(replacement: W) = new ConstructBuilding(replacement, buildingType, employer, buildWhere, funding)
+  override def newFor(replacement: W) = new ConstructBuilding(replacement, buildingType, employer, buildWhere, funding, belongsTo)
 }
 
 sealed trait Behaviour
@@ -883,7 +893,8 @@ trait OnClearAction {
 
 case class BuildUnitRequest[T <: WrapsUnit](universe: Universe, typeOfRequestedUnit: Class[_ <: T], amount: Int,
                                             funding: ResourceApproval, override val priority: Priority,
-                                            customBuildingPosition: Option[() => Option[MapTilePosition]])
+                                            customBuildingPosition: AlternativeBuildingSpot,
+                                            belongsTo :Option[ResourceArea] = None)
   extends UnitRequest[T] with HasFunding with HasUniverse {
 
   def isAddon = classOf[Addon].isAssignableFrom(typeOfRequestedUnit)
@@ -892,7 +903,9 @@ case class BuildUnitRequest[T <: WrapsUnit](universe: Universe, typeOfRequestedU
 
   def isMobile = classOf[Mobile].isAssignableFrom(typeOfRequestedUnit)
 
-  customBuildingPosition.foreach(_ => assert(typeOfRequestedUnit.toUnitType.isBuilding))
+  if (customBuildingPosition.shouldUse) {
+    assert(typeOfRequestedUnit.toUnitType.isBuilding)
+  }
 
   override def proofForFunding = funding
 
@@ -1007,10 +1020,11 @@ object UnitJobRequests {
   def newOfType[T <: WrapsUnit : Manifest](universe: Universe, employer: Employer[T], ofType: Class[_ <: T],
                                            funding: ResourceApprovalSuccess, amount: Int = 1,
                                            priority: Priority = Priority.Default,
-                                           customBuildingPosition: Option[() => Option[MapTilePosition]] = None) = {
+                                           customBuildingPosition: AlternativeBuildingSpot = AlternativeBuildingSpot.useDefault,
+                                           belongsTo :Option[ResourceArea] = None) = {
     val actualType = universe.race.specialize(ofType)
     val req: BuildUnitRequest[T] = BuildUnitRequest(universe, actualType, amount, funding, priority,
-      customBuildingPosition)
+      customBuildingPosition, belongsTo)
     // this one needs to survive across ticks
     req.persistant_!()
     UnitJobRequests[T](req.toSeq, employer, priority)

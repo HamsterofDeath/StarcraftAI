@@ -2,9 +2,10 @@ package pony
 
 import bwapi.Game
 
-case class ResourceArea(patches: MineralPatchGroup, geysirs: Set[Geysir]) {
-  val resources = patches.patches ++ geysirs
-  def center = patches.center
+case class ResourceArea(patches: Option[MineralPatchGroup], geysirs: Set[Geysir]) {
+  val resources = patches.map(_.patches).getOrElse(Nil) ++ geysirs
+  def center = patches.map(_.center).getOrElse(geysirs.head.tilePosition)
+  def isPatchId(id:Int) = patches.fold(false)(_.patchId == id)
 }
 
 case class PotentialDomain(coveredOnLand: Seq[ResourceArea], needsToControl: Seq[MapTilePosition])
@@ -87,7 +88,7 @@ class StrategicMap(resources: Seq[ResourceArea], walkable: Grid2D, game: Game) {
     }
 
     val groupedByArea = tooMany.filter(_._2.size > 1)
-                        .groupBy(_._2.values.toSet)
+                        .groupBy(_._2.values.toSet.flatten)
     val reduced = groupedByArea.values.map { manyWithSameValue =>
       val center = {
         val tup = manyWithSameValue.map { case (choke, _) =>
@@ -101,5 +102,21 @@ class StrategicMap(resources: Seq[ResourceArea], walkable: Grid2D, game: Game) {
     complete
   })
   def domains = myDomains.get
+
+  def domainsButWithout(these:Set[ResourceArea]) = domains.flatMap { case (choke, areas) =>
+    val cleaned = areas.flatMap {case (grid, resourcesInArea) =>
+      val remaining = resourcesInArea -- these
+      if (remaining.nonEmpty) {
+        Some(grid -> remaining)
+      } else
+        None
+     }
+      if (cleaned.nonEmpty  ) {
+        Some(choke -> cleaned)
+      } else {
+        None
+      }
+  }
+
   private def fileName = s"${game.mapFileName()}_${game.mapHash()}"
 }

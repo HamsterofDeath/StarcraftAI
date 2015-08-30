@@ -91,6 +91,13 @@ case class Line(a: MapTilePosition, b: MapTilePosition) {
 case class Area(upperLeft: MapTilePosition, sizeOfArea: Size) {
 
   val lowerRight = upperLeft.movedBy(sizeOfArea).movedBy(-1, -1)
+
+  val edges = upperLeft ::
+              MapTilePosition(lowerRight.x, upperLeft.y) ::
+              lowerRight ::
+              MapTilePosition(upperLeft.x, lowerRight.y) ::
+              Nil
+
   val center     = MapPosition((upperLeft.mapX + lowerRight.mapX) / 2, (upperLeft.mapY + lowerRight.mapY) / 2)
   def distanceTo(tilePosition: MapTilePosition) = {
     // TODO optimize

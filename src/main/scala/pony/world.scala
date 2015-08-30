@@ -298,8 +298,17 @@ class DefaultWorld(game: Game) extends WorldListener with WorldEventDispatcher {
 
   def tickCount = ticks
 
+  private val removeQueue = ArrayBuffer.empty[bwapi.Unit]
+
+  override def onUnitDestroy(unit: bwapi.Unit): Unit = {
+    super.onUnitDestroy(unit)
+    removeQueue += unit
+  }
+
   def tick(): Unit = {
     debugger.tick()
+    units.dead_!(removeQueue.toSeq)
+    removeQueue.clear()
     units.tick()
   }
 
@@ -345,7 +354,43 @@ class Debugger(game: Game) {
 
 }
 
+object OnKillListener {
+  def on[T <: WrapsUnit, X](unit:T, doThis:() => X) = new OnKillListener[T](unit) {
+    override def onKill(t: T): Unit = {
+      assert(t == unit)
+      doThis()
+    }
+  }
+}
+
+abstract class OnKillListener[T <: WrapsUnit](val unit:T) {
+  def onKill(t:T)
+  def onKillUnTyped(t:WrapsUnit) = {
+    assert(unit == t)
+    onKill(unit)
+  }
+  def nativeUnitId = unit.nativeUnitId
+}
+
 class Units(game: Game) {
+
+  private val killListeners = mutable.HashMap.empty[Int, OnKillListener[_]]
+
+  def registerKill_![T <: WrapsUnit](listener:OnKillListener[T]):Unit = {
+    // this will always replace the latest listener
+    killListeners += ((listener.nativeUnitId, listener))
+  }
+
+  def dead_!(dead: Seq[bwapi.Unit]) = {
+    dead.foreach {u =>
+      val toBeRemoved = knownUnits(u.getID)
+      killListeners.get(u.getID).foreach { e =>
+        e.onKillUnTyped(toBeRemoved)
+        killListeners.remove(u.getID)
+      }
+      knownUnits -= u.getID
+    }
+  }
 
   private val knownUnits = mutable.HashMap.empty[Long, WrapsUnit]
   private var initial    = true
@@ -415,6 +460,8 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
              protected val containsBlocked: Boolean = true) extends Serializable {
   self =>
 
+  override def toString = s"$cols*$rows, $freeCount free"
+
   private val lazyAreas = LazyVal.from {new AreaHelper(self).findFreeAreas}
   def free(a: Area): Boolean = a.tiles.forall(free)
   def free(p: TilePosition): Boolean = free(p.getX, p.getY)
@@ -424,7 +471,9 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
     anyBlockedOnLine(Line(absoluteFrom, absoluteTo))
   }
   def anyBlockedOnLine(line: Line): Boolean = {
-    AreaHelper.traverseTilesOfLine(line.a, line.b, (x, y) => if (blocked(x, y)) Some(true) else None, false)
+    AreaHelper.traverseTilesOfLine(line.a, line.b, (x, y) => {
+      if (includes(x, y) && blocked(x, y)) Some(true) else None
+    }, false)
   }
   def blocked(x: Int, y: Int): Boolean = !free(x, y)
   def areaWhichContains(tile: MapTilePosition) = areas.find(_.containsAsData(tile))
@@ -490,7 +539,6 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
       val coord = x + y * cols
       if (containsBlocked) !areaDataBitSet(coord) else areaDataBitSet(coord)
   }
-  override def toString: String = s"Grid2D(${areaDataBitSet.size} of ${size})"
   def blocked = size - walkable
   def walkable = areaDataBitSet.size
   def blocked(p: MapTilePosition): Boolean = !free(p)
@@ -592,7 +640,7 @@ class MineralAnalyzer(map: AnalyzedMap, myUnits: Units) {
     patchGroups.toSeq
   }
   val resourceAreas = {
-    groups.map { patchGroup => ResourceArea(patchGroup, Set.empty) }
+    groups.map { patchGroup => ResourceArea(Some(patchGroup), Set.empty) }
   }
 
   def nearestTo(position: MapTilePosition) = {

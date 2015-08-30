@@ -186,6 +186,7 @@ class TwilightSparkle(world: DefaultWorld) {
     resources.tick()
     unitManager.tick()
     strategy.tick()
+    bases.tick()
 
     val tick = world.tickCount
 
@@ -208,6 +209,15 @@ class Bases(world: DefaultWorld) {
 
   def bases = myBases.toSeq
 
+  def known(mb:MainBuilding) = myBases.exists(_.mainBuilding == mb)
+
+  def tick():Unit = {
+    val all = world.units.allByType[MainBuilding]
+    all.filterNot(known).foreach {
+      myBases += new Base(_)(world)
+    }
+  }
+
   def findMainBase(): Unit = {
     world.units.firstByType[MainBuilding].foreach {myBases += new Base(_)(world)}
   }
@@ -219,6 +229,8 @@ case class Base(mainBuilding: MainBuilding)(world: DefaultWorld) {
   val myGeysirs      = world.units.geysirs
                        .filter(g => mainBuilding.area.distanceTo(g.area) < 5)
                        .toSet
+
+  val resourceArea = ResourceArea(myMineralGroup, myGeysirs)
 
   info(
     s"""
