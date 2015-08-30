@@ -381,14 +381,23 @@ class Units(game: Game) {
     killListeners += ((listener.nativeUnitId, listener))
   }
 
+  private val graveyard = mutable.HashSet.empty[Int]
+
   def dead_!(dead: Seq[bwapi.Unit]) = {
-    dead.foreach {u =>
-      val toBeRemoved = knownUnits(u.getID)
-      killListeners.get(u.getID).foreach { e =>
-        e.onKillUnTyped(toBeRemoved)
-        killListeners.remove(u.getID)
+    dead.foreach { u =>
+      knownUnits.get(u.getID).foreach { died =>
+        killListeners.get(u.getID).foreach { e =>
+          died match {
+            case cd: CanDie =>
+              cd.notifyDead_!()
+            case _ =>
+          }
+          e.onKillUnTyped(died)
+          killListeners.remove(u.getID)
+        }
+        knownUnits -= u.getID
+        graveyard += u.getID
       }
-      knownUnits -= u.getID
     }
   }
 
@@ -443,15 +452,17 @@ class Units(game: Game) {
   }
 
   private def addUnit(u: bwapi.Unit): Unit = {
-    knownUnits.get(u.getID) match {
-      case None =>
-        val lifted = UnitWrapper.lift(u)
-        info(s"Own unit added: $lifted")
-        knownUnits.put(u.getID, lifted)
-      case Some(unit) if unit.initialType != u.getType =>
-        info(s"Unit morphed from ${unit.initialType} to ${u.getType}")
-        knownUnits.put(u.getID, UnitWrapper.lift(u))
-      case _ => // noop
+    if (!graveyard(u.getID)) {
+      knownUnits.get(u.getID) match {
+        case None =>
+          val lifted = UnitWrapper.lift(u)
+          info(s"Own unit added: $lifted")
+          knownUnits.put(u.getID, lifted)
+        case Some(unit) if unit.initialType != u.getType =>
+          info(s"Unit morphed from ${unit.initialType} to ${u.getType}")
+          knownUnits.put(u.getID, UnitWrapper.lift(u))
+        case _ => // noop
+      }
     }
   }
 }

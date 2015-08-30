@@ -253,37 +253,37 @@ class DebugHelper(main: MainAI) extends AIPlugIn with HasUniverse {
       Try(words match {
         case command :: params =>
           command match {
-            case "expand" =>
+            case "expand" | "e" =>
               params match {
                 case List(mineralsId) =>
                   val patch = world.mineralPatches.groups.find(_.patchId.toString == mineralsId).get
                   main.brain.pluginByType[ProvideExpansions].forceExpand(patch)
               }
 
-            case "speed" =>
+            case "speed" | "s" =>
               params match {
                 case List(integer) =>
                   universe.world.debugger.speed(integer.toInt)
               }
-            case "debugoff" =>
+            case "debugoff" | "doff" =>
               universe.world.debugger.off()
-            case "debugon" =>
+            case "debugon" | "don" =>
               universe.world.debugger.on()
-            case "debug" =>
+            case "debug" | "d" =>
               params match {
                 case List(id) =>
                   unitManager.jobByUnitIdString(id).foreach {debugUnit}
               }
-            case "attack" =>
+            case "attack" | "a" =>
               params match {
-                case List("minerals", id) =>
+                case List(x, id) if x == "m" || x == "minerals" =>
                   world.mineralPatches.groups.find(_.patchId.toString == id).foreach { group =>
                     units.mineByType[Mobile].filterNot(_.isInstanceOf[WorkerUnit]).foreach { u =>
                       world.orderQueue.queue_!(new AttackMove(u, group.center.randomized(12)))
                     }
                   }
 
-                case List("choke", id) =>
+                case List(x, id) if x == "c" || x == "choke" =>
                   strategicMap.domains.find(_._1.index.toString == id).foreach { choke =>
                     units.mineByType[Mobile].filterNot(_.isInstanceOf[WorkerUnit]).foreach { u =>
                       world.orderQueue.queue_!(new AttackMove(u, choke._1.center.randomized(3)))

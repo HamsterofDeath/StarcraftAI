@@ -72,7 +72,7 @@ trait WrapsUnit extends HasNativeSCAttributes with HasUniverse {
 
 }
 
-trait Controllable extends WrapsUnit
+trait Controllable extends WrapsUnit with CanDie
 
 object WrapsUnit {
   private var counter = 0
@@ -101,7 +101,7 @@ trait BlockingTiles extends StaticallyPositioned {
 
 }
 
-trait Building extends BlockingTiles {
+trait Building extends BlockingTiles with CanDie {
 
 }
 
@@ -184,7 +184,18 @@ trait SpellcasterBuilding extends Building with Controllable {
 
 }
 
+trait CanDie extends WrapsUnit {
+  private var dead = false
+  def isDead = dead
+
+  def notifyDead_!(): Unit = {
+    dead = true
+  }
+
+}
+
 trait Mobile extends WrapsUnit with Controllable {
+
   def isGuarding = nativeUnit.getOrder == Order.PlayerGuard
 
   def isMoving = nativeUnit.isMoving

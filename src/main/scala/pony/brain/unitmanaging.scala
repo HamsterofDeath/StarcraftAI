@@ -137,14 +137,21 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
 
     removeUs.foreach { job =>
       job.unit match {
-        case m: Mobile =>
+        case m: Mobile if !m.isDead =>
           // stop whatever you were doing so the next employer doesn't hire a rebel
           world.orderQueue.queue_!(new Stop(m))
         case _ =>
       }
 
-      val newJob = new BusyDoingNothing(job.unit, Nobody)
-      assignJob_!(newJob)
+      job.unit match {
+        case cd: CanDie if !cd.isDead =>
+          val newJob = new BusyDoingNothing(cd, Nobody)
+          assignJob_!(newJob)
+        case cd: CanDie if cd.isDead =>
+          assignments.remove(cd)
+          byEmployer.removeBinding(job.employer, job)
+        case _ =>
+      }
       job.onFinishOrFail()
     }
 
@@ -440,6 +447,12 @@ trait Interruptable {
 }
 abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: T, val priority: Priority)
   extends HasUniverse {
+
+  unit match {
+    case cd: CanDie => assert(!cd.isDead)
+    case _ =>
+  }
+
 
   override val universe           = employer.universe
   private  val creationTick       = currentTick
