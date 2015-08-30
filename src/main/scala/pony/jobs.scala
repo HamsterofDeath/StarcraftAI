@@ -17,6 +17,7 @@ object Priority {
   val ConstructBuilding = Priority(0.63)
   val Upgrades          = Priority(0.65)
   val Addon             = Priority(0.66)
+  val Expand            = Priority(0.67)
   val Supply            = Priority(0.7)
   val Max               = Priority(1)
 

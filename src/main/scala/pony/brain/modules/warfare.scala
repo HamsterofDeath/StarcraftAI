@@ -23,66 +23,78 @@ trait AddonRequestHelper extends AIModule[CanBuildAddons] {
   }
 }
 
-
 trait AlternativeBuildingSpot {
+  def init_!(): Unit
   def isEmpty = !shouldUse
 
   def shouldUse: Boolean
 
   def evaluateCostly: Option[MapTilePosition]
 
-  def predefined:Option[MapTilePosition]
+  def predefined: Option[MapTilePosition]
 }
 
 object AlternativeBuildingSpot {
-  def fromExpensive(evalPosition: => Option[MapTilePosition]): AlternativeBuildingSpot = new AlternativeBuildingSpot {
+  def fromExpensive[X](initOnMainThread: => X)
+                      (evalPosition: (X) => Option[MapTilePosition]): AlternativeBuildingSpot = new
+      AlternativeBuildingSpot {
+    private var initPackage: X = _
+    override def init_!(): Unit = {
+      initPackage = initOnMainThread
+    }
+
     override def shouldUse = true
-    override def evaluateCostly = evalPosition
+    override def evaluateCostly = evalPosition(initPackage)
     override def predefined = None
   }
 
-  def fromPreset(fixedPosition: MapTilePosition):AlternativeBuildingSpot = fromPreset(Some(fixedPosition))
+  def fromPreset(fixedPosition: MapTilePosition): AlternativeBuildingSpot = fromPreset(Some(fixedPosition))
 
   def fromPreset(fixedPosition: Option[MapTilePosition]): AlternativeBuildingSpot = new AlternativeBuildingSpot {
     override def shouldUse = true
     override def evaluateCostly = throw new RuntimeException("This should not be called")
     override def predefined = fixedPosition
+    override def init_!(): Unit = {}
   }
 
   val useDefault = new AlternativeBuildingSpot {
     override def evaluateCostly = None
     override def shouldUse = false
-    override def predefined= None
+    override def predefined = None
+    override def init_!(): Unit = {}
   }
 }
-
 
 trait BuildingRequestHelper extends AIModule[WorkerUnit] {
   private val buildingEmployer = new Employer[Building](universe)
 
   def requestBuilding[T <: Building](buildingType: Class[_ <: T],
                                      takeCareOfDependencies: Boolean = false,
-                                     saveMoneyIfPoor:Boolean = false,
-                                     customBuildingPosition: AlternativeBuildingSpot = AlternativeBuildingSpot.useDefault,
-                                     belongsTo:Option[ResourceArea] = None): Unit = {
-    val req = ResourceRequests.forUnit(universe.race, buildingType)
+                                     saveMoneyIfPoor: Boolean = false,
+                                     customBuildingPosition: AlternativeBuildingSpot = AlternativeBuildingSpot
+                                                                                       .useDefault,
+                                     belongsTo: Option[ResourceArea] = None,
+                                     priority: Priority = Priority.Default): Unit = {
+    val req = ResourceRequests.forUnit(universe.race, buildingType, priority)
     val result = resources.request(req, buildingEmployer)
     result.ifSuccess { suc =>
-        val unitReq = UnitJobRequests.newOfType(universe, buildingEmployer, buildingType, suc,
-          customBuildingPosition = customBuildingPosition, belongsTo = belongsTo)
+      val unitReq = UnitJobRequests.newOfType(universe, buildingEmployer, buildingType, suc,
+        customBuildingPosition = customBuildingPosition, belongsTo = belongsTo,
+        priority = priority)
       debug(s"Financing possible for $buildingType, requesting build")
-        val result = unitManager.request(unitReq)
-        if (result.hasAnyMissingRequirements) {
-          resources.unlock_!(suc)
-        }
-        if (takeCareOfDependencies) {
-          result.notExistingMissingRequiments.foreach { what =>
-            if (!unitManager.plannedToBuild(what)) {
-              assert(customBuildingPosition.isEmpty, s"Does not make sense...")
-              requestBuilding(what, takeCareOfDependencies, saveMoneyIfPoor, customBuildingPosition, belongsTo)
-            }
+      val result = unitManager.request(unitReq)
+      if (result.hasAnyMissingRequirements) {
+        resources.unlock_!(suc)
+      }
+      if (takeCareOfDependencies) {
+        result.notExistingMissingRequiments.foreach { what =>
+          if (!unitManager.plannedToBuild(what)) {
+            assert(customBuildingPosition.isEmpty, s"Does not make sense...")
+            requestBuilding(what, takeCareOfDependencies, saveMoneyIfPoor, customBuildingPosition, belongsTo,
+              priority = priority)
           }
         }
+      }
     }
     if (result.failed && saveMoneyIfPoor) {
       resources.forceLock_!(req, buildingEmployer)
@@ -100,25 +112,25 @@ trait UnitRequestHelper extends AIModule[UnitFactory] {
     val req = ResourceRequests.forUnit(universe.race, mobileType)
     val result = resources.request(req, mobileEmployer)
     result.ifSuccess { suc =>
-        val unitReq = UnitJobRequests.newOfType(universe, mobileEmployer, mobileType, suc)
+      val unitReq = UnitJobRequests.newOfType(universe, mobileEmployer, mobileType, suc)
       debug(s"Financing possible for $mobileType, requesting training")
-        val result = unitManager.request(unitReq)
-        if (result.hasAnyMissingRequirements) {
-          // do not forget to unlock the resources again
-          resources.unlock_!(suc)
-        }
-        if (takeCareOfDependencies) {
-          result.notExistingMissingRequiments.foreach { requirement =>
-            if (!unitManager.plannedToBuild(requirement)) {
-              def isAddon = classOf[Addon].isAssignableFrom(requirement)
-              if (isAddon) {
-                addonHelper.requestAddon(requirement.asInstanceOf[Class[_ <: Addon]])
-              } else {
-                buildingHelper.requestBuilding(requirement, takeCareOfDependencies = false)
-              }
+      val result = unitManager.request(unitReq)
+      if (result.hasAnyMissingRequirements) {
+        // do not forget to unlock the resources again
+        resources.unlock_!(suc)
+      }
+      if (takeCareOfDependencies) {
+        result.notExistingMissingRequiments.foreach { requirement =>
+          if (!unitManager.plannedToBuild(requirement)) {
+            def isAddon = classOf[Addon].isAssignableFrom(requirement)
+            if (isAddon) {
+              addonHelper.requestAddon(requirement.asInstanceOf[Class[_ <: Addon]])
+            } else {
+              buildingHelper.requestBuilding(requirement, takeCareOfDependencies = false)
             }
           }
         }
+      }
     }
   }
 }
@@ -264,7 +276,7 @@ object Strategy {
 
   trait LongTermStrategy extends HasUniverse {
     val timingHelpers = new TimingHelpers
-    def suggestNextExpansion:Option[ResourceArea]
+    def suggestNextExpansion: Option[ResourceArea]
     def suggestUpgrades: Seq[UpgradeToResearch]
     def suggestUnits: Seq[IdealUnitRatio[_ <: Mobile]]
     def suggestProducers: Seq[IdealProducerCount[_ <: UnitFactory]]

@@ -19,6 +19,12 @@ object ResourceManager {
 class ResourceManager(override val universe: Universe) extends HasUniverse {
   def forceLock_![T <: WrapsUnit](req: ResourceRequests, employer: Employer[T]) = {
     if (!isAlreadyForceLocked(req, employer)) {
+      forceLockInternal_!(req, employer)
+    }
+  }
+
+  def forceLockInternal_![T <: WrapsUnit](req: ResourceRequests, employer: Employer[T]) = {
+    if (!isAlreadyForceLocked(req, employer)) {
       lockedWithoutFunds += LockedResources(req, employer)
     }
   }
@@ -58,6 +64,10 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
   }
 
   def forceUnlock_![T <: WrapsUnit](requests: ResourceRequests, employer: Employer[T]) = {
+    forceUnlockInternal_!(requests, employer)
+  }
+
+  private def forceUnlockInternal_![T <: WrapsUnit](requests: ResourceRequests, employer: Employer[T]) = {
     val lock = LockedResources(requests, employer)
     assert(isAlreadyForceLocked(requests, employer))
     lockedWithoutFunds -= LockedResources(requests, employer)
@@ -66,7 +76,7 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
   def request[T <: WrapsUnit](requests: ResourceRequests, employer: Employer[T], lock: Boolean = true) = {
     val forcedLocked = isAlreadyForceLocked(requests, employer)
     if (forcedLocked) {
-      forceUnlock_!(requests, employer)
+      forceUnlockInternal_!(requests, employer)
     }
     val result = {
       trace(s"Incoming resource request: $requests")
@@ -120,6 +130,7 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
                 val targetUnit = j.unit
                 unitManager.nobody.assignJob_!(new BusyDoingNothing(targetUnit, unitManager.nobody))
               }
+              if (lock) lock_!(requests, employer)
               ResourceApprovalSuccess(requests.sum)
 
             } else {
@@ -132,7 +143,7 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
       }
     }
     if (forcedLocked && result.failed) {
-      forceLock_!(requests, employer)
+      forceLockInternal_!(requests, employer)
     }
     result
   }

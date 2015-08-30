@@ -54,6 +54,7 @@ class ProvideNewBuildings(universe: Universe)
       val request = UnitJobRequests.constructor(self)
       unitManager.request(request) match {
         case success: ExactlyOneSuccess[WorkerUnit] =>
+          req.customPosition.init_!()
           new Data(success.onlyOne, req.typeOfRequestedUnit, unitManager.bases.mainBase,
             new ConstructionSiteFinder(universe), req).toSome
         case _ => None
@@ -87,10 +88,12 @@ class ProvideExpansions(universe: Universe) extends OrderlessAIModule[WorkerUnit
             plannedExpansionPoint = None
           }
         case None =>
-          val finder = new ConstructionSiteFinder(universe).forResourceArea(resources)
-          val buildingSpot = AlternativeBuildingSpot.fromExpensive(finder.find)
-          requestBuilding(race.resourceDepositClass, takeCareOfDependencies = false, saveMoneyIfPoor = true,
-            buildingSpot, belongsTo = plannedExpansionPoint)
+          if (!unitManager.plannedToBuild(race.resourceDepositClass)) {
+            val buildingSpot = AlternativeBuildingSpot
+                               .fromExpensive(new ConstructionSiteFinder(universe).forResourceArea(resources))(_.find)
+            requestBuilding(race.resourceDepositClass, takeCareOfDependencies = false, saveMoneyIfPoor = true,
+              buildingSpot, belongsTo = plannedExpansionPoint, priority = Priority.ConstructBuilding)
+          }
       }
     }
   }
@@ -109,13 +112,13 @@ class ProvideNewSupply(universe: Universe) extends OrderlessAIModule[WorkerUnit]
       val race = universe.bases.mainBase.mainBuilding.race
       val result = resources.request(ResourceRequests.forUnit(race, classOf[SupplyProvider], Priority.Supply), this)
       result.ifSuccess { suc =>
-          trace(s"More supply approved! $suc, requesting ${race.supplyClass.className}")
-          val ofType = UnitJobRequests
-                       .newOfType(universe, supplyEmployer, classOf[SupplyProvider], suc, priority = Priority.Supply)
+        trace(s"More supply approved! $suc, requesting ${race.supplyClass.className}")
+        val ofType = UnitJobRequests
+                     .newOfType(universe, supplyEmployer, classOf[SupplyProvider], suc, priority = Priority.Supply)
 
-          // this will always be unfulfilled
-          val result = unitManager.request(ofType)
-          assert(!result.success, s"Impossible success: $result")
+        // this will always be unfulfilled
+        val result = unitManager.request(ofType)
+        assert(!result.success, s"Impossible success: $result")
       }
     }
   }
@@ -205,10 +208,10 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
               .filterNot(e => gatheringJobs.exists(_.covers(e)))
               .filterNot(_.mainBuilding.isBeingCreated)
               .flatMap { base =>
-      base.myMineralGroup.map { minerals =>
-        new GetMinerals(base, minerals)
-      }
-    }
+                base.myMineralGroup.map { minerals =>
+                  new GetMinerals(base, minerals)
+                }
+              }
     info(
       s"""
          |Added new mineral gathering job(s): ${add.mkString(" & ")}
@@ -260,7 +263,7 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
           miningTeam += job
         }
 
-        def isInTeam(worker:WorkerUnit) = miningTeam.exists(_.unit == worker)
+        def isInTeam(worker: WorkerUnit) = miningTeam.exists(_.unit == worker)
 
         def removeFromPatch_!(worker: WorkerUnit): Unit = {
           info(s"Removing $worker from mining team of $patch")
