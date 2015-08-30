@@ -66,12 +66,13 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
       case b: BuildUnitRequest[_] if b.typeOfRequestedUnit == targetType => b
     }
   }
-  def constructionsInProgress[T <: Building : Manifest]:Seq[ConstructBuilding[WorkerUnit, T]] = {
+  def constructionsInProgress[T <: Building : Manifest]: Seq[ConstructBuilding[WorkerUnit, T]] = {
     constructionsInProgress(manifest[T].runtimeClass.asInstanceOf[Class[_ <: T]])
   }
-  def constructionsInProgress[T <: Building](typeOfBuilding:Class[_ <: T]): Seq[ConstructBuilding[WorkerUnit, T]] = {
+  def constructionsInProgress[T <: Building](typeOfBuilding: Class[_ <: T]): Seq[ConstructBuilding[WorkerUnit, T]] = {
     val byJob = allJobsByType[ConstructBuilding[WorkerUnit, Building]].collect {
-      case cr: ConstructBuilding[WorkerUnit, Building] if typeOfBuilding.isAssignableFrom(cr.typeOfBuilding) => cr.asInstanceOf[ConstructBuilding[WorkerUnit, T]]
+      case cr: ConstructBuilding[WorkerUnit, Building] if typeOfBuilding.isAssignableFrom(cr.typeOfBuilding) => cr
+                                                                                                                .asInstanceOf[ConstructBuilding[WorkerUnit, T]]
     }
     byJob
   }
@@ -453,7 +454,6 @@ abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: 
     case _ =>
   }
 
-
   override val universe           = employer.universe
   private  val creationTick       = currentTick
   private  val listeners          = ArrayBuffer.empty[JobFinishedListener[T]]
@@ -461,7 +461,7 @@ abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: 
 
   private var dead = false
 
-  units.registerKill_!( OnKillListener.on(unit, () => {
+  units.registerKill_!(OnKillListener.on(unit, () => {
     debug(s"Unit $unit died, aborting $this")
     dead = true
   }))
@@ -495,7 +495,7 @@ abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: 
   def listen_!(listener: JobFinishedListener[T]): Unit = listeners += listener
   def hasFailed = dead || myHasFailed
 
-  protected def myHasFailed:Boolean = false
+  protected def myHasFailed: Boolean = false
   protected def ordersForTick: Seq[UnitOrder]
 }
 
@@ -672,7 +672,7 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, bu
                                                                    employer: Employer[W],
                                                                    val buildWhere: MapTilePosition,
                                                                    funding: ResourceApprovalSuccess,
-                                                                   val belongsTo:Option[ResourceArea] = None)
+                                                                   val belongsTo: Option[ResourceArea] = None)
   extends UnitWithJob[W](employer, worker, Priority.ConstructBuilding) with JobHasFunding[W] with CreatesUnit[W] with
           IssueOrderNTimes[W] with CanAcceptUnitSwitch[W] {
 
@@ -685,7 +685,7 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, bu
   private var startedActualConstuction = false
   private var finishedConstruction     = false
   private var resourcesUnlocked        = false
-  private var constructs = Option.empty[Building]
+  private var constructs               = Option.empty[Building]
   override def onTick(): Unit = {
     super.onTick()
     if (startedActualConstuction && !resourcesUnlocked) {
@@ -743,7 +743,8 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, bu
     UnitJobRequests(anyUnitRequest.toSeq, employer, priority)
   }
 
-  override def newFor(replacement: W) = new ConstructBuilding(replacement, buildingType, employer, buildWhere, funding, belongsTo)
+  override def newFor(replacement: W) = new
+      ConstructBuilding(replacement, buildingType, employer, buildWhere, funding, belongsTo)
 }
 
 sealed trait Behaviour
@@ -907,7 +908,7 @@ trait OnClearAction {
 case class BuildUnitRequest[T <: WrapsUnit](universe: Universe, typeOfRequestedUnit: Class[_ <: T], amount: Int,
                                             funding: ResourceApproval, override val priority: Priority,
                                             customBuildingPosition: AlternativeBuildingSpot,
-                                            belongsTo :Option[ResourceArea] = None)
+                                            belongsTo: Option[ResourceArea] = None)
   extends UnitRequest[T] with HasFunding with HasUniverse {
 
   def isAddon = classOf[Addon].isAssignableFrom(typeOfRequestedUnit)
@@ -998,7 +999,6 @@ object UnitJobRequests {
     val req = AnyFactoryRequest[F, T](actualClass, 1, wantedType)
 
     UnitJobRequests(req.toSeq, employer, priority)
-
   }
 
   def constructor[T <: WorkerUnit : Manifest](employer: Employer[T],
@@ -1034,8 +1034,9 @@ object UnitJobRequests {
   def newOfType[T <: WrapsUnit : Manifest](universe: Universe, employer: Employer[T], ofType: Class[_ <: T],
                                            funding: ResourceApprovalSuccess, amount: Int = 1,
                                            priority: Priority = Priority.Default,
-                                           customBuildingPosition: AlternativeBuildingSpot = AlternativeBuildingSpot.useDefault,
-                                           belongsTo :Option[ResourceArea] = None) = {
+                                           customBuildingPosition: AlternativeBuildingSpot = AlternativeBuildingSpot
+                                                                                             .useDefault,
+                                           belongsTo: Option[ResourceArea] = None) = {
     val actualType = universe.race.specialize(ofType)
     val req: BuildUnitRequest[T] = BuildUnitRequest(universe, actualType, amount, funding, priority,
       customBuildingPosition, belongsTo)

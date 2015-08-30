@@ -45,7 +45,7 @@ class StrategicMap(resources: Seq[ResourceArea], walkable: Grid2D, game: Game) {
 
         area.allContained.toVector.par.flatMap { center =>
           val cutters = tries.map(_.movedBy(center))
-                        .filter(line => area.anyBlockedOnLine(line.movedBy(center)))
+                        .filter(line => area.anyBlockedOnLine(line))
                         .flatMap { line =>
                           val operateOn = area.mutableCopy
                           operateOn.block_!(line)
@@ -88,7 +88,7 @@ class StrategicMap(resources: Seq[ResourceArea], walkable: Grid2D, game: Game) {
     }
 
     val groupedByArea = tooMany.filter(_._2.size > 1)
-                        .groupBy(_._2.values.toSet.flatten)
+                        .groupBy(_._2.values.toSet)
     val reduced = groupedByArea.values.map { manyWithSameValue =>
       val center = {
         val tup = manyWithSameValue.map { case (choke, _) =>
