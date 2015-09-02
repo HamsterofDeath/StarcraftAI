@@ -177,6 +177,7 @@ class DefaultBehaviours(universe: Universe) extends OrderlessAIModule[Mobile](un
   private val ignore = mutable.HashSet.empty[Mobile]
 
   override def onTick(): Unit = {
+    rules.foreach(_.onTick())
     // fetch all idles and assign "always on" background tasks to them
     val hireUs = unitManager.allIdleMobiles.filterNot(e => ignore(e.unit)).flatMap { free =>
       val unit = free.unit

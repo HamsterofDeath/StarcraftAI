@@ -278,11 +278,12 @@ case class Resources(minerals: Int, gas: Int, supply: Supplies) {
 class DefaultWorld(game: Game) extends WorldListener with WorldEventDispatcher {
 
   // these must be initialized after the first tick. making them lazy solves this
-  lazy val mineralPatches = new MineralAnalyzer(map, units)
+  lazy val mineralPatches = new MineralAnalyzer(map, myUnits)
   lazy val strategicMap   = new StrategicMap(mineralPatches.resourceAreas, map.walkableGrid, game)
 
   val map        = new AnalyzedMap(game)
-  val units      = new Units(game)
+  val myUnits    = new Units(game, false)
+  val enemyUnits = new Units(game, true)
   val debugger   = new Debugger(game)
   val orderQueue = new OrderQueue(game, debugger)
   private var ticks = 0
@@ -307,9 +308,10 @@ class DefaultWorld(game: Game) extends WorldListener with WorldEventDispatcher {
 
   def tick(): Unit = {
     debugger.tick()
-    units.dead_!(removeQueue.toSeq)
+    myUnits.dead_!(removeQueue.toSeq)
     removeQueue.clear()
-    units.tick()
+    myUnits.tick()
+    enemyUnits.tick()
   }
 
   def postTick(): Unit = {
@@ -372,7 +374,9 @@ abstract class OnKillListener[T <: WrapsUnit](val unit:T) {
   def nativeUnitId = unit.nativeUnitId
 }
 
-class Units(game: Game) {
+class Units(game: Game, hostile: Boolean) {
+
+  private def ownAndNeutral = !hostile
 
   private val killListeners = mutable.HashMap.empty[Int, OnKillListener[_]]
 
@@ -447,11 +451,18 @@ class Units(game: Game) {
   }
 
   private def init(): Unit = {
-    game.getMinerals.asScala.foreach {addUnit}
-    game.getGeysers.asScala.foreach {addUnit}
+    if (ownAndNeutral) {
+      game.getMinerals.asScala.foreach {addUnit}
+      game.getGeysers.asScala.foreach {addUnit}
+    }
   }
 
   private def addUnit(u: bwapi.Unit): Unit = {
+    val ignore = {
+      val me = game.self()
+      val friend = u.getPlayer == null || u.getPlayer.getForce.getPlayers.contains(me)
+      hostile && friend || ownAndNeutral && !friend
+    }
     if (!graveyard(u.getID)) {
       knownUnits.get(u.getID) match {
         case None =>

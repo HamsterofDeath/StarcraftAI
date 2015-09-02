@@ -147,7 +147,7 @@ class TwilightSparkle(world: DefaultWorld) {
     override def unitManager = self.unitManager
     override def currentTick = world.tickCount
     override def mapLayers = self.maps
-    override def units = world.units
+    override def units = world.myUnits
     override def strategicMap = world.strategicMap
     override def strategy = self.strategy
   }
@@ -212,21 +212,21 @@ class Bases(world: DefaultWorld) {
   def known(mb:MainBuilding) = myBases.exists(_.mainBuilding == mb)
 
   def tick():Unit = {
-    val all = world.units.allByType[MainBuilding]
+    val all = world.myUnits.allByType[MainBuilding]
     all.filterNot(known).foreach {
       myBases += new Base(_)(world)
     }
   }
 
   def findMainBase(): Unit = {
-    world.units.firstByType[MainBuilding].foreach {myBases += new Base(_)(world)}
+    world.myUnits.firstByType[MainBuilding].foreach {myBases += new Base(_)(world)}
   }
 }
 
 case class Base(mainBuilding: MainBuilding)(world: DefaultWorld) {
 
   val myMineralGroup = world.mineralPatches.nearestTo(mainBuilding.tilePosition)
-  val myGeysirs      = world.units.geysirs
+  val myGeysirs      = world.myUnits.geysirs
                        .filter(g => mainBuilding.area.distanceTo(g.area) < 5)
                        .toSet
 

@@ -40,13 +40,12 @@ trait OrderHistorySupport extends WrapsUnit {
     }
     override def toString: String = s"$order, $issuedOrder, $target, $job"
   }
-
 }
 
 trait WrapsUnit extends HasNativeSCAttributes with HasUniverse {
-  val unitId      = WrapsUnit.nextId
-  val nativeUnitId      = nativeUnit.getID
-  val initialType = nativeUnit.getType
+  val unitId       = WrapsUnit.nextId
+  val nativeUnitId = nativeUnit.getID
+  val initialType  = nativeUnit.getType
   private var myUniverse: Universe = _
 
   override def universe: Universe = myUniverse
@@ -69,7 +68,6 @@ trait WrapsUnit extends HasNativeSCAttributes with HasUniverse {
   def onTick() = {
 
   }
-
 }
 
 trait Controllable extends WrapsUnit with CanDie
@@ -323,8 +321,8 @@ trait Ignored extends WrapsUnit
 
 trait Resource extends BlockingTiles {
   val blockingAreaForMainBuilding = {
-    val ul = area.upperLeft.movedBy(-3,-3)
-    val lr = area.lowerRight.movedBy(3,3)
+    val ul = area.upperLeft.movedBy(-3, -3)
+    val lr = area.lowerRight.movedBy(3, 3)
     Area(ul, lr)
   }
 
@@ -392,22 +390,74 @@ trait CanUseStimpack extends Mobile with Weapon {
   def isStimmed = nativeUnit.isStimmed || stimTime > 0
   def stimTime = nativeUnit.getStimTimer
 }
+trait PermaCloak extends CanCloak {
+  override def isCloaked = true
+}
 trait CanCloak extends Mobile {
   def isCloaked = nativeUnit.isCloaked
 }
 
+abstract class SingleTargetSpell[C <: HasSingleTargetSpells](tech: Upgrade) {
+
+}
+
+object Spells {
+  case object Lockdown extends SingleTargetSpell[Ghost](Upgrades.Terran.GhostStop)
+  case object Blind extends SingleTargetSpell[Medic](Upgrades.Terran.MedicFlare)
+}
+
+trait HasSingleTargetSpells extends Mobile {
+  val spells: Seq[SingleTargetSpell]
+}
+
+trait Mechanic extends Mobile
+
+class Observer(unit: APIUnit) extends AnyUnit(unit) with MobileDetector with Mechanic
+class Scout(unit: APIUnit) extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with Mechanic
+class Zealot(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundWeapon
+class Dragoon(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with Mechanic
+class Archon(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon
+class Carrier(unit: APIUnit) extends AnyUnit(unit) with AirUnit with Mechanic
+class Arbiter(unit: APIUnit) extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with Mechanic
+class Templar(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with PermaCloak with HasSingleTargetSpells {
+  override val spells: Seq[SingleTargetSpell] = Nil
+}
+class DarkTemplar(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundWeapon with CanCloak
+class DarkArchon(unit: APIUnit) extends AnyUnit(unit) with GroundUnit
+class Corsair(unit: APIUnit) extends AnyUnit(unit) with AirUnit with AirWeapon with Mechanic
+class Interceptor(unit: APIUnit) extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with Mechanic
+class Reaver(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundWeapon with Mechanic
+
+class Scarab(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundWeapon
+class SpiderMine(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundWeapon
+
 class Marine(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with CanUseStimpack
 class Firebat(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundWeapon with CanUseStimpack
 class Ghost(unit: APIUnit)
-  extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with CanCloak with InstantAttack
-class Medic(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with SupportUnit
-class Vulture(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundWeapon with SpiderMines with InstantAttack
-class Tank(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundWeapon with InstantAttack
-class Goliath(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with InstantAttack
-class Wraith(unit: APIUnit) extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with CanCloak with InstantAttack
-class Valkery(unit: APIUnit) extends AnyUnit(unit) with AirUnit with AirWeapon
-class Battlecruiser(unit: APIUnit) extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with InstantAttack
-class ScienceVessel(unit: APIUnit) extends AnyUnit(unit) with AirUnit with SupportUnit with CanDetectHidden
+  extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with CanCloak with InstantAttack with
+          HasSingleTargetSpells {
+  override val spells: Seq[SingleTargetSpell] = List(Spells.Lockdown)
+}
+class Medic(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with SupportUnit with HasSingleTargetSpells {
+  override val spells: Seq[SingleTargetSpell] = List(Spells.Blind)
+}
+class Vulture(unit: APIUnit)
+  extends AnyUnit(unit) with GroundUnit with GroundWeapon with SpiderMines with InstantAttack with Mechanic
+class Tank(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundWeapon with InstantAttack with Mechanic
+class Goliath(unit: APIUnit)
+  extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with InstantAttack with Mechanic
+class Wraith(unit: APIUnit)
+  extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with CanCloak with InstantAttack with Mechanic
+class Valkery(unit: APIUnit) extends AnyUnit(unit) with AirUnit with AirWeapon with Mechanic
+class Battlecruiser(unit: APIUnit)
+  extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with InstantAttack with Mechanic with
+          HasSingleTargetSpells {
+  override val spells: Seq[SingleTargetSpell] = Nil
+}
+class ScienceVessel(unit: APIUnit)
+  extends AnyUnit(unit) with AirUnit with SupportUnit with CanDetectHidden with Mechanic with HasSingleTargetSpells {
+  override val spells: Seq[SingleTargetSpell] = Nil
+}
 
 class Irrelevant(unit: APIUnit) extends AnyUnit(unit)
 
@@ -450,8 +500,22 @@ object UnitWrapper {
       UnitType.Terran_Battlecruiser -> ((new Battlecruiser(_), classOf[Battlecruiser])),
       UnitType.Terran_Dropship -> ((new Dropship(_), classOf[Dropship])),
       UnitType.Terran_Ghost -> ((new Ghost(_), classOf[Ghost])),
+      UnitType.Terran_Vulture_Spider_Mine -> ((new SpiderMine(_), classOf[SpiderMine])),
 
       UnitType.Protoss_Probe -> ((new Probe(_), classOf[Probe])),
+      UnitType.Protoss_Zealot -> ((new Zealot(_), classOf[Zealot])),
+      UnitType.Protoss_Dragoon -> ((new Dragoon(_), classOf[Dragoon])),
+      UnitType.Protoss_Archon -> ((new Archon(_), classOf[Archon])),
+      UnitType.Protoss_Dark_Archon -> ((new DarkArchon(_), classOf[DarkArchon])),
+      UnitType.Protoss_Dark_Templar -> ((new DarkTemplar(_), classOf[DarkTemplar])),
+      UnitType.Protoss_Reaver -> ((new Reaver(_), classOf[Reaver])),
+      UnitType.Protoss_High_Templar -> ((new Templar(_), classOf[Templar])),
+      UnitType.Protoss_Corsair -> ((new Corsair(_), classOf[Corsair])),
+      UnitType.Protoss_Interceptor -> ((new Interceptor(_), classOf[Interceptor])),
+      UnitType.Protoss_Observer -> ((new Observer(_), classOf[Observer])),
+      UnitType.Protoss_Scarab -> ((new Scarab(_), classOf[Scarab])),
+      UnitType.Protoss_Scout -> ((new Scout(_), classOf[Scout])),
+
       UnitType.Zerg_Drone -> ((new Drone(_), classOf[Drone])),
       UnitType.Unknown -> ((new Irrelevant(_), classOf[Irrelevant]))
     )

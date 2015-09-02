@@ -1,8 +1,8 @@
 package pony.brain.modules
 
 import pony.brain.{HasUniverse, Objective, SingleUnitBehaviour, Universe}
-import pony.{CanCloak, CanUseStimpack, Ghost, InstantAttack, Medic, Mobile, MobileDetector, MobileRangeWeapon,
-Orders, SCV, SupportUnit, Upgrades, Vulture, WrapsUnit}
+import pony.{CanCloak, CanUseStimpack, Ghost, HasSingleTargetSpells, InstantAttack, Medic, Mobile, MobileDetector,
+MobileRangeWeapon, Orders, SCV, SingleTargetSpell, Spells, SupportUnit, Upgrades, Vulture, WrapsUnit}
 
 import scala.collection.mutable
 
@@ -47,6 +47,8 @@ abstract class DefaultBehaviour[T <: Mobile : Manifest] extends HasUniverse {
   def cast = this.asInstanceOf[DefaultBehaviour[Mobile]]
 
   protected def lift(t: T): SingleUnitBehaviour[T]
+
+  def onTick(): Unit = {}
 }
 
 
@@ -54,6 +56,7 @@ object Terran {
   def allBehaviours(universe: Universe): Seq[DefaultBehaviour[Mobile]] = {
     val allOfThem = (
                       new StimSelf ::
+                      new StopMechanic ::
                       /*
                                             new RepairDamagedBuilding ::
                                             new RepairDamagedUnit ::
@@ -62,7 +65,6 @@ object Terran {
                                            new Scout ::
                                            new Cloak ::
                                            new DoNotStray ::
-                                           new StopMechanic ::
                                            new HealDamagedUnit ::
                                            new FixMedicalProblem ::
                                            new BlindDetector ::
@@ -70,7 +72,7 @@ object Terran {
                                            new StopToFire ::
                                            new FocusFire ::
                       */
-                     Nil).map(_.cast)
+                      Nil).map(_.cast)
 
     allOfThem.foreach(_.init_!(universe))
     allOfThem
@@ -113,8 +115,28 @@ object Terran {
   class DoNotStray extends DefaultBehaviour[SupportUnit] {
     override protected def lift(t: SupportUnit): SingleUnitBehaviour[SupportUnit] = ???
   }
+
+  case class Target(caster: HasSingleTargetSpells, target: Mobile)
+
+  class NonConflictingTargetPicks[T <: HasSingleTargetSpells, S <: SingleTargetSpell[_]](spell: S) {
+    private val locked      = mutable.HashSet.empty[Target]
+    private val assignments = mutable.HashMap.empty[WrapsUnit, Target]
+
+  }
+
   class StopMechanic extends DefaultBehaviour[Ghost] {
-    override protected def lift(t: Ghost): SingleUnitBehaviour[Ghost] = ???
+    private val helper = new NonConflictingTargetPicks(Spells.Lockdown)
+
+    override protected def lift(t: Ghost): SingleUnitBehaviour[Ghost] = new SingleUnitBehaviour(t) {
+      override def preconditionOk = upgrades.hasResearched(Upgrades.Terran.GhostStop)
+
+      override def shortName = "Lockdown"
+
+      override def toOrder(what: Objective) = {
+
+      }
+
+    }
   }
   class HealDamagedUnit extends DefaultBehaviour[Medic] {
     override protected def lift(t: Medic): SingleUnitBehaviour[Medic] = ???

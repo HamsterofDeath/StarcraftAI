@@ -71,7 +71,7 @@ class UnitIdRenderer extends AIPlugIn {
     lazyWorld.debugger.debugRender { renderer =>
       renderer.in_!(Color.Green)
 
-      lazyWorld.units.mineByType[Mobile].foreach { u =>
+      lazyWorld.myUnits.mineByType[Mobile].foreach { u =>
         renderer.drawTextAtMobileUnit(u, u.unitIdText)
       }
     }

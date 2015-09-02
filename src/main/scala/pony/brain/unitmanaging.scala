@@ -171,13 +171,13 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
       }
     }
 
-    val myOwn = universe.world.units.mine.filterNot(assignments.contains).map(initialJobOf).toSeq
+    val myOwn = universe.world.myUnits.mine.filterNot(assignments.contains).map(initialJobOf).toSeq
     info(s"Found ${myOwn.size} new units of player", myOwn.nonEmpty)
 
     myOwn.foreach(assignJob_!)
     assignments ++= myOwn.map(e => e.unit -> e)
 
-    val registerUs = universe.world.units.all.filterNot(assignments.contains).map(initialJobOf).toSeq
+    val registerUs = universe.world.myUnits.all.filterNot(assignments.contains).map(initialJobOf).toSeq
     info(s"Found ${registerUs.size} new units (not of player)", registerUs.nonEmpty)
     assignments ++= registerUs.map(e => e.unit -> e)
 
