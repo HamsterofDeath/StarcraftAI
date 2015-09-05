@@ -124,18 +124,54 @@ class Upgrade(val nativeType: Either[UpgradeType, TechType]) {
 }
 
 object Upgrades {
+  trait CastOnOrganic extends SingleTargetMagicSpell {
+    override def canBeCastOn(m: Mobile) = m.isInstanceOf[Organic]
+  }
+  trait CastOnMechanic extends SingleTargetMagicSpell {
+    override def canBeCastOn(m: Mobile) = m.isInstanceOf[Mechanic]
+  }
+  trait CastOnAll extends SingleTargetMagicSpell {
+    override def canBeCastOn(m: Mobile) = true
+  }
+  trait CastAtFreeTile extends SinglePointMagicSpell {
+    override def canBeCastAt(where: MapTilePosition, by: Mobile) =
+      by.universe.mapLayers.reallyFreeBuildingTiles.free(where)
+  }
+  trait CastOnSelf extends SingleTargetMagicSpell {
+    self =>
+    override def canBeCastOn(m: Mobile) = throw new RuntimeException(s"Why are you asking this?")
+  }
+
   trait SingleTargetMagicSpell extends Upgrade {
     def asNativeTech = nativeType match {
       case Right(tt) => tt
+      case _ => !!!
     }
 
     def asNativeUpgrade = nativeType match {
       case Left(ut) => ut
+      case _ => !!!
     }
 
     def energyNeeded = energyCost
 
     def canBeCastOn(m: Mobile): Boolean
+  }
+
+  trait SinglePointMagicSpell extends Upgrade {
+    def asNativeTech = nativeType match {
+      case Right(tt) => tt
+      case _ => !!!
+    }
+
+    def asNativeUpgrade = nativeType match {
+      case Left(ut) => ut
+      case _ => !!!
+    }
+
+    def energyNeeded = energyCost
+
+    def canBeCastAt(where: MapTilePosition, by: Mobile): Boolean
   }
   trait PermanentSpell extends Upgrade
 
@@ -145,28 +181,28 @@ object Upgrades {
     case object ShipArmor extends Upgrade(UpgradeType.Terran_Ship_Plating)
     case object VehicleArmor extends Upgrade(UpgradeType.Terran_Vehicle_Plating)
     case object InfantryArmor extends Upgrade(UpgradeType.Terran_Infantry_Armor)
-    case object InfantryCooldown extends Upgrade(TechType.Stim_Packs)
+    case object InfantryCooldown extends Upgrade(TechType.Stim_Packs) with SingleTargetMagicSpell with CastOnSelf
     case object InfantryWeapons extends Upgrade(UpgradeType.Terran_Infantry_Weapons)
     case object VehicleWeapons extends Upgrade(UpgradeType.Terran_Vehicle_Weapons)
     case object ShipWeapons extends Upgrade(UpgradeType.Terran_Ship_Weapons)
     case object MarineRange extends Upgrade(UpgradeType.U_238_Shells)
     case object MedicEnergy extends Upgrade(UpgradeType.Caduceus_Reactor)
-    case object MedicFlare extends Upgrade(TechType.Optical_Flare) with SingleTargetMagicSpell
+    case object MedicFlare extends Upgrade(TechType.Optical_Flare) with SingleTargetMagicSpell with CastOnOrganic
     case object MedicHeal extends Upgrade(TechType.Restoration)
     case object GoliathRange extends Upgrade(UpgradeType.Charon_Boosters)
-    case object SpiderMines extends Upgrade(TechType.Spider_Mines) with SingleTargetMagicSpell
-    case object Defensematrix extends Upgrade(TechType.Defensive_Matrix) with SingleTargetMagicSpell
+    case object SpiderMines extends Upgrade(TechType.Spider_Mines) with SinglePointMagicSpell with CastAtFreeTile
+    case object Defensematrix extends Upgrade(TechType.Defensive_Matrix) with SingleTargetMagicSpell with CastOnAll
     case object VultureSpeed extends Upgrade(UpgradeType.Ion_Thrusters)
-    case object TankSiegeMode extends Upgrade(TechType.Tank_Siege_Mode) with SingleTargetMagicSpell
-    case object EMP extends Upgrade(TechType.EMP_Shockwave) with SingleTargetMagicSpell
-    case object Irradiate extends Upgrade(TechType.Irradiate) with SingleTargetMagicSpell
+    case object TankSiegeMode extends Upgrade(TechType.Tank_Siege_Mode) with SingleTargetMagicSpell with CastOnSelf
+    case object EMP extends Upgrade(TechType.EMP_Shockwave) with SingleTargetMagicSpell with CastOnAll
+    case object Irradiate extends Upgrade(TechType.Irradiate) with SingleTargetMagicSpell with CastOnAll
     case object ScienceVesselEnergy extends Upgrade(UpgradeType.Titan_Reactor)
-    case object GhostStop extends Upgrade(TechType.Lockdown) with SingleTargetMagicSpell
+    case object GhostStop extends Upgrade(TechType.Lockdown) with SingleTargetMagicSpell with CastOnMechanic
     case object GhostVisiblityRange extends Upgrade(UpgradeType.Ocular_Implants)
     case object GhostEnergy extends Upgrade(UpgradeType.Moebius_Reactor)
     case object GhostCloak extends Upgrade(TechType.Personnel_Cloaking) with PermanentSpell
     case object WraithCloak extends Upgrade(TechType.Cloaking_Field) with PermanentSpell
-    case object CruiserGun extends Upgrade(TechType.Yamato_Gun) with SingleTargetMagicSpell
+    case object CruiserGun extends Upgrade(TechType.Yamato_Gun) with SingleTargetMagicSpell with CastOnAll
     case object CruiserEnergy extends Upgrade(UpgradeType.Colossus_Reactor)
 
   }
@@ -430,7 +466,8 @@ trait HasMana extends WrapsUnit {
 }
 
 trait HasSingleTargetSpells extends Mobile with HasMana {
-  val spells: Seq[SingleTargetSpell]
+  type MyType <: HasSingleTargetSpells
+  val spells: Seq[SingleTargetSpell[MyType]]
   private   var lastCast = 0
   protected val cooldown = 24
 
@@ -443,14 +480,13 @@ trait HasSingleTargetSpells extends Mobile with HasMana {
   def toOrder(tech: SingleTargetMagicSpell, target: Mobile) = {
     assert(canCastNow(tech))
     assert(tech.canBeCastOn(target))
-    toOrderInternal(tech, target)
+    lastCast = universe.currentTick
+    Orders.TechOnTarget(this, target, tech)
   }
-
-  protected def toOrderInternal(tech: SingleTargetMagicSpell, target: Mobile): UnitOrder
-
 }
 
 trait Mechanic extends Mobile
+trait Organic extends Mobile
 
 class Observer(unit: APIUnit) extends AnyUnit(unit) with MobileDetector with Mechanic
 class Scout(unit: APIUnit) extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with Mechanic
@@ -460,7 +496,7 @@ class Archon(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundAnd
 class Carrier(unit: APIUnit) extends AnyUnit(unit) with AirUnit with Mechanic
 class Arbiter(unit: APIUnit) extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with Mechanic
 class Templar(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with PermaCloak with HasSingleTargetSpells {
-  override val spells: Seq[SingleTargetSpell] = Nil
+  override val spells = Nil
 }
 class DarkTemplar(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundWeapon with CanCloak
 class DarkArchon(unit: APIUnit) extends AnyUnit(unit) with GroundUnit
@@ -476,10 +512,12 @@ class Firebat(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundWe
 class Ghost(unit: APIUnit)
   extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with CanCloak with InstantAttack with
           HasSingleTargetSpells {
-  override val spells: Seq[SingleTargetSpell] = List(Spells.Lockdown)
+  override val spells = List(Spells.Lockdown)
+  override type MyType = Ghost
 }
 class Medic(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with SupportUnit with HasSingleTargetSpells {
-  override val spells: Seq[SingleTargetSpell] = List(Spells.Blind)
+  override val spells = List(Spells.Blind)
+  override type MyType = Medic
 }
 class Vulture(unit: APIUnit)
   extends AnyUnit(unit) with GroundUnit with GroundWeapon with SpiderMines with InstantAttack with Mechanic
@@ -492,11 +530,11 @@ class Valkery(unit: APIUnit) extends AnyUnit(unit) with AirUnit with AirWeapon w
 class Battlecruiser(unit: APIUnit)
   extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with InstantAttack with Mechanic with
           HasSingleTargetSpells {
-  override val spells: Seq[SingleTargetSpell] = Nil
+  override val spells = Nil
 }
 class ScienceVessel(unit: APIUnit)
   extends AnyUnit(unit) with AirUnit with SupportUnit with CanDetectHidden with Mechanic with HasSingleTargetSpells {
-  override val spells: Seq[SingleTargetSpell] = Nil
+  override val spells = Nil
 }
 
 class Irrelevant(unit: APIUnit) extends AnyUnit(unit)

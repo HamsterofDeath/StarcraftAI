@@ -9,6 +9,9 @@ import scala.collection.mutable
 package object pony {
   Configurator.defaultConfig().level(Level.TRACE).formatPattern("{level}:{message}").activate()
 
+  def !!! : Nothing = !!!("Something is not as it should be")
+  def !!!(msg: String): Nothing = throw new RuntimeException(msg)
+
   type SCUnitType = Class[_ <: WrapsUnit]
   val tileSize  = 32
   var tickCount = 0

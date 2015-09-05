@@ -43,7 +43,8 @@ object Orders {
     def ghostStop(ghost: Ghost, on: Mechanic) = TechOnTarget(ghost, on, Upgrades.Terran.GhostStop)
   }
 
-  case class TechOnTarget(caster: HasSingleTargetSpells, target: Mobile, tech: SingleTargetMagicSpell)
+  case class TechOnTarget[T <: HasSingleTargetSpells](caster: HasSingleTargetSpells, target: Mobile,
+                                                      tech: SingleTargetMagicSpell)
     extends UnitOrder {
 
     override def myUnit = caster
