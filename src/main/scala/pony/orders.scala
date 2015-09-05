@@ -1,6 +1,7 @@
 package pony
 
 import bwapi.{Color, Game, TechType}
+import pony.Upgrades.SingleTargetMagicSpell
 
 import scala.collection.mutable.ArrayBuffer
 import scala.util.Try
@@ -35,6 +36,24 @@ object Orders {
     }
     override def renderDebug(renderer: Renderer): Unit = {
       renderer.in_!(Color.Red).drawTextAtMobileUnit(u, "Stim!", -1)
+    }
+  }
+
+  object TechOnTarget {
+    def ghostStop(ghost: Ghost, on: Mechanic) = TechOnTarget(ghost, on, Upgrades.Terran.GhostStop)
+  }
+
+  case class TechOnTarget(caster: HasSingleTargetSpells, target: Mobile, tech: SingleTargetMagicSpell)
+    extends UnitOrder {
+
+    override def myUnit = caster
+
+    override def renderDebug(renderer: Renderer): Unit = {
+      renderer.in_!(Color.Red).indicateTarget(caster.currentPosition, target.currentTile)
+    }
+
+    override def issueOrderToGame(): Unit = {
+      caster.nativeUnit.useTech(tech.asNativeTech, target.nativeUnit)
     }
   }
 

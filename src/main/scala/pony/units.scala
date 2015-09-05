@@ -1,6 +1,7 @@
 package pony
 
 import bwapi.{Order, Race, TechType, Unit => APIUnit, UnitType, UpgradeType}
+import pony.Upgrades.SingleTargetMagicSpell
 import pony.brain.{HasUniverse, PriorityChain, UnitWithJob, Universe}
 
 import scala.collection.immutable.HashMap
@@ -117,11 +118,29 @@ class Upgrade(val nativeType: Either[UpgradeType, TechType]) {
     this(Right(t))
   }
 
+  def energyCost = nativeType.fold(_ => throw new UnsupportedOperationException(s"Called on $this"), _.energyUsed())
+
   override def toString = s"Upgrade: ${nativeType.fold(_.c_str(), _.c_str())}"
 }
 
 object Upgrades {
+  trait SingleTargetMagicSpell extends Upgrade {
+    def asNativeTech = nativeType match {
+      case Right(tt) => tt
+    }
+
+    def asNativeUpgrade = nativeType match {
+      case Left(ut) => ut
+    }
+
+    def energyNeeded = energyCost
+
+    def canBeCastOn(m: Mobile): Boolean
+  }
+  trait PermanentSpell extends Upgrade
+
   object Terran {
+
     case object WraithEnergy extends Upgrade(UpgradeType.Apollo_Reactor)
     case object ShipArmor extends Upgrade(UpgradeType.Terran_Ship_Plating)
     case object VehicleArmor extends Upgrade(UpgradeType.Terran_Vehicle_Plating)
@@ -132,22 +151,22 @@ object Upgrades {
     case object ShipWeapons extends Upgrade(UpgradeType.Terran_Ship_Weapons)
     case object MarineRange extends Upgrade(UpgradeType.U_238_Shells)
     case object MedicEnergy extends Upgrade(UpgradeType.Caduceus_Reactor)
-    case object MedicFlare extends Upgrade(TechType.Optical_Flare)
+    case object MedicFlare extends Upgrade(TechType.Optical_Flare) with SingleTargetMagicSpell
     case object MedicHeal extends Upgrade(TechType.Restoration)
     case object GoliathRange extends Upgrade(UpgradeType.Charon_Boosters)
-    case object SpiderMines extends Upgrade(TechType.Spider_Mines)
-    case object Defensematrix extends Upgrade(TechType.Defensive_Matrix)
+    case object SpiderMines extends Upgrade(TechType.Spider_Mines) with SingleTargetMagicSpell
+    case object Defensematrix extends Upgrade(TechType.Defensive_Matrix) with SingleTargetMagicSpell
     case object VultureSpeed extends Upgrade(UpgradeType.Ion_Thrusters)
-    case object TankSiegeMode extends Upgrade(TechType.Tank_Siege_Mode)
-    case object EMP extends Upgrade(TechType.EMP_Shockwave)
-    case object Irradiate extends Upgrade(TechType.Irradiate)
+    case object TankSiegeMode extends Upgrade(TechType.Tank_Siege_Mode) with SingleTargetMagicSpell
+    case object EMP extends Upgrade(TechType.EMP_Shockwave) with SingleTargetMagicSpell
+    case object Irradiate extends Upgrade(TechType.Irradiate) with SingleTargetMagicSpell
     case object ScienceVesselEnergy extends Upgrade(UpgradeType.Titan_Reactor)
-    case object GhostStop extends Upgrade(TechType.Lockdown)
+    case object GhostStop extends Upgrade(TechType.Lockdown) with SingleTargetMagicSpell
     case object GhostVisiblityRange extends Upgrade(UpgradeType.Ocular_Implants)
     case object GhostEnergy extends Upgrade(UpgradeType.Moebius_Reactor)
-    case object GhostCloak extends Upgrade(TechType.Personnel_Cloaking)
-    case object WraithCloak extends Upgrade(TechType.Cloaking_Field)
-    case object CruiserGun extends Upgrade(TechType.Yamato_Gun)
+    case object GhostCloak extends Upgrade(TechType.Personnel_Cloaking) with PermanentSpell
+    case object WraithCloak extends Upgrade(TechType.Cloaking_Field) with PermanentSpell
+    case object CruiserGun extends Upgrade(TechType.Yamato_Gun) with SingleTargetMagicSpell
     case object CruiserEnergy extends Upgrade(UpgradeType.Colossus_Reactor)
 
   }
@@ -397,7 +416,7 @@ trait CanCloak extends Mobile {
   def isCloaked = nativeUnit.isCloaked
 }
 
-abstract class SingleTargetSpell[C <: HasSingleTargetSpells](tech: Upgrade) {
+abstract class SingleTargetSpell[C <: HasSingleTargetSpells](tech: Upgrade with SingleTargetMagicSpell) {
 
 }
 
@@ -406,8 +425,29 @@ object Spells {
   case object Blind extends SingleTargetSpell[Medic](Upgrades.Terran.MedicFlare)
 }
 
-trait HasSingleTargetSpells extends Mobile {
+trait HasMana extends WrapsUnit {
+  def mana = nativeUnit.getEnergy
+}
+
+trait HasSingleTargetSpells extends Mobile with HasMana {
   val spells: Seq[SingleTargetSpell]
+  private   var lastCast = 0
+  protected val cooldown = 24
+
+  def canCastNow(tech: SingleTargetMagicSpell) = {
+    def hasMana = tech.energyNeeded <= mana
+    def isReadyForCastCool = lastCast + cooldown < universe.currentTick
+    hasMana && isReadyForCastCool
+  }
+
+  def toOrder(tech: SingleTargetMagicSpell, target: Mobile) = {
+    assert(canCastNow(tech))
+    assert(tech.canBeCastOn(target))
+    toOrderInternal(tech, target)
+  }
+
+  protected def toOrderInternal(tech: SingleTargetMagicSpell, target: Mobile): UnitOrder
+
 }
 
 trait Mechanic extends Mobile

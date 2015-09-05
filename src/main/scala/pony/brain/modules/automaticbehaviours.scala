@@ -1,8 +1,8 @@
 package pony.brain.modules
 
 import pony.brain.{HasUniverse, Objective, SingleUnitBehaviour, Universe}
-import pony.{CanCloak, CanUseStimpack, Ghost, HasSingleTargetSpells, InstantAttack, Medic, Mobile, MobileDetector,
-MobileRangeWeapon, Orders, SCV, SingleTargetSpell, Spells, SupportUnit, Upgrades, Vulture, WrapsUnit}
+import pony.{CanCloak, CanUseStimpack, Ghost, HasSingleTargetSpells, InstantAttack, Mechanic, Medic, Mobile,
+MobileDetector, MobileRangeWeapon, Orders, SCV, SingleTargetSpell, Spells, SupportUnit, Upgrades, Vulture, WrapsUnit}
 
 import scala.collection.mutable
 
@@ -116,16 +116,21 @@ object Terran {
     override protected def lift(t: SupportUnit): SingleUnitBehaviour[SupportUnit] = ???
   }
 
-  case class Target(caster: HasSingleTargetSpells, target: Mobile)
+  case class Target[T <: Mobile](caster: HasSingleTargetSpells, target: T)
 
-  class NonConflictingTargetPicks[T <: HasSingleTargetSpells, S <: SingleTargetSpell[_]](spell: S) {
-    private val locked      = mutable.HashSet.empty[Target]
-    private val assignments = mutable.HashMap.empty[WrapsUnit, Target]
+  class NonConflictingTargetPicks[T <: HasSingleTargetSpells, M <: Mobile](spell: SingleTargetSpell[T],
+                                                                           targetConstraint: PartialFunction[Mobile,
+                                                                             M]) {
+    private val locked      = mutable.HashSet.empty[Target[M]]
+    private val assignments = mutable.HashMap.empty[WrapsUnit, Target[M]]
 
+    def suggestTargetFor(caster: T): Option[M] = {
+      ???
+    }
   }
 
   class StopMechanic extends DefaultBehaviour[Ghost] {
-    private val helper = new NonConflictingTargetPicks(Spells.Lockdown)
+    private val helper = new NonConflictingTargetPicks(Spells.Lockdown, { case m: Mechanic => m })
 
     override protected def lift(t: Ghost): SingleUnitBehaviour[Ghost] = new SingleUnitBehaviour(t) {
       override def preconditionOk = upgrades.hasResearched(Upgrades.Terran.GhostStop)
@@ -133,7 +138,13 @@ object Terran {
       override def shortName = "Lockdown"
 
       override def toOrder(what: Objective) = {
-
+        if (t.canCastNow(Upgrades.Terran.GhostStop)) {
+          helper.suggestTargetFor(t).map { target =>
+            Orders.TechOnTarget.ghostStop(t, target)
+          }.toList
+        } else {
+          Nil
+        }
       }
 
     }
