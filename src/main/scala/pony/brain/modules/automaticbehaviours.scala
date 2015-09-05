@@ -1,8 +1,8 @@
 package pony.brain.modules
 
 import pony.brain.{HasUniverse, Objective, SingleUnitBehaviour, Universe}
-import pony.{CanCloak, CanUseStimpack, Ghost, HasSingleTargetSpells, InstantAttack, Mechanic, Medic, Mobile,
-MobileDetector, MobileRangeWeapon, Orders, SCV, SingleTargetSpell, Spells, SupportUnit, Upgrades, Vulture, WrapsUnit}
+import pony.{CanCloak, CanUseStimpack, Ghost, HasSingleTargetSpells, InstantAttack, Medic, Mobile, MobileDetector,
+MobileRangeWeapon, Orders, SCV, SingleTargetSpell, Spells, SupportUnit, Upgrades, Vulture, WrapsUnit}
 
 import scala.collection.mutable
 
@@ -118,19 +118,33 @@ object Terran {
 
   case class Target[T <: Mobile](caster: HasSingleTargetSpells, target: T)
 
-  class NonConflictingTargetPicks[T <: HasSingleTargetSpells, M <: Mobile](spell: SingleTargetSpell[T],
+  object NonConflictingTargetPicks {
+    def forSpell[T <: HasSingleTargetSpells, M <: Mobile](spell: SingleTargetSpell[T, M]) = {
+
+      new NonConflictingTargetPicks(spell, { case x: Mobile if spell.canBeCastOn(x) => x.asInstanceOf[M] })
+    }
+  }
+
+  class NonConflictingTargetPicks[T <: HasSingleTargetSpells, M <: Mobile](spell: SingleTargetSpell[T, M],
                                                                            targetConstraint: PartialFunction[Mobile,
                                                                              M]) {
-    private val locked      = mutable.HashSet.empty[Target[M]]
-    private val assignments = mutable.HashMap.empty[WrapsUnit, Target[M]]
+    private val locked        = mutable.HashSet.empty[WrapsUnit]
+    private val lockedTargets = mutable.HashSet.empty[Target[M]]
+    private val assignments   = mutable.HashMap.empty[WrapsUnit, Target[M]]
 
     def suggestTargetFor(caster: T): Option[M] = {
-      ???
+      // for now, just pick the first in range that is not yet taken
+      val range = spell.castRangeSquare
+
+      caster.universe.enemyUnits.allMobiles
+      .filterNot(locked)
+      .collect(targetConstraint)
+      .find {_.currentPosition.distanceToSquared(caster.currentPosition) < range}
     }
   }
 
   class StopMechanic extends DefaultBehaviour[Ghost] {
-    private val helper = new NonConflictingTargetPicks(Spells.Lockdown, { case m: Mechanic => m })
+    private val helper = NonConflictingTargetPicks.forSpell(Spells.Lockdown)
 
     override protected def lift(t: Ghost): SingleUnitBehaviour[Ghost] = new SingleUnitBehaviour(t) {
       override def preconditionOk = upgrades.hasResearched(Upgrades.Terran.GhostStop)

@@ -14,7 +14,8 @@ trait Universe {
   def bases: Bases
   def resources: ResourceManager
   def unitManager: UnitManager
-  def units: Units
+  def myUnits: Units
+  def enemyUnits: Units
   def mapLayers: MapLayers
   def strategicMap: StrategicMap
   def strategy: Strategies

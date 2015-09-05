@@ -47,6 +47,8 @@ object Orders {
                                                       tech: SingleTargetMagicSpell)
     extends UnitOrder {
 
+    assert(tech.canCastOn.isAssignableFrom(target.getClass))
+
     override def myUnit = caster
 
     override def renderDebug(renderer: Renderer): Unit = {

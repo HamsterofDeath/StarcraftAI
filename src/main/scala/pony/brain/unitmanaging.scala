@@ -622,7 +622,7 @@ class ConstructAddon[W <: CanBuildAddons, A <: Addon](employer: Employer[W],
   }
   override def onFinishOrFail(): Unit = {
     super.onFinishOrFail()
-    universe.units.allAddons.find(e => basis.positionedNextTo(e)).foreach { e =>
+    universe.myUnits.allAddons.find(e => basis.positionedNextTo(e)).foreach { e =>
       basis.notifyAttach_!(e)
     }
   }
