@@ -1,7 +1,7 @@
 package pony
 
 import bwapi.{Order, Race, TechType, Unit => APIUnit, UnitType, UpgradeType}
-import pony.Upgrades.SingleTargetMagicSpell
+import pony.Upgrades.{IsTech, SingleTargetMagicSpell}
 import pony.brain.{HasUniverse, PriorityChain, UnitWithJob, Universe}
 
 import scala.collection.immutable.HashMap
@@ -183,6 +183,8 @@ object Upgrades {
       case Left(_) => !!!
       case Right(t) => t
     }
+
+    def priorityRule: Option[Mobile => Double] = None
   }
 
   object Terran {
@@ -199,7 +201,8 @@ object Upgrades {
     case object ShipWeapons extends Upgrade(UpgradeType.Terran_Ship_Weapons)
     case object MarineRange extends Upgrade(UpgradeType.U_238_Shells)
     case object MedicEnergy extends Upgrade(UpgradeType.Caduceus_Reactor)
-    case object MedicFlare extends Upgrade(TechType.Optical_Flare) with SingleTargetMagicSpell with CastOnOrganic
+    case object MedicFlare
+      extends Upgrade(TechType.Optical_Flare) with SingleTargetMagicSpell with CastOnOrganic with DetectorsFirst
     case object MedicHeal extends Upgrade(TechType.Restoration) with SingleTargetMagicSpell with CastOnAll
     case object GoliathRange extends Upgrade(UpgradeType.Charon_Boosters)
     case object SpiderMines extends Upgrade(TechType.Spider_Mines) with SinglePointMagicSpell with CastAtFreeTile
@@ -211,7 +214,8 @@ object Upgrades {
     case object EMP extends Upgrade(TechType.EMP_Shockwave) with SingleTargetMagicSpell with CastOnAll
     case object Irradiate extends Upgrade(TechType.Irradiate) with SingleTargetMagicSpell with CastOnAll
     case object ScienceVesselEnergy extends Upgrade(UpgradeType.Titan_Reactor)
-    case object GhostStop extends Upgrade(TechType.Lockdown) with SingleTargetMagicSpell with CastOnMechanic
+    case object GhostStop
+      extends Upgrade(TechType.Lockdown) with SingleTargetMagicSpell with CastOnMechanic with ByPrice
     case object GhostVisiblityRange extends Upgrade(UpgradeType.Ocular_Implants)
     case object GhostEnergy extends Upgrade(UpgradeType.Moebius_Reactor)
     case object GhostCloak
@@ -273,7 +277,12 @@ trait CanDie extends WrapsUnit {
 
 }
 
+case class Price(minerals: Int, gas: Int) {
+  val sum = minerals + gas
+}
+
 trait Mobile extends WrapsUnit with Controllable {
+  val price = Price(nativeUnit.getType.mineralPrice(), nativeUnit.getType.gasPrice())
 
   def isGuarding = nativeUnit.getOrder == Order.PlayerGuard
 
@@ -485,6 +494,16 @@ trait CanCloak extends Mobile {
   def isCloaked = nativeUnit.isCloaked
 }
 
+trait DetectorsFirst extends IsTech {
+  override def priorityRule: Option[(Mobile) => Double] = Some { m =>
+    m.isInstanceOf[Detector].ifElse(1, 0)
+  }
+}
+
+trait ByPrice extends IsTech {
+  override def priorityRule: Option[(Mobile) => Double] = Some(m => m.price.sum)
+}
+
 abstract class SingleTargetSpell[C <: HasSingleTargetSpells, M <: Mobile : Manifest](val tech: Upgrade with
   SingleTargetMagicSpell) {
   private val targetClass = tech.canCastOn
@@ -502,6 +521,8 @@ abstract class SingleTargetSpell[C <: HasSingleTargetSpells, M <: Mobile : Manif
   }
 
   def isAffected(m: M): Boolean
+
+  def priorityRule = tech.priorityRule
 }
 
 object Spells {
@@ -509,6 +530,7 @@ object Spells {
     override def isAffected(m: Mechanic) = {
       m.isLocked
     }
+
   }
   case object Blind extends SingleTargetSpell[Medic, Organic](Upgrades.Terran.MedicFlare) {
     override def isAffected(m: Organic) = m.isBlinded
@@ -564,11 +586,12 @@ class Reaver(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundWea
 class Scarab(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundWeapon
 class SpiderMine(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundWeapon
 
-class Marine(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with CanUseStimpack
+class Marine(unit: APIUnit)
+  extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with CanUseStimpack with MobileRangeWeapon
 class Firebat(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundWeapon with CanUseStimpack
 class Ghost(unit: APIUnit)
   extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with CanCloak with InstantAttack with
-          HasSingleTargetSpells {
+          HasSingleTargetSpells with MobileRangeWeapon {
   override val spells = List(Spells.Lockdown)
   override type MyType = Ghost
 }
@@ -577,17 +600,20 @@ class Medic(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with SupportUni
   override type MyType = Medic
 }
 class Vulture(unit: APIUnit)
-  extends AnyUnit(unit) with GroundUnit with GroundWeapon with SpiderMines with InstantAttack with Mechanic
+  extends AnyUnit(unit) with GroundUnit with GroundWeapon with SpiderMines with InstantAttack with Mechanic with
+          MobileRangeWeapon
 class Tank(unit: APIUnit)
-  extends AnyUnit(unit) with GroundUnit with GroundWeapon with InstantAttack with Mechanic with CanSiege
+  extends AnyUnit(unit) with GroundUnit with GroundWeapon with InstantAttack with Mechanic with CanSiege with
+          MobileRangeWeapon
 class Goliath(unit: APIUnit)
-  extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with InstantAttack with Mechanic
+  extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with InstantAttack with Mechanic with MobileRangeWeapon
 class Wraith(unit: APIUnit)
-  extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with CanCloak with InstantAttack with Mechanic
-class Valkery(unit: APIUnit) extends AnyUnit(unit) with AirUnit with AirWeapon with Mechanic
+  extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with CanCloak with InstantAttack with Mechanic with
+          MobileRangeWeapon
+class Valkery(unit: APIUnit) extends AnyUnit(unit) with AirUnit with AirWeapon with Mechanic with MobileRangeWeapon
 class Battlecruiser(unit: APIUnit)
   extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with InstantAttack with Mechanic with
-          HasSingleTargetSpells {
+          HasSingleTargetSpells with MobileRangeWeapon {
   override val spells = Nil
 }
 class ScienceVessel(unit: APIUnit)

@@ -1,18 +1,17 @@
 package pony.brain.modules
 
 import pony.brain.{HasUniverse, Objective, SingleUnitBehaviour, Universe}
-import pony.{CanCloak, CanUseStimpack, Ghost, HasSingleTargetSpells, InstantAttack, Medic, Mobile, MobileDetector,
-MobileRangeWeapon, Orders, SCV, SingleTargetSpell, Spells, SupportUnit, Upgrades, Vulture, WrapsUnit}
+import pony.{CanCloak, CanUseStimpack, Ghost, HasSingleTargetSpells, InstantAttack, LazyVal, Medic, Mobile,
+MobileDetector, MobileRangeWeapon, Orders, SCV, SingleTargetSpell, Spells, SupportUnit, Upgrades, Vulture, WrapsUnit}
 
 import scala.collection.mutable
 
-abstract class DefaultBehaviour[T <: Mobile : Manifest] extends HasUniverse {
+abstract class DefaultBehaviour[T <: Mobile : Manifest](override val universe: Universe) extends HasUniverse {
   private val controlled           = new
       collection.mutable.HashMap[Objective, collection.mutable.Set[SingleUnitBehaviour[T]]]
       with mutable.MultiMap[Objective, SingleUnitBehaviour[T]]
   private val unit2behaviour       = mutable.HashMap.empty[T, SingleUnitBehaviour[T]]
   private val controlledUnits      = mutable.HashSet.empty[T]
-  private var myUniverse: Universe = _
   def behaviourOf(unit: Mobile) = {
     ifControlsOpt(unit) {identity}
   }
@@ -33,10 +32,6 @@ abstract class DefaultBehaviour[T <: Mobile : Manifest] extends HasUniverse {
   def canControl(u: WrapsUnit) = {
     manifest[T].runtimeClass.isAssignableFrom(u.getClass)
   }
-  def init_!(universe: Universe): Unit = {
-    this.myUniverse = universe
-  }
-  override def universe = myUniverse
   def add_!(u: WrapsUnit, objective: Objective) = {
     assert(canControl(u))
     val behaviour = lift(u.asInstanceOf[T])
@@ -55,8 +50,8 @@ abstract class DefaultBehaviour[T <: Mobile : Manifest] extends HasUniverse {
 object Terran {
   def allBehaviours(universe: Universe): Seq[DefaultBehaviour[Mobile]] = {
     val allOfThem = (
-                      new StimSelf ::
-                      new StopMechanic ::
+                      new StimSelf(universe) ::
+                      new StopMechanic(universe) ::
                       /*
                                             new RepairDamagedBuilding ::
                                             new RepairDamagedUnit ::
@@ -73,19 +68,17 @@ object Terran {
                                            new FocusFire ::
                       */
                       Nil).map(_.cast)
-
-    allOfThem.foreach(_.init_!(universe))
     allOfThem
   }
 
-  class RepairDamagedBuilding extends DefaultBehaviour[SCV] {
+  class RepairDamagedBuilding(universe: Universe) extends DefaultBehaviour[SCV](universe) {
     override protected def lift(t: SCV): SingleUnitBehaviour[SCV] = ???
   }
-  class RepairDamagedUnit extends DefaultBehaviour[SCV] {
+  class RepairDamagedUnit(universe: Universe) extends DefaultBehaviour[SCV](universe) {
     override protected def lift(t: SCV): SingleUnitBehaviour[SCV] = ???
   }
 
-  class StimSelf extends DefaultBehaviour[CanUseStimpack] {
+  class StimSelf(universe: Universe) extends DefaultBehaviour[CanUseStimpack](universe) {
     override protected def lift(t: CanUseStimpack) = new SingleUnitBehaviour[CanUseStimpack](t) {
 
       override def preconditionOk = upgrades.hasResearched(Upgrades.Terran.InfantryCooldown)
@@ -100,72 +93,24 @@ object Terran {
       override def shortName: String = s"Stim"
     }
   }
-  class RevealHiddenUnitsPermanenly extends DefaultBehaviour[MobileDetector] {
+  class RevealHiddenUnitsPermanenly(universe: Universe) extends DefaultBehaviour[MobileDetector](universe) {
     override protected def lift(t: MobileDetector): SingleUnitBehaviour[MobileDetector] = ???
   }
-  class SetupMineField extends DefaultBehaviour[Vulture] {
+  class SetupMineField(universe: Universe) extends DefaultBehaviour[Vulture](universe) {
     override protected def lift(t: Vulture): SingleUnitBehaviour[Vulture] = ???
   }
-  class Scout extends DefaultBehaviour[Mobile] {
+  class Scout(universe: Universe) extends DefaultBehaviour[Mobile](universe) {
     override protected def lift(t: Mobile): SingleUnitBehaviour[Mobile] = ???
   }
-  class Cloak extends DefaultBehaviour[CanCloak] {
+  class Cloak(universe: Universe) extends DefaultBehaviour[CanCloak](universe) {
     override protected def lift(t: CanCloak): SingleUnitBehaviour[CanCloak] = ???
   }
-  class DoNotStray extends DefaultBehaviour[SupportUnit] {
+  class DoNotStray(universe: Universe) extends DefaultBehaviour[SupportUnit](universe) {
     override protected def lift(t: SupportUnit): SingleUnitBehaviour[SupportUnit] = ???
   }
 
-  case class Target[T <: Mobile](caster: HasSingleTargetSpells, target: T)
-
-  object NonConflictingTargetPicks {
-    def forSpell[T <: HasSingleTargetSpells, M <: Mobile : Manifest](spell: SingleTargetSpell[T, M]) = {
-
-      new NonConflictingTargetPicks(spell, { case x: Mobile if spell.canBeCastOn(x) => x.asInstanceOf[M] },
-      spell.isAffected)
-    }
-  }
-
-  class NonConflictingTargetPicks[T <: HasSingleTargetSpells, M <: Mobile : Manifest](spell: SingleTargetSpell[T, M],
-                                                                                      targetConstraint:
-                                                                                      PartialFunction[Mobile, M],
-                                                                                      keepLocked: M => Boolean) {
-    def onTick(): Unit = {
-      locked.filterNot(keepLocked).foreach { elem =>
-        unlock_!(elem)
-      }
-    }
-
-    def notifyLock_!(t: T, target: M): Unit = {
-      locked += target
-      val tar = Target(t, target)
-      lockedTargets += tar
-      assignments.put(target, tar)
-    }
-
-    private def unlock_!(target: M): Unit = {
-      locked -= target
-      val old = assignments.remove(target).get
-      lockedTargets -= old
-    }
-
-    private val locked        = mutable.HashSet.empty[M]
-    private val lockedTargets = mutable.HashSet.empty[Target[M]]
-    private val assignments   = mutable.HashMap.empty[M, Target[M]]
-
-    def suggestTargetFor(caster: T): Option[M] = {
-      // for now, just pick the first in range that is not yet taken
-      val range = spell.castRangeSquare
-
-      caster.universe.enemyUnits.allByType[M]
-      .filterNot(locked)
-      .collect(targetConstraint)
-      .find {_.currentPosition.distanceToSquared(caster.currentPosition) < range}
-    }
-  }
-
-  class StopMechanic extends DefaultBehaviour[Ghost] {
-    private val helper = NonConflictingTargetPicks.forSpell(Spells.Lockdown)
+  class StopMechanic(universe: Universe) extends DefaultBehaviour[Ghost](universe) {
+    private val helper = NonConflictingTargetPicks.forSpell(Spells.Lockdown, universe)
 
     override protected def lift(t: Ghost): SingleUnitBehaviour[Ghost] = new SingleUnitBehaviour(t) {
       private def spell = Upgrades.Terran.GhostStop
@@ -175,8 +120,9 @@ object Terran {
 
       override def toOrder(what: Objective) = {
         if (t.canCastNow(spell)) {
-          helper.suggestTargetFor(t).map { target =>
-            helper.notifyLock_!(t, target)
+          val h = helper
+          h.suggestTargetFor(t).map { target =>
+            h.notifyLock_!(t, target)
             t.toOrder(spell, target)
           }.toList
         } else {
@@ -186,23 +132,112 @@ object Terran {
 
     }
   }
-  class HealDamagedUnit extends DefaultBehaviour[Medic] {
+  class HealDamagedUnit(universe: Universe) extends DefaultBehaviour[Medic](universe) {
     override protected def lift(t: Medic): SingleUnitBehaviour[Medic] = ???
   }
-  class FixMedicalProblem extends DefaultBehaviour[Medic] {
+  class FixMedicalProblem(universe: Universe) extends DefaultBehaviour[Medic](universe) {
     override protected def lift(t: Medic): SingleUnitBehaviour[Medic] = ???
   }
-  class BlindDetector extends DefaultBehaviour[Medic] {
+  class BlindDetector(universe: Universe) extends DefaultBehaviour[Medic](universe) {
     override protected def lift(t: Medic): SingleUnitBehaviour[Medic] = ???
   }
-  class Evade extends DefaultBehaviour[Mobile] {
+  class Evade(universe: Universe) extends DefaultBehaviour[Mobile](universe) {
     override protected def lift(t: Mobile): SingleUnitBehaviour[Mobile] = ???
   }
-  class StopToFire extends DefaultBehaviour[InstantAttack] {
+  class StopToFire(universe: Universe) extends DefaultBehaviour[InstantAttack](universe) {
     override protected def lift(t: InstantAttack): SingleUnitBehaviour[InstantAttack] = ???
   }
-  class FocusFire extends DefaultBehaviour[MobileRangeWeapon] {
-    override protected def lift(t: MobileRangeWeapon): SingleUnitBehaviour[MobileRangeWeapon] = ???
+  class FocusFire(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon](universe) {
+
+    private val helper = new FocusFireOrganizer(universe)
+
+    override protected def lift(t: MobileRangeWeapon): SingleUnitBehaviour[MobileRangeWeapon] = new
+        SingleUnitBehaviour(t) {
+      override def shortName = "Focus fire"
+      override def toOrder(what: Objective) = {
+        helper.suggestTarget(t).map { target =>
+
+          .
+        } toList
+      }
+    }
   }
 }
+
+case class Target[T <: Mobile](caster: HasSingleTargetSpells, target: T)
+
+class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
+
+  class Attackers {
+    private val attackers = mutable.HashSet.empty[MobileRangeWeapon]
+  }
+
+  private val assignments = mutable.HashMap.empty[WrapsUnit, Attackers]
+
+  def suggestTarget(t: MobileRangeWeapon): Option[WrapsUnit] = {
+    universe.enemyUnits.all.find { maybe =>
+
+    }
+    assignments
+  }
+}
+
+object NonConflictingTargetPicks {
+  def forSpell[T <: HasSingleTargetSpells, M <: Mobile : Manifest](spell: SingleTargetSpell[T, M],
+                                                                   universe: Universe) = {
+
+    new NonConflictingTargetPicks(spell, { case x: Mobile if spell.canBeCastOn(x) => x.asInstanceOf[M] },
+    spell.isAffected, universe)
+  }
+}
+
+class NonConflictingTargetPicks[T <: HasSingleTargetSpells, M <: Mobile : Manifest](spell: SingleTargetSpell[T, M],
+                                                                                    targetConstraint:
+                                                                                    PartialFunction[Mobile, M],
+                                                                                    keepLocked: M => Boolean,
+                                                                                    override val universe: Universe)
+  extends HasUniverse {
+  def onTick(): Unit = {
+    prioritizedTargets.invalidate()
+    locked.filterNot(keepLocked).foreach { elem =>
+      unlock_!(elem)
+    }
+  }
+
+  def notifyLock_!(t: T, target: M): Unit = {
+    locked += target
+    val tar = Target(t, target)
+    lockedTargets += tar
+    assignments.put(target, tar)
+  }
+
+  private def unlock_!(target: M): Unit = {
+    locked -= target
+    val old = assignments.remove(target).get
+    lockedTargets -= old
+  }
+
+  private val locked        = mutable.HashSet.empty[M]
+  private val lockedTargets = mutable.HashSet.empty[Target[M]]
+  private val assignments   = mutable.HashMap.empty[M, Target[M]]
+
+  private val prioritizedTargets = LazyVal.from {
+    val base = universe.enemyUnits.allByType[M]
+               .collect(targetConstraint)
+
+    spell.priorityRule.fold(base.toVector) { rule =>
+      base.toVector.sortBy(rule)
+    }
+  }
+
+  def suggestTargetFor(caster: T): Option[M] = {
+    // for now, just pick the first in range that is not yet taken
+    val range = spell.castRangeSquare
+
+    prioritizedTargets.get.filterNot(locked)
+    .find {_.currentPosition.distanceToSquared(caster.currentPosition) < range}
+  }
+}
+
+
 
