@@ -19,7 +19,7 @@ trait Universe {
   def mapLayers: MapLayers
   def strategicMap: StrategicMap
   def strategy: Strategies
-  def race = bases.mainBase.mainBuilding.mySCRace
+  def myRace = myUnits.allBuildings.next.mySCRace
 }
 
 class Time(universe: Universe) {

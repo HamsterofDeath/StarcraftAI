@@ -41,6 +41,13 @@ package object pony {
   sealed class LogLevel(val level: Int) {
     def includes(other: LogLevel) = level >= other.level
   }
+  implicit class RichOption[T](val o: Option[T]) extends AnyVal {
+    def getOr(excuse: => String) = o match {
+      case None => !!!(excuse)
+      case Some(x) => x
+    }
+  }
+
   implicit class ToOneElemList[T](val t: T) extends AnyVal {
     def toSome = Some(t)
     def toSeq = Seq(t)

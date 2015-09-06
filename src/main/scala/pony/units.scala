@@ -124,6 +124,7 @@ class Upgrade(val nativeType: Either[UpgradeType, TechType]) {
 }
 
 object Upgrades {
+
   trait CastOnOrganic extends SingleTargetMagicSpell {
     override val canCastOn = classOf[Organic]
   }
@@ -141,7 +142,7 @@ object Upgrades {
     self =>
   }
 
-  trait SingleTargetMagicSpell extends Upgrade {
+  trait SingleTargetMagicSpell extends Upgrade with IsTech {
     val canCastOn: Class[_ <: Mobile]
 
     def asNativeTech = nativeType match {
@@ -158,7 +159,7 @@ object Upgrades {
 
   }
 
-  trait SinglePointMagicSpell extends Upgrade {
+  trait SinglePointMagicSpell extends Upgrade with IsTech {
     def asNativeTech = nativeType match {
       case Right(tt) => tt
       case _ => !!!
@@ -174,6 +175,15 @@ object Upgrades {
     def canBeCastAt(where: MapTilePosition, by: Mobile): Boolean
   }
   trait PermanentSpell extends Upgrade
+  trait IsTech extends Upgrade {
+    // calling this is an assertion
+    nativeTech
+
+    def nativeTech = nativeType match {
+      case Left(_) => !!!
+      case Right(t) => t
+    }
+  }
 
   object Terran {
 
@@ -190,7 +200,7 @@ object Upgrades {
     case object MarineRange extends Upgrade(UpgradeType.U_238_Shells)
     case object MedicEnergy extends Upgrade(UpgradeType.Caduceus_Reactor)
     case object MedicFlare extends Upgrade(TechType.Optical_Flare) with SingleTargetMagicSpell with CastOnOrganic
-    case object MedicHeal extends Upgrade(TechType.Restoration)
+    case object MedicHeal extends Upgrade(TechType.Restoration) with SingleTargetMagicSpell with CastOnAll
     case object GoliathRange extends Upgrade(UpgradeType.Charon_Boosters)
     case object SpiderMines extends Upgrade(TechType.Spider_Mines) with SinglePointMagicSpell with CastAtFreeTile
     case object Defensematrix extends Upgrade(TechType.Defensive_Matrix) with SingleTargetMagicSpell with CastOnAll
@@ -204,12 +214,24 @@ object Upgrades {
     case object GhostStop extends Upgrade(TechType.Lockdown) with SingleTargetMagicSpell with CastOnMechanic
     case object GhostVisiblityRange extends Upgrade(UpgradeType.Ocular_Implants)
     case object GhostEnergy extends Upgrade(UpgradeType.Moebius_Reactor)
-    case object GhostCloak extends Upgrade(TechType.Personnel_Cloaking) with PermanentSpell
-    case object WraithCloak extends Upgrade(TechType.Cloaking_Field) with PermanentSpell
+    case object GhostCloak
+      extends Upgrade(TechType.Personnel_Cloaking) with PermanentSpell with SingleTargetMagicSpell with CastOnSelf {
+      override val canCastOn = classOf[CanCloak]
+    }
+    case object WraithCloak
+      extends Upgrade(TechType.Cloaking_Field) with PermanentSpell with SingleTargetMagicSpell with CastOnSelf {
+      override val canCastOn = classOf[CanCloak]
+    }
     case object CruiserGun extends Upgrade(TechType.Yamato_Gun) with SingleTargetMagicSpell with CastOnAll
     case object CruiserEnergy extends Upgrade(UpgradeType.Colossus_Reactor)
 
+    val allTech = InfantryCooldown :: MedicFlare :: MedicHeal :: SpiderMines :: Defensematrix ::
+                  TankSiegeMode :: EMP :: Irradiate :: GhostStop :: GhostCloak :: WraithCloak :: CruiserGun :: Nil
+
   }
+
+  def allTech = Terran.allTech
+
 }
 
 trait Upgrader extends Controllable with Building {
@@ -478,11 +500,19 @@ abstract class SingleTargetSpell[C <: HasSingleTargetSpells, M <: Mobile : Manif
     assert(canBeCastOn(m))
     m.asInstanceOf[M]
   }
+
+  def isAffected(m: M): Boolean
 }
 
 object Spells {
-  case object Lockdown extends SingleTargetSpell[Ghost, Mechanic](Upgrades.Terran.GhostStop)
-  case object Blind extends SingleTargetSpell[Medic, Organic](Upgrades.Terran.MedicFlare)
+  case object Lockdown extends SingleTargetSpell[Ghost, Mechanic](Upgrades.Terran.GhostStop) {
+    override def isAffected(m: Mechanic) = {
+      m.isLocked
+    }
+  }
+  case object Blind extends SingleTargetSpell[Medic, Organic](Upgrades.Terran.MedicFlare) {
+    override def isAffected(m: Organic) = m.isBlinded
+  }
 }
 
 trait HasMana extends WrapsUnit {
@@ -492,7 +522,7 @@ trait HasMana extends WrapsUnit {
 trait HasSingleTargetSpells extends Mobile with HasMana {
   type MyType <: HasSingleTargetSpells
   val spells: Seq[SingleTargetSpell[MyType, _]]
-  private   var lastCast = 0
+  private   var lastCast = -9999
   protected val cooldown = 24
 
   def canCastNow(tech: SingleTargetMagicSpell) = {
@@ -508,8 +538,12 @@ trait HasSingleTargetSpells extends Mobile with HasMana {
   }
 }
 
-trait Mechanic extends Mobile
-trait Organic extends Mobile
+trait Mechanic extends Mobile {
+  def isLocked = nativeUnit.getLockdownTimer > 0
+}
+trait Organic extends Mobile {
+  def isBlinded = nativeUnit.isBlind
+}
 
 class Observer(unit: APIUnit) extends AnyUnit(unit) with MobileDetector with Mechanic
 class Scout(unit: APIUnit) extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with Mechanic

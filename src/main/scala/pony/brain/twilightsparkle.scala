@@ -12,7 +12,7 @@ import scala.concurrent.{Await, Future}
 trait HasUniverse {
   def upgrades = universe.upgrades
   def time = universe.time
-  def race = universe.race
+  def race = universe.myRace
   def universe: Universe
   def unitManager = universe.unitManager
   def units = universe.myUnits
@@ -206,7 +206,7 @@ class Bases(world: DefaultWorld) {
   }
   def myMineralFields = myBases.flatMap(_.myMineralGroup).toSeq
   def myGeysirs = myBases.flatMap(_.myGeysirs).toSeq
-  def mainBase = myBases.head
+  def mainBase = myBases.headOption
 
   def bases = myBases.toSeq
 

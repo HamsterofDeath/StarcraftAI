@@ -39,10 +39,6 @@ object Orders {
     }
   }
 
-  object TechOnTarget {
-    def ghostStop(ghost: Ghost, on: Mechanic) = TechOnTarget(ghost, on, Upgrades.Terran.GhostStop)
-  }
-
   case class TechOnTarget[T <: HasSingleTargetSpells](caster: HasSingleTargetSpells, target: Mobile,
                                                       tech: SingleTargetMagicSpell)
     extends UnitOrder {
@@ -84,13 +80,15 @@ object Orders {
 
   case class ConstructBuilding(myUnit: WorkerUnit, buildingType: Class[_ <: Building], where: MapTilePosition)
     extends UnitOrder {
+    private val buildingUnitType = buildingType.toUnitType
+
     val area = {
-      val size = Size.shared(buildingType.toUnitType.tileWidth(), buildingType.toUnitType.tileHeight())
+      val size = Size.shared(buildingUnitType.tileWidth(), buildingUnitType.tileHeight())
       Area(where, size)
     }
 
     override def issueOrderToGame(): Unit = {
-      myUnit.nativeUnit.build(where.asTilePosition, buildingType.toUnitType)
+      myUnit.nativeUnit.build(where.asTilePosition, buildingUnitType)
     }
 
     override def renderDebug(renderer: Renderer): Unit = {

@@ -119,24 +119,45 @@ object Terran {
   case class Target[T <: Mobile](caster: HasSingleTargetSpells, target: T)
 
   object NonConflictingTargetPicks {
-    def forSpell[T <: HasSingleTargetSpells, M <: Mobile](spell: SingleTargetSpell[T, M]) = {
+    def forSpell[T <: HasSingleTargetSpells, M <: Mobile : Manifest](spell: SingleTargetSpell[T, M]) = {
 
-      new NonConflictingTargetPicks(spell, { case x: Mobile if spell.canBeCastOn(x) => x.asInstanceOf[M] })
+      new NonConflictingTargetPicks(spell, { case x: Mobile if spell.canBeCastOn(x) => x.asInstanceOf[M] },
+      spell.isAffected)
     }
   }
 
-  class NonConflictingTargetPicks[T <: HasSingleTargetSpells, M <: Mobile](spell: SingleTargetSpell[T, M],
-                                                                           targetConstraint: PartialFunction[Mobile,
-                                                                             M]) {
-    private val locked        = mutable.HashSet.empty[WrapsUnit]
+  class NonConflictingTargetPicks[T <: HasSingleTargetSpells, M <: Mobile : Manifest](spell: SingleTargetSpell[T, M],
+                                                                                      targetConstraint:
+                                                                                      PartialFunction[Mobile, M],
+                                                                                      keepLocked: M => Boolean) {
+    def onTick(): Unit = {
+      locked.filterNot(keepLocked).foreach { elem =>
+        unlock_!(elem)
+      }
+    }
+
+    def notifyLock_!(t: T, target: M): Unit = {
+      locked += target
+      val tar = Target(t, target)
+      lockedTargets += tar
+      assignments.put(target, tar)
+    }
+
+    private def unlock_!(target: M): Unit = {
+      locked -= target
+      val old = assignments.remove(target).get
+      lockedTargets -= old
+    }
+
+    private val locked        = mutable.HashSet.empty[M]
     private val lockedTargets = mutable.HashSet.empty[Target[M]]
-    private val assignments   = mutable.HashMap.empty[WrapsUnit, Target[M]]
+    private val assignments   = mutable.HashMap.empty[M, Target[M]]
 
     def suggestTargetFor(caster: T): Option[M] = {
       // for now, just pick the first in range that is not yet taken
       val range = spell.castRangeSquare
 
-      caster.universe.enemyUnits.allMobiles
+      caster.universe.enemyUnits.allByType[M]
       .filterNot(locked)
       .collect(targetConstraint)
       .find {_.currentPosition.distanceToSquared(caster.currentPosition) < range}
@@ -147,14 +168,16 @@ object Terran {
     private val helper = NonConflictingTargetPicks.forSpell(Spells.Lockdown)
 
     override protected def lift(t: Ghost): SingleUnitBehaviour[Ghost] = new SingleUnitBehaviour(t) {
-      override def preconditionOk = upgrades.hasResearched(Upgrades.Terran.GhostStop)
+      private def spell = Upgrades.Terran.GhostStop
+      override def preconditionOk = upgrades.hasResearched(spell)
 
       override def shortName = "Lockdown"
 
       override def toOrder(what: Objective) = {
-        if (t.canCastNow(Upgrades.Terran.GhostStop)) {
+        if (t.canCastNow(spell)) {
           helper.suggestTargetFor(t).map { target =>
-            Orders.TechOnTarget.ghostStop(t, target)
+            helper.notifyLock_!(t, target)
+            t.toOrder(spell, target)
           }.toList
         } else {
           Nil

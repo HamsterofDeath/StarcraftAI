@@ -6,7 +6,7 @@ trait AddonRequestHelper extends AIModule[CanBuildAddons] {
   self =>
 
   def requestAddon[T <: Addon](addonType: Class[_ <: T]): Unit = {
-    val req = ResourceRequests.forUnit(universe.race, addonType, Priority.Addon)
+    val req = ResourceRequests.forUnit(universe.myRace, addonType, Priority.Addon)
     val result = resources.request(req, self)
     result.ifSuccess { suc =>
       val unitReq = UnitJobRequests.addonConstructor(self, addonType)
@@ -75,7 +75,7 @@ trait BuildingRequestHelper extends AIModule[WorkerUnit] {
                                                                                        .useDefault,
                                      belongsTo: Option[ResourceArea] = None,
                                      priority: Priority = Priority.Default): Unit = {
-    val req = ResourceRequests.forUnit(universe.race, buildingType, priority)
+    val req = ResourceRequests.forUnit(universe.myRace, buildingType, priority)
     val result = resources.request(req, buildingEmployer)
     result.ifSuccess { suc =>
       val unitReq = UnitJobRequests.newOfType(universe, buildingEmployer, buildingType, suc,
@@ -109,7 +109,7 @@ trait UnitRequestHelper extends AIModule[UnitFactory] {
   private val addonHelper    = new HelperAIModule[CanBuildAddons](universe) with AddonRequestHelper
 
   def requestUnit[T <: Mobile](mobileType: Class[_ <: T], takeCareOfDependencies: Boolean) = {
-    val req = ResourceRequests.forUnit(universe.race, mobileType)
+    val req = ResourceRequests.forUnit(universe.myRace, mobileType)
     val result = resources.request(req, mobileEmployer)
     result.ifSuccess { suc =>
       val unitReq = UnitJobRequests.newOfType(universe, mobileEmployer, mobileType, suc)
@@ -313,11 +313,12 @@ object Strategy {
       def shouldExpand = expandNow
       if (shouldExpand) {
         val covered = bases.bases.map(_.resourceArea).toSet
-        val where = bases.mainBase.mainBuilding.tilePosition
-        val (choke, what) = strategicMap.domainsButWithout(covered)
-                            .minBy(_._1.center.distanceToSquared(where))
-        val target = what.values.flatten.minBy(_.patches.map(_.center.distanceToSquared(where)).getOrElse(999999))
-        Some(target)
+        bases.mainBase.map(_.mainBuilding.tilePosition).flatMap { where =>
+          val (choke, what) = strategicMap.domainsButWithout(covered)
+                              .minBy(_._1.center.distanceToSquared(where))
+          val target = what.values.flatten.minBy(_.patches.map(_.center.distanceToSquared(where)).getOrElse(999999))
+          Some(target)
+        }
       } else {
         None
       }
@@ -421,8 +422,12 @@ object Strategy {
       Nil
     }
 
-    override def determineScore: Int = mapLayers.isOnIsland(bases.mainBase.mainBuilding.tilePosition)
-                                       .ifElse(100, 0)
+    override def determineScore: Int = {
+      bases.mainBase.map { mb =>
+        mapLayers.isOnIsland(mb.mainBuilding.tilePosition)
+        .ifElse(100, 0)
+      }.getOrElse(0)
+    }
 
     override def suggestProducers = {
       val myBases = bases.myMineralFields.count(_.value > 1000)

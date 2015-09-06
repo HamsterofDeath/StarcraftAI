@@ -442,12 +442,25 @@ class Units(game: Game, hostile: Boolean) {
   }
   def mine = all.filter(_.nativeUnit.getPlayer == game.self())
   def minerals = allByType[MineralPatch]
+
+  private val forces = LazyVal.from {
+    val me = game.self
+    val friends = game.allies()
+    Forces(me, friends.asScala.toSet)
+  }
+
   def tick(): Unit = {
     if (initial) {
       initial = false
       init()
     }
-    game.self().getUnits.asScala.foreach {addUnit}
+    val addThese = {
+      if (ownAndNeutral)
+        game.self().getUnits.asScala
+      else
+        game.enemies().asScala.flatMap(_.getUnits.asScala)
+    }
+    addThese.foreach {addUnit}
   }
 
   private def init(): Unit = {
@@ -457,22 +470,35 @@ class Units(game: Game, hostile: Boolean) {
     }
   }
 
-  private def addUnit(u: bwapi.Unit): Unit = {
-    val ignore = {
-      val me = game.self()
-      val friend = u.getPlayer == null || u.getPlayer.getForce.getPlayers.contains(me)
-      hostile && friend || ownAndNeutral && !friend
+  case class Forces(me: Player, allies: Set[Player]) {
+    def isNotEnemy(u: bwapi.Unit) = !isEnemy(u)
+    def isFriend(u: bwapi.Unit) = {
+      u.getPlayer == me || allies(u.getPlayer)
     }
-    if (!graveyard(u.getID)) {
-      knownUnits.get(u.getID) match {
-        case None =>
-          val lifted = UnitWrapper.lift(u)
-          info(s"Own unit added: $lifted")
-          knownUnits.put(u.getID, lifted)
-        case Some(unit) if unit.initialType != u.getType =>
-          info(s"Unit morphed from ${unit.initialType} to ${u.getType}")
-          knownUnits.put(u.getID, UnitWrapper.lift(u))
-        case _ => // noop
+    def isNeutral(u: bwapi.Unit) = u.getPlayer == null
+    def isEnemy(u: bwapi.Unit) = !isNeutral(u) && !isFriend(u)
+  }
+
+  private def addUnit(u: bwapi.Unit): Unit = {
+    val record = {
+      if (ownAndNeutral) {
+        forces.get.isNotEnemy(u)
+      } else {
+        forces.get.isEnemy(u)
+      }
+    }
+    if (record) {
+      if (!graveyard(u.getID)) {
+        knownUnits.get(u.getID) match {
+          case None =>
+            val lifted = UnitWrapper.lift(u)
+            info(s"${ownAndNeutral.ifElse("Own", "Hostile")} unit added: $lifted")
+            knownUnits.put(u.getID, lifted)
+          case Some(unit) if unit.initialType != u.getType =>
+            info(s"Unit morphed from ${unit.initialType} to ${u.getType}")
+            knownUnits.put(u.getID, UnitWrapper.lift(u))
+          case _ => // noop
+        }
       }
     }
   }

@@ -55,7 +55,8 @@ class ProvideNewBuildings(universe: Universe)
       unitManager.request(request) match {
         case success: ExactlyOneSuccess[WorkerUnit] =>
           req.customPosition.init_!()
-          new Data(success.onlyOne, req.typeOfRequestedUnit, unitManager.bases.mainBase,
+          new Data(success.onlyOne, req.typeOfRequestedUnit,
+            unitManager.bases.mainBase.getOr("All your base are belong to us"),
             new ConstructionSiteFinder(universe), req).toSome
         case _ => None
       }
@@ -109,7 +110,7 @@ class ProvideNewSupply(universe: Universe) extends OrderlessAIModule[WorkerUnit]
     trace(s"Need more supply: $cur ($plannedSupplies planned)", needsMore)
     if (needsMore) {
       // can't use helper because overlords are not buildings :|
-      val race = universe.bases.mainBase.mainBuilding.race
+      val race = universe.myRace
       val result = resources.request(ResourceRequests.forUnit(race, classOf[SupplyProvider], Priority.Supply), this)
       result.ifSuccess { suc =>
         trace(s"More supply approved! $suc, requesting ${race.supplyClass.className}")
@@ -149,7 +150,7 @@ class ProvideNewUnits(universe: Universe) extends OrderlessAIModule[UnitFactory]
                   req.clearableInNextTick_!()
                   Nil
                 case _ =>
-                  resources.request(ResourceRequests.forUnit(universe.race, typeFixed, req.priority), self) match {
+                  resources.request(ResourceRequests.forUnit(universe.myRace, typeFixed, req.priority), self) match {
                     case suc: ResourceApprovalSuccess =>
                       val order = new TrainUnit(any.onlyOne, typeFixed, self, suc)
                       assignJob_!(order)
