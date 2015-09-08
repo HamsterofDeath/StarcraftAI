@@ -1,6 +1,6 @@
 package pony
 
-import bwapi.{DamageType, Order, Race, TechType, Unit => APIUnit, UnitSizeType, UnitType, UpgradeType, WeaponType}
+import bwapi.{DamageType, Order, Race, TechType, Unit => APIUnit, UnitType, UpgradeType, WeaponType}
 import pony.Upgrades.{IsTech, SingleTargetMagicSpell}
 import pony.brain.{HasUniverse, PriorityChain, UnitWithJob, Universe}
 
@@ -108,7 +108,7 @@ trait BlockingTiles extends StaticallyPositioned {
 }
 
 trait Building extends BlockingTiles with CanDie {
-
+  override val armorType = Building
 }
 
 class Upgrade(val nativeType: Either[UpgradeType, TechType]) {
@@ -281,15 +281,13 @@ sealed trait ArmorType
 case object Small extends ArmorType
 case object Medium extends ArmorType
 case object Large extends ArmorType
+case object Building extends ArmorType
 
 case class Armor(armorType: ArmorType, hp: HitPoints, owner: CanDie)
 
 trait CanDie extends WrapsUnit {
   self =>
-  private val armorType = if (initialType.size == UnitSizeType.Small) Small
-  else if (initialType.size == UnitSizeType.Medium) Medium
-  else if (initialType.size == UnitSizeType.Large) Large
-  else !!!(initialType.size.toString)
+  val armorType: ArmorType
 
   private var dead = false
   def isDead = dead
