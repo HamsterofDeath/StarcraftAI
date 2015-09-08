@@ -93,6 +93,27 @@ class UnitJobRenderer(override val universe: Universe) extends AIPlugIn with Has
   override def lazyWorld: DefaultWorld = universe.world
 }
 
+class UnitDebugRenderer(override val universe: Universe) extends AIPlugIn with HasUniverse {
+  override protected def tickPlugIn(): Unit = {
+    lazyWorld.debugger.debugRender { renderer =>
+      universe.myUnits.allMobiles.filter(_.isSelected).foreach { m =>
+        val center = m.currentPosition
+        m match {
+          case ag: GroundAndAirWeapon =>
+            renderer.in_!(Color.Yellow).drawCircleAround(center, ag.airRange)
+            renderer.in_!(Color.Orange).drawCircleAround(center, ag.groundRange)
+          case a: AirWeapon =>
+            renderer.in_!(Color.Yellow).drawCircleAround(center, a.airRange)
+          case g: GroundWeapon =>
+            renderer.in_!(Color.Orange).drawCircleAround(center, g.groundRange)
+          case _ =>
+          //pacifist
+        }
+      }
+    }
+  }
+}
+
 class StatsRenderer(override val universe: Universe) extends AIPlugIn with HasUniverse {
   override val lazyWorld = universe.world
 

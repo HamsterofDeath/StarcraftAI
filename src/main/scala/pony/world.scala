@@ -430,6 +430,7 @@ class Units(game: Game, hostile: Boolean) {
     }.map(_.asInstanceOf[T])
   }
   def all = knownUnits.valuesIterator
+  def allCanDie = allByType[CanDie]
 
   import scala.collection.JavaConverters._
   def firstByType[T: Manifest]: Option[T] = {

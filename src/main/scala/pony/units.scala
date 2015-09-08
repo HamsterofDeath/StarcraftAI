@@ -1,6 +1,6 @@
 package pony
 
-import bwapi.{Order, Race, TechType, Unit => APIUnit, UnitType, UpgradeType}
+import bwapi.{DamageType, Order, Race, TechType, Unit => APIUnit, UnitSizeType, UnitType, UpgradeType, WeaponType}
 import pony.Upgrades.{IsTech, SingleTargetMagicSpell}
 import pony.brain.{HasUniverse, PriorityChain, UnitWithJob, Universe}
 
@@ -53,7 +53,14 @@ trait WrapsUnit extends HasNativeSCAttributes with HasUniverse {
 
   def init_!(universe: Universe): Unit = {
     myUniverse = universe
+    onUniverseSet(universe)
   }
+
+  protected def onUniverseSet(universe: Universe): Unit = {
+
+  }
+
+  def isSelected = nativeUnit.isSelected
   def nativeUnit: APIUnit
   def unitIdText = Integer.toString(unitId, 36)
   def mySCRace = {
@@ -267,13 +274,48 @@ trait SpellcasterBuilding extends Building with Controllable {
 
 }
 
+case class HitPoints(normalizedHitpoints: Int, normalizedShield: Int) {
+}
+
+sealed trait ArmorType
+case object Small extends ArmorType
+case object Medium extends ArmorType
+case object Large extends ArmorType
+
+case class Armor(armorType: ArmorType, hp: HitPoints, owner: CanDie)
+
 trait CanDie extends WrapsUnit {
+  self =>
+  private val armorType = if (initialType.size == UnitSizeType.Small) Small
+  else if (initialType.size == UnitSizeType.Medium) Medium
+  else if (initialType.size == UnitSizeType.Large) Large
+  else !!!(initialType.size.toString)
+
   private var dead = false
   def isDead = dead
 
   def notifyDead_!(): Unit = {
     dead = true
   }
+
+  private val myArmor = LazyVal.from {
+    Armor(armorType, HitPoints(nativeUnit.getHitPoints * 4, nativeUnit.getShields * 4), self)
+  }
+
+  def matchThis[X](ifMobile: Mobile => X, ifBuilding: Building => X) = this match {
+    case m: Mobile => ifMobile(m)
+    case b: Building => ifBuilding(b)
+    case x => !!!(s"Check this $x")
+  }
+
+  override def onTick(): Unit = {
+    super.onTick()
+    myArmor.invalidate()
+  }
+
+  def hitPoints = myArmor.get.hp
+
+  def armor = myArmor.get
 
 }
 
@@ -317,18 +359,103 @@ trait SpiderMines extends WrapsUnit
 
 trait GroundWeapon extends Weapon {
 
+  private val weapon = initialType.airWeapon()
+  val groundRange           = weapon.maxRange()
+  val groundCanAttackAir    = weapon.targetsAir()
+  val groundCanAttackGround = weapon.targetsGround()
+
+  private val damage = LazyVal.from(evalDamage(weapon))
+
+  override protected def onUniverseSet(universe: Universe): Unit = {
+    super.onUniverseSet(universe)
+    universe.upgrades.register_!(_ => damage.invalidate())
+  }
+
+  override def canAttack(other: CanDie) = {
+    def selfCanAttack = matchOn[Boolean](other)(_ => groundCanAttackAir, _ => groundCanAttackGround)
+    super.canAttack(other) || selfCanAttack
+  }
+  override def calculateDamageOn(other: Armor) = {
+    if (canAttack(other.owner)) {
+      damage.get.on(other)
+    } else {
+      super.calculateDamageOn(other)
+    }
+  }
+
+  override def isInWeaponRange(other: CanDie) = {
+    if (canAttack(other))
+      matchOn(other)(air => nativeUnit.isInWeaponRange(other.nativeUnit),
+        ground => nativeUnit.isInWeaponRange(other.nativeUnit))
+    else
+      super.isInWeaponRange(other)
+  }
 }
 
+case class Damage(amount: Int, bonus: Int, cooldown: Int, damageType: DamageType) {
+  def on(other: Armor) = DamageSingleAttack(5, 0)
+}
+case class DamageSingleAttack(onHp: Int, onShields: Int)
+
 trait AirWeapon extends Weapon {
+  private val weapon = initialType.airWeapon()
+  val airRange           = weapon.maxRange()
+  val airCanAttackAir    = weapon.targetsAir()
+  val airCanAttackGround = weapon.targetsGround()
+
+  private val damage = LazyVal.from(evalDamage(weapon))
+
+  override protected def onUniverseSet(universe: Universe): Unit = {
+    super.onUniverseSet(universe)
+    universe.upgrades.register_!(_ => damage.invalidate())
+  }
+  // air & groundweapon need to override this
+  override def canAttack(other: CanDie) = {
+    def selfCanAttack = matchOn(other)(_ => airCanAttackAir, _ => airCanAttackGround)
+    super.canAttack(other) || selfCanAttack
+  }
+  override def calculateDamageOn(other: Armor) = {
+    if (canAttack(other.owner)) {
+      damage.get.on(armor)
+    } else {
+      super.calculateDamageOn(other)
+    }
+  }
+
+  override def isInWeaponRange(other: CanDie) = {
+    if (canAttack(other))
+      matchOn(other)(air => nativeUnit.isInWeaponRange(other.nativeUnit),
+        ground => nativeUnit.isInWeaponRange(other.nativeUnit))
+    else
+      super.isInWeaponRange(other)
+  }
 
 }
 
 trait Weapon extends Controllable {
   def isAttacking = isStartingToAttack || nativeUnit.getAirWeaponCooldown > 0 || nativeUnit.getGroundWeaponCooldown > 0
   def isStartingToAttack = nativeUnit.isStartingAttack
+  // air & groundweapon need to override this
+  def canAttack(other: CanDie) = false
+  def calculateDamageOn(other: Armor): DamageSingleAttack = !!!("Forgot to override this")
+
+  def matchOn[X](other: CanDie)(ifAir: AirUnit => X, ifGround: GroundUnit => X) = other match {
+    case a: AirUnit => ifAir(a)
+    case g: GroundUnit => ifGround(g)
+    case x => !!!(s"Check this $x")
+  }
+
+  protected def evalDamage(weapon: WeaponType) = {
+    Damage(weapon.damageAmount(), weapon.damageBonus(), weapon.damageCooldown(), weapon.damageType())
+  }
+
+  def isInWeaponRange(target: CanDie): Boolean = !!!("Forgot to override this")
+
 }
 
-trait MobileRangeWeapon extends RangeWeapon with Mobile
+trait MobileRangeWeapon extends RangeWeapon with Mobile {
+
+}
 
 trait RangeWeapon extends Weapon {
 

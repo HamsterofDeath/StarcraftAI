@@ -24,6 +24,7 @@ object ConcoctedAI {
     .addPlugin(new BlockedBuildingSpotsRenderer(mainAi.universe))
     .addPlugin(new UnitJobRenderer(mainAi.universe))
     .addPlugin(new MineralDebugRenderer(mainAi.universe))
+    .addPlugin(new UnitDebugRenderer(mainAi.universe))
     .addPlugin(new StatsRenderer(mainAi.universe))
     .addPlugin(new DebugHelper(mainAi))
   }

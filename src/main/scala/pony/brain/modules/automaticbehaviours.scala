@@ -1,10 +1,12 @@
 package pony.brain.modules
 
 import pony.brain.{HasUniverse, Objective, SingleUnitBehaviour, Universe}
-import pony.{CanCloak, CanUseStimpack, Ghost, HasSingleTargetSpells, InstantAttack, LazyVal, Medic, Mobile,
-MobileDetector, MobileRangeWeapon, Orders, SCV, SingleTargetSpell, Spells, SupportUnit, Upgrades, Vulture, WrapsUnit}
+import pony.{CanCloak, CanDie, CanUseStimpack, DamageSingleAttack, Ghost, HasSingleTargetSpells, InstantAttack,
+LazyVal, Medic, Mobile, MobileDetector, MobileRangeWeapon, Orders, SCV, SingleTargetSpell, Spells, SupportUnit,
+Upgrades, Vulture, WrapsUnit}
 
 import scala.collection.mutable
+import scala.collection.mutable.ArrayBuffer
 
 abstract class DefaultBehaviour[T <: Mobile : Manifest](override val universe: Universe) extends HasUniverse {
   private val controlled           = new
@@ -155,10 +157,12 @@ object Terran {
         SingleUnitBehaviour(t) {
       override def shortName = "Focus fire"
       override def toOrder(what: Objective) = {
-        helper.suggestTarget(t).map { target =>
+        /*
+                helper.suggestTarget(t).map { target =>
 
-          .
-        } toList
+                }.toList
+        */
+        Nil
       }
     }
   }
@@ -168,17 +172,51 @@ case class Target[T <: Mobile](caster: HasSingleTargetSpells, target: T)
 
 class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
 
-  class Attackers {
-    private val attackers = mutable.HashSet.empty[MobileRangeWeapon]
+  class Attackers(val target: CanDie) {
+
+    def isAttacker(t: MobileRangeWeapon) = attackers(t)
+
+    def addAttacker_!(t: MobileRangeWeapon): Unit = {
+      attackers += t
+      val damageDone = t.calculateDamageOn(target.armor)
+      plannedDamage += damageDone
+      hpAfterNextAttacks -! damageDone
+    }
+
+    class NormalizedHP(var hp: Int, var shields: Int) {
+      assert(shields >= 0)
+
+      def alive = hp > 0
+
+      def -!(dsa: DamageSingleAttack) = {
+        hp -= dsa.onHp
+        shields -= dsa.onShields
+      }
+    }
+
+    private val attackers          = mutable.HashSet.empty[MobileRangeWeapon]
+    private val plannedDamage      = ArrayBuffer.empty[DamageSingleAttack]
+    private var normalizedActualHP = target.hitPoints
+    private var hpAfterNextAttacks = new
+        NormalizedHP(normalizedActualHP.normalizedHitpoints, normalizedActualHP.normalizedShield)
+
+    def canTakeMore = hpAfterNextAttacks.alive
   }
 
   private val assignments = mutable.HashMap.empty[WrapsUnit, Attackers]
 
   def suggestTarget(t: MobileRangeWeapon): Option[WrapsUnit] = {
-    universe.enemyUnits.all.find { maybe =>
-
+    universe.enemyUnits.allCanDie.find { target =>
+      val existing = assignments.get(target).exists(_.isAttacker(t))
+      existing || (t.isInWeaponRange(target) && t.canAttack(target) &&
+                   assignments.getOrElseUpdate(target, new Attackers(target)).canTakeMore)
+    }.foreach { attackThis =>
+      val plan = assignments(attackThis)
+      if (!plan.isAttacker(t)) {
+        plan.addAttacker_!(t)
+      }
     }
-    assignments
+    assignments.get(t).map(_.target)
   }
 }
 
