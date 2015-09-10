@@ -412,6 +412,7 @@ trait AirWeapon extends Weapon {
     def selfCanAttack = matchOn(other)(_ => airCanAttackAir, _ => airCanAttackGround)
     super.canAttack(other) || selfCanAttack
   }
+
   override def calculateDamageOn(other: Armor) = {
     if (canAttack(other.owner)) {
       damage.get.on(armor)
@@ -448,7 +449,6 @@ trait Weapon extends Controllable {
   }
 
   def isInWeaponRange(target: CanDie): Boolean = !!!("Forgot to override this")
-
 }
 
 trait MobileRangeWeapon extends RangeWeapon with Mobile {
@@ -563,14 +563,15 @@ trait SupportUnit extends Mobile
 
 class SupplyDepot(unit: APIUnit) extends AnyUnit(unit) with ImmobileSupplyProvider
 class Pylon(unit: APIUnit) extends AnyUnit(unit) with ImmobileSupplyProvider
-class Overlord(unit: APIUnit) extends AnyUnit(unit) with MobileSupplyProvider with TransporterUnit with CanDetectHidden
+class Overlord(unit: APIUnit)
+  extends AnyUnit(unit) with MobileSupplyProvider with TransporterUnit with CanDetectHidden with IsBig
 
-class SCV(unit: APIUnit) extends AnyUnit(unit) with WorkerUnit
-class Probe(unit: APIUnit) extends AnyUnit(unit) with WorkerUnit
-class Drone(unit: APIUnit) extends AnyUnit(unit) with WorkerUnit
+class SCV(unit: APIUnit) extends AnyUnit(unit) with WorkerUnit with IsSmall
+class Probe(unit: APIUnit) extends AnyUnit(unit) with WorkerUnit with IsSmall
+class Drone(unit: APIUnit) extends AnyUnit(unit) with WorkerUnit with IsSmall with Organic
 
-class Shuttle(unit: APIUnit) extends AnyUnit(unit) with TransporterUnit with SupportUnit
-class Dropship(unit: APIUnit) extends AnyUnit(unit) with TransporterUnit with SupportUnit
+class Shuttle(unit: APIUnit) extends AnyUnit(unit) with TransporterUnit with SupportUnit with IsBig
+class Dropship(unit: APIUnit) extends AnyUnit(unit) with TransporterUnit with SupportUnit with IsBig
 
 class CommandCenter(unit: APIUnit) extends AnyUnit(unit) with MainBuilding with CanBuildAddons
 class Nexus(unit: APIUnit) extends AnyUnit(unit) with MainBuilding
@@ -692,57 +693,72 @@ trait Organic extends Mobile {
   def isBlinded = nativeUnit.isBlind
 }
 
-class Observer(unit: APIUnit) extends AnyUnit(unit) with MobileDetector with Mechanic
-class Scout(unit: APIUnit) extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with Mechanic
-class Zealot(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundWeapon
-class Dragoon(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with Mechanic
-class Archon(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon
-class Carrier(unit: APIUnit) extends AnyUnit(unit) with AirUnit with Mechanic
-class Arbiter(unit: APIUnit) extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with Mechanic
-class Templar(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with PermaCloak with HasSingleTargetSpells {
+trait IsSmall extends Mobile with CanDie {
+  override val armorType = Small
+}
+trait IsMedium extends Mobile with CanDie {
+  override val armorType = Medium
+}
+trait IsBig extends Mobile with CanDie {
+  override val armorType = Large
+}
+
+class Observer(unit: APIUnit) extends AnyUnit(unit) with MobileDetector with Mechanic with IsSmall
+class Scout(unit: APIUnit) extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with Mechanic with IsBig
+class Zealot(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundWeapon with IsSmall
+class Dragoon(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with Mechanic with IsBig
+class Archon(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with IsBig
+class Carrier(unit: APIUnit) extends AnyUnit(unit) with AirUnit with Mechanic with IsBig
+class Arbiter(unit: APIUnit) extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with Mechanic with IsBig
+class Templar(unit: APIUnit)
+  extends AnyUnit(unit) with GroundUnit with PermaCloak with HasSingleTargetSpells with IsSmall {
   override val spells = Nil
 }
-class DarkTemplar(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundWeapon with CanCloak
-class DarkArchon(unit: APIUnit) extends AnyUnit(unit) with GroundUnit
-class Corsair(unit: APIUnit) extends AnyUnit(unit) with AirUnit with AirWeapon with Mechanic
-class Interceptor(unit: APIUnit) extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with Mechanic
-class Reaver(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundWeapon with Mechanic
+class DarkTemplar(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundWeapon with CanCloak with IsSmall
+class DarkArchon(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with IsBig
+class Corsair(unit: APIUnit) extends AnyUnit(unit) with AirUnit with AirWeapon with Mechanic with IsMedium
+class Interceptor(unit: APIUnit) extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with Mechanic with IsSmall
+class Reaver(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundWeapon with Mechanic with IsBig
 
-class Scarab(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundWeapon
-class SpiderMine(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundWeapon
+class Scarab(unit: APIUnit) extends AnyUnit(unit)
+class SpiderMine(unit: APIUnit) extends AnyUnit(unit)
 
 class Marine(unit: APIUnit)
-  extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with CanUseStimpack with MobileRangeWeapon
-class Firebat(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundWeapon with CanUseStimpack
+  extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with CanUseStimpack with MobileRangeWeapon with IsSmall
+class Firebat(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with GroundWeapon with CanUseStimpack with IsSmall
 class Ghost(unit: APIUnit)
   extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with CanCloak with InstantAttack with
-          HasSingleTargetSpells with MobileRangeWeapon {
+          HasSingleTargetSpells with MobileRangeWeapon with IsSmall {
   override val spells = List(Spells.Lockdown)
   override type MyType = Ghost
 }
-class Medic(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with SupportUnit with HasSingleTargetSpells {
+class Medic(unit: APIUnit)
+  extends AnyUnit(unit) with GroundUnit with SupportUnit with HasSingleTargetSpells with IsSmall {
   override val spells = List(Spells.Blind)
   override type MyType = Medic
 }
 class Vulture(unit: APIUnit)
   extends AnyUnit(unit) with GroundUnit with GroundWeapon with SpiderMines with InstantAttack with Mechanic with
-          MobileRangeWeapon
+          MobileRangeWeapon with IsMedium
 class Tank(unit: APIUnit)
   extends AnyUnit(unit) with GroundUnit with GroundWeapon with InstantAttack with Mechanic with CanSiege with
-          MobileRangeWeapon
+          MobileRangeWeapon with IsBig
 class Goliath(unit: APIUnit)
-  extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with InstantAttack with Mechanic with MobileRangeWeapon
+  extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with InstantAttack with Mechanic with
+          MobileRangeWeapon with IsBig
 class Wraith(unit: APIUnit)
   extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with CanCloak with InstantAttack with Mechanic with
-          MobileRangeWeapon
-class Valkery(unit: APIUnit) extends AnyUnit(unit) with AirUnit with AirWeapon with Mechanic with MobileRangeWeapon
+          MobileRangeWeapon with IsBig
+class Valkery(unit: APIUnit)
+  extends AnyUnit(unit) with AirUnit with AirWeapon with Mechanic with MobileRangeWeapon with IsBig
 class Battlecruiser(unit: APIUnit)
   extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with InstantAttack with Mechanic with
-          HasSingleTargetSpells with MobileRangeWeapon {
+          HasSingleTargetSpells with MobileRangeWeapon with IsBig {
   override val spells = Nil
 }
 class ScienceVessel(unit: APIUnit)
-  extends AnyUnit(unit) with AirUnit with SupportUnit with CanDetectHidden with Mechanic with HasSingleTargetSpells {
+  extends AnyUnit(unit) with AirUnit with SupportUnit with CanDetectHidden with Mechanic with HasSingleTargetSpells with
+          IsBig {
   override val spells = Nil
 }
 
