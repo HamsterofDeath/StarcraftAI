@@ -29,6 +29,14 @@ abstract class UnitOrder {
 }
 
 object Orders {
+  case class AttackUnit(attacker: MobileRangeWeapon, target: CanDie) extends UnitOrder {
+    override def myUnit: WrapsUnit = attacker
+    override def issueOrderToGame(): Unit = attacker.nativeUnit.attack(target.nativeUnit)
+    override def renderDebug(renderer: Renderer): Unit = {
+      renderer.in_!(Color.Red).indicateTarget(attacker.currentPosition, target.center)
+    }
+  }
+
   case class Stimpack(u: CanUseStimpack) extends UnitOrder {
     override def myUnit: WrapsUnit = u
     override def issueOrderToGame(): Unit = {

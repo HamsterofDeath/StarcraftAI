@@ -99,6 +99,7 @@ case class Area(upperLeft: MapTilePosition, sizeOfArea: Size) {
               Nil
 
   val center     = MapPosition((upperLeft.mapX + lowerRight.mapX) / 2, (upperLeft.mapY + lowerRight.mapY) / 2)
+  val centerTile = MapTilePosition((upperLeft.x + lowerRight.x) / 2, (upperLeft.y + lowerRight.y) / 2)
   def distanceTo(tilePosition: MapTilePosition) = {
     // TODO optimize
     outline.minBy(_.distanceToSquared(tilePosition)).distanceTo(tilePosition)

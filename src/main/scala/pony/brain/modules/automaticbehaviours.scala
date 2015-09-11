@@ -9,11 +9,11 @@ import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
 abstract class DefaultBehaviour[T <: Mobile : Manifest](override val universe: Universe) extends HasUniverse {
-  private val controlled           = new
+  private val controlled      = new
       collection.mutable.HashMap[Objective, collection.mutable.Set[SingleUnitBehaviour[T]]]
       with mutable.MultiMap[Objective, SingleUnitBehaviour[T]]
-  private val unit2behaviour       = mutable.HashMap.empty[T, SingleUnitBehaviour[T]]
-  private val controlledUnits      = mutable.HashSet.empty[T]
+  private val unit2behaviour  = mutable.HashMap.empty[T, SingleUnitBehaviour[T]]
+  private val controlledUnits = mutable.HashSet.empty[T]
   def behaviourOf(unit: Mobile) = {
     ifControlsOpt(unit) {identity}
   }
@@ -47,7 +47,6 @@ abstract class DefaultBehaviour[T <: Mobile : Manifest](override val universe: U
 
   def onTick(): Unit = {}
 }
-
 
 object Terran {
   def allBehaviours(universe: Universe): Seq[DefaultBehaviour[Mobile]] = {
@@ -157,12 +156,9 @@ object Terran {
         SingleUnitBehaviour(t) {
       override def shortName = "Focus fire"
       override def toOrder(what: Objective) = {
-        /*
-                helper.suggestTarget(t).map { target =>
-
-                }.toList
-        */
-        Nil
+        helper.suggestTarget(t).map { target =>
+          Orders.AttackUnit(t, target)
+        }.toList
       }
     }
   }
@@ -177,6 +173,7 @@ class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
     def isAttacker(t: MobileRangeWeapon) = attackers(t)
 
     def addAttacker_!(t: MobileRangeWeapon): Unit = {
+      assert(!attackers(t), s"$attackers already contains $t")
       attackers += t
       val damageDone = t.calculateDamageOn(target.armor)
       plannedDamage += damageDone
@@ -198,23 +195,21 @@ class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
     private val plannedDamage      = ArrayBuffer.empty[DamageSingleAttack]
     private var normalizedActualHP = target.hitPoints
     private var hpAfterNextAttacks = new
-        NormalizedHP(normalizedActualHP.normalizedHitpoints, normalizedActualHP.normalizedShield)
+        NormalizedHP(normalizedActualHP.hitpoints, normalizedActualHP.shield)
 
     def canTakeMore = hpAfterNextAttacks.alive
   }
 
-  private val assignments = mutable.HashMap.empty[WrapsUnit, Attackers]
+  private val assignments = mutable.HashMap.empty[CanDie, Attackers]
 
-  def suggestTarget(t: MobileRangeWeapon): Option[WrapsUnit] = {
+  def suggestTarget(t: MobileRangeWeapon): Option[CanDie] = {
     universe.enemyUnits.allCanDie.find { target =>
       val existing = assignments.get(target).exists(_.isAttacker(t))
       existing || (t.isInWeaponRange(target) && t.canAttack(target) &&
                    assignments.getOrElseUpdate(target, new Attackers(target)).canTakeMore)
     }.foreach { attackThis =>
       val plan = assignments(attackThis)
-      if (!plan.isAttacker(t)) {
-        plan.addAttacker_!(t)
-      }
+      plan.addAttacker_!(t)
     }
     assignments.get(t).map(_.target)
   }

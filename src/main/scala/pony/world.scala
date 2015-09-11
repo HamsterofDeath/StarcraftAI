@@ -495,8 +495,8 @@ class Units(game: Game, hostile: Boolean) {
             val lifted = UnitWrapper.lift(u)
             info(s"${ownAndNeutral.ifElse("Own", "Hostile")} unit added: $lifted")
             knownUnits.put(u.getID, lifted)
-          case Some(unit) if unit.initialType != u.getType =>
-            info(s"Unit morphed from ${unit.initialType} to ${u.getType}")
+          case Some(unit) if unit.initialNativeType != u.getType =>
+            info(s"Unit morphed from ${unit.initialNativeType} to ${u.getType}")
             knownUnits.put(u.getID, UnitWrapper.lift(u))
           case _ => // noop
         }
