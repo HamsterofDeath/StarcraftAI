@@ -797,7 +797,7 @@ class BusyDoingSomething[T <: Mobile](employer: Employer[T], behaviour: Seq[Sing
   override protected def ordersForTick = {
     val options = active.map { rule =>
       rule -> rule.toOrder(objective)
-    }
+    }.filter(_._2.nonEmpty)
     if (options.isEmpty) {
       Nil
     } else {

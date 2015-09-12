@@ -267,7 +267,7 @@ class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
   private val me2Enemy           = mutable.HashMap.empty[MobileRangeWeapon, CanDie]
   private val prioritizedTargets = LazyVal.from {
     universe.enemyUnits.allCanDie.toVector.sortBy { e =>
-      (e.isDisabled.ifElse(1, 0), -e.price.sum)
+      (e.isHarmlessNow.ifElse(1, 0), -e.price.sum)
     }
   }
 

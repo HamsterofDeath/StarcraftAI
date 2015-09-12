@@ -46,7 +46,7 @@ trait OrderHistorySupport extends WrapsUnit {
 
 trait WrapsUnit extends HasNativeSCAttributes with HasUniverse {
   def isInGame = true
-
+  def canDoDamage = false
 
   val unitId            = WrapsUnit.nextId
   val nativeUnitId      = nativeUnit.getID
@@ -389,9 +389,12 @@ case class Armor(armorType: ArmorType, hp: HitPoints, armor: Int, owner: CanDie)
 
 trait CanDie extends WrapsUnit {
   self =>
+  def isHarmlessNow = isDisabled || !canDoDamage
+
   def isDisabled = {
     nativeUnit.isLockedDown || nativeUnit.isStasised
   }
+
 
   val armorType: ArmorType
 
@@ -593,6 +596,8 @@ trait AirWeapon extends Weapon {
 
 trait Weapon extends Controllable {
   self: WrapsUnit =>
+
+  override def canDoDamage = true
   def cooldownTimer = nativeUnit.getAirWeaponCooldown max nativeUnit.getGroundWeaponCooldown
   def isAttacking = isStartingToAttack || cooldownTimer > 0
   def isStartingToAttack = nativeUnit.isStartingAttack
