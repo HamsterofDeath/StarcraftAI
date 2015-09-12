@@ -7,6 +7,21 @@ case class Priority(importance: Double) {
   def <=(priority: Priority) = importance <= priority.importance
 }
 
+case class SecondPriority(importance: Double) {
+
+  def <(priority: SecondPriority) = importance < priority.importance
+  def >(priority: SecondPriority) = importance > priority.importance
+  def <=(priority: SecondPriority) = importance <= priority.importance
+}
+
+object SecondPriority {
+  val None    = SecondPriority(0)
+  val Default = SecondPriority(0.5)
+  val Max     = SecondPriority(1.0)
+
+  implicit val ordering = Ordering.by[SecondPriority, Double](_.importance)
+}
+
 object Priority {
   val None              = Priority(0)
   val DefaultBehaviour  = Priority(0.48)

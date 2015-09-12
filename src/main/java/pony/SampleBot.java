@@ -4,6 +4,7 @@ import bwapi.DefaultBWListener;
 import bwapi.Game;
 import bwapi.Mirror;
 import bwapi.Player;
+import bwapi.Text.Size.Enum;
 import bwapi.Unit;
 import bwapi.UnitType;
 
@@ -41,7 +42,7 @@ public class SampleBot extends DefaultBWListener {
 
     @Override
     public void onFrame() {
-        game.setTextSize(10);
+        game.setTextSize(Enum.Default);
         game.drawTextScreen(10, 10, "Playing as " + self.getName() + " - " + self.getRace());
 
         StringBuilder units = new StringBuilder("My units:\n");

@@ -183,11 +183,14 @@ class TwilightSparkle(world: DefaultWorld) {
       bases.findMainBase()
     }
 
+    world.enemyUnits.consumeFresh_! {_.init_!(universe)}
+
     maps.tick()
     resources.tick()
     unitManager.tick()
     strategy.tick()
     bases.tick()
+    universe.afterTick()
 
     val tick = world.tickCount
 

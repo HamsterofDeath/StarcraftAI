@@ -71,8 +71,8 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
   }
   def constructionsInProgress[T <: Building](typeOfBuilding: Class[_ <: T]): Seq[ConstructBuilding[WorkerUnit, T]] = {
     val byJob = allJobsByType[ConstructBuilding[WorkerUnit, Building]].collect {
-      case cr: ConstructBuilding[WorkerUnit, Building] if typeOfBuilding.isAssignableFrom(cr.typeOfBuilding) => cr
-                                                                                                                .asInstanceOf[ConstructBuilding[WorkerUnit, T]]
+      case cr: ConstructBuilding[WorkerUnit, Building] if typeOfBuilding.isAssignableFrom(cr.typeOfBuilding) =>
+        cr.asInstanceOf[ConstructBuilding[WorkerUnit, T]]
     }
     byJob
   }
@@ -449,6 +449,8 @@ trait Interruptable {
 abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: T, val priority: Priority)
   extends HasUniverse {
 
+  protected def omitRepeatedOrders = false
+
   unit match {
     case cd: CanDie => assert(!cd.isDead)
     case _ =>
@@ -474,13 +476,21 @@ abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: 
   def shortDebugString: String
   def age = currentTick - creationTick
   def isIdle: Boolean = false
+
+  private var lastOrder: Seq[UnitOrder] = Nil
   def ordersForThisTick = {
     if (noCommandsForTicks > 0) {
       noCommandsForTicks -= 1
       Nil
     } else {
       noCommandsForTicks = everyNth
-      ordersForTick
+      val nextOrder = ordersForTick
+      if (omitRepeatedOrders && nextOrder == lastOrder) {
+        Nil
+      } else {
+        lastOrder = nextOrder
+        nextOrder
+      }
     }
   }
   def everyNth = 0
@@ -759,10 +769,13 @@ object Objective {
   val initial = Objective(None, Undefined)
 }
 
-abstract class SingleUnitBehaviour[T <: Mobile](val unit: T) {
+case class SingleUnitBehaviourMeta(priority: SecondPriority)
+
+abstract class SingleUnitBehaviour[T <: Mobile](val unit: T, meta: SingleUnitBehaviourMeta) {
   def toOrder(what: Objective): Seq[UnitOrder]
   def preconditionOk = true
   def shortName: String
+  def priority = meta.priority
 }
 
 class BusyDoingSomething[T <: Mobile](employer: Employer[T], behaviour: Seq[SingleUnitBehaviour[T]],
@@ -774,11 +787,23 @@ class BusyDoingSomething[T <: Mobile](employer: Employer[T], behaviour: Seq[Sing
   def newObjective_!(objective: Objective): Unit = {
     this.objective = objective
   }
+
+  override protected def omitRepeatedOrders = true
+
   override def shortDebugString = s"(BG) ${active.map(_.shortName).mkString(", ")}"
   private def active = behaviour.filter(_.preconditionOk)
   // never ends
   override def isFinished = false
-  override protected def ordersForTick = active.flatMap(_.toOrder(objective))
+  override protected def ordersForTick = {
+    val options = active.map { rule =>
+      rule -> rule.toOrder(objective)
+    }
+    if (options.isEmpty) {
+      Nil
+    } else {
+      options.maxBy(_._1.priority)._2
+    }
+  }
 }
 
 class BusyDoingNothing[T <: WrapsUnit](unit: T, employer: Employer[T])

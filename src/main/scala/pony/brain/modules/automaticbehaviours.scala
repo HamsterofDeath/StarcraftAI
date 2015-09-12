@@ -1,12 +1,8 @@
-package pony.brain.modules
-
-import pony.brain.{HasUniverse, Objective, SingleUnitBehaviour, Universe}
-import pony.{CanCloak, CanDie, CanUseStimpack, DamageSingleAttack, Ghost, HasSingleTargetSpells, InstantAttack,
-LazyVal, Medic, Mobile, MobileDetector, MobileRangeWeapon, Orders, SCV, SingleTargetSpell, Spells, SupportUnit,
-Upgrades, Vulture, WrapsUnit}
+package pony
+package brain
+package modules
 
 import scala.collection.mutable
-import scala.collection.mutable.ArrayBuffer
 
 abstract class DefaultBehaviour[T <: Mobile : Manifest](override val universe: Universe) extends HasUniverse {
   private val controlled      = new
@@ -14,6 +10,11 @@ abstract class DefaultBehaviour[T <: Mobile : Manifest](override val universe: U
       with mutable.MultiMap[Objective, SingleUnitBehaviour[T]]
   private val unit2behaviour  = mutable.HashMap.empty[T, SingleUnitBehaviour[T]]
   private val controlledUnits = mutable.HashSet.empty[T]
+
+  def priority = SecondPriority.Default
+
+  protected def meta = SingleUnitBehaviourMeta(priority)
+
   def behaviourOf(unit: Mobile) = {
     ifControlsOpt(unit) {identity}
   }
@@ -66,8 +67,8 @@ object Terran {
                                            new BlindDetector ::
                                            new Evade ::
                                            new StopToFire ::
-                                           new FocusFire ::
                       */
+                      new FocusFire(universe) ::
                       Nil).map(_.cast)
     allOfThem
   }
@@ -80,7 +81,7 @@ object Terran {
   }
 
   class StimSelf(universe: Universe) extends DefaultBehaviour[CanUseStimpack](universe) {
-    override protected def lift(t: CanUseStimpack) = new SingleUnitBehaviour[CanUseStimpack](t) {
+    override protected def lift(t: CanUseStimpack) = new SingleUnitBehaviour[CanUseStimpack](t, meta) {
 
       override def preconditionOk = upgrades.hasResearched(Upgrades.Terran.InfantryCooldown)
 
@@ -93,6 +94,7 @@ object Terran {
       }
       override def shortName: String = s"Stim"
     }
+
   }
   class RevealHiddenUnitsPermanenly(universe: Universe) extends DefaultBehaviour[MobileDetector](universe) {
     override protected def lift(t: MobileDetector): SingleUnitBehaviour[MobileDetector] = ???
@@ -113,7 +115,7 @@ object Terran {
   class StopMechanic(universe: Universe) extends DefaultBehaviour[Ghost](universe) {
     private val helper = NonConflictingTargetPicks.forSpell(Spells.Lockdown, universe)
 
-    override protected def lift(t: Ghost): SingleUnitBehaviour[Ghost] = new SingleUnitBehaviour(t) {
+    override protected def lift(t: Ghost): SingleUnitBehaviour[Ghost] = new SingleUnitBehaviour(t, meta) {
       private def spell = Upgrades.Terran.GhostStop
       override def preconditionOk = upgrades.hasResearched(spell)
 
@@ -153,7 +155,7 @@ object Terran {
     private val helper = new FocusFireOrganizer(universe)
 
     override protected def lift(t: MobileRangeWeapon): SingleUnitBehaviour[MobileRangeWeapon] = new
-        SingleUnitBehaviour(t) {
+        SingleUnitBehaviour(t, meta) {
       override def shortName = "Focus fire"
       override def toOrder(what: Objective) = {
         helper.suggestTarget(t).map { target =>
@@ -168,19 +170,79 @@ case class Target[T <: Mobile](caster: HasSingleTargetSpells, target: T)
 
 class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
 
+  universe.register_!(() => {
+    enemy2Attackers.filter(_._1.isDead).foreach { case (dead, attackers) =>
+      trace(s"Unit $dead died, reorganizing attackers")
+      enemy2Attackers.remove(dead)
+      attackers.allAttackers.foreach { unit =>
+        me2Enemy.remove(unit)
+      }
+    }
+
+    me2Enemy.keySet.filter(_.isDead).foreach { dead =>
+      val target = me2Enemy.remove(dead)
+      target.foreach { canDie =>
+        enemy2Attackers(canDie).removeAttacker_!(dead)
+      }
+    }
+  })
+
+  universe.register_!(() => {
+    prioritizedTargets.invalidate()
+  })
+
   class Attackers(val target: CanDie) {
+
+    def recalculatePlannedDamage_!(): Unit = {
+      val attackersSorted = plannedDamage.keys.toArray.sortBy(_.cooldownTimer)
+      val damage = new MutableHP(0, 0)
+      val currentHp = actualHP
+      val assumeHp = new MutableHP(currentHp.hitpoints, currentHp.shield)
+      attackersSorted.foreach { attacker =>
+        val moreDamage = attacker.calculateDamageOn(target, assumeHp.hp, assumeHp.shields)
+        damage +! moreDamage
+        assumeHp -! moreDamage
+      }
+      plannedDamageMerged = damage
+    }
+
+    def removeAttacker_!(t: MobileRangeWeapon): Unit = {
+      attackers -= t
+      plannedDamage -= t
+      recalculatePlannedDamage_!()
+    }
+
+    def canSpare(attacker: MobileRangeWeapon) = {
+      assert(isAttacker(attacker))
+      // this is not entirely correct because of shields & zerg regeneration, but should be close enough
+      val damage = plannedDamage(attacker)
+
+      actualHP <(plannedDamageMerged.hp - damage.onHp, plannedDamageMerged.shields - damage.onShields)
+    }
+
+    def allAttackers = attackers.iterator
 
     def isAttacker(t: MobileRangeWeapon) = attackers(t)
 
     def addAttacker_!(t: MobileRangeWeapon): Unit = {
       assert(!attackers(t), s"$attackers already contains $t")
       attackers += t
-      val damageDone = t.calculateDamageOn(target.armor)
-      plannedDamage += damageDone
-      hpAfterNextAttacks -! damageDone
+      val expectedDamage = t.calculateDamageOn(target, hpAfterNextAttacks.hp, hpAfterNextAttacks.shields)
+      plannedDamage.put(t, expectedDamage)
+      recalculatePlannedDamage_!()
+      hpAfterNextAttacks -! expectedDamage
     }
 
-    class NormalizedHP(var hp: Int, var shields: Int) {
+    def isOverkill = actualHP <(plannedDamageMerged.hp, plannedDamageMerged.shields)
+
+    class MutableHP(var hp: Int, var shields: Int) {
+      def toHP = HitPoints(hp, shields)
+
+      def +!(damageDone: DamageSingleAttack) = {
+        hp += damageDone.onHp
+        shields += damageDone.onShields
+      }
+
       assert(shields >= 0)
 
       def alive = hp > 0
@@ -191,27 +253,47 @@ class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
       }
     }
 
-    private val attackers          = mutable.HashSet.empty[MobileRangeWeapon]
-    private val plannedDamage      = ArrayBuffer.empty[DamageSingleAttack]
-    private var normalizedActualHP = target.hitPoints
-    private var hpAfterNextAttacks = new
-        NormalizedHP(normalizedActualHP.hitpoints, normalizedActualHP.shield)
+    private val attackers = mutable.HashSet.empty[MobileRangeWeapon]
+    private def actualHP = target.hitPoints
+    private val plannedDamage       = mutable.HashMap.empty[MobileRangeWeapon, DamageSingleAttack]
+    private var plannedDamageMerged = new MutableHP(0, 0)
+    private val hpAfterNextAttacks  = new
+        MutableHP(actualHP.hitpoints, actualHP.shield)
 
     def canTakeMore = hpAfterNextAttacks.alive
   }
 
-  private val assignments = mutable.HashMap.empty[CanDie, Attackers]
-
-  def suggestTarget(t: MobileRangeWeapon): Option[CanDie] = {
-    universe.enemyUnits.allCanDie.find { target =>
-      val existing = assignments.get(target).exists(_.isAttacker(t))
-      existing || (t.isInWeaponRange(target) && t.canAttack(target) &&
-                   assignments.getOrElseUpdate(target, new Attackers(target)).canTakeMore)
-    }.foreach { attackThis =>
-      val plan = assignments(attackThis)
-      plan.addAttacker_!(t)
+  private val enemy2Attackers    = mutable.HashMap.empty[CanDie, Attackers]
+  private val me2Enemy           = mutable.HashMap.empty[MobileRangeWeapon, CanDie]
+  private val prioritizedTargets = LazyVal.from {
+    universe.enemyUnits.allCanDie.toVector.sortBy { e =>
+      (e.isDisabled.ifElse(1, 0), -e.price.sum)
     }
-    assignments.get(t).map(_.target)
+  }
+
+  def suggestTarget(myUnit: MobileRangeWeapon): Option[CanDie] = {
+    val maybeAttackers = me2Enemy.get(myUnit)
+                         .map(enemy2Attackers)
+    val shouldLeaveTeam = maybeAttackers
+                          .filter(_.isOverkill)
+                          .exists(_.canSpare(myUnit))
+    if (shouldLeaveTeam) {
+      maybeAttackers.foreach(_.removeAttacker_!(myUnit))
+      me2Enemy.remove(myUnit)
+    }
+
+    prioritizedTargets.get.find { target =>
+      val existing = enemy2Attackers.get(target).exists(_.isAttacker(myUnit))
+      existing || (myUnit.isInWeaponRange(target) && myUnit.canAttack(target) &&
+                   enemy2Attackers.getOrElseUpdate(target, new Attackers(target)).canTakeMore)
+    }.foreach { attackThis =>
+      val plan = enemy2Attackers(attackThis)
+      if (!plan.isAttacker(myUnit)) {
+        me2Enemy.put(myUnit, attackThis)
+        plan.addAttacker_!(myUnit)
+      }
+    }
+    me2Enemy.get(myUnit)
   }
 }
 
@@ -259,7 +341,7 @@ class NonConflictingTargetPicks[T <: HasSingleTargetSpells, M <: Mobile : Manife
                .collect(targetConstraint)
 
     spell.priorityRule.fold(base.toVector) { rule =>
-      base.toVector.sortBy(rule)
+      base.toVector.sortBy(m => -rule(m))
     }
   }
 

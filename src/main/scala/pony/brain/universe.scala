@@ -5,6 +5,8 @@ import java.text.DecimalFormat
 
 import pony.brain.modules.Strategy.Strategies
 
+import scala.collection.mutable.ArrayBuffer
+
 trait Universe {
   private val myTime = new Time(this)
   def time = myTime
@@ -19,7 +21,21 @@ trait Universe {
   def mapLayers: MapLayers
   def strategicMap: StrategicMap
   def strategy: Strategies
-  def myRace = myUnits.allBuildings.next.mySCRace
+  def myRace = myUnits.all.next.mySCRace
+  def afterTick(): Unit = {
+    afterTickListeners.foreach(_.postTick())
+  }
+
+  private val afterTickListeners = ArrayBuffer.empty[AfterTickListener]
+
+  def register_!(listener: AfterTickListener): Unit = {
+    afterTickListeners += listener
+  }
+}
+
+trait AfterTickListener {
+
+  def postTick(): Unit
 }
 
 class Time(universe: Universe) {

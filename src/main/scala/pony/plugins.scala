@@ -99,15 +99,16 @@ class UnitDebugRenderer(override val universe: Universe) extends AIPlugIn with H
       universe.myUnits.allMobiles.filter(_.isSelected).foreach { m =>
         val center = m.currentPosition
         m match {
-          case ag: GroundAndAirWeapon =>
-            renderer.in_!(Color.Yellow).drawCircleAround(center, ag.airRange)
-            renderer.in_!(Color.Orange).drawCircleAround(center, ag.groundRange)
           case a: AirWeapon =>
             renderer.in_!(Color.Yellow).drawCircleAround(center, a.airRange)
-          case g: GroundWeapon =>
-            renderer.in_!(Color.Orange).drawCircleAround(center, g.groundRange)
           case _ =>
-          //pacifist
+
+        }
+        m match {
+          case g: GroundWeapon =>
+            renderer.in_!(Color.Red).drawCircleAround(center, g.groundRange)
+          case _ =>
+
         }
       }
     }

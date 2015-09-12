@@ -96,7 +96,7 @@ object Orders {
     }
 
     override def issueOrderToGame(): Unit = {
-      myUnit.nativeUnit.build(where.asTilePosition, buildingUnitType)
+      myUnit.nativeUnit.build(buildingUnitType, where.asTilePosition)
     }
 
     override def renderDebug(renderer: Renderer): Unit = {
@@ -184,7 +184,8 @@ object Orders {
 }
 
 class OrderQueue(game: Game, debugger: Debugger) {
-  private val queue = ArrayBuffer.empty[UnitOrder]
+  private val queue              = ArrayBuffer.empty[UnitOrder]
+  private val delegatedToBasicAI = collection.mutable.HashMap.empty[WrapsUnit, UnitOrder]
 
   def queue_!(order: UnitOrder): Unit = {
     order.setGame_!(game)
@@ -192,8 +193,14 @@ class OrderQueue(game: Game, debugger: Debugger) {
   }
 
   def debugAll():Unit = {
+    delegatedToBasicAI.filterNot(_._1.isInGame).foreach { dead =>
+      delegatedToBasicAI.remove(dead._1)
+    }
+    queue.foreach { order =>
+      delegatedToBasicAI.put(order.myUnit, order)
+    }
     debugger.debugRender { renderer =>
-      queue.foreach(_.renderDebug(renderer))
+      delegatedToBasicAI.foreach(_._2.renderDebug(renderer))
     }
   }
 

@@ -299,17 +299,24 @@ class DefaultWorld(game: Game) extends WorldListener with WorldEventDispatcher {
 
   def tickCount = ticks
 
-  private val removeQueue = ArrayBuffer.empty[bwapi.Unit]
+  private val removeQueueOwn   = ArrayBuffer.empty[bwapi.Unit]
+  private val removeQueueEnemy = ArrayBuffer.empty[bwapi.Unit]
 
   override def onUnitDestroy(unit: bwapi.Unit): Unit = {
     super.onUnitDestroy(unit)
-    removeQueue += unit
+    if (unit.getPlayer.isEnemy(game.self())) {
+      removeQueueEnemy += unit
+    } else {
+      removeQueueOwn += unit
+    }
   }
 
   def tick(): Unit = {
     debugger.tick()
-    myUnits.dead_!(removeQueue.toSeq)
-    removeQueue.clear()
+    myUnits.dead_!(removeQueueOwn.toSeq)
+    enemyUnits.dead_!(removeQueueEnemy.toSeq)
+    removeQueueOwn.clear()
+    removeQueueEnemy.clear()
     myUnits.tick()
     enemyUnits.tick()
   }
@@ -375,10 +382,16 @@ abstract class OnKillListener[T <: WrapsUnit](val unit:T) {
 }
 
 class Units(game: Game, hostile: Boolean) {
-
   private def ownAndNeutral = !hostile
 
   private val killListeners = mutable.HashMap.empty[Int, OnKillListener[_]]
+
+  private val fresh = ArrayBuffer.empty[WrapsUnit]
+
+  def consumeFresh_![X](f: WrapsUnit => X) = {
+    fresh.foreach(f)
+    fresh.clear()
+  }
 
   def registerKill_![T <: WrapsUnit](listener:OnKillListener[T]):Unit = {
     // this will always replace the latest listener
@@ -390,12 +403,12 @@ class Units(game: Game, hostile: Boolean) {
   def dead_!(dead: Seq[bwapi.Unit]) = {
     dead.foreach { u =>
       knownUnits.get(u.getID).foreach { died =>
+        died match {
+          case cd: CanDie =>
+            cd.notifyDead_!()
+          case _ =>
+        }
         killListeners.get(u.getID).foreach { e =>
-          died match {
-            case cd: CanDie =>
-              cd.notifyDead_!()
-            case _ =>
-          }
           e.onKillUnTyped(died)
           killListeners.remove(u.getID)
         }
@@ -493,6 +506,7 @@ class Units(game: Game, hostile: Boolean) {
         knownUnits.get(u.getID) match {
           case None =>
             val lifted = UnitWrapper.lift(u)
+            fresh += lifted
             info(s"${ownAndNeutral.ifElse("Own", "Hostile")} unit added: $lifted")
             knownUnits.put(u.getID, lifted)
           case Some(unit) if unit.initialNativeType != u.getType =>
