@@ -721,19 +721,20 @@ class MineralAnalyzer(map: AnalyzedMap, myUnits: Units) {
 
 
 case class MineralPatchGroup(patchId: Int) {
-  private val myPatches = mutable.HashSet.empty[MineralPatch]
-  private val myCenter  = new LazyVal[MapTilePosition](calcCenter)
-  private val myValue   = new LazyVal[Int](myPatches.foldLeft(0)((acc, mp) => acc + mp.remaining))
-  private val myInitialValue   = myPatches.foldLeft(0)((acc, mp) => acc + mp.remaining)
+  private val myPatches      = mutable.HashSet.empty[MineralPatch]
+  private val myCenter       = new LazyVal[MapTilePosition](calcCenter)
+  private val myValue        = new LazyVal[Int](myPatches.foldLeft(0)((acc, mp) => acc + mp.remaining))
+  private val myInitialValue = LazyVal.from(myPatches.foldLeft(0)((acc, mp) => acc + mp.remaining))
   def tick() = {
     myValue.invalidate()
   }
   def addPatch(mp: MineralPatch): Unit = {
     myPatches += mp
     myCenter.invalidate()
+    myInitialValue.invalidate()
   }
 
-  def remainingPercentage =  myValue.get / myInitialValue.toDouble
+  def remainingPercentage = myValue.get / myInitialValue.get.toDouble
 
   override def toString = s"Minerals($value)@$center"
   def center = myCenter.get

@@ -53,7 +53,10 @@ trait WrapsUnit extends HasNativeSCAttributes with HasUniverse {
   val initialNativeType = nativeUnit.getType
   private var myUniverse: Universe = _
 
-  override def universe: Universe = myUniverse
+  override def universe: Universe = {
+    assert(myUniverse != null)
+    myUniverse
+  }
 
   def init_!(universe: Universe): Unit = {
     myUniverse = universe
