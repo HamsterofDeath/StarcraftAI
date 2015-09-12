@@ -7,6 +7,8 @@ import scala.collection.mutable.ArrayBuffer
 import scala.util.Try
 
 abstract class UnitOrder {
+  def obsolete = !myUnit.isInGame
+
   private var myGame:Game = _
 
   def setGame_!(game: Game):Unit = {
@@ -30,6 +32,8 @@ abstract class UnitOrder {
 
 object Orders {
   case class AttackUnit(attacker: MobileRangeWeapon, target: CanDie) extends UnitOrder {
+
+    override def obsolete = super.obsolete || target.isDead
     override def myUnit: WrapsUnit = attacker
     override def issueOrderToGame(): Unit = attacker.nativeUnit.attack(target.nativeUnit)
     override def renderDebug(renderer: Renderer): Unit = {
@@ -173,13 +177,13 @@ object Orders {
     }
   }
 
-  case object NoUpdate extends UnitOrder {
+  case class NoUpdate(unit: WrapsUnit) extends UnitOrder {
 
     override def isNoop: Boolean = true
 
     override def issueOrderToGame(): Unit = {}
     override def renderDebug(renderer: Renderer): Unit = {}
-    override def myUnit: WrapsUnit = ???
+    override def myUnit = unit
   }
 }
 
@@ -193,7 +197,7 @@ class OrderQueue(game: Game, debugger: Debugger) {
   }
 
   def debugAll():Unit = {
-    delegatedToBasicAI.filterNot(_._1.isInGame).foreach { dead =>
+    delegatedToBasicAI.filter(_._2.obsolete).foreach { dead =>
       delegatedToBasicAI.remove(dead._1)
     }
     queue.foreach { order =>

@@ -59,7 +59,7 @@ class Renderer(game: Game, private var color: bwapi.Color) {
     drawCircleAround(around, tileSize / 2)
   }
   def drawCircleAround(around: MapPosition, radiusPixels: Int): Unit = {
-    game.drawCircleMap(around.x + radiusPixels / 2, around.y + radiusPixels / 2, radiusPixels / 2, color)
+    game.drawCircleMap(around.x, around.y, radiusPixels, color)
   }
   def indicateTarget(currentPosition: MapPosition, area: Area): Unit = {
     game.drawLineMap(currentPosition.x, currentPosition.y, area.center.x, area.center.y, color)

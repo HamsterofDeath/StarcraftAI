@@ -118,6 +118,8 @@ trait IsVehicle extends WrapsUnit
 trait IsShip extends WrapsUnit
 
 trait Building extends BlockingTiles with CanDie {
+  def isFloating = nativeUnit.isFlying
+
   override val armorType = Building
 
 }
@@ -139,6 +141,15 @@ class Upgrade(val nativeType: Either[UpgradeType, TechType]) {
   def energyCost = nativeType.fold(_ => throw new UnsupportedOperationException(s"Called on $this"), _.energyCost())
 
   override def toString = s"Upgrade: ${nativeType.fold(_.toString, _.toString)}"
+
+  override def equals(other: Any): Boolean = other match {
+    case that: Upgrade =>
+      nativeType == that.nativeType
+    case _ => false
+  }
+  override def hashCode(): Int = {
+    nativeType.hashCode()
+  }
 }
 
 object Upgrades {
@@ -494,7 +505,9 @@ trait GroundWeapon extends Weapon {
   }
 
   override def canAttack(other: CanDie) = {
-    def selfCanAttack = matchOn[Boolean](other)(_ => groundCanAttackAir, _ => groundCanAttackGround)
+    def selfCanAttack = matchOn[Boolean](other)(_ => groundCanAttackAir, _ => groundCanAttackGround, b => {
+      if (b.isFloating) groundCanAttackAir else groundCanAttackGround
+    })
     super.canAttack(other) || selfCanAttack
   }
   override def calculateDamageOn(other: Armor, assumeHP: Int, assumeShields: Int) = {
@@ -507,8 +520,10 @@ trait GroundWeapon extends Weapon {
 
   override def isInWeaponRange(other: CanDie) = {
     if (canAttack(other))
+    // TODO use own logic here
       matchOn(other)(air => nativeUnit.isInWeaponRange(other.nativeUnit),
-        ground => nativeUnit.isInWeaponRange(other.nativeUnit))
+        ground => nativeUnit.isInWeaponRange(other.nativeUnit),
+        building => (nativeUnit.isInWeaponRange(other.nativeUnit)))
     else
       super.isInWeaponRange(other)
   }
@@ -572,7 +587,8 @@ trait AirWeapon extends Weapon {
   }
   // air & groundweapon need to override this
   override def canAttack(other: CanDie) = {
-    def selfCanAttack = matchOn(other)(_ => airCanAttackAir, _ => airCanAttackGround)
+    def selfCanAttack = matchOn(other)(_ => airCanAttackAir, _ => airCanAttackGround,
+      b => if (b.isFloating) airCanAttackAir else airCanAttackGround)
     super.canAttack(other) || selfCanAttack
   }
 
@@ -586,8 +602,10 @@ trait AirWeapon extends Weapon {
 
   override def isInWeaponRange(other: CanDie) = {
     if (canAttack(other))
+    // TODO use own logic
       matchOn(other)(air => nativeUnit.isInWeaponRange(other.nativeUnit),
-        ground => nativeUnit.isInWeaponRange(other.nativeUnit))
+        ground => nativeUnit.isInWeaponRange(other.nativeUnit),
+        building => nativeUnit.isInWeaponRange(other.nativeUnit))
     else
       super.isInWeaponRange(other)
   }
@@ -608,9 +626,11 @@ trait Weapon extends Controllable {
   def calculateDamageOn(other: Armor, assumeHP: Int, assumeShields: Int): DamageSingleAttack = !!!(
     "Forgot to override this")
 
-  def matchOn[X](other: CanDie)(ifAir: AirUnit => X, ifGround: GroundUnit => X) = other match {
+  def matchOn[X](other: CanDie)
+                (ifAir: AirUnit => X, ifGround: GroundUnit => X, ifBuilding: Building => X) = other match {
     case a: AirUnit => ifAir(a)
     case g: GroundUnit => ifGround(g)
+    case b: Building => ifBuilding(b)
     case x => !!!(s"Check this $x")
   }
 

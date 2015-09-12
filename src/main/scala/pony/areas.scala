@@ -103,19 +103,21 @@ class StrategicMap(resources: Seq[ResourceArea], walkable: Grid2D, game: Game) {
   })
   def domains = myDomains.get
 
-  def domainsButWithout(these:Set[ResourceArea]) = domains.flatMap { case (choke, areas) =>
-    val cleaned = areas.flatMap {case (grid, resourcesInArea) =>
-      val remaining = resourcesInArea -- these
-      if (remaining.nonEmpty) {
-        Some(grid -> remaining)
-      } else
-        None
-     }
-      if (cleaned.nonEmpty  ) {
+  def domainsButWithout(these: Set[ResourceArea]) = {
+    domains.flatMap { case (choke, areas) =>
+      val cleaned = areas.flatMap { case (grid, resourcesInArea) =>
+        val remaining = resourcesInArea -- these
+        if (remaining.nonEmpty) {
+          Some(grid -> remaining)
+        } else
+          None
+      }
+      if (cleaned.nonEmpty) {
         Some(choke -> cleaned)
       } else {
         None
       }
+    }
   }
 
   private def fileName = s"${game.mapFileName()}_${game.mapHash()}"

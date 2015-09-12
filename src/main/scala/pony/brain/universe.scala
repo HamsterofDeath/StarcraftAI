@@ -21,7 +21,7 @@ trait Universe {
   def mapLayers: MapLayers
   def strategicMap: StrategicMap
   def strategy: Strategies
-  def myRace = myUnits.all.next.mySCRace
+  def myRace = (myUnits.allMobiles ++ myUnits.allBuildings).next.mySCRace
   def afterTick(): Unit = {
     afterTickListeners.foreach(_.postTick())
   }

@@ -1,6 +1,6 @@
 package pony
 
-import bwapi.{Color, Game, Player, Position, TilePosition}
+import bwapi.{Color, Game, Player, PlayerType, Position, TilePosition}
 import pony.brain.{ResourceRequestSums, Supplies}
 
 import scala.collection.immutable.BitSet
@@ -489,7 +489,7 @@ class Units(game: Game, hostile: Boolean) {
     def isFriend(u: bwapi.Unit) = {
       u.getPlayer == me || allies(u.getPlayer)
     }
-    def isNeutral(u: bwapi.Unit) = u.getPlayer == null
+    def isNeutral(u: bwapi.Unit) = u.getPlayer.getType == PlayerType.None
     def isEnemy(u: bwapi.Unit) = !isNeutral(u) && !isFriend(u)
   }
 

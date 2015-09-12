@@ -188,11 +188,13 @@ class ProvideUpgrades(universe: Universe) extends OrderlessAIModule[Upgrader](un
           result.ifSuccess { app =>
             info(s"Starting research of $wantedUpgrade")
             val researchUpgrade = new ResearchUpgrade(self, up, wantedUpgrade, app)
-            researchUpgrade.listen_!(() => {
-              info(s"Research of $wantedUpgrade completed")
-              val current = researched.getOrElse(wantedUpgrade, 0)
-              researched.put(wantedUpgrade, current + 1)
-              upgrades.notifyResearched_!(wantedUpgrade)
+            researchUpgrade.listen_!(failed => {
+              if (!failed) {
+                info(s"Research of $wantedUpgrade completed")
+                val current = researched.getOrElse(wantedUpgrade, 0)
+                researched.put(wantedUpgrade, current + 1)
+                upgrades.notifyResearched_!(wantedUpgrade)
+              }
             })
             assignJob_!(researchUpgrade)
           }

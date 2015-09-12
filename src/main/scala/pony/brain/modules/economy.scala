@@ -278,7 +278,7 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
       class GatherMineralsAtPatch(myWorker: WorkerUnit, miningTarget: MinedPatch)
         extends UnitWithJob(emp, myWorker, Priority.Default) with GatherMineralsAtSinglePatch with Interruptable {
 
-        listen_!(() => {
+        listen_!(failed => {
           if (miningTarget.isInTeam(myWorker)) {
             miningTarget.removeFromPatch_!(myWorker)
           }
@@ -308,6 +308,7 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
           if (myWorker.isGuarding) {
             state = Idle
           }
+          def noop = Orders.NoUpdate(myWorker)
           val (newState, order) = state match {
             case Idle if myWorker.isCarryingMinerals =>
               ReturningMineralsAfterInterruption -> returnDelivery
@@ -322,14 +323,14 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
 
             case ApproachingMinerals if myWorker.isWaitingForMinerals || myWorker.isInMiningProcess =>
               // let the poor worker alone now
-              Mining -> Orders.NoUpdate
+              Mining -> noop
 
             case ApproachingMinerals =>
-              ApproachingMinerals -> Orders.NoUpdate
+              ApproachingMinerals -> noop
 
             case Mining if myWorker.isInMiningProcess =>
               // let it work
-              Mining -> Orders.NoUpdate
+              Mining -> noop
             case Mining if myWorker.isCarryingMinerals =>
               // the worker is done mining
               ReturningMinerals -> returnDelivery
@@ -342,13 +343,13 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
               ReturningMinerals -> returnDelivery
 
             case ReturningMinerals if myWorker.isCarryingMinerals =>
-              ReturningMinerals -> Orders.NoUpdate
+              ReturningMinerals -> noop
             case ReturningMinerals if !myWorker.isCarryingMinerals =>
               // switch back to mining mode
               sendWorkerToPatch
 
             case _ =>
-              Idle -> Orders.NoUpdate
+              Idle -> noop
           }
           state = newState
           order.toList.filterNot(_.isNoop)
@@ -457,9 +458,9 @@ class GatherGas(universe: Universe) extends OrderlessAIModule[WorkerUnit](univer
           case Idle =>
             Gathering -> Orders.Gather(worker, geysir)
           case Gathering if worker.isGatheringGas || worker.isMagic =>
-            Gathering -> Orders.NoUpdate
+            Gathering -> Orders.NoUpdate(worker)
           case _ =>
-            Idle -> Orders.NoUpdate
+            Idle -> Orders.NoUpdate(worker)
         }
         state = newState
         order.toSeq

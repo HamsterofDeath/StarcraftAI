@@ -83,7 +83,11 @@ class UpgradeManager(override val universe: Universe) extends HasUniverse {
     onResearchCompleteListener.foreach {_.onComplete(upgrade)}
 
     upgrade.nativeType.fold(
-      u => assert(universe.world.nativeGame.self().getUpgradeLevel(u) == upgradeLevelOf(u)),
+      u => {
+        val actual = universe.world.nativeGame.self().getUpgradeLevel(u)
+        val expected = upgradeLevelOf(u)
+        assert(actual == expected)
+      },
       t => assert(isTechResearchInNativeGame(t), s"Out of sync! $upgrade"))
 
   }

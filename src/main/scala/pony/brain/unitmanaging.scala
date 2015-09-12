@@ -500,7 +500,7 @@ abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: 
   override def toString: String = s"${getClass.className} of $unit of $employer"
   def isFinished: Boolean
   def onFinishOrFail(): Unit = {
-    listeners.foreach(_.onFinishOrFail())
+    listeners.foreach(_.onFinishOrFail(hasFailed))
   }
   def listen_!(listener: JobFinishedListener[T]): Unit = listeners += listener
   def hasFailed = dead || myHasFailed
@@ -557,13 +557,13 @@ trait JobHasFunding[T <: WrapsUnit] extends UnitWithJob[T] with HasUniverse with
 
   def canReleaseResources = age == 0 && stillLocksResources
 
-  listen_!(() => {
+  listen_!(failed => {
     unlock_!()
   })
 }
 
 trait JobFinishedListener[T <: WrapsUnit] {
-  def onFinishOrFail(): Unit
+  def onFinishOrFail(failed: Boolean): Unit
 }
 
 trait CreatesUnit[T <: WrapsUnit] extends UnitWithJob[T]
