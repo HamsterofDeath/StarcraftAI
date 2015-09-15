@@ -1,6 +1,6 @@
 package pony
 
-import bwapi.{Color, Game, TechType}
+import bwapi.{Color, Game}
 import pony.Upgrades.SingleTargetMagicSpell
 
 import scala.collection.mutable.ArrayBuffer
@@ -41,14 +41,10 @@ object Orders {
     }
   }
 
-  case class Stimpack(u: CanUseStimpack) extends UnitOrder {
-    override def myUnit: WrapsUnit = u
-    override def issueOrderToGame(): Unit = {
-      u.nativeUnit.useTech(TechType.Stim_Packs)
-    }
-    override def renderDebug(renderer: Renderer): Unit = {
-      renderer.in_!(Color.Red).drawTextAtMobileUnit(u, "Stim!", -1)
-    }
+  case class TechOnSelf(caster: HasSingleTargetSpells, tech: SingleTargetMagicSpell) extends UnitOrder {
+    override def myUnit: WrapsUnit = caster
+    override def issueOrderToGame(): Unit = caster.nativeUnit.useTech(tech.nativeTech)
+    override def renderDebug(renderer: Renderer): Unit = {}
   }
 
   case class TechOnTarget[T <: HasSingleTargetSpells](caster: HasSingleTargetSpells, target: Mobile,

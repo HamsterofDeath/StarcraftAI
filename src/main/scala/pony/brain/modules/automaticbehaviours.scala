@@ -2,6 +2,8 @@ package pony
 package brain
 package modules
 
+import pony.Upgrades.Terran.{GhostCloak, InfantryCooldown, WraithCloak}
+
 import scala.collection.mutable
 
 abstract class DefaultBehaviour[T <: Mobile : Manifest](override val universe: Universe) extends HasUniverse {
@@ -54,6 +56,10 @@ object Terran {
     val allOfThem = (
                       new StimSelf(universe) ::
                       new StopMechanic(universe) ::
+                      new ShieldUnit(universe) ::
+                      new IrradiateUnit(universe) ::
+                      new CloakSelfGhost(universe) ::
+                      new CloakSelfWraith(universe) ::
                       /*
                                             new RepairDamagedBuilding ::
                                             new RepairDamagedUnit ::
@@ -83,19 +89,51 @@ object Terran {
   class StimSelf(universe: Universe) extends DefaultBehaviour[CanUseStimpack](universe) {
     override protected def lift(t: CanUseStimpack) = new SingleUnitBehaviour[CanUseStimpack](t, meta) {
 
-      override def preconditionOk = upgrades.hasResearched(Upgrades.Terran.InfantryCooldown)
+      override def preconditionOk = upgrades.hasResearched(InfantryCooldown)
 
       override def toOrder(what: Objective) = {
         if (t.isAttacking && !t.isStimmed) {
-          List(Orders.Stimpack(t))
+          List(Orders.TechOnSelf(t, InfantryCooldown))
         } else {
           Nil
         }
       }
       override def shortName: String = s"Stim"
     }
-
   }
+
+  class CloakSelfWraith(universe: Universe) extends DefaultBehaviour[Wraith](universe) {
+    override protected def lift(t: Wraith) = new SingleUnitBehaviour[Wraith](t, meta) {
+
+      override def preconditionOk = upgrades.hasResearched(WraithCloak)
+
+      override def toOrder(what: Objective) = {
+        if (t.isBeingAttacked && !t.isCloaked) {
+          List(Orders.TechOnSelf(t, WraithCloak))
+        } else {
+          Nil
+        }
+      }
+      override def shortName: String = s"Cloak"
+    }
+  }
+
+  class CloakSelfGhost(universe: Universe) extends DefaultBehaviour[Ghost](universe) {
+    override protected def lift(t: Ghost) = new SingleUnitBehaviour[Ghost](t, meta) {
+
+      override def preconditionOk = upgrades.hasResearched(GhostCloak)
+
+      override def toOrder(what: Objective) = {
+        if (t.isBeingAttacked && !t.isCloaked) {
+          List(Orders.TechOnSelf(t, GhostCloak))
+        } else {
+          Nil
+        }
+      }
+      override def shortName: String = s"Cloak"
+    }
+  }
+
   class RevealHiddenUnitsPermanenly(universe: Universe) extends DefaultBehaviour[MobileDetector](universe) {
     override protected def lift(t: MobileDetector): SingleUnitBehaviour[MobileDetector] = ???
   }
@@ -112,21 +150,20 @@ object Terran {
     override protected def lift(t: SupportUnit): SingleUnitBehaviour[SupportUnit] = ???
   }
 
-  class StopMechanic(universe: Universe) extends DefaultBehaviour[Ghost](universe) {
-    private val helper = NonConflictingTargetPicks.forSpell(Spells.Lockdown, universe)
+  class OneTimeUnitSpellCast[C <: HasSingleTargetSpells : Manifest, T <: Mobile : Manifest](universe: Universe,
+                                                                                            spell:
+                                                                                            SingleTargetSpell[C, T])
+    extends DefaultBehaviour[C](universe) {
+    private val helper = NonConflictingTargetPicks.forSpell(spell, universe)
 
-    override protected def lift(t: Ghost): SingleUnitBehaviour[Ghost] = new SingleUnitBehaviour(t, meta) {
-      private def spell = Upgrades.Terran.GhostStop
-      override def preconditionOk = upgrades.hasResearched(spell)
-
-      override def shortName = "Lockdown"
-
-      override def toOrder(what: Objective) = {
-        if (t.canCastNow(spell)) {
+    override protected def lift(t: C): SingleUnitBehaviour[C] = new SingleUnitBehaviour[C](t, meta) {
+      override def shortName: String = s"Cast ${spell.getClass.className}"
+      override def toOrder(what: Objective): Seq[UnitOrder] = {
+        if (t.canCastNow(spell.tech)) {
           val h = helper
           h.suggestTargetFor(t).map { target =>
             h.notifyLock_!(t, target)
-            t.toOrder(spell, target)
+            t.toOrder(spell.tech, target)
           }.toList
         } else {
           Nil
@@ -135,6 +172,12 @@ object Terran {
 
     }
   }
+
+  class StopMechanic(universe: Universe) extends OneTimeUnitSpellCast(universe, Spells.Lockdown)
+  class ShieldUnit(universe: Universe) extends OneTimeUnitSpellCast(universe, Spells.DefenseMatrix)
+  class IrradiateUnit(universe: Universe) extends OneTimeUnitSpellCast(universe, Spells.Irradiate)
+  class CloakWraith(universe: Universe) extends OneTimeUnitSpellCast(universe, Spells.Irradiate)
+
   class HealDamagedUnit(universe: Universe) extends DefaultBehaviour[Medic](universe) {
     override protected def lift(t: Medic): SingleUnitBehaviour[Medic] = ???
   }
@@ -192,6 +235,7 @@ class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
   })
 
   class Attackers(val target: CanDie) {
+    def isOutOfRange(myUnit: MobileRangeWeapon) = !myUnit.isInWeaponRange(target)
 
     def recalculatePlannedDamage_!(): Unit = {
       val attackersSorted = plannedDamage.keys.toArray.sortBy(_.cooldownTimer)
@@ -274,9 +318,13 @@ class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
   def suggestTarget(myUnit: MobileRangeWeapon): Option[CanDie] = {
     val maybeAttackers = me2Enemy.get(myUnit)
                          .map(enemy2Attackers)
-    val shouldLeaveTeam = maybeAttackers
-                          .filter(_.isOverkill)
-                          .exists(_.canSpare(myUnit))
+    val shouldLeaveTeam = {
+      def outOfRange = maybeAttackers.exists(_.isOutOfRange(myUnit))
+      def overkill = maybeAttackers
+                     .filter(_.isOverkill)
+                     .exists(_.canSpare(myUnit))
+      outOfRange || overkill
+    }
     if (shouldLeaveTeam) {
       maybeAttackers.foreach(_.removeAttacker_!(myUnit))
       me2Enemy.remove(myUnit)
@@ -301,7 +349,9 @@ object NonConflictingTargetPicks {
   def forSpell[T <: HasSingleTargetSpells, M <: Mobile : Manifest](spell: SingleTargetSpell[T, M],
                                                                    universe: Universe) = {
 
-    new NonConflictingTargetPicks(spell, { case x: Mobile if spell.canBeCastOn(x) => x.asInstanceOf[M] },
+    new NonConflictingTargetPicks(spell, {
+      case x: M if spell.canBeCastOn(x) & spell.shouldActivateOn(x) => x
+    },
     spell.isAffected, universe)
   }
 }
@@ -337,8 +387,16 @@ class NonConflictingTargetPicks[T <: HasSingleTargetSpells, M <: Mobile : Manife
   private val assignments   = mutable.HashMap.empty[M, Target[M]]
 
   private val prioritizedTargets = LazyVal.from {
-    val base = universe.enemyUnits.allByType[M]
-               .collect(targetConstraint)
+    val base = {
+      val targets = {
+        if (spell.castOn == EnemyUnits) {
+          universe.enemyUnits.allByType[M]
+        } else {
+          universe.myUnits.allByType[M]
+        }
+      }
+      targets.collect(targetConstraint)
+    }
 
     spell.priorityRule.fold(base.toVector) { rule =>
       base.toVector.sortBy(m => -rule(m))
