@@ -769,13 +769,14 @@ object Objective {
   val initial = Objective(None, Undefined)
 }
 
-case class SingleUnitBehaviourMeta(priority: SecondPriority)
+case class SingleUnitBehaviourMeta(priority: SecondPriority, refuseCommandsForTicks: Int)
 
 abstract class SingleUnitBehaviour[T <: Mobile](val unit: T, meta: SingleUnitBehaviourMeta) {
   def toOrder(what: Objective): Seq[UnitOrder]
   def preconditionOk = true
   def shortName: String
   def priority = meta.priority
+  def blocksForTicks = meta.refuseCommandsForTicks
 }
 
 class BusyDoingSomething[T <: Mobile](employer: Employer[T], behaviour: Seq[SingleUnitBehaviour[T]],
@@ -796,7 +797,7 @@ class BusyDoingSomething[T <: Mobile](employer: Employer[T], behaviour: Seq[Sing
   override def isFinished = false
   override protected def ordersForTick = {
     val options = active.map { rule =>
-      rule -> rule.toOrder(objective)
+      rule -> rule.toOrder(objective).map(_.lockingFor_!(rule.blocksForTicks))
     }.filter(_._2.nonEmpty)
     if (options.isEmpty) {
       Nil

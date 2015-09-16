@@ -15,7 +15,10 @@ abstract class DefaultBehaviour[T <: Mobile : Manifest](override val universe: U
 
   def priority = SecondPriority.Default
 
-  protected def meta = SingleUnitBehaviourMeta(priority)
+  def refuseCommandsForTicks = 0
+
+  protected def meta = SingleUnitBehaviourMeta(priority, refuseCommandsForTicks)
+
 
   def behaviourOf(unit: Mobile) = {
     ifControlsOpt(unit) {identity}
@@ -156,6 +159,10 @@ object Terran {
     extends DefaultBehaviour[C](universe) {
     private val helper = NonConflictingTargetPicks.forSpell(spell, universe)
 
+    override def refuseCommandsForTicks = 10
+
+    override def priority: SecondPriority = SecondPriority.Max
+
     override protected def lift(t: C): SingleUnitBehaviour[C] = new SingleUnitBehaviour[C](t, meta) {
       override def shortName: String = s"Cast ${spell.getClass.className}"
       override def toOrder(what: Objective): Seq[UnitOrder] = {
@@ -189,9 +196,6 @@ object Terran {
   }
   class Evade(universe: Universe) extends DefaultBehaviour[Mobile](universe) {
     override protected def lift(t: Mobile): SingleUnitBehaviour[Mobile] = ???
-  }
-  class StopToFire(universe: Universe) extends DefaultBehaviour[InstantAttack](universe) {
-    override protected def lift(t: InstantAttack): SingleUnitBehaviour[InstantAttack] = ???
   }
   class FocusFire(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon](universe) {
 
@@ -231,7 +235,7 @@ class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
   })
 
   universe.register_!(() => {
-    prioritizedTargets.invalidate()
+    invalidateQueue()
   })
 
   class Attackers(val target: CanDie) {
@@ -243,7 +247,8 @@ class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
       val currentHp = actualHP
       val assumeHp = new MutableHP(currentHp.hitpoints, currentHp.shield)
       attackersSorted.foreach { attacker =>
-        val moreDamage = attacker.calculateDamageOn(target, assumeHp.hp, assumeHp.shields)
+        val shotCount = 1 + attacker.assumeShotDelayOn(target)
+        val moreDamage = attacker.calculateDamageOn(target, assumeHp.hp, assumeHp.shields, shotCount)
         damage +! moreDamage
         assumeHp -! moreDamage
       }
@@ -254,6 +259,7 @@ class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
       attackers -= t
       plannedDamage -= t
       recalculatePlannedDamage_!()
+      invalidateQueue()
     }
 
     def canSpare(attacker: MobileRangeWeapon) = {
@@ -271,7 +277,13 @@ class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
     def addAttacker_!(t: MobileRangeWeapon): Unit = {
       assert(!attackers(t), s"$attackers already contains $t")
       attackers += t
-      val expectedDamage = t.calculateDamageOn(target, hpAfterNextAttacks.hp, hpAfterNextAttacks.shields)
+      // for slow attacks, we assume that one is always on the way to hit to avoid overkill
+      val expectedDamage = {
+        val factor = 1 + t.assumeShotDelayOn(target)
+
+        t.calculateDamageOn(target, hpAfterNextAttacks.hp, hpAfterNextAttacks.shields, factor)
+      }
+
       plannedDamage.put(t, expectedDamage)
       recalculatePlannedDamage_!()
       hpAfterNextAttacks -! expectedDamage
@@ -307,12 +319,16 @@ class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
     def canTakeMore = hpAfterNextAttacks.alive
   }
 
+  def invalidateQueue(): Unit = {
+    prioritizedTargets.invalidate()
+  }
   private val enemy2Attackers    = mutable.HashMap.empty[CanDie, Attackers]
   private val me2Enemy           = mutable.HashMap.empty[MobileRangeWeapon, CanDie]
   private val prioritizedTargets = LazyVal.from {
-    universe.enemyUnits.allCanDie.toVector.sortBy { e =>
-      (enemy2Attackers.contains(e).ifElse(0, 1), e.isHarmlessNow.ifElse(1, 0), -e.price.sum)
+    val prioritized = universe.enemyUnits.allCanDie.toVector.sortBy { e =>
+      (e.isHarmlessNow.ifElse(1, 0), enemy2Attackers.contains(e).ifElse(0, 1), -e.price.sum)
     }
+    prioritized
   }
 
   def suggestTarget(myUnit: MobileRangeWeapon): Option[CanDie] = {
@@ -340,7 +356,7 @@ class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
         me2Enemy.put(myUnit, attackThis)
         plan.addAttacker_!(myUnit)
       }
-      prioritizedTargets.invalidate()
+      invalidateQueue()
     }
     me2Enemy.get(myUnit)
   }

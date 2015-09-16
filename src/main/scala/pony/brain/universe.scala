@@ -21,7 +21,9 @@ trait Universe {
   def mapLayers: MapLayers
   def strategicMap: StrategicMap
   def strategy: Strategies
-  def myRace = (myUnits.allMobiles ++ myUnits.allBuildings).next.mySCRace
+  private def evalRace = (myUnits.allMobiles ++ myUnits.allBuildings).next.mySCRace
+  private val race0 = LazyVal.from(evalRace)
+  def myRace = race0.get
   def afterTick(): Unit = {
     afterTickListeners.foreach(_.postTick())
   }

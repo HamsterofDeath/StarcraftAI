@@ -105,7 +105,7 @@ class TerranTechTree extends TechTree {
       classOf[Starport] -> classOf[Factory].toSet,
       classOf[ScienceFacility] -> classOf[Starport].toSet,
       classOf[ControlTower] -> classOf[Starport].toSet,
-      classOf[RocketTower] -> classOf[EngineeringBay].toSet,
+      classOf[MissileTurret] -> classOf[EngineeringBay].toSet,
       classOf[Ghost] -> classOf[CovertOps].toSet,
       classOf[Bunker] -> classOf[Barracks].toSet,
       classOf[Firebat] -> classOf[Academy].toSet,

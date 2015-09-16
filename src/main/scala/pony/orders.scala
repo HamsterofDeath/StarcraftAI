@@ -7,6 +7,8 @@ import scala.collection.mutable.ArrayBuffer
 import scala.util.Try
 
 abstract class UnitOrder {
+  def lockTicks = locks
+
   def obsolete = !myUnit.isInGame
 
   private var myGame:Game = _
@@ -28,6 +30,12 @@ abstract class UnitOrder {
   }
   def issueOrderToGame(): Unit
   def renderDebug(renderer: Renderer): Unit
+
+  private var locks = 0
+  def lockingFor_!(ticks: Int) = {
+    locks = ticks
+    this
+  }
 }
 
 object Orders {
@@ -186,6 +194,7 @@ object Orders {
 class OrderQueue(game: Game, debugger: Debugger) {
   private val queue              = ArrayBuffer.empty[UnitOrder]
   private val delegatedToBasicAI = collection.mutable.HashMap.empty[WrapsUnit, UnitOrder]
+  private val locked             = collection.mutable.HashMap.empty[WrapsUnit, Int]
 
   def queue_!(order: UnitOrder): Unit = {
     order.setGame_!(game)
@@ -208,7 +217,16 @@ class OrderQueue(game: Game, debugger: Debugger) {
     val tickOrders = queue.filterNot(_.isNoop)
     trace(s"Orders: ${tickOrders.mkString(", ")}", queue.nonEmpty)
     tickOrders.foreach(_.record())
-    tickOrders.foreach(_.issueOrderToGame())
+    tickOrders.foreach { order =>
+      val isLocked = locked.get(order.myUnit).exists(_ > 0)
+      if (isLocked) {
+        locked.put(order.myUnit, locked(order.myUnit) - 1)
+      } else {
+        order.issueOrderToGame()
+        locked.put(order.myUnit, order.lockTicks)
+      }
+
+    }
     queue.clear()
   }
 }
