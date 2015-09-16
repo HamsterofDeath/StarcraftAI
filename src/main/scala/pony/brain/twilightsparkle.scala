@@ -190,12 +190,14 @@ class TwilightSparkle(world: DefaultWorld) {
     unitManager.tick()
     strategy.tick()
     bases.tick()
-    universe.afterTick()
 
     val tick = world.tickCount
 
     val activeInThisTick = aiModules.filter(e => tick == 0 || tick % e.onNth == 0)
     activeInThisTick.flatMap(_.ordersForTick).foreach(world.orderQueue.queue_!)
+
+    universe.afterTick()
+
   }
 }
 

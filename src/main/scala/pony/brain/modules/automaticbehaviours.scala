@@ -311,7 +311,7 @@ class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
   private val me2Enemy           = mutable.HashMap.empty[MobileRangeWeapon, CanDie]
   private val prioritizedTargets = LazyVal.from {
     universe.enemyUnits.allCanDie.toVector.sortBy { e =>
-      (e.isHarmlessNow.ifElse(1, 0), -e.price.sum)
+      (enemy2Attackers.contains(e).ifElse(0, 1), e.isHarmlessNow.ifElse(1, 0), -e.price.sum)
     }
   }
 
@@ -340,6 +340,7 @@ class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
         me2Enemy.put(myUnit, attackThis)
         plan.addAttacker_!(myUnit)
       }
+      prioritizedTargets.invalidate()
     }
     me2Enemy.get(myUnit)
   }
@@ -362,12 +363,16 @@ class NonConflictingTargetPicks[T <: HasSingleTargetSpells, M <: Mobile : Manife
                                                                                     keepLocked: M => Boolean,
                                                                                     override val universe: Universe)
   extends HasUniverse {
-  def onTick(): Unit = {
+  def afterTick(): Unit = {
     prioritizedTargets.invalidate()
     locked.filterNot(keepLocked).foreach { elem =>
       unlock_!(elem)
     }
   }
+
+  universe.register_!(() => {
+    afterTick()
+  })
 
   def notifyLock_!(t: T, target: M): Unit = {
     locked += target
@@ -407,8 +412,8 @@ class NonConflictingTargetPicks[T <: HasSingleTargetSpells, M <: Mobile : Manife
     // for now, just pick the first in range that is not yet taken
     val range = spell.castRangeSquare
 
-    prioritizedTargets.get.filterNot(locked)
-    .find {_.currentPosition.distanceToSquared(caster.currentPosition) < range}
+    val filtered = prioritizedTargets.get.filterNot(locked)
+    filtered.find {_.currentPosition.distanceToSquared(caster.currentPosition) < range}
   }
 }
 

@@ -328,14 +328,14 @@ trait SpellcasterBuilding extends Building with Controllable {
 case class HitPoints(hitpoints: Int, shield: Int) {
   def <=(other: HitPoints): Boolean = <=(other.hitpoints, other.shield)
 
-  def <=(subHp: Int, subShield: Int) = {
-    hitpoints <= subHp && subShield <= shield
+  def <=(otherHp: Int, otherShield: Int) = {
+    hitpoints <= otherHp || shield <= otherShield
   }
 
   def <(other: HitPoints): Boolean = <(other.hitpoints, other.shield)
 
-  def <(subHp: Int, subShield: Int) = {
-    hitpoints < subHp && subShield < shield
+  def <(otherHp: Int, otherShield: Int) = {
+    hitpoints < otherHp || shield < otherShield
   }
 }
 
@@ -428,12 +428,11 @@ trait CanDie extends WrapsUnit {
 
   private def currentHp = myArmor.get.hp
 
-  def isBeingAttacked = currentHp <= lastFrameHp
+  def isBeingAttacked = currentHp < lastFrameHp
 
   private val disabled = lazily(nativeUnit.isLockedDown || nativeUnit.isStasised)
 
   def isDisabled = disabled.get
-
 
   val armorType: ArmorType
 
@@ -487,7 +486,18 @@ trait Mobile extends WrapsUnit with Controllable {
   private val defenseMatrix = lazily {
     nativeUnit.getDefenseMatrixPoints > 0 || nativeUnit.getDefenseMatrixTimer > 0
   }
-  private val irradiation   = lazily {
+
+  private val defenseMatrixHP = lazily {
+    nativeUnit.getDefenseMatrixPoints
+  }
+
+  def matrixHp = defenseMatrixHP.get
+
+  override def isBeingAttacked: Boolean = super.isBeingAttacked || matrixHp < lastFrameMatrixPoints
+
+  private var lastFrameMatrixPoints = 0
+
+  private val irradiation = lazily {
     nativeUnit.getIrradiateTimer > 0
   }
 
@@ -520,6 +530,12 @@ trait Mobile extends WrapsUnit with Controllable {
   override def onTick(): Unit = {
     super.onTick()
     defenseMatrix.invalidate()
+  }
+  override protected def onUniverseSet(universe: Universe): Unit = {
+    super.onUniverseSet(universe)
+    universe.register_!(() => {
+      lastFrameMatrixPoints = nativeUnit.getDefenseMatrixPoints
+    })
   }
 }
 
@@ -961,9 +977,7 @@ object Spells {
   }
 
   case object DefenseMatrix extends SingleTargetSpell[ScienceVessel, Mobile](Upgrades.Terran.Defensematrix) {
-    override def isAffected(m: Mobile) = {
-      m.hasDefenseMatrix
-    }
+    override def isAffected(m: Mobile) = m.matrixHp >= 25 // allow refreshing the matrix
 
     override def castOn = OwnUnits
 
