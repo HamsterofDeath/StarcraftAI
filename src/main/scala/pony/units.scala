@@ -715,7 +715,7 @@ trait Weapon extends Controllable {
     Damage(weapon.damageAmount(), weapon.damageBonus(), weapon.damageCooldown(), damageType, hitCount, level)
   }
 
-  def isInWeaponRange(target: CanDie): Boolean = !!!("Forgot to override this")
+  def isInWeaponRange(target: CanDie): Boolean = false // needs to be overriden to return true
 }
 
 trait MobileRangeWeapon extends RangeWeapon with Mobile {
@@ -1030,6 +1030,29 @@ trait IsBig extends Mobile with CanDie {
   override val armorType = Large
 }
 
+class Zergling(unit: APIUnit)
+  extends AnyUnit(unit) with Organic with GroundUnit with GroundWeapon with NormalGroundDamage with IsSmall with
+          MeleeWeapon
+class Broodling(unit: APIUnit)
+  extends AnyUnit(unit) with Organic with GroundUnit with GroundWeapon with NormalGroundDamage with IsSmall
+class Hydralisk(unit: APIUnit)
+  extends AnyUnit(unit) with Organic with GroundUnit with GroundAndAirWeapon with ExplosiveAirDamage with
+          ExplosiveGroundDamage with IsMedium
+class Lurker(unit: APIUnit)
+  extends AnyUnit(unit) with Organic with GroundUnit with GroundWeapon with NormalGroundDamage with IsBig
+class Mutalisk(unit: APIUnit)
+  extends AnyUnit(unit) with Organic with AirUnit with GroundAndAirWeapon with NormalGroundDamage with
+          NormalAirDamage with IsMedium
+class Queen(unit: APIUnit) extends AnyUnit(unit) with Organic with AirUnit with IsMedium
+class Scourge(unit: APIUnit) extends AnyUnit(unit) with Organic with AirUnit with IsSmall
+class Guardian(unit: APIUnit)
+  extends AnyUnit(unit) with Organic with AirUnit with GroundWeapon with IsBig with NormalGroundDamage
+class Devourer(unit: APIUnit) extends AnyUnit(unit) with Organic with GroundUnit with IsBig
+class Ultralisk(unit: APIUnit)
+  extends AnyUnit(unit) with Organic with IsBig with GroundWeapon with MeleeWeapon with NormalGroundDamage
+class Defiler(unit: APIUnit) extends AnyUnit(unit) with Organic with GroundUnit with IsMedium
+class InfestedTerran(unit: APIUnit) extends AnyUnit(unit) with Organic with GroundUnit with IsSmall
+
 class Observer(unit: APIUnit) extends AnyUnit(unit) with MobileDetector with Mechanic with IsSmall with AirUnit
 class Scout(unit: APIUnit)
   extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with Mechanic with IsBig with ExplosiveAirDamage with
@@ -1191,6 +1214,18 @@ object UnitWrapper {
       UnitType.Protoss_Scout -> ((new Scout(_), classOf[Scout])),
 
       UnitType.Zerg_Drone -> ((new Drone(_), classOf[Drone])),
+      UnitType.Zerg_Broodling -> ((new Broodling(_), classOf[Broodling])),
+      UnitType.Zerg_Zergling -> ((new Zergling(_), classOf[Zergling])),
+      UnitType.Zerg_Defiler -> ((new Defiler(_), classOf[Defiler])),
+      UnitType.Zerg_Guardian -> ((new Guardian(_), classOf[Guardian])),
+      UnitType.Zerg_Hydralisk -> ((new Hydralisk(_), classOf[Hydralisk])),
+      UnitType.Zerg_Mutalisk -> ((new Mutalisk(_), classOf[Mutalisk])),
+      UnitType.Zerg_Infested_Terran -> ((new InfestedTerran(_), classOf[InfestedTerran])),
+      UnitType.Zerg_Lurker -> ((new Lurker(_), classOf[Lurker])),
+      UnitType.Zerg_Queen -> ((new Queen(_), classOf[Queen])),
+      UnitType.Zerg_Scourge -> ((new Scourge(_), classOf[Scourge])),
+      UnitType.Zerg_Ultralisk -> ((new Ultralisk(_), classOf[Ultralisk])),
+
       UnitType.Unknown -> ((new Irrelevant(_), classOf[Irrelevant]))
     )
 

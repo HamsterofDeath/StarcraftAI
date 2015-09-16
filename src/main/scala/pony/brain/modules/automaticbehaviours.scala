@@ -379,12 +379,14 @@ class NonConflictingTargetPicks[T <: HasSingleTargetSpells, M <: Mobile : Manife
     val tar = Target(t, target)
     lockedTargets += tar
     assignments.put(target, tar)
+    prioritizedTargets.invalidate()
   }
 
   private def unlock_!(target: M): Unit = {
     locked -= target
     val old = assignments.remove(target).get
     lockedTargets -= old
+    prioritizedTargets.invalidate()
   }
 
   private val locked        = mutable.HashSet.empty[M]
