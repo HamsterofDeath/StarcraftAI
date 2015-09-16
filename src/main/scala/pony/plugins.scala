@@ -111,6 +111,10 @@ class UnitDebugRenderer(override val universe: Universe) extends AIPlugIn with H
 
         }
       }
+
+      universe.enemyUnits.allMobiles.filter(_.isHarmlessNow).foreach { cd =>
+        renderer.in_!(Color.Green).drawCrossedOutOnTile(cd.currentTile)
+      }
     }
   }
 }
@@ -300,14 +304,14 @@ class DebugHelper(main: MainAI) extends AIPlugIn with HasUniverse {
               params match {
                 case List(x, id) if x == "m" || x == "minerals" =>
                   world.mineralPatches.groups.find(_.patchId.toString == id).foreach { group =>
-                    units.mineByType[Mobile].filterNot(_.isInstanceOf[WorkerUnit]).foreach { u =>
+                    ownUnits.mineByType[Mobile].filterNot(_.isInstanceOf[WorkerUnit]).foreach { u =>
                       world.orderQueue.queue_!(new AttackMove(u, group.center.randomized(12)))
                     }
                   }
 
                 case List(x, id) if x == "c" || x == "choke" =>
                   strategicMap.domains.find(_._1.index.toString == id).foreach { choke =>
-                    units.mineByType[Mobile].filterNot(_.isInstanceOf[WorkerUnit]).foreach { u =>
+                    ownUnits.mineByType[Mobile].filterNot(_.isInstanceOf[WorkerUnit]).foreach { u =>
                       world.orderQueue.queue_!(new AttackMove(u, choke._1.center.randomized(3)))
                     }
                   }

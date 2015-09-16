@@ -9,6 +9,8 @@ import scala.collection.mutable
 import scala.collection.mutable.{ArrayBuffer, ListBuffer}
 
 class UnitManager(override val universe: Universe) extends HasUniverse {
+  def hasJob(support: OrderHistorySupport) = assignments.contains(support)
+
   private val reorganizeJobQueue          = ListBuffer.empty[CanAcceptUnitSwitch[_ <: WrapsUnit]]
   private val unfulfilledRequestsThisTick = ArrayBuffer.empty[UnitJobRequests[_ <: WrapsUnit]]
   private val assignments                 = mutable.HashMap.empty[WrapsUnit, UnitWithJob[_ <: WrapsUnit]]
@@ -25,14 +27,14 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
   }
   def allFundedJobs = assignments.values.collect { case f: JobHasFunding[_] => f }
   def existsOrPlanned(c: Class[_ <: WrapsUnit]) = {
-    units.ownsByType(c) ||
+    ownUnits.ownsByType(c) ||
     plannedToBuild.exists(e => c.isAssignableFrom(e.typeOfRequestedUnit)) ||
     plannedToTrain.exists(e => c.isAssignableFrom(e.typeOfRequestedUnit))
   }
   def plannedToTrain = allUnfulfilled.flatMap(_.requests)
                        .collect { case t: BuildUnitRequest[_] if t.isMobile => t }
   def existsAndDone(c: Class[_ <: WrapsUnit]) = {
-    units.existsComplete(c)
+    ownUnits.existsComplete(c)
   }
   def nextJobReorganisationRequest = {
     val ret = reorganizeJobQueue.lastOption
@@ -123,7 +125,8 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
     unfulfilledRequestsThisTick.clear()
 
     //clean/update
-    assignments.foreach(_._2.onTick())
+    assignments.valuesIterator.foreach(_.onTick())
+    enemies.all.foreach(_.onTick())
     val removeUs = {
       val done = assignments.filter { case (_, job) => job.isFinished }.values
       val failed = assignments.filter { case (_, job) => job.hasFailed }.values
@@ -215,9 +218,9 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
       val m = mutable.Set.empty[Class[_ <: Building]]
       val missing = {
         mustHave.foreach { dependency =>
-          val complete = units.existsComplete(dependency)
+          val complete = ownUnits.existsComplete(dependency)
           if (!complete) {
-            val incomplete = units.existsIncomplete(dependency)
+            val incomplete = ownUnits.existsIncomplete(dependency)
             if (!incomplete) {
               m += dependency
             } else {
@@ -463,7 +466,7 @@ abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: 
 
   private var dead = false
 
-  units.registerKill_!(OnKillListener.on(unit, () => {
+  ownUnits.registerKill_!(OnKillListener.on(unit, () => {
     debug(s"Unit $unit died, aborting $this")
     dead = true
   }))
@@ -723,7 +726,7 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, bu
     } else if (!startedActualConstuction) {
       startedActualConstuction = worker.isConstructingBuilding
       if (startedActualConstuction) {
-        constructs = employer.units.buildingAt(buildWhere)
+        constructs = employer.ownUnits.buildingAt(buildWhere)
       }
       trace(s"Worker $worker started to build $buildingType", startedActualConstuction)
     } else if (!finishedConstruction) {

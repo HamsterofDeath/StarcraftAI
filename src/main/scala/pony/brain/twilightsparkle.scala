@@ -15,7 +15,8 @@ trait HasUniverse {
   def race = universe.myRace
   def universe: Universe
   def unitManager = universe.unitManager
-  def units = universe.myUnits
+  def ownUnits = universe.myUnits
+  def enemies = universe.enemyUnits
   def resources = universe.resources
   def bases = universe.bases
   def currentTick = universe.currentTick

@@ -273,9 +273,9 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   }
   private def evalWithBuildings = rawMapBuild.mutableCopy.or_!(justBuildings)
   private def evalWithBuildingsAndResources = justBuildings.mutableCopy.or_!(justMineralsAndGas)
-  private def evalOnlyBuildings = evalOnlyUnits(units.allByType[Building])
-  private def evalOnlyBlockedForMainBuildings = evalOnlyBlockedResourceAreas(units.allByType[Resource])
-  private def evalPotentialAddonLocations = evalOnlyAddonAreas(units.allByType[CanBuildAddons])
+  private def evalOnlyBuildings = evalOnlyUnits(ownUnits.allByType[Building])
+  private def evalOnlyBlockedForMainBuildings = evalOnlyBlockedResourceAreas(ownUnits.allByType[Resource])
+  private def evalPotentialAddonLocations = evalOnlyAddonAreas(ownUnits.allByType[CanBuildAddons])
   private def evalOnlyAddonAreas(units: TraversableOnce[CanBuildAddons]) = {
     val ret = emptyGrid
     units.foreach { b =>
@@ -283,7 +283,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
     }
     ret
   }
-  private def evalOnlyMobileBlockingUnits = evalOnlyMobileUnits(units.allByType[GroundUnit])
+  private def evalOnlyMobileBlockingUnits = evalOnlyMobileUnits(ownUnits.allByType[GroundUnit])
   private def evalOnlyMobileUnits(units: TraversableOnce[GroundUnit]) = {
     val ret = emptyGrid
     units.foreach { b =>
@@ -291,8 +291,8 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
     }
     ret
   }
-  private def evalOnlyResources = evalOnlyUnits(units.allByType[MineralPatch].filter(_.remaining > 0))
-                                  .or_!(evalOnlyUnits(units.allByType[Geysir]))
+  private def evalOnlyResources = evalOnlyUnits(ownUnits.allByType[MineralPatch].filter(_.remaining > 0))
+                                  .or_!(evalOnlyUnits(ownUnits.allByType[Geysir]))
   private def evalOnlyUnits(units: TraversableOnce[StaticallyPositioned]) = {
     val ret = emptyGrid
     units.foreach { b =>

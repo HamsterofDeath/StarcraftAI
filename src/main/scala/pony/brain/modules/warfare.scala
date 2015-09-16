@@ -151,7 +151,7 @@ class ProvideSuggestedAddons(universe: Universe)
   override def onTick(): Unit = {
     val buildUs = strategy.current.suggestAddons
                   .filter(_.isActive)
-    val todo = for (builder <- units.allAddonBuilders;
+    val todo = for (builder <- ownUnits.allAddonBuilders;
                     addon <- buildUs
                     if builder.canBuildAddon(addon.addon) & !builder.hasAddonAttached) yield (builder, addon)
     todo.foreach { case (builder, what) =>

@@ -28,9 +28,11 @@ trait OrderHistorySupport extends WrapsUnit {
   }
   override def onTick(): Unit = {
     super.onTick()
-    history += HistoryElement(nativeUnit.getOrder, nativeUnit.getOrderTarget, universe.unitManager.jobOf(this))
-    if (history.size > maxHistory) {
-      history.remove(0)
+    if (universe.unitManager.hasJob(this)) {
+      history += HistoryElement(nativeUnit.getOrder, nativeUnit.getOrderTarget, universe.unitManager.jobOf(this))
+      if (history.size > maxHistory) {
+        history.remove(0)
+      }
     }
   }
   def unitHistory = history.reverse
@@ -422,7 +424,7 @@ case class Armor(armorType: ArmorType, hp: HitPoints, armor: Int, owner: CanDie)
 
 trait CanDie extends WrapsUnit {
   self =>
-  def isHarmlessNow = isDisabled || !canDoDamage
+  def isHarmlessNow = isIncapacitated || !canDoDamage
 
   private var lastFrameHp = HitPoints(-1, -1) // obviously wrong, but that doesn't matter
 
@@ -430,11 +432,11 @@ trait CanDie extends WrapsUnit {
 
   def isBeingAttacked = currentHp < lastFrameHp
 
-  private val disabled = lazily {
-    nativeUnit.isLockedDown || nativeUnit.isStasised
-  }
+  private val disabled = lazily {evalLocked}
 
-  def isDisabled = disabled.get
+  private def evalLocked = nativeUnit.isLockedDown || nativeUnit.isStasised
+
+  def isIncapacitated = disabled.get
 
   val armorType: ArmorType
 
@@ -471,8 +473,6 @@ trait CanDie extends WrapsUnit {
   def hitPoints = currentHp
 
   def armor = myArmor.get
-
-
 }
 
 case class Price(minerals: Int, gas: Int) {
@@ -686,6 +686,7 @@ trait AirWeapon extends Weapon {
       super.assumeShotDelayOn(target)
   }
 
+
   private val damage = LazyVal.from(evalDamage(airWeapon, airDamageType, airDamageMultiplier, true))
 
   override protected def onUniverseSet(universe: Universe): Unit = {
@@ -730,6 +731,7 @@ trait Weapon extends Controllable {
   def assumeShotDelayOn(target: CanDie): Int = !!!("This should never be called")
 
   override def canDoDamage = true
+
   def cooldownTimer = nativeUnit.getAirWeaponCooldown max nativeUnit.getGroundWeaponCooldown
   def isAttacking = isStartingToAttack || cooldownTimer > 0
   def isStartingToAttack = nativeUnit.isStartingAttack
