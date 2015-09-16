@@ -5,7 +5,7 @@ import pony.Upgrades.{IsTech, SingleTargetMagicSpell}
 import pony.brain.{HasUniverse, PriorityChain, UnitWithJob, Universe}
 
 import scala.collection.immutable.HashMap
-import scala.collection.mutable.ListBuffer
+import scala.collection.mutable.{ArrayBuffer, ListBuffer}
 
 trait HasNativeSCAttributes {
   def nativeUnit: APIUnit
@@ -49,6 +49,14 @@ trait WrapsUnit extends HasNativeSCAttributes with HasUniverse {
   def isInGame = true
   def canDoDamage = false
 
+  private val lazyVals = ArrayBuffer.empty[LazyVal[_]]
+
+  def lazily[T](t: => T) = {
+    val l = LazyVal.from(t)
+    lazyVals += l
+    l
+  }
+
   private var creationTick = -1
   val unitId            = WrapsUnit.nextId
   val nativeUnitId      = nativeUnit.getID
@@ -85,7 +93,7 @@ trait WrapsUnit extends HasNativeSCAttributes with HasUniverse {
   }
   def isBeingCreated = nativeUnit.getRemainingBuildTime > 0
   def onTick() = {
-
+    lazyVals.foreach(_.invalidate())
   }
 }
 
@@ -318,10 +326,16 @@ trait SpellcasterBuilding extends Building with Controllable {
 }
 
 case class HitPoints(hitpoints: Int, shield: Int) {
+  def <=(other: HitPoints): Boolean = <=(other.hitpoints, other.shield)
+
+  def <=(subHp: Int, subShield: Int) = {
+    hitpoints <= subHp && subShield <= shield
+  }
+
   def <(other: HitPoints): Boolean = <(other.hitpoints, other.shield)
 
   def <(subHp: Int, subShield: Int) = {
-    hitpoints <= subHp && subShield <= shield
+    hitpoints < subHp && subShield < shield
   }
 }
 
@@ -410,17 +424,15 @@ trait CanDie extends WrapsUnit {
   self =>
   def isHarmlessNow = isDisabled || !canDoDamage
 
-  private var lastFrameHp = HitPoints(-1, -1) // obviously wrong
+  private var lastFrameHp = HitPoints(-1, -1) // obviously wrong, but that doesn't matter
 
   private def currentHp = myArmor.get.hp
 
-  def isBeingAttacked = {
-    currentHp <(lastFrameHp.hitpoints, lastFrameHp.shield)
-  }
+  def isBeingAttacked = currentHp <= lastFrameHp
 
-  def isDisabled = {
-    nativeUnit.isLockedDown || nativeUnit.isStasised
-  }
+  private val disabled = lazily(nativeUnit.isLockedDown || nativeUnit.isStasised)
+
+  def isDisabled = disabled.get
 
 
   val armorType: ArmorType
@@ -443,7 +455,7 @@ trait CanDie extends WrapsUnit {
     })
   }
 
-  private val myArmor = LazyVal.from {
+  private val myArmor = lazily {
     val hp = HitPoints(nativeUnit.getHitPoints, nativeUnit.getShields)
     val armorLevel = universe.upgrades.armorForUnitType(self)
     Armor(armorType, hp, armorLevel, self)
@@ -453,11 +465,6 @@ trait CanDie extends WrapsUnit {
     case m: Mobile => ifMobile(m)
     case b: Building => ifBuilding(b)
     case x => !!!(s"Check this $x")
-  }
-
-  override def onTick(): Unit = {
-    super.onTick()
-    myArmor.invalidate()
   }
 
   def hitPoints = currentHp
@@ -477,9 +484,12 @@ trait IndestructibleUnit extends WrapsUnit {
 
 trait Mobile extends WrapsUnit with Controllable {
 
-  private val defenseMatrix = LazyVal
-                              .from(nativeUnit.getDefenseMatrixPoints > 0 || nativeUnit.getDefenseMatrixTimer > 0)
-  private val irradiation   = LazyVal.from(nativeUnit.getIrradiateTimer > 0)
+  private val defenseMatrix = lazily {
+    nativeUnit.getDefenseMatrixPoints > 0 || nativeUnit.getDefenseMatrixTimer > 0
+  }
+  private val irradiation   = lazily {
+    nativeUnit.getIrradiateTimer > 0
+  }
 
   def hasDefenseMatrix = defenseMatrix.get
 
@@ -879,13 +889,10 @@ trait PermaCloak extends CanCloak {
   override def isCloaked = true
 }
 trait CanCloak extends Mobile {
-  private val cloaked = LazyVal.from(nativeUnit.isCloaked)
-  def isCloaked = cloaked.get
-
-  override def onTick(): Unit = {
-    super.onTick()
-    cloaked.invalidate()
+  private val cloaked = lazily {
+    nativeUnit.isCloaked
   }
+  def isCloaked = cloaked.get
 }
 
 trait DetectorsFirst extends IsTech {

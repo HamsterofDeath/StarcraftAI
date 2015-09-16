@@ -122,7 +122,7 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
     unfulfilledRequestsLastTick = unfulfilledRequestsThisTick.toVector ++ keep
     unfulfilledRequestsThisTick.clear()
 
-    //clean
+    //clean/update
     assignments.foreach(_._2.onTick())
     val removeUs = {
       val done = assignments.filter { case (_, job) => job.isFinished }.values
