@@ -12,20 +12,19 @@ class AreaHelper(source: Grid2D) {
 
   def findFreeAreas = {
     val areas = mutable.ArrayBuffer.empty[Grid2D]
-    baseOn.allFree.foreach { p =>
-      val areaAlreadyKnown = areas.exists(_.free(p.x, p.y))
-      if (!areaAlreadyKnown) {
-        val area = floodFill(p)
-        if (area.nonEmpty) {
-          areas += {
-            val asGrid = new Grid2D(baseOn.cols, baseOn.rows, area, false)
-            val flipped = asGrid.ensureContainsBlocked
-            flipped
-          }
+    val used = mutable.BitSet.empty
+    val knownInAnyArea = new MutableGrid2D(baseOn.cols, baseOn.rows, used)
+    baseOn.allFree.filter(knownInAnyArea.free).foreach { p =>
+      val area = floodFill(p)
+      if (area.nonEmpty) {
+        areas += {
+          val asGrid = new Grid2D(baseOn.cols, baseOn.rows, area, false)
+          used ++= area
+          asGrid
         }
       }
     }
-    val ret = areas.toSeq
+    val ret = areas.toSeq.sortBy(-_.freeCount)
     assert({
       val before = baseOn.freeCount
       val after = ret.map(_.freeCount)

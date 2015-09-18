@@ -28,7 +28,7 @@ class StrategicMap(resources: Seq[ResourceArea], walkable: Grid2D, game: Game) {
   private val myDomains = LazyVal.from({
     info(s"Analyzing map ${game.mapFileName()}")
     val tooMany = {
-      val lineLength = 4
+      val lineLength = 3
       val tries = (-lineLength, -lineLength) ::(0, -lineLength) ::(lineLength, -lineLength) ::(lineLength, 0) :: Nil map
                   { case (x, y) =>
                     val point = RelativePoint(x, y)
@@ -37,13 +37,14 @@ class StrategicMap(resources: Seq[ResourceArea], walkable: Grid2D, game: Game) {
 
       val findSubAreasOfThis = walkable
       val myAreas = findSubAreasOfThis.areas
-      myAreas.flatMap { area =>
+      myAreas.par.flatMap { area =>
 
         val relevantResources = resources.filter { r =>
           r.resources.exists(p => area.free(p.area.anyTile))
         }
 
-        area.allContained.toVector.par.flatMap { center =>
+        val freeSpotsToCheck = area.allFree.toVector
+        freeSpotsToCheck.par.flatMap { center =>
           val cutters = tries.map(_.movedBy(center))
                         .filter(line => area.anyBlockedOnLine(line))
                         .flatMap { line =>
@@ -83,8 +84,8 @@ class StrategicMap(resources: Seq[ResourceArea], walkable: Grid2D, game: Game) {
             }
           } else
             None
-        }.toVector
-      }
+        }.seq
+      }.seq
     }
 
     val groupedByArea = tooMany.filter(_._2.size > 1)

@@ -7,10 +7,6 @@ import pony.brain.{HasUniverse, PriorityChain, UnitWithJob, Universe}
 import scala.collection.immutable.HashMap
 import scala.collection.mutable.{ArrayBuffer, ListBuffer}
 
-trait HasNativeSCAttributes {
-  def nativeUnit: APIUnit
-  def currentOrder = nativeUnit.getOrder
-}
 
 trait NiceToString extends WrapsUnit {
   override def toString = s"[$unitIdText] ${getClass.className}"
@@ -46,14 +42,19 @@ trait OrderHistorySupport extends WrapsUnit {
   }
 }
 
-trait WrapsUnit extends HasNativeSCAttributes with HasUniverse {
+trait WrapsUnit extends HasUniverse {
+
+  def currentOrder = curOrder.get
+
   def age = universe.currentTick - creationTick
   def isInGame = true
   def canDoDamage = false
 
   private val lazyVals = ArrayBuffer.empty[LazyVal[_]]
 
-  def lazily[T](t: => T) = {
+  private val curOrder = oncePerTick {nativeUnit.getOrder}
+
+  def oncePerTick[T](t: => T) = {
     val l = LazyVal.from(t)
     lazyVals += l
     l
@@ -432,7 +433,7 @@ trait CanDie extends WrapsUnit {
 
   def isBeingAttacked = currentHp < lastFrameHp
 
-  private val disabled = lazily {evalLocked}
+  private val disabled = oncePerTick {evalLocked}
 
   private def evalLocked = nativeUnit.isLockedDown || nativeUnit.isStasised
 
@@ -458,7 +459,7 @@ trait CanDie extends WrapsUnit {
     })
   }
 
-  private val myArmor = lazily {
+  private val myArmor = oncePerTick {
     val hp = HitPoints(nativeUnit.getHitPoints, nativeUnit.getShields)
     val armorLevel = universe.upgrades.armorForUnitType(self)
     Armor(armorType, hp, armorLevel, self)
@@ -485,11 +486,11 @@ trait IndestructibleUnit extends WrapsUnit {
 
 trait Mobile extends WrapsUnit with Controllable {
 
-  private val defenseMatrix = lazily {
+  private val defenseMatrix = oncePerTick {
     nativeUnit.getDefenseMatrixPoints > 0 || nativeUnit.getDefenseMatrixTimer > 0
   }
 
-  private val defenseMatrixHP = lazily {
+  private val defenseMatrixHP = oncePerTick {
     nativeUnit.getDefenseMatrixPoints
   }
 
@@ -499,7 +500,7 @@ trait Mobile extends WrapsUnit with Controllable {
 
   private var lastFrameMatrixPoints = 0
 
-  private val irradiation = lazily {
+  private val irradiation = oncePerTick {
     nativeUnit.getIrradiateTimer > 0
   }
 
@@ -813,7 +814,9 @@ trait CanBuildAddons extends Building {
 
 trait WorkerUnit extends Killable with Mobile with GroundUnit with GroundWeapon with Floating {
   def isGatheringGas = currentOrder == Order.HarvestGas || currentOrder == Order.MoveToGas ||
-                       currentOrder == Order.ReturnGas || currentOrder == Order.WaitForGas
+                       currentOrder == Order.ReturnGas || currentOrder == Order.WaitForGas ||
+                       currentOrder == Order.Harvest1 || currentOrder == Order.Harvest2 ||
+                       currentOrder == Order.Harvest3 || currentOrder == Order.Harvest4
 
   def isMagic = currentOrder == Order.ResetCollision
   def isInMiningProcess = currentOrder == Order.MiningMinerals
@@ -850,7 +853,8 @@ trait Resource extends BlockingTiles {
     Area(ul, lr)
   }
 
-  def remaining = nativeUnit.getResources
+  private val remainingResources = oncePerTick {if (nativeUnit.exists) nativeUnit.getResources else 0}
+  def remaining = remainingResources.get
 }
 
 trait ArmedBuilding extends Building with RangeWeapon
@@ -938,7 +942,7 @@ trait MediumAttackAir extends AirWeapon {
   override def damageDelayFactorAir = 1
 }
 trait SlowAttackAir extends AirWeapon {
-  override def damageDelayFactorAir = 2
+  override def damageDelayFactorAir = 1
 }
 trait InstantAttackGround extends GroundWeapon {
   override def damageDelayFactorGround = 0
@@ -968,7 +972,7 @@ trait PermaCloak extends CanCloak {
   override def isCloaked = true
 }
 trait CanCloak extends Mobile {
-  private val cloaked = lazily {
+  private val cloaked = oncePerTick {
     nativeUnit.isCloaked
   }
   def isCloaked = cloaked.get

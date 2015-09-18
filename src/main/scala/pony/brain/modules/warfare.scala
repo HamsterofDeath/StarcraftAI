@@ -399,8 +399,7 @@ object Strategy {
       super.determineScore + bases.rich.ifElse(10, -10)
     }
 
-    override def suggestUpgrades = UpgradeToResearch(Upgrades.Terran.Defensematrix)(timingHelpers.phase.isAnyTime) ::
-                                   UpgradeToResearch(Upgrades.Terran.CruiserGun)(timingHelpers.phase.isAnyTime) ::
+    override def suggestUpgrades = UpgradeToResearch(Upgrades.Terran.CruiserGun)(timingHelpers.phase.isAnyTime) ::
                                    UpgradeToResearch(Upgrades.Terran.CruiserEnergy)(timingHelpers.phase.isAnyTime) ::
                                    UpgradeToResearch(Upgrades.Terran.EMP)(timingHelpers.phase.isAnyTime) ::
                                    UpgradeToResearch(Upgrades.Terran.ShipWeapons)(timingHelpers.phase.isAnyTime) ::
@@ -443,7 +442,6 @@ object Strategy {
       UpgradeToResearch(Upgrades.Terran.WraithCloak)(timingHelpers.phase.isAnyTime) ::
       UpgradeToResearch(Upgrades.Terran.ShipWeapons)(timingHelpers.phase.isAnyTime) ::
       UpgradeToResearch(Upgrades.Terran.WraithEnergy)(timingHelpers.phase.isAnyTime) ::
-      UpgradeToResearch(Upgrades.Terran.Defensematrix)(timingHelpers.phase.isAnyTime) ::
       UpgradeToResearch(Upgrades.Terran.EMP)(timingHelpers.phase.isAnyTime) ::
       UpgradeToResearch(Upgrades.Terran.ShipArmor)(timingHelpers.phase.isAnyTime) ::
       UpgradeToResearch(Upgrades.Terran.CruiserGun)(timingHelpers.phase.isAnyTime) ::

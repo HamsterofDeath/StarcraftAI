@@ -3,7 +3,6 @@ package pony
 import bwapi.{Color, Game, Player, PlayerType, Position, TilePosition}
 import pony.brain.{ResourceRequestSums, Supplies}
 
-import scala.collection.immutable.BitSet
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.language.postfixOps
@@ -47,6 +46,7 @@ trait TechTree {
 class TerranTechTree extends TechTree {
 
   override protected val upgrades: Map[Upgrade, Class[_ <: Upgrader]] = Map(
+    Upgrades.Terran.GoliathRange -> classOf[MachineShop],
     Upgrades.Terran.CruiserGun -> classOf[PhysicsLab],
     Upgrades.Terran.CruiserEnergy -> classOf[PhysicsLab],
     Upgrades.Terran.Irradiate -> classOf[PhysicsLab],
@@ -511,7 +511,9 @@ class Units(game: Game, hostile: Boolean) {
             knownUnits.put(u.getID, lifted)
           case Some(unit) if unit.initialNativeType != u.getType =>
             info(s"Unit morphed from ${unit.initialNativeType} to ${u.getType}")
-            knownUnits.put(u.getID, UnitWrapper.lift(u))
+            val lifted = UnitWrapper.lift(u)
+            knownUnits.put(u.getID, lifted)
+            fresh += lifted
           case _ => // noop
         }
       }
@@ -559,27 +561,27 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
   def ensureContainsBlocked = if (containsBlocked)
     this
   else {
-    val allBlockedIndexes = BitSet.empty ++ allIndexes.filter(blocked)
-    new Grid2D(cols, rows, allBlockedIndexes)
+    val allBlockedIndexes = new mutable.BitSet ++= allBlocked.map(tileToIndex)
+    new Grid2D(cols, rows, allBlockedIndexes.toImmutable)
   }
   def blocked(index: Int) = !free(index)
   def free(index: Int) = if (containsBlocked) !areaDataBitSet(index) else areaDataBitSet(index)
   def minAreaSize(i: Int) = {
     val mut = mutableCopy
-    areas.filter(_.allContained.size < i).foreach { area =>
-      area.allContained.foreach(mut.block_!)
+    val tooSmall = areas.filter(_.freeCount < i)
+    tooSmall.foreach { area =>
+      area.allFree.foreach(mut.block_!)
     }
     mut.asReadOnly
   }
-  def mutableCopy = new MutableGrid2D(cols, rows, mutable.BitSet.empty ++ areaDataBitSet)
-  def allContained = allBlocked
+  def mutableCopy = new MutableGrid2D(cols, rows, mutable.BitSet.empty ++ areaDataBitSet, containsBlocked)
   def allBlocked = if (containsBlocked) bitSetToTiles else allIndexes.filterNot(areaDataBitSet).map(indexToTile)
   private def allIndexes = Iterator.range(0, size)
   def size = cols * rows
   private def indexToTile(index: Int) = MapTilePosition.shared(index % cols, index / rows)
+  private def tileToIndex(mp: MapTilePosition) = mp.x + mp.y * cols
   private def bitSetToTiles = areaDataBitSet.iterator.map(index => MapTilePosition.shared(index % cols, index / rows))
   def areas = lazyAreas.get
-  def containedCount = areaDataBitSet.size
   def free(position: MapTilePosition, area: Size): Boolean = {
     area.points.forall { p =>
       free(p.movedBy(position))
@@ -598,7 +600,7 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
     new Grid2D(subCols, subRows, bits)
   }
   def free(x: Int, y: Int): Boolean = {
-    assert(includes(x,y))
+    assert(includes(x, y), s"$x / $y is not inside $cols, $rows")
       val coord = x + y * cols
       if (containsBlocked) !areaDataBitSet(coord) else areaDataBitSet(coord)
   }
@@ -621,7 +623,8 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
   def areaCount = areas.size
 }
 
-class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet) extends Grid2D(cols, rows, bitSet) {
+class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet, bitSetContainsBlocked: Boolean = true)
+  extends Grid2D(cols, rows, bitSet, bitSetContainsBlocked) {
 
   def areaSize(anyContained: MapTilePosition) = {
     val isFree = free(anyContained)
@@ -798,14 +801,16 @@ class AnalyzedMap(game: Game) {
   val areas = walkableGrid.areas
 
   def debugAreas = {
+    val encoded = ('0' to '9') ++ ('a' to 'z') ++ ('A' to 'Z') ++ (1 to 100 map (_ => '?'))
     val areas = walkableGrid.areas
+    val separated = areas.map(_.mkString('X')).mkString("\n---\n")
     val debugThis = walkableGrid
-    0 until debugThis.rows map { y =>
+    separated + "\n" + (0 until debugThis.rows map { y =>
       0 until debugThis.cols map { x =>
-        val index = areas.indexWhere(_.containsAsData(x, y))
-        if (index == -1) " " else index.toString
+        val index = areas.indexWhere(_.free(x, y))
+        if (index == -1) " " else encoded(index).toString
       } mkString
-    } mkString "\n"
+    } mkString "\n")
   }
 
   def debugMap = walkableGrid.mkString('X')

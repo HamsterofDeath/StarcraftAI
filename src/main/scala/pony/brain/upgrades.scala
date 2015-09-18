@@ -38,7 +38,7 @@ class ArmorWeaponLevels(override val universe: Universe) extends HasUniverse {
     if (armor == null) {
       val gLevel = p.getUpgradeLevel(unitType.groundWeapon().upgradeType())
       val aLevel = p.getUpgradeLevel(unitType.airWeapon().upgradeType())
-      assert(gLevel == aLevel, s"Check $unitType")
+      assert(gLevel == aLevel, s"Check $unitType, $aLevel != $gLevel")
       armor = Levels(p.armor(unitType), gLevel)
       byUnitType.put(unitType, armor)
     }
