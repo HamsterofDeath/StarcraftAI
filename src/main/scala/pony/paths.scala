@@ -59,6 +59,10 @@ class AreaHelper(source: Grid2D) {
     a.outline.exists(p => directLineOfSight(p, b))
   }
 
+  def directLineOfSight(a: Area, b: Area): Boolean = {
+    b.outline.exists(p => directLineOfSight(a, p))
+  }
+
   def directLineOfSight(a: MapTilePosition, b: MapTilePosition): Boolean = {
     AreaHelper.directLineOfSight(a, b, baseOn)
   }

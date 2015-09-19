@@ -710,8 +710,8 @@ class MineralAnalyzer(map: AnalyzedMap, myUnits: Units) {
     val pf = new AreaHelper(map.walkableGrid)
     myUnits.minerals.foreach { mp =>
       patchGroups.find(g => !g.contains(mp) &&
-                            g.center.distanceTo(mp.tilePosition) <= 10 &&
-                            pf.directLineOfSight(mp.area, g.center)) match {
+                            g.patches.map(_.area.distanceTo(mp.tilePosition)).min <= 10 &&
+                            g.patches.exists(p => pf.directLineOfSight(mp.area, p.area))) match {
         case Some(group) => group.addPatch(mp)
         case None =>
           val newGroup = new MineralPatchGroup(patchGroups.size)
