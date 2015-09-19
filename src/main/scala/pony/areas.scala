@@ -10,6 +10,7 @@ case class ResourceArea(patches: Option[MineralPatchGroup], geysirs: Set[Geysir]
   val resources = patches.map(_.patches).getOrElse(Nil) ++ geysirs
   def center = patches.map(_.center).getOrElse(geysirs.head.tilePosition)
   def isPatchId(id:Int) = patches.fold(false)(_.patchId == id)
+  lazy val coveredTiles = resources.flatMap(_.area.tiles).toSet
 }
 
 case class PotentialDomain(coveredOnLand: Seq[ResourceArea], needsToControl: Seq[MapTilePosition])
@@ -82,10 +83,10 @@ class StrategicMap(resources: Seq[ResourceArea], walkable: Grid2D, game: Game) {
     defLine
   }
 
-  private val myDomains = LazyVal.from({
+  private val mapData = FileStorageLazyVal.from({
     info(s"Analyzing map ${game.mapFileName()}")
     val tooMany = {
-      val lineLength = 5
+      val lineLength = 6
       val tries = (-lineLength, -lineLength) ::(0, -lineLength) ::(lineLength, -lineLength) ::(lineLength, 0) :: Nil map
                   { case (x, y) =>
                     val point = RelativePoint(x, y)
@@ -157,8 +158,20 @@ class StrategicMap(resources: Seq[ResourceArea], walkable: Grid2D, game: Game) {
       manyWithSameValue.minBy(_._1.center.distanceToSquared(center))
     }.toVector
     val complete = reduced.zipWithIndex.map { case ((choke, value), index) => choke.copy(index = index) -> value }
-    complete
-  })
+    complete.map { case (choke, map) =>
+      choke -> map.map { case (area, resources) => area -> resources.map(_.coveredTiles) }
+    }
+  }, s"mapdata_${game.mapHash()}_${game.mapName()}")
+
+  private val myDomains = LazyVal.from {
+    val raw = mapData.get
+    raw.map { case (choke, map) =>
+      choke -> map.map { case (area, coveredTiles) =>
+        area -> coveredTiles.map(tiles => resources.find(_.coveredTiles == tiles).get)
+      }
+    }
+  }
+
   def domains = myDomains.get
 
   def domainsButWithout(these: Set[ResourceArea]) = {
