@@ -59,6 +59,7 @@ object Terran {
     val allOfThem = (
                       new StimSelf(universe) ::
                       new StopMechanic(universe) ::
+                      new SetupMineField(universe) ::
                       new ShieldUnit(universe) ::
                       new IrradiateUnit(universe) ::
                       new CloakSelfGhost(universe) ::
@@ -85,7 +86,12 @@ object Terran {
   class RepairDamagedBuilding(universe: Universe) extends DefaultBehaviour[SCV](universe) {
     override protected def lift(t: SCV): SingleUnitBehaviour[SCV] = ???
   }
+
   class RepairDamagedUnit(universe: Universe) extends DefaultBehaviour[SCV](universe) {
+    override protected def lift(t: SCV): SingleUnitBehaviour[SCV] = ???
+  }
+
+  class ContinueInterruptedConstruction(universe: Universe) extends DefaultBehaviour[SCV](universe) {
     override protected def lift(t: SCV): SingleUnitBehaviour[SCV] = ???
   }
 
@@ -140,15 +146,41 @@ object Terran {
   class RevealHiddenUnitsPermanenly(universe: Universe) extends DefaultBehaviour[MobileDetector](universe) {
     override protected def lift(t: MobileDetector): SingleUnitBehaviour[MobileDetector] = ???
   }
+
   class SetupMineField(universe: Universe) extends DefaultBehaviour[Vulture](universe) {
-    override protected def lift(t: Vulture): SingleUnitBehaviour[Vulture] = ???
+
+    override def onTick(): Unit = {
+      super.onTick()
+      ifNth(131) {
+        defenseLines = evalDefenseLines
+      }
+    }
+
+    private def evalDefenseLines = {
+      bases.bases.flatMap { base =>
+
+      }
+    }
+
+    private var defenseLines = evalDefenseLines
+
+    override protected def lift(t: Vulture): SingleUnitBehaviour[Vulture] = new SingleUnitBehaviour[Vulture](t, meta) {
+      override def shortName: String = "Lay mines"
+      override def toOrder(what: Objective) = {
+        if (t.spiderMineCount > 0) {
+          Nil
+        } else {
+          Nil
+        }
+      }
+      override def preconditionOk: Boolean = universe.upgrades.hasResearched(Upgrades.Terran.SpiderMines)
+    }
   }
+
   class Scout(universe: Universe) extends DefaultBehaviour[Mobile](universe) {
     override protected def lift(t: Mobile): SingleUnitBehaviour[Mobile] = ???
   }
-  class Cloak(universe: Universe) extends DefaultBehaviour[CanCloak](universe) {
-    override protected def lift(t: CanCloak): SingleUnitBehaviour[CanCloak] = ???
-  }
+
   class DoNotStray(universe: Universe) extends DefaultBehaviour[SupportUnit](universe) {
     override protected def lift(t: SupportUnit): SingleUnitBehaviour[SupportUnit] = ???
   }

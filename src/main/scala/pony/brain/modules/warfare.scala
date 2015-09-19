@@ -246,7 +246,8 @@ class EnqueueArmy(universe: Universe) extends OrderlessAIModule[UnitFactory](uni
       val existingRatio = p.existing.getOrElse(t, 0.0)
       existingRatio - idealRatio
     }
-    mostMissing.foreach { case (thisOne, _) =>
+    mostMissing.filter { case (c, _) => universe.unitManager.allRequirementsFulfilled(c) }
+    .foreach { case (thisOne, _) =>
       requestUnit(thisOne, takeCareOfDependencies = true)
     }
   }
@@ -369,27 +370,28 @@ object Strategy {
   }
 
   class TerranHeavyMetal(override val universe: Universe) extends LongTermStrategy with TerranDefaults {
-    override def determineScore: Int = 50
+    override def determineScore: Int = timingHelpers.phase.isMid.ifElse(50, 0)
+
     override def suggestProducers = {
       val myBases = bases.myMineralFields.count(_.value > 1000)
 
       IdealProducerCount(classOf[Barracks], myBases)(timingHelpers.phase.isAnyTime) ::
       IdealProducerCount(classOf[Factory], myBases * 3)(timingHelpers.phase.isAnyTime) ::
-      IdealProducerCount(classOf[Starport], myBases)(timingHelpers.phase.isAnyTime) ::
+      IdealProducerCount(classOf[Starport], myBases)(timingHelpers.phase.isSincePostMid) ::
       Nil
     }
     override def suggestUnits = {
-      IdealUnitRatio(classOf[Marine], 3)(timingHelpers.phase.isAnyTime) ::
-      IdealUnitRatio(classOf[Medic], 1)(timingHelpers.phase.isAnyTime) ::
-      IdealUnitRatio(classOf[Ghost], 1)(timingHelpers.phase.isSinceEarlyMid) ::
+      IdealUnitRatio(classOf[Marine], 3)(timingHelpers.phase.isMid) ::
+      IdealUnitRatio(classOf[Medic], 1)(timingHelpers.phase.isLateMid) ::
+      IdealUnitRatio(classOf[Ghost], 1)(timingHelpers.phase.isSinceLateMid) ::
       IdealUnitRatio(classOf[Vulture], 3)(timingHelpers.phase.isAnyTime) ::
       IdealUnitRatio(classOf[Tank], 5)(timingHelpers.phase.isSinceEarlyMid) ::
-      IdealUnitRatio(classOf[Goliath], 3)(timingHelpers.phase.isSinceEarlyMid) ::
+      IdealUnitRatio(classOf[Goliath], 3)(timingHelpers.phase.isSinceMid) ::
       IdealUnitRatio(classOf[ScienceVessel], 1)(timingHelpers.phase.isSinceLateMid) ::
       Nil
     }
     override def suggestUpgrades: Seq[UpgradeToResearch] =
-      UpgradeToResearch(Upgrades.Terran.SpiderMines)(timingHelpers.phase.isSinceEarlyMid) ::
+      UpgradeToResearch(Upgrades.Terran.SpiderMines)(timingHelpers.phase.isSinceVeryEarlyMid) ::
       UpgradeToResearch(Upgrades.Terran.VultureSpeed)(timingHelpers.phase.isSinceEarlyMid) ::
       UpgradeToResearch(Upgrades.Terran.TankSiegeMode)(timingHelpers.phase.isSinceAlmostMid) ::
       UpgradeToResearch(Upgrades.Terran.VehicleWeapons)(timingHelpers.phase.isSinceMid) ::
@@ -500,7 +502,7 @@ object Strategy {
       Nil
     }
 
-    override def determineScore: Int = (mapLayers.rawWalkableMap.size <= 64 * 64).ifElse(100, 0)
+    override def determineScore: Int = (mapLayers.rawWalkableMap.size <= 96 * 96).ifElse(100, 0)
 
     override def suggestProducers = {
       val myBases = bases.myMineralFields.count(_.value > 1000)

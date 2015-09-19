@@ -28,7 +28,7 @@ class StrategicMap(resources: Seq[ResourceArea], walkable: Grid2D, game: Game) {
   private val myDomains = LazyVal.from({
     info(s"Analyzing map ${game.mapFileName()}")
     val tooMany = {
-      val lineLength = 3
+      val lineLength = 5
       val tries = (-lineLength, -lineLength) ::(0, -lineLength) ::(lineLength, -lineLength) ::(lineLength, 0) :: Nil map
                   { case (x, y) =>
                     val point = RelativePoint(x, y)

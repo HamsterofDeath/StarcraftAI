@@ -2,7 +2,6 @@ package pony
 
 import pony.brain.{HasUniverse, Universe}
 
-import scala.collection.JavaConverters._
 import scala.collection.mutable
 
 case class Path(waypoints: Seq[MapTilePosition])
@@ -201,14 +200,8 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   private var withEverythingBlocking     = evalEverythingBlocking
   private var lastUpdatePerformedInTick  = universe.currentTick
   def isOnIsland(tilePosition: MapTilePosition) = {
-
-    val others = world.nativeGame
-                 .getPlayers
-                 .asScala
-                 .map(_.getStartLocation)
-                 .map { p => p -> rawMapWalk.areas.find(_.free(p.getX / 32, p.getY / 32)) }
-                 .filter(_._2.exists(_.free(tilePosition)))
-    others.size <= 1 // one or less starting positions = "island"
+    val areaInQuestion = rawMapWalk.areas.find(_.free(tilePosition))
+    !areaInQuestion.contains(rawWalkableMap.areas.maxBy(_.freeCount))
   }
   def rawWalkableMap = rawMapWalk
   def blockedByPotentialAddons = {
@@ -266,6 +259,13 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
             patch.area.tiles.foreach { patchTile =>
               ret.block_!(outline, patchTile)
             }
+          }
+        }
+      }
+      base.myGeysirs.foreach { geysir =>
+        base.mainBuilding.area.outline.foreach { tile1 =>
+          geysir.area.outline.foreach { tile2 =>
+            ret.block_!(tile1, tile2)
           }
         }
       }
@@ -350,8 +350,19 @@ class ConstructionSiteFinder(universe: Universe) {
         // background
         val possible = helper.blockSpiralClockWise(resources.center, 25)
                        .filter { candidate =>
-                         val area = Area(candidate, size)
-                         grid.includes(area) && grid.free(area)
+                         def correctArea = {
+                           val area = Area(candidate, size)
+                           grid.includes(area) && grid.free(area)
+                         }
+                         def lineOfSight = {
+                           resources.patches.exists { mpg =>
+                             mpg.patches.exists { p =>
+                               AreaHelper
+                               .directLineOfSight(p.area.centerTile, candidate, universe.mapLayers.rawWalkableMap)
+                             }
+                           }
+                         }
+                         correctArea && lineOfSight
                        }
 
         if (possible.isEmpty) {

@@ -554,7 +554,10 @@ trait ArmedUnit extends WrapsUnit {
 
 }
 
-trait SpiderMines extends WrapsUnit
+trait SpiderMines extends WrapsUnit {
+  private val mines = oncePerTick {nativeUnit.getSpiderMineCount}
+  def spiderMineCount = mines.get
+}
 
 trait GroundWeapon extends Weapon {
   def damageDelayFactorGround: Int
@@ -1266,9 +1269,8 @@ object UnitWrapper {
       UnitType.Terran_Medic -> ((new Medic(_), classOf[Medic])),
       UnitType.Terran_Valkyrie -> ((new Valkery(_), classOf[Valkery])),
       UnitType.Terran_Vulture -> ((new Vulture(_), classOf[Vulture])),
-      //siege mode msut come first!
-      UnitType.Terran_Siege_Tank_Siege_Mode -> ((new Tank(_), classOf[Tank])),
       UnitType.Terran_Siege_Tank_Tank_Mode -> ((new Tank(_), classOf[Tank])),
+      UnitType.Terran_Siege_Tank_Siege_Mode -> ((new Tank(_), classOf[Tank])),
       UnitType.Terran_Goliath -> ((new Goliath(_), classOf[Goliath])),
       UnitType.Terran_Wraith -> ((new Wraith(_), classOf[Wraith])),
       UnitType.Terran_Science_Vessel -> ((new ScienceVessel(_), classOf[ScienceVessel])),
@@ -1308,9 +1310,10 @@ object UnitWrapper {
     )
 
   def class2UnitType = {
+    val stupid = (classOf[Tank], UnitType.Terran_Siege_Tank_Tank_Mode)
     mappingRules.map { case (k, (_, c)) =>
       c -> k
-    }
+    } + stupid
   }
 
   def lift(unit: APIUnit) = {

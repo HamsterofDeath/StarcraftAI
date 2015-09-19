@@ -130,8 +130,14 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
     val removeUs = {
       val done = assignments.filter { case (_, job) => job.isFinished }.values
       val failed = assignments.filter { case (_, job) => job.hasFailed }.values
-      debug(s"${failed.size} jobs failed, putting units on the market again", failed.nonEmpty)
-      trace(s"Failed: ${failed.mkString(", ")}")
+
+      debug(s"${failed.size}/${done.size} jobs failed/finished, putting units on the market again",
+        failed.nonEmpty || done.nonEmpty)
+
+      failed.foreach { failure =>
+        warn(s"FAIL! $failure")
+      }
+      trace(s"Failed: ${failed.mkString("\n")}")
       trace(s"Finished: ${done.mkString(", ")}")
       val ret = (done ++ failed).toVector
       assert(ret.size == ret.distinct.size, s"A job is failed and finished at the same time")
@@ -206,31 +212,39 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
     assignments.put(newUnit, newJob)
     byEmployer.addBinding(employer, newJob)
   }
+
+  def allRequirementsFulfilled[T <: WrapsUnit](c: Class[_ <: T]) = {
+    val (m, i) = findMissingRequirements[T](collection.immutable.Set(c))
+    m.isEmpty && i.isEmpty
+  }
+
+  private def findMissingRequirements[T <: WrapsUnit](c: Set[Class[_ <: T]]) = {
+    val mustHave = c.flatMap(race.techTree.requiredFor)
+    val i = mutable.Set.empty[Class[_ <: Building]]
+    val m = mutable.Set.empty[Class[_ <: Building]]
+    val missing = {
+      mustHave.foreach { dependency =>
+        val complete = ownUnits.existsComplete(dependency)
+        if (!complete) {
+          val incomplete = ownUnits.existsIncomplete(dependency)
+          if (!incomplete) {
+            m += dependency
+          } else {
+            i += dependency
+          }
+        }
+      }
+    }
+    (m.toSet, i.toSet)
+  }
+
   def request[T <: WrapsUnit : Manifest](req: UnitJobRequests[T], buildIfNoneAvailable: Boolean = true) = {
     trace(s"${req.employer} requested ${req.requests.mkString(" and ")}")
     def hireResult: Option[UnitCollector[T]] = {
       new UnitCollector(req, universe).collect_!()
     }
 
-    val mustHave = req.allTypes.flatMap(race.techTree.requiredFor)
-    val (missing, incomplete) = {
-      val i = mutable.Set.empty[Class[_ <: Building]]
-      val m = mutable.Set.empty[Class[_ <: Building]]
-      val missing = {
-        mustHave.foreach { dependency =>
-          val complete = ownUnits.existsComplete(dependency)
-          if (!complete) {
-            val incomplete = ownUnits.existsIncomplete(dependency)
-            if (!incomplete) {
-              m += dependency
-            } else {
-              i += dependency
-            }
-          }
-        }
-      }
-      (m.toSet, i.toSet)
-    }
+    val (missing, incomplete) = findMissingRequirements(req.allTypes)
     val result = if (missing.isEmpty && incomplete.isEmpty) {
       val hr = hireResult
       hr match {
@@ -399,6 +413,10 @@ class Employer[T <: WrapsUnit : Manifest](override val universe: Universe) exten
   self =>
   private var employees = ArrayBuffer.empty[T]
 
+  universe.register_!(() => {
+    employees.filterNot(_.isInGame).foreach(fire_!)
+  })
+
   def teamSize = employees.size
 
   def idleHiredUnits = employees.filter(unitManager.jobOf(_).isIdle)
@@ -506,9 +524,9 @@ abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: 
     listeners.foreach(_.onFinishOrFail(hasFailed))
   }
   def listen_!(listener: JobFinishedListener[T]): Unit = listeners += listener
-  def hasFailed = dead || myHasFailed
+  def hasFailed = dead || jobHasFailedWithoutDeath
 
-  protected def myHasFailed: Boolean = false
+  def jobHasFailedWithoutDeath: Boolean = false
   protected def ordersForTick: Seq[UnitOrder]
 }
 
@@ -579,6 +597,7 @@ class TrainUnit[F <: UnitFactory, T <: Mobile](factory: F, trainType: Class[_ <:
   private var startedToProduce = false
   override def proofForFunding = funding
   override def getOrder: Seq[UnitOrder] = {
+    info(s"Training $trainType")
     Orders.Train(unit, trainType).toSeq
   }
   override def onTick(): Unit = {
@@ -590,7 +609,7 @@ class TrainUnit[F <: UnitFactory, T <: Mobile](factory: F, trainType: Class[_ <:
     }
   }
 
-  override def myHasFailed: Boolean = {
+  override def jobHasFailedWithoutDeath: Boolean = {
     age > 50 && !startedToProduce
   }
 
@@ -639,9 +658,9 @@ class ConstructAddon[W <: CanBuildAddons, A <: Addon](employer: Employer[W],
       basis.notifyAttach_!(e)
     }
   }
-  override def myHasFailed: Boolean = {
+  override def jobHasFailedWithoutDeath: Boolean = {
     def myFail = age > 50 && !startedConstruction
-    super.myHasFailed || myFail
+    super.jobHasFailedWithoutDeath || myFail
   }
   override def getOrder = Orders.ConstructAddon(basis, builtWhat).toSeq
   override def proofForFunding = funding
@@ -660,8 +679,8 @@ class ResearchUpgrade[U <: Upgrader](employer: Employer[U],
     startedResearch && stoppedResearch
   }
 
-  override def myHasFailed: Boolean = {
-    super.myHasFailed || (age > 50 && !startedResearch)
+  override def jobHasFailedWithoutDeath: Boolean = {
+    super.jobHasFailedWithoutDeath || (age > 50 && !startedResearch)
   }
 
   override def onTick(): Unit = {
@@ -713,7 +732,7 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, bu
   override def proofForFunding = funding
   override def canSwitchNow = !startedActualConstuction
   override def couldSwitchInTheFuture = !startedActualConstuction
-  override def myHasFailed: Boolean = {
+  override def jobHasFailedWithoutDeath: Boolean = {
     val fail = !worker.isInConstructionProcess && age > times + 10 && !isFinished
     warn(s"Construction of ${typeOfBuilding.className} failed, worker $worker didn't manange", fail)
     fail
