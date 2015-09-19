@@ -111,7 +111,7 @@ class TerranTechTree extends TechTree {
       classOf[Firebat] -> classOf[Academy].toSet,
       classOf[Medic] -> classOf[Academy].toSet,
       classOf[Tank] -> classOf[MachineShop].toSet,
-      classOf[Goliath] -> classOf[MachineShop].toSet,
+      classOf[Goliath] -> Set(classOf[MachineShop], classOf[Armory]),
       classOf[Battlecruiser] -> Set(classOf[ControlTower], classOf[PhysicsLab]),
       classOf[ScienceVessel] -> Set(classOf[ScienceFacility], classOf[ControlTower]),
       classOf[Valkery] -> Set(classOf[ControlTower], classOf[Armory])
@@ -578,9 +578,11 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
   def allBlocked = if (containsBlocked) bitSetToTiles else allIndexes.filterNot(areaDataBitSet).map(indexToTile)
   private def allIndexes = Iterator.range(0, size)
   def size = cols * rows
-  private def indexToTile(index: Int) = MapTilePosition.shared(index % cols, index / rows)
+  private def indexToTile(index: Int) = MapTilePosition.shared(index % cols, index / cols)
   private def tileToIndex(mp: MapTilePosition) = mp.x + mp.y * cols
-  private def bitSetToTiles = areaDataBitSet.iterator.map(index => MapTilePosition.shared(index % cols, index / rows))
+  private def bitSetToTiles = areaDataBitSet.iterator.map { index =>
+    MapTilePosition.shared(index % cols, index / cols)
+  }
   def areas = lazyAreas.get
   def free(position: MapTilePosition, area: Size): Boolean = {
     area.points.forall { p =>
@@ -615,7 +617,7 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
     private val max   = self.size
     override def hasNext = index < max
     override def next() = {
-      val ret = MapTilePosition.shared(index % cols, index / rows)
+      val ret = MapTilePosition.shared(index % cols, index / cols)
       index += 1
       ret
     }
@@ -673,6 +675,9 @@ class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet, bitSetContains
   def block_!(tile: MapTilePosition): Unit = {
     block_!(tile.x, tile.y)
   }
+  def free_!(tile: MapTilePosition): Unit = {
+    free_!(tile.x, tile.y)
+  }
   def block_!(x: Int, y: Int): Unit = {
     if (inArea(x, y)) {
       val where = xyToIndex(x, y)
@@ -684,6 +689,7 @@ class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet, bitSetContains
     }
   }
   private def xyToIndex(x: Int, y: Int) = x + y * cols
+
   def inArea(x: Int, y: Int) = x >= 0 && y >= 0 && x < cols && y < rows
 }
 

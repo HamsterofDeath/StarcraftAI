@@ -14,13 +14,15 @@ class AreaHelper(source: Grid2D) {
     val areas = mutable.ArrayBuffer.empty[Grid2D]
     val used = mutable.BitSet.empty
     val knownInAnyArea = new MutableGrid2D(baseOn.cols, baseOn.rows, used)
-    baseOn.allFree.filter(knownInAnyArea.free).foreach { p =>
-      val area = floodFill(p)
-      if (area.nonEmpty) {
-        areas += {
-          val asGrid = new Grid2D(baseOn.cols, baseOn.rows, area, false)
-          used ++= area
-          asGrid
+    baseOn.allFree.foreach { p =>
+      if (knownInAnyArea.free(p)) {
+        val area = floodFill(p)
+        if (area.nonEmpty) {
+          areas += {
+            val asGrid = new Grid2D(baseOn.cols, baseOn.rows, area, false)
+            used ++= area
+            asGrid
+          }
         }
       }
     }
@@ -29,7 +31,22 @@ class AreaHelper(source: Grid2D) {
       val before = baseOn.freeCount
       val after = ret.map(_.freeCount)
       before == after.sum
-    }, s"Math is broken")
+    }, {
+      val merged = new MutableGrid2D(baseOn.cols, baseOn.rows, mutable.BitSet.empty, false)
+      ret.foreach { grid =>
+        grid.allFree.foreach { p =>
+          assert(merged.blocked(p), s"$p should be blocked, but is free")
+          merged.free_!(p)
+          assert(merged.free(p))
+        }
+      }
+      s"""
+         |Sum of single areas is not equal to the complete area:
+         |${baseOn.zoomedOut.mkString}
+         |vs
+         |${merged.zoomedOut.mkString}
+         """.stripMargin
+    })
     ret
   }
 
@@ -314,7 +331,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
 }
 
 trait SubFinder {
-  def find:Option[MapTilePosition]
+  def find: Option[MapTilePosition]
 }
 
 class ConstructionSiteFinder(universe: Universe) {
@@ -323,19 +340,19 @@ class ConstructionSiteFinder(universe: Universe) {
   private val withoutStreets = universe.mapLayers.reallyFreeBuildingTiles.mutableCopy
                                .or_!(universe.mapLayers.blockedByPotentialAddons.mutableCopy)
   private val helper         = new GeometryHelpers(universe.world.map.sizeX, universe.world.map.sizeY)
-  def forResourceArea(resources: ResourceArea):SubFinder = {
+  def forResourceArea(resources: ResourceArea): SubFinder = {
     // we magically know this by now
-    val size = Size(4,3)
+    val size = Size(4, 3)
     //main thread
     val grid = withoutStreets.or_!(universe.mapLayers.blockedForResourceDeposit.mutableCopy)
     new SubFinder {
       override def find: Option[MapTilePosition] = {
         // background
         val possible = helper.blockSpiralClockWise(resources.center, 25)
-        .filter { candidate =>
-          val area = Area(candidate, size)
-          grid.includes(area) && grid.free(area)
-        }
+                       .filter { candidate =>
+                         val area = Area(candidate, size)
+                         grid.includes(area) && grid.free(area)
+                       }
 
         if (possible.isEmpty) {
           None

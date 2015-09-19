@@ -296,6 +296,7 @@ object Strategy {
         def isEarly = isBetween(0, 5)
         def isSinceVeryEarlyMid = time.minutes >= 4
         def isSinceEarlyMid = time.minutes >= 5
+        def isSinceAlmostMid = time.minutes >= 7
         def isSinceMid = time.minutes >= 8
         def isSincePostMid = time.minutes >= 9
         def isSinceLateMid = time.minutes >= 13
@@ -309,6 +310,8 @@ object Strategy {
   trait TerranDefaults extends LongTermStrategy {
     override def suggestAddons: Seq[AddonToAdd] = {
       AddonToAdd(classOf[Comsat], requestNewBuildings = false)(unitManager.existsAndDone(classOf[Academy])) ::
+      AddonToAdd(classOf[MachineShop], requestNewBuildings = false)(unitManager.existsAndDone(classOf[Factory])) ::
+      AddonToAdd(classOf[ControlTower], requestNewBuildings = false)(unitManager.existsAndDone(classOf[Starport])) ::
       Nil
     }
     override def suggestNextExpansion = {
@@ -316,10 +319,15 @@ object Strategy {
       if (shouldExpand) {
         val covered = bases.bases.map(_.resourceArea).toSet
         bases.mainBase.map(_.mainBuilding.tilePosition).flatMap { where =>
-          val (choke, what) = strategicMap.domainsButWithout(covered)
-                              .minBy(_._1.center.distanceToSquared(where))
-          val target = what.values.flatten.minBy(_.patches.map(_.center.distanceToSquared(where)).getOrElse(999999))
-          Some(target)
+          val others = strategicMap.domainsButWithout(covered)
+          if (others.nonEmpty) {
+            val (choke, what) = others
+                                .minBy(_._1.center.distanceToSquared(where))
+            val target = what.values.flatten.minBy(_.patches.map(_.center.distanceToSquared(where)).getOrElse(999999))
+            Some(target)
+          } else {
+            None
+          }
         }
       } else {
         None
@@ -383,9 +391,10 @@ object Strategy {
     override def suggestUpgrades: Seq[UpgradeToResearch] =
       UpgradeToResearch(Upgrades.Terran.SpiderMines)(timingHelpers.phase.isSinceEarlyMid) ::
       UpgradeToResearch(Upgrades.Terran.VultureSpeed)(timingHelpers.phase.isSinceEarlyMid) ::
-      UpgradeToResearch(Upgrades.Terran.TankSiegeMode)(timingHelpers.phase.isSinceMid) ::
+      UpgradeToResearch(Upgrades.Terran.TankSiegeMode)(timingHelpers.phase.isSinceAlmostMid) ::
       UpgradeToResearch(Upgrades.Terran.VehicleWeapons)(timingHelpers.phase.isSinceMid) ::
       UpgradeToResearch(Upgrades.Terran.VehicleArmor)(timingHelpers.phase.isSinceMid) ::
+      UpgradeToResearch(Upgrades.Terran.GoliathRange)(timingHelpers.phase.isSinceLateMid) ::
       Nil
   }
 

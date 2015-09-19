@@ -1266,8 +1266,9 @@ object UnitWrapper {
       UnitType.Terran_Medic -> ((new Medic(_), classOf[Medic])),
       UnitType.Terran_Valkyrie -> ((new Valkery(_), classOf[Valkery])),
       UnitType.Terran_Vulture -> ((new Vulture(_), classOf[Vulture])),
-      UnitType.Terran_Siege_Tank_Tank_Mode -> ((new Tank(_), classOf[Tank])),
+      //siege mode msut come first!
       UnitType.Terran_Siege_Tank_Siege_Mode -> ((new Tank(_), classOf[Tank])),
+      UnitType.Terran_Siege_Tank_Tank_Mode -> ((new Tank(_), classOf[Tank])),
       UnitType.Terran_Goliath -> ((new Goliath(_), classOf[Goliath])),
       UnitType.Terran_Wraith -> ((new Wraith(_), classOf[Wraith])),
       UnitType.Terran_Science_Vessel -> ((new ScienceVessel(_), classOf[ScienceVessel])),
