@@ -19,6 +19,9 @@ trait HasXY {
 
 }
 case class MapTilePosition(x: Int, y: Int) extends HasXY {
+
+  def asArea = Area(this, this)
+
   val asTuple       = (x, y)
   val asMapPosition = MapPosition(x * tileSize, y * tileSize)
   def randomized(shuffle: Int) = {
@@ -89,6 +92,9 @@ case class Line(a: MapTilePosition, b: MapTilePosition) {
 
 
 case class Area(upperLeft: MapTilePosition, sizeOfArea: Size) {
+  def extendedBy(tiles: Int) = {
+    Area(upperLeft.movedBy(-tiles, -tiles), lowerRight.movedBy(tiles, tiles))
+  }
 
   val lowerRight = upperLeft.movedBy(sizeOfArea).movedBy(-1, -1)
 

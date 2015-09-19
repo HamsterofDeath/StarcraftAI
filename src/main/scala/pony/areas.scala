@@ -1,6 +1,10 @@
 package pony
 
 import bwapi.Game
+import pony.brain.Base
+
+import scala.collection.mutable.ArrayBuffer
+import scala.concurrent.Future
 
 case class ResourceArea(patches: Option[MineralPatchGroup], geysirs: Set[Geysir]) {
   val resources = patches.map(_.patches).getOrElse(Nil) ++ geysirs
@@ -25,6 +29,59 @@ case class CuttingLine(line: Line) {
 }
 
 class StrategicMap(resources: Seq[ResourceArea], walkable: Grid2D, game: Game) {
+
+  case class DefenseLine(chokePoint: ChokePoint, defendedAreas: Map[Grid2D, Set[ResourceArea]], defended: Grid2D) {
+
+    lazy val mergedArea = {
+      val mut = walkable.blockedMutableCopy
+      mut.or_!(defended.mutableCopy)
+      mut.asReadOnly
+    }
+
+    private def evalScatteredPoints(valid: MapTilePosition => Boolean) = {
+      val blocked = walkable.mutableCopy
+      val outsidePoints = walkable.spiralAround(chokePoint.center, 20)
+                          .filter(valid)
+      val mineTiles = ArrayBuffer.empty[MapTilePosition]
+      outsidePoints.foreach { p =>
+        if (blocked.free(p)) {
+          p.asArea.extendedBy(1).tiles.foreach(blocked.block_!)
+          mineTiles += p
+        }
+      }
+      mineTiles.sortBy(_.distanceToSquared(chokePoint.center)).toVector
+    }
+
+    import scala.concurrent.ExecutionContext.Implicits.global
+
+    private lazy val scatteredPointsOutside = Future {evalScatteredPoints(mergedArea.blocked)}
+    private lazy val scatteredPointsInside  = Future {evalScatteredPoints(mergedArea.free)}
+
+    def pointsOutside = scatteredPointsOutside.getOrElse(Vector.empty)
+
+    def pointsInside = scatteredPointsInside.getOrElse(Vector.empty)
+  }
+
+  def defenseLineOf(base: Base): Option[DefenseLine] = defenseLineOf(base.mainBuilding.area.centerTile)
+
+  def defenseLineOf(tile: MapTilePosition): Option[DefenseLine] = {
+    val cutOffBy = {
+      val candidates = domains.filter(_._2.keysIterator.exists(_.free(tile)))
+      if (candidates.nonEmpty) {
+        val smallest = candidates.minBy(_._2.keysIterator.find(_.free(tile)).get.freeCount)
+        Some(smallest)
+      } else {
+        None
+      }
+    }
+
+    val defLine = cutOffBy.map { case (choke, areas) =>
+      val defendedArea = areas.find(_._1.free(tile)).get._1
+      DefenseLine(choke, areas, defendedArea)
+    }
+    defLine
+  }
+
   private val myDomains = LazyVal.from({
     info(s"Analyzing map ${game.mapFileName()}")
     val tooMany = {

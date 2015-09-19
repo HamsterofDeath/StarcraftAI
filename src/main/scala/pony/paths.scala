@@ -189,6 +189,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   private val rawMapBuild                = world.map.buildableGrid.mutableCopy
   private val plannedBuildings           = world.map.empty.zoomedOut.mutableCopy
   private var justBuildings              = evalOnlyBuildings
+  private var justMines                  = evalOnlyMines
   private var justBlockedForMainBuilding = evalOnlyBlockedForMainBuildings
   private var justMineralsAndGas         = evalOnlyResources
   private var justWorkerPaths            = evalWorkerPaths
@@ -224,6 +225,10 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   def blockedByResources = {
     update()
     justMineralsAndGas.asReadOnly
+  }
+  def blockedbyMines = {
+    update()
+    justMines.asReadOnly
   }
   def blockedForResourceDeposit = {
     update()
@@ -277,6 +282,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
     if (lastUpdatePerformedInTick != universe.currentTick) {
       lastUpdatePerformedInTick = universe.currentTick
       justBuildings = evalOnlyBuildings
+      justMines = evalOnlyMines
       justBlockedForMainBuilding = evalOnlyBlockedForMainBuildings
       justMineralsAndGas = evalOnlyResources
       justBlockingMobiles = evalOnlyMobileBlockingUnits
@@ -300,6 +306,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
     ret
   }
   private def evalOnlyMobileBlockingUnits = evalOnlyMobileUnits(ownUnits.allByType[GroundUnit])
+  private def evalOnlyMines = evalOnlyMobileUnits(ownUnits.allByType[SpiderMine])
   private def evalOnlyMobileUnits(units: TraversableOnce[GroundUnit]) = {
     val ret = emptyGrid
     units.foreach { b =>
@@ -390,8 +397,10 @@ class ConstructionSiteFinder(universe: Universe) {
     // add "streets" to make sure that we don't lock ourselves in too much
     withStreets.block_!(Line(near.movedBy(-20, 0), near.movedBy(20, 0)))
     withStreets.block_!(Line(near.movedBy(0, 20), near.movedBy(0, -20)))
-    withStreets.block_!(Line(near.movedBy(-20, -20), near.movedBy(20, 20)))
-    withStreets.block_!(Line(near.movedBy(-20, 20), near.movedBy(20, -20)))
+    /*
+        withStreets.block_!(Line(near.movedBy(-20, -20), near.movedBy(20, 20)))
+        withStreets.block_!(Line(near.movedBy(-20, 20), near.movedBy(20, -20)))
+    */
 
     helper.blockSpiralClockWise(near).find { upperLeft =>
       val area = Area(upperLeft, necessarySize)

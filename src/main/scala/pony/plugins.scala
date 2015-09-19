@@ -84,10 +84,21 @@ class UnitJobRenderer(override val universe: Universe) extends AIPlugIn with Has
     lazyWorld.debugger.debugRender { renderer =>
       unitManager.allJobsByUnitType[Mobile].foreach { job =>
         renderer.drawTextAtMobileUnit(job.unit, s"${job.shortDebugString} -> ${job.unit.nativeUnit.getOrder}", 1)
+        job.renderDebug(renderer)
       }
       unitManager.allJobsByUnitType[Building].foreach { job =>
         renderer.drawTextAtStaticUnit(job.unit, s"${job.shortDebugString} -> ${job.unit.nativeUnit.getOrder}", 1)
       }
+    }
+  }
+  override def lazyWorld: DefaultWorld = universe.world
+}
+
+class UnitSecondLevelJobRenderer(override val universe: Universe) extends AIPlugIn with HasUniverse {
+
+  override protected def tickPlugIn(): Unit = {
+    lazyWorld.debugger.debugRender { renderer =>
+
     }
   }
   override def lazyWorld: DefaultWorld = universe.world
@@ -347,5 +358,8 @@ class MainAI extends AIPlugIn with HasUniverse with AIAPIEventDispatcher {
 
   override protected def tickPlugIn(): Unit = {
     brain.queueOrdersForTick()
+    if (debugger.isDebugging) {
+      brain.plugins.foreach(_.renderDebug(debugger.renderer))
+    }
   }
 }

@@ -114,6 +114,8 @@ abstract class AIModule[T <: WrapsUnit : Manifest](override val universe: Univer
   def onNth: Int = 1
 
   override def toString = s"Module ${getClass.className}"
+
+  def renderDebug(renderer: Renderer): Unit = {}
 }
 
 abstract class OrderlessAIModule[T <: WrapsUnit : Manifest](universe: Universe)
@@ -156,6 +158,9 @@ class TwilightSparkle(world: DefaultWorld) {
   private val bases     = new Bases(world)
   private val resources = new ResourceManager(universe)
   private val strategy  = new Strategies(universe)
+
+  def plugins = aiModules
+
   private val aiModules   = List(
     new DefaultBehaviours(universe),
     new GatherMinerals(universe),
@@ -220,15 +225,27 @@ class Bases(world: DefaultWorld) {
 
   def tick():Unit = {
     val all = world.myUnits.allByType[MainBuilding]
-    all.filterNot(known).foreach {
-      myBases += new Base(_)(world)
+    all.filterNot(known).foreach { main =>
+      val newBase = new Base(main)(world)
+      myBases += newBase
+      newBaseListeners.foreach(_.newBase(newBase))
     }
+  }
+
+  private val newBaseListeners = ArrayBuffer.empty[NewBaseListener]
+
+  def register(newBaseListener: NewBaseListener): Unit = {
+    newBaseListeners += newBaseListener
   }
 
   def findMainBase(): Unit = {
     world.myUnits.firstByType[MainBuilding].foreach {myBases += new Base(_)(world)}
   }
 }
+trait NewBaseListener {
+  def newBase(base: Base): Unit
+}
+
 
 case class Base(mainBuilding: MainBuilding)(world: DefaultWorld) {
 

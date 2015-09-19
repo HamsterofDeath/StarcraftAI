@@ -1,7 +1,7 @@
 package pony
 
 import bwapi.{Color, Game}
-import pony.Upgrades.SingleTargetMagicSpell
+import pony.Upgrades.{SinglePointMagicSpell, SingleTargetMagicSpell}
 
 import scala.collection.mutable.ArrayBuffer
 import scala.util.Try
@@ -68,7 +68,22 @@ object Orders {
     }
 
     override def issueOrderToGame(): Unit = {
-      caster.nativeUnit.useTech(tech.asNativeTech, target.nativeUnit)
+      caster.nativeUnit.useTech(tech.nativeTech, target.nativeUnit)
+    }
+  }
+
+  case class TechOnTile[T <: HasSinglePointMagicSpell](caster: HasSinglePointMagicSpell, target: MapTilePosition,
+                                                       tech: SinglePointMagicSpell)
+    extends UnitOrder {
+
+    override def myUnit = caster
+
+    override def renderDebug(renderer: Renderer): Unit = {
+      renderer.in_!(Color.Red).indicateTarget(caster.currentPosition, target)
+    }
+
+    override def issueOrderToGame(): Unit = {
+      caster.nativeUnit.useTech(tech.nativeTech, target.asMapPosition.toNative)
     }
   }
 
@@ -202,14 +217,16 @@ class OrderQueue(game: Game, debugger: Debugger) {
   }
 
   def debugAll():Unit = {
-    delegatedToBasicAI.filter(_._2.obsolete).foreach { dead =>
-      delegatedToBasicAI.remove(dead._1)
-    }
-    queue.foreach { order =>
-      delegatedToBasicAI.put(order.myUnit, order)
-    }
-    debugger.debugRender { renderer =>
-      delegatedToBasicAI.foreach(_._2.renderDebug(renderer))
+    if (debugger.isDebugging) {
+      delegatedToBasicAI.filter(_._2.obsolete).foreach { dead =>
+        delegatedToBasicAI.remove(dead._1)
+      }
+      queue.foreach { order =>
+        delegatedToBasicAI.put(order.myUnit, order)
+      }
+      debugger.debugRender { renderer =>
+        delegatedToBasicAI.foreach(_._2.renderDebug(renderer))
+      }
     }
   }
 

@@ -16,7 +16,9 @@ case class SecondPriority(importance: Double) {
 
 object SecondPriority {
   val None    = SecondPriority(0)
+  val Less    = SecondPriority(0.25)
   val Default = SecondPriority(0.5)
+  val More    = SecondPriority(0.75)
   val Max     = SecondPriority(1.0)
 
   implicit val ordering = Ordering.by[SecondPriority, Double](_.importance)
@@ -30,9 +32,9 @@ object Priority {
   val CollectGas        = Priority(0.55)
   val ConstructUnit     = Priority(0.64)
   val ConstructBuilding = Priority(0.63)
-  val Upgrades          = Priority(0.65)
   val Addon             = Priority(0.66)
   val Expand            = Priority(0.67)
+  val Upgrades          = Priority(0.69)
   val Supply            = Priority(0.7)
   val Max               = Priority(1)
 

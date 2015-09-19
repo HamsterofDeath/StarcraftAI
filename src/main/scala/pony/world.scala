@@ -21,6 +21,7 @@ trait TechTree {
   }
   def upgraderFor(upgrade: Upgrade) = upgrades(upgrade)
 
+
   def canBuild(factory: Class[_ <: UnitFactory], mobile: Class[_ <: Mobile]) = {
     builtBy(mobile) == factory
   }
@@ -329,7 +330,7 @@ class DefaultWorld(game: Game) extends WorldListener with WorldEventDispatcher {
 }
 
 class Debugger(game: Game) {
-  private val renderer   = new Renderer(game, Color.Green)
+  val renderer = new Renderer(game, Color.Green)
   private var debugging  = true
   private var countTicks = 0
   def on(): Unit = {
@@ -338,6 +339,8 @@ class Debugger(game: Game) {
   def off(): Unit = {
     debugging = false
   }
+
+  def isDebugging = debugging
 
   def speed(int: Int): Unit = {
     game.setLocalSpeed(int)
@@ -524,6 +527,10 @@ class Units(game: Game, hostile: Boolean) {
 class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
              protected val containsBlocked: Boolean = true) extends Serializable {
   self =>
+  def blockedMutableCopy = new MutableGrid2D(cols, rows, mutable.BitSet.empty, false)
+
+  def spiralAround(center: MapTilePosition, size: Int = 45) = new GeometryHelpers(cols, rows)
+                                                              .blockSpiralClockWise(center, size)
 
   override def toString = s"$cols*$rows, $freeCount free"
 
@@ -650,6 +657,7 @@ class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet, bitSetContains
     AreaHelper.traverseTilesOfLine(line.a, line.b, block_!)
   }
   def asReadOnly: Grid2D = this
+
   def or_!(other: MutableGrid2D) = {
     assert(containsBlocked == other.containsBlocked)
     bitSet |= other.data

@@ -469,6 +469,7 @@ trait Interruptable {
 }
 abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: T, val priority: Priority)
   extends HasUniverse {
+  def renderDebug(renderer: Renderer): Unit = {}
 
   protected def omitRepeatedOrders = false
 
@@ -827,6 +828,7 @@ class BusyDoingSomething[T <: Mobile](employer: Employer[T], behaviour: Seq[Sing
       options.maxBy(_._1.priority)._2
     }
   }
+
 }
 
 class BusyDoingNothing[T <: WrapsUnit](unit: T, employer: Employer[T])

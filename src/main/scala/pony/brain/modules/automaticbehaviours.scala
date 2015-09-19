@@ -2,7 +2,8 @@ package pony
 package brain
 package modules
 
-import pony.Upgrades.Terran.{GhostCloak, InfantryCooldown, WraithCloak}
+import bwapi.Color
+import pony.Upgrades.Terran.{GhostCloak, InfantryCooldown, SpiderMines, WraithCloak}
 
 import scala.collection.mutable
 
@@ -18,6 +19,8 @@ abstract class DefaultBehaviour[T <: Mobile : Manifest](override val universe: U
   def refuseCommandsForTicks = 0
 
   protected def meta = SingleUnitBehaviourMeta(priority, refuseCommandsForTicks)
+
+  def renderDebug(renderer: Renderer): Unit = {}
 
 
   def behaviourOf(unit: Mobile) = {
@@ -149,29 +152,87 @@ object Terran {
 
   class SetupMineField(universe: Universe) extends DefaultBehaviour[Vulture](universe) {
 
+    override def renderDebug(renderer: Renderer): Unit = {
+      defenseLines.get.foreach { defLine =>
+        defLine.pointsOutside.foreach { tile =>
+          renderer.in_!(Color.White).drawCircleAroundTile(tile)
+        }
+      }
+    }
+
+    universe.bases.register((base: Base) => {
+      defenseLines.invalidate()
+    })
+
     override def onTick(): Unit = {
       super.onTick()
-      ifNth(131) {
-        defenseLines = evalDefenseLines
+      ifNth(137) {
+        val remove = plannedDrops.filter(_._2 + 240 < universe.currentTick)
+        remove.keys.foreach(plannedDrops.remove)
       }
     }
 
     private def evalDefenseLines = {
       bases.bases.flatMap { base =>
-
+        strategicMap.defenseLineOf(base)
       }
     }
 
-    private var defenseLines = evalDefenseLines
+    private val defenseLines = LazyVal.from(evalDefenseLines)
+
+    private val plannedDrops = mutable.HashMap.empty[MapTilePosition, Int]
+
+    override def priority = SecondPriority.Less
 
     override protected def lift(t: Vulture): SingleUnitBehaviour[Vulture] = new SingleUnitBehaviour[Vulture](t, meta) {
+
+      trait State
+      case object Idle extends State
+      case class DroppingMine(tile: MapTilePosition) extends State
+
+      private var state: State            = Idle
+      private var originalSpiderMineCount = t.spiderMineCount
+
       override def shortName: String = "Lay mines"
       override def toOrder(what: Objective) = {
-        if (t.spiderMineCount > 0) {
-          Nil
-        } else {
-          Nil
+        val (newState, orders) = state match {
+          case Idle =>
+            def beLazy = Idle -> Nil
+            // TODO include test in tech trait
+            if (t.spiderMineCount > 0 && t.canCastNow(SpiderMines)) {
+              val reallyFreeBuildingTiles = mapLayers.reallyFreeBuildingTiles
+              val candiates = defenseLines.get.flatMap(_.pointsOutside)
+              if (candiates.nonEmpty) {
+                val filtered = candiates.iterator
+                               .filter(e => {
+                                 reallyFreeBuildingTiles.free(e) && !plannedDrops.contains(e)
+                               })
+
+                if (filtered.nonEmpty) {
+                  val dropMineHere = filtered.minBy(_.distanceToSquared(t.currentTile))
+                  plannedDrops += ((dropMineHere, universe.currentTick))
+                  DroppingMine(dropMineHere) -> t.toOrder(SpiderMines, dropMineHere).toList
+                }
+                else {
+                  beLazy
+                }
+              } else {
+                beLazy
+              }
+            } else {
+              beLazy
+            }
+
+          case myState@DroppingMine(where) if t.canCastNow(SpiderMines) =>
+            myState -> t.toOrder(SpiderMines, where).toList
+          case DroppingMine(_) if t.spiderMineCount < originalSpiderMineCount =>
+            originalSpiderMineCount = t.spiderMineCount
+            Idle -> Nil
+          case myState@DroppingMine(_) =>
+            myState -> Nil
         }
+        state = newState
+        orders
       }
       override def preconditionOk: Boolean = universe.upgrades.hasResearched(Upgrades.Terran.SpiderMines)
     }

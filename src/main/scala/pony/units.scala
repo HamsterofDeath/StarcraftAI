@@ -1,7 +1,7 @@
 package pony
 
 import bwapi.{Order, Race, TechType, Unit => APIUnit, UnitType, UpgradeType, WeaponType}
-import pony.Upgrades.{IsTech, SingleTargetMagicSpell}
+import pony.Upgrades.{IsTech, SinglePointMagicSpell, SingleTargetMagicSpell}
 import pony.brain.{HasUniverse, PriorityChain, UnitWithJob, Universe}
 
 import scala.collection.immutable.HashMap
@@ -516,10 +516,12 @@ trait Mobile extends WrapsUnit with Controllable {
 
   def currentTileNative = currentTile.asNative
 
-  def currentTile = {
+  private val myTile = oncePerTick {
     val tp = nativeUnit.getPosition
     MapTilePosition.shared(tp.getX / 32, tp.getY / 32)
   }
+
+  def currentTile = myTile.get
 
   def currentPositionNative = currentPosition.toNative
 
@@ -1071,6 +1073,7 @@ trait HasSingleTargetSpells extends Mobile with HasMana {
   protected val cooldown = 24
 
   def canCastNow(tech: SingleTargetMagicSpell) = {
+    assert(spells.exists(_.tech == tech))
     def hasMana = tech.energyNeeded <= mana
     def isReadyForCastCool = lastCast + cooldown < universe.currentTick
     hasMana && isReadyForCastCool
@@ -1081,6 +1084,29 @@ trait HasSingleTargetSpells extends Mobile with HasMana {
     lastCast = universe.currentTick
     Orders.TechOnTarget(this, target, tech)
   }
+
+}
+
+trait HasSinglePointMagicSpell extends Mobile {
+  type Caster <: HasSinglePointMagicSpell
+
+  private   var lastCast = -9999
+  protected val cooldown = 24
+
+  def canCastNow(tech: SinglePointMagicSpell) = {
+    assert(spells.contains(tech))
+    def isReadyForCastCool = lastCast + cooldown < universe.currentTick
+    isReadyForCastCool
+  }
+
+  def toOrder(tech: SinglePointMagicSpell, target: MapTilePosition) = {
+    assert(canCastNow(tech))
+    lastCast = universe.currentTick
+    Orders.TechOnTile(this, target, tech)
+  }
+
+  val spells: List[SinglePointMagicSpell]
+
 }
 
 trait Mechanic extends Mobile {
@@ -1163,7 +1189,8 @@ class Reaver(unit: APIUnit)
           NormalGroundDamage with SlowAttackGround
 
 class Scarab(unit: APIUnit) extends AnyUnit(unit) with SimplePosition
-class SpiderMine(unit: APIUnit) extends AnyUnit(unit) with IndestructibleUnit with SimplePosition
+class SpiderMine(unit: APIUnit)
+  extends AnyUnit(unit) with IndestructibleUnit with SimplePosition with GroundUnit with IsSmall
 
 class Marine(unit: APIUnit)
   extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with CanUseStimpack with MobileRangeWeapon with
@@ -1194,7 +1221,12 @@ class Medic(unit: APIUnit)
 }
 class Vulture(unit: APIUnit)
   extends AnyUnit(unit) with GroundUnit with GroundWeapon with SpiderMines with MediumAttackGround with Mechanic with
-          MobileRangeWeapon with IsMedium with IsVehicle with ConcussiveGroundDamage
+          MobileRangeWeapon with IsMedium with IsVehicle with ConcussiveGroundDamage with HasSinglePointMagicSpell {
+  override val spells = List(Upgrades.Terran.SpiderMines)
+  override type Caster = Vulture
+}
+
+
 class Tank(unit: APIUnit)
   extends AnyUnit(unit) with GroundUnit with GroundWeapon with InstantAttackGround with Mechanic with CanSiege with
           MobileRangeWeapon with IsBig with IsVehicle with ExplosiveGroundDamage

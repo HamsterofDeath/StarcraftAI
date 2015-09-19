@@ -177,6 +177,9 @@ class DefaultBehaviours(universe: Universe) extends OrderlessAIModule[Mobile](un
   private val rules  = Terran.allBehaviours(universe)
   private val ignore = mutable.HashSet.empty[Mobile]
 
+  override def renderDebug(renderer: Renderer): Unit = {
+    rules.foreach(_.renderDebug(renderer))
+  }
   override def onTick(): Unit = {
     rules.foreach(_.onTick())
     // fetch all idles and assign "always on" background tasks to them

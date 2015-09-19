@@ -33,6 +33,12 @@ trait Universe {
   def register_!(listener: AfterTickListener): Unit = {
     afterTickListeners += listener
   }
+
+  def oncePerTick[T](gen: => T) = {
+    val ret = LazyVal.from(gen)
+    register_!(() => ret.invalidate())
+    ret
+  }
 }
 
 trait AfterTickListener {

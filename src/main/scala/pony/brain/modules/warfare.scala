@@ -370,7 +370,7 @@ object Strategy {
   }
 
   class TerranHeavyMetal(override val universe: Universe) extends LongTermStrategy with TerranDefaults {
-    override def determineScore: Int = timingHelpers.phase.isMid.ifElse(50, 0)
+    override def determineScore: Int = 50
 
     override def suggestProducers = {
       val myBases = bases.myMineralFields.count(_.value > 1000)
@@ -391,7 +391,7 @@ object Strategy {
       Nil
     }
     override def suggestUpgrades: Seq[UpgradeToResearch] =
-      UpgradeToResearch(Upgrades.Terran.SpiderMines)(timingHelpers.phase.isSinceVeryEarlyMid) ::
+      UpgradeToResearch(Upgrades.Terran.SpiderMines)(timingHelpers.phase.isAnyTime) ::
       UpgradeToResearch(Upgrades.Terran.VultureSpeed)(timingHelpers.phase.isSinceEarlyMid) ::
       UpgradeToResearch(Upgrades.Terran.TankSiegeMode)(timingHelpers.phase.isSinceAlmostMid) ::
       UpgradeToResearch(Upgrades.Terran.VehicleWeapons)(timingHelpers.phase.isSinceMid) ::
