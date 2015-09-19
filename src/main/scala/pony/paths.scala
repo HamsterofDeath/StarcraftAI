@@ -344,14 +344,17 @@ trait SubFinder {
 class ConstructionSiteFinder(universe: Universe) {
 
   // initialisation happens in the main thread
-  private val withoutStreets = universe.mapLayers.reallyFreeBuildingTiles.mutableCopy
-                               .or_!(universe.mapLayers.blockedByPotentialAddons.mutableCopy)
-  private val helper         = new GeometryHelpers(universe.world.map.sizeX, universe.world.map.sizeY)
+  private val freeToBuildOn            = universe.mapLayers.reallyFreeBuildingTiles.mutableCopy
+                                         .or_!(universe.mapLayers.blockedByPotentialAddons.mutableCopy)
+  private val freeToBuildOnIgnoreUnits = universe.mapLayers.freeBuildingTiles.mutableCopy
+                                         .or_!(universe.mapLayers.blockedByPotentialAddons.mutableCopy)
+                                         .asReadOnlyCopy
+  private val helper                   = new GeometryHelpers(universe.world.map.sizeX, universe.world.map.sizeY)
   def forResourceArea(resources: ResourceArea): SubFinder = {
     // we magically know this by now
     val size = Size(4, 3)
     //main thread
-    val grid = withoutStreets.or_!(universe.mapLayers.blockedForResourceDeposit.mutableCopy)
+    val grid = freeToBuildOn.or_!(universe.mapLayers.blockedForResourceDeposit.mutableCopy)
     new SubFinder {
       override def find: Option[MapTilePosition] = {
         // background
@@ -393,7 +396,7 @@ class ConstructionSiteFinder(universe: Universe) {
       Some(addonSize)
     } else None
 
-    val withStreets = withoutStreets.mutableCopy
+    val withStreets = freeToBuildOn.mutableCopy
     // add "streets" to make sure that we don't lock ourselves in too much
     withStreets.block_!(Line(near.movedBy(-20, 0), near.movedBy(20, 0)))
     withStreets.block_!(Line(near.movedBy(0, 20), near.movedBy(0, -20)))
@@ -405,14 +408,14 @@ class ConstructionSiteFinder(universe: Universe) {
     helper.blockSpiralClockWise(near).find { upperLeft =>
       val area = Area(upperLeft, necessarySize)
       val addonArea = necessarySizeAddon.map(Area(area.lowerRight.movedBy(1, -1), _))
-      def containsArea = withoutStreets.includes(area) && addonArea.map(withoutStreets.includes).getOrElse(true)
+      def containsArea = freeToBuildOn.includes(area) && addonArea.map(freeToBuildOn.includes).getOrElse(true)
       def free = {
-        val checkIfBlocksSelf = withoutStreets.mutableCopy
+        val checkIfBlocksSelf = freeToBuildOnIgnoreUnits.mutableCopy
         checkIfBlocksSelf.block_!(area)
         addonArea.foreach(checkIfBlocksSelf.block_!)
         def areaFree = withStreets.free(area) &&
                        addonArea.map(withStreets.free).getOrElse(true)
-        def noLock = checkIfBlocksSelf.areaCount == withoutStreets.areaCount
+        def noLock = checkIfBlocksSelf.areaCount == freeToBuildOnIgnoreUnits.areaCount
         areaFree && noLock
       }
       containsArea && free

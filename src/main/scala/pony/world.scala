@@ -658,6 +658,8 @@ class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet, bitSetContains
   }
   def asReadOnly: Grid2D = this
 
+  def asReadOnlyCopy = new Grid2D(cols, rows, bitSet.clone.toImmutable)
+
   def or_!(other: MutableGrid2D) = {
     assert(containsBlocked == other.containsBlocked)
     bitSet |= other.data

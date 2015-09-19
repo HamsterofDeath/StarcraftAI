@@ -42,9 +42,10 @@ trait BackgroundComputationResult[T <: WrapsUnit] {
 }
 
 object BackgroundComputationResult {
-  def nothing[T <: WrapsUnit]: BackgroundComputationResult[T] = new BackgroundComputationResult[T] {
+  def nothing[T <: WrapsUnit](cleanUp: () => Unit): BackgroundComputationResult[T] = new
+      BackgroundComputationResult[T] {
     override def repeatOrderIssue: Boolean = false
-    override def afterComputation(): Unit = {}
+    override def afterComputation(): Unit = cleanUp()
     override def jobs: Traversable[UnitWithJob[T]] = Nil
   }
 
@@ -63,7 +64,7 @@ object BackgroundComputationResult {
 trait ComputationIntensive[T <: WrapsUnit] extends AIModule[T] {
   type ComputationInput
 
-  private var backgroundOp           = Future.successful(BackgroundComputationResult.nothing[T])
+  private var backgroundOp           = Future.successful(BackgroundComputationResult.nothing[T](() => {}))
   private var currentResult          = Option.empty[BackgroundComputationResult[T]]
   private var waitingForBackgroundOp = false
 

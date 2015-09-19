@@ -27,7 +27,10 @@ class ProvideNewBuildings(universe: Universe)
       case None =>
         // TODO fix it if it ever happens
         error(s"Computation returned no result: $in")
-        BackgroundComputationResult.nothing[WorkerUnit]
+        BackgroundComputationResult.nothing[WorkerUnit](() => {
+          in.jobRequest.forceUnlockOnDispose_!()
+          in.jobRequest.dispose()
+        })
       case Some(startJob) =>
         BackgroundComputationResult.result(startJob.toSeq, () => false, () => {
           info(s"Planning to build ${in.buildingType.className} at ${startJob.buildWhere} by ${in.worker}")

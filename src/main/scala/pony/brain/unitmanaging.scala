@@ -929,6 +929,11 @@ trait UnitRequest[T <: WrapsUnit] {
   def clearableInNextTick_!(): Unit = {
     autoCleanAfterTick = true
   }
+
+  def forceUnlockOnDispose_!(): Unit = {
+    keepResourcesLocked = false
+  }
+
   def keepResourcesLocked_!(): Unit = {
     keepResourcesLocked = true
   }
