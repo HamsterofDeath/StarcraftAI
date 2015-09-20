@@ -9,7 +9,7 @@ import scala.util.{Failure, Success}
  * Created by HoD on 01.08.2015.
  */
 package object pony {
-  Configurator.defaultConfig().level(Level.INFO).formatPattern("{level}:{message}").activate()
+  Configurator.defaultConfig().level(Level.TRACE).formatPattern("{level}:{message}").activate()
 
   def !!! : Nothing = !!!("Something is not as it should be")
   def !!!(msg: String): Nothing = throw new RuntimeException(msg)

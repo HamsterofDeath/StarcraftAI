@@ -89,7 +89,7 @@ class StrategicMap(resources: Seq[ResourceArea], walkable: Grid2D, game: Game) {
   private val mapData = FileStorageLazyVal.from({
     info(s"Analyzing map ${game.mapFileName()}")
     val tooMany = {
-      val lineLength = 6
+      val lineLength = 4
       val tries = (-lineLength, -lineLength) ::(0, -lineLength) ::(lineLength, -lineLength) ::(lineLength, 0) :: Nil map
                   { case (x, y) =>
                     val point = RelativePoint(x, y)
@@ -162,7 +162,7 @@ class StrategicMap(resources: Seq[ResourceArea], walkable: Grid2D, game: Game) {
     }.toVector
     val complete = reduced.zipWithIndex.map { case ((choke, value), index) => choke.copy(index = index) -> value }
     complete.map { case (choke, map) =>
-      choke -> map.map { case (area, resources) => area -> resources.map(_.coveredTiles) }
+      choke -> map.map { case (area, res) => area -> res.map(_.coveredTiles) }
     }
   }, s"mapdata_${game.mapHash()}_${game.mapName()}")
 

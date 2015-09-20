@@ -143,7 +143,7 @@ object Terran {
           Nil
         }
       }
-      override def shortName: String = s"Cloak"
+      override def shortName: String = s"C"
     }
   }
 
@@ -201,7 +201,7 @@ object Terran {
     override protected def lift(t: Mobile): SingleUnitBehaviour[Mobile] = new SingleUnitBehaviour[Mobile](t, meta) {
       override def shortName: String = "IP"
       override def toOrder(what: Objective) = {
-        if (ignore(t)) {
+        if (universe.time.minutes <= 3 || ignore(t) || t.isBeingCreated) {
           Nil
         } else {
           helper.allInsideNonBlacklisted.toStream.headOption.map { where =>
@@ -248,7 +248,7 @@ object Terran {
       private var state: State            = Idle
       private var originalSpiderMineCount = t.spiderMineCount
 
-      override def shortName: String = "Lay mines"
+      override def shortName: String = "LM"
       override def toOrder(what: Objective) = {
         val (newState, orders) = state match {
           case Idle =>
@@ -337,7 +337,7 @@ object Terran {
 
     override protected def lift(t: MobileRangeWeapon): SingleUnitBehaviour[MobileRangeWeapon] = new
         SingleUnitBehaviour(t, meta) {
-      override def shortName = "Focus fire"
+      override def shortName = "FF"
       override def toOrder(what: Objective) = {
         helper.suggestTarget(t).map { target =>
           Orders.AttackUnit(t, target)

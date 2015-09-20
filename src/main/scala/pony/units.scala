@@ -94,7 +94,9 @@ trait WrapsUnit extends HasUniverse {
       throw new IllegalStateException(s"Check this: $this")
     }
   }
-  def isBeingCreated = nativeUnit.getRemainingBuildTime > 0
+  private val unfinished = oncePerTick(nativeUnit.getRemainingBuildTime > 0 || !nativeUnit.isCompleted)
+
+  def isBeingCreated = unfinished.get
   def onTick() = {
     lazyVals.foreach(_.invalidate())
   }
