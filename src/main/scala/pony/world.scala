@@ -1,7 +1,7 @@
 package pony
 
 import bwapi.{Color, Game, Player, PlayerType, Position, TilePosition}
-import pony.brain.{ResourceRequestSums, Supplies}
+import pony.brain.{ResourceRequestSum, Supplies}
 
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
@@ -264,11 +264,11 @@ trait WorldEventDispatcher extends WorldListener {
 }
 
 case class Resources(minerals: Int, gas: Int, supply: Supplies) {
-  val asSum = ResourceRequestSums(minerals, gas, supply.available)
+  val asSum = ResourceRequestSum(minerals, gas, supply.available)
 
   def supplyTotal = supply.total
   def supplyRemaining = supply.available
-  def -(sums: ResourceRequestSums) = {
+  def -(sums: ResourceRequestSum) = {
     val supplyUpdated = supply.copy(supplyUsed + sums.supply)
     copy(minerals - sums.minerals, gas - sums.gas, supply = supplyUpdated)
   }

@@ -9,6 +9,15 @@ import scala.collection.mutable
 import scala.collection.mutable.{ArrayBuffer, ListBuffer}
 
 class UnitManager(override val universe: Universe) extends HasUniverse {
+  def employerOf(unit: WrapsUnit) = {
+    assignments.get(unit).flatMap { job =>
+      byEmployer.find { e =>
+        val jobsOfEmployer = e._2
+        jobsOfEmployer.contains(job)
+      }
+    }.map(_._1)
+  }
+
   def hasJob(support: OrderHistorySupport) = assignments.contains(support)
 
   private val reorganizeJobQueue          = ListBuffer.empty[CanAcceptUnitSwitch[_ <: WrapsUnit]]
@@ -469,6 +478,13 @@ trait Interruptable {
 }
 abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: T, val priority: Priority)
   extends HasUniverse {
+
+  private var forceFail = false
+  protected def fail() = {
+    forceFail = true
+  }
+
+
   def renderDebug(renderer: Renderer): Unit = {}
 
   protected def omitRepeatedOrders = false
@@ -525,7 +541,7 @@ abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: 
     listeners.foreach(_.onFinishOrFail(hasFailed))
   }
   def listen_!(listener: JobFinishedListener[T]): Unit = listeners += listener
-  def hasFailed = dead || jobHasFailedWithoutDeath
+  def hasFailed = dead || forceFail || jobHasFailedWithoutDeath
 
   def jobHasFailedWithoutDeath: Boolean = false
   protected def ordersForTick: Seq[UnitOrder]
@@ -714,41 +730,47 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, bu
     val size = Size.shared(unitType.tileWidth(), unitType.tileHeight())
     Area(buildWhere, size)
   }
-  private var startedMovingToSite      = false
-  private var startedActualConstuction = false
-  private var finishedConstruction     = false
-  private var resourcesUnlocked        = false
-  private var constructs               = Option.empty[Building]
+  private var startedMovingToSite       = false
+  private var startedActualConstruction = false
+  private var finishedConstruction      = false
+  private var resourcesUnlocked         = false
+  private var constructs                = Option.empty[Building]
   override def onTick(): Unit = {
     super.onTick()
-    if (startedActualConstuction && !resourcesUnlocked) {
+    if (startedActualConstruction && !resourcesUnlocked) {
       unlockManually_!()
       resourcesUnlocked = true
       mapLayers.unblockBuilding_!(area)
     }
   }
+
   override def getOrder: Seq[UnitOrder] =
     Orders.ConstructBuilding(worker, buildingType, buildWhere).toSeq
   override def shortDebugString: String = s"Build ${buildingType.className}"
   override def proofForFunding = funding
-  override def canSwitchNow = !startedActualConstuction
-  override def couldSwitchInTheFuture = !startedActualConstuction
+  override def canSwitchNow = !startedActualConstruction
+  override def couldSwitchInTheFuture = !startedActualConstruction
   override def jobHasFailedWithoutDeath: Boolean = {
     val fail = !worker.isInConstructionProcess && age > times + 10 && !isFinished
     warn(s"Construction of ${typeOfBuilding.className} failed, worker $worker didn't manange", fail)
     fail
   }
   def typeOfBuilding = buildingType
+
   override def isFinished = {
     if (!startedMovingToSite) {
       startedMovingToSite = worker.isInConstructionProcess
       trace(s"Worker $worker started to move to construction site", startedMovingToSite)
-    } else if (!startedActualConstuction) {
-      startedActualConstuction = worker.isConstructingBuilding
-      if (startedActualConstuction) {
+    } else if (!startedActualConstruction) {
+      startedActualConstruction = worker.isConstructingBuilding
+      if (startedActualConstruction) {
         constructs = employer.ownUnits.buildingAt(buildWhere)
+        // i saw this going wrong once
+        if (constructs.isEmpty) {
+          fail()
+        }
       }
-      trace(s"Worker $worker started to build $buildingType", startedActualConstuction)
+      trace(s"Worker $worker started to build $buildingType", startedActualConstruction)
     } else if (!finishedConstruction) {
       assert(constructs.isDefined)
       finishedConstruction = !worker.isInConstructionProcess
@@ -804,7 +826,7 @@ abstract class SingleUnitBehaviour[T <: Mobile](val unit: T, meta: SingleUnitBeh
 
 class BusyDoingSomething[T <: Mobile](employer: Employer[T], behaviour: Seq[SingleUnitBehaviour[T]],
                                       private var objective: Objective)
-  extends UnitWithJob(employer, behaviour.head.unit, Priority.DefaultBehaviour) {
+  extends UnitWithJob(employer, behaviour.head.unit, Priority.DefaultBehaviour) with Interruptable {
 
   assert(behaviour.map(_.unit).distinct.size == 1, s"Wrong grouping: $behaviour")
 
@@ -1125,7 +1147,13 @@ class JobReAssignments(universe: Universe) extends OrderlessAIModule[Controllabl
               debug(s"Same unit chosen as best worker")
             case Some(replacement) if replacement.hasOneMember && replacement.onlyMember != optimizeMe.unit =>
               info(s"Replacement found: ${replacement.onlyMember}")
-              unitManager.assignJob_!(new BusyDoingNothing(optimizeMe.unit, unitManager.Nobody))
+              //someone else might have already done this somewhere else
+              val nobody = unitManager.Nobody
+              if (unitManager.employerOf(optimizeMe.unit).contains(nobody)) {
+                warn(s"Unit ${optimizeMe.unit} was already asigned to ${nobody}")
+              } else {
+                unitManager.assignJob_!(new BusyDoingNothing(optimizeMe.unit, nobody))
+              }
               unitManager.assignJob_!(old.newFor(replacement.onlyMember))
             case _ =>
               if (optimizeMe.couldSwitchInTheFuture) {

@@ -50,6 +50,23 @@ package object pony {
     }
   }
 
+  implicit class RichTraversableOnce[T](val t: TraversableOnce[T]) extends AnyVal {
+    def minByOpt[C](cmp: T => C)(implicit cmp2: Ordering[C]) = {
+      if (t.isEmpty) {
+        None
+      } else {
+        Some(t.minBy(cmp))
+      }
+    }
+    def maxByOpt[C](cmp: T => C)(implicit cmp2: Ordering[C]) = {
+      if (t.isEmpty) {
+        None
+      } else {
+        Some(t.maxBy(cmp))
+      }
+    }
+  }
+
   implicit class ToOneElemList[T](val t: T) extends AnyVal {
     def toSome = Some(t)
     def toSeq = Seq(t)

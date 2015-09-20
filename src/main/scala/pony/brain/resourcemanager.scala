@@ -3,6 +3,7 @@ package brain
 
 import pony.brain.modules.UpgradePrice
 
+import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
 case class IncomeStats(minerals: Int, gas: Int, frames: Int) {
@@ -36,8 +37,8 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
 
   private val resourceHistory         = ArrayBuffer.empty[MinsGas]
   private val empty                   = Resources(0, 0, Supplies(0, 0))
-  private val locked                  = ArrayBuffer.empty[LockedResources[_]]
-  private val lockedWithoutFunds      = ArrayBuffer.empty[LockedResources[_]]
+  private val locked                  = ArrayBuffer.empty[LockedResources[_ <: WrapsUnit]]
+  private val lockedWithoutFunds      = ArrayBuffer.empty[LockedResources[_ <: WrapsUnit]]
   private val lockedSums              = LazyVal.from(calcLockedSums)
   private val failedToProvideThisTick = ArrayBuffer.empty[ResourceRequests]
   private var myResources             = empty
@@ -92,41 +93,47 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
       } else {
         val mightGatherEnough = myResources.asSum canCoverCost requests.sum
         if (mightGatherEnough) {
-          // check if enough resources could be unlocked
-          val unlockOrder = detailedLocks
-                            .filter(requests.priority > _.priority)
-                            .sortBy { e =>
-                              (e.reqs.priority, e.reqs.sum.mineralGasSum)
-                            }
-          var freed = ResourceRequestSums(0, 0, 0)
+          val freeableResources = {
+            // check if enough resources could be unlocked
+            val unlockOrder = detailedLocks
+                              .filter(requests.priority > _.priority)
+                              .sortBy { e =>
+                                (e.reqs.priority, -e.reqs.sum.mineralGasSum)
+                              }
+            val abortableJobs = unitManager.allFundedJobs.filter {_.canReleaseResources}
+            val used = mutable.HashSet.empty[JobHasFunding[_]]
+            unlockOrder.flatMap { locked =>
+              val ret = abortableJobs.iterator
+                        .filter(!used(_))
+                        .find(_.proofForFunding.sum == locked.reqs.sum)
+              used ++= ret
+              ret.map(e => e -> locked)
+            }
+          }
+
+          var freed = ResourceRequestSum(0, 0, 0)
           val available = myUnlockedResources.asSum
           def needsMore = !((freed + available) canCoverCost requests.sum)
-          val requiredToFree = unlockOrder.takeWhile { resourcesToFree =>
+          val requiredToFree = freeableResources.takeWhile { case (job, singleLocked) =>
             val stillNeedsMore = needsMore
             if (stillNeedsMore) {
-              freed += resourcesToFree
+              freed += singleLocked.reqs.sum
             }
             stillNeedsMore
           }
           if (needsMore) {
             approvalFail
           } else {
-            //now ask each locking job if they really allow the unlocking
-            val pool = collection.mutable.HashSet.empty ++ requiredToFree
-            val notGreedy = unitManager.allFundedJobs.filter {_.canReleaseResources}
-            val matched = notGreedy.map { j =>
-              val foundMatch = pool.find(_ == j.proofForFunding)
-              foundMatch.foreach { e =>
-                pool -= e
-              }
-              j -> foundMatch
-            }
-
-            val ok = matched.nonEmpty && matched.forall(_._2.isDefined)
+            val ok = requiredToFree.nonEmpty
             if (ok) {
-              trace(s"Unlocking a bunch of resources ${matched.mkString(", ")} to satisfy ${requests} of $employer")
-              matched.foreach { case (j, _) =>
+              trace(s"Unlocking a bunch of resources ${
+                requiredToFree.map(_._2).mkString(", ")
+              } to satisfy ${requests} of $employer")
+              requiredToFree.foreach { case (j, unlockable) =>
+                val before = detailedLocks.count(_ == unlockable)
                 j.unlockManually_!()
+                val after = detailedLocks.count(_ == unlockable)
+                assert(before - 1 == after, s"Failed unlocking of $unlockable of $j")
                 val targetUnit = j.unit
                 unitManager.nobody.assignJob_!(new BusyDoingNothing(targetUnit, unitManager.nobody))
               }
@@ -177,8 +184,8 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
     .selectJobs((e: ConstructBuilding[WorkerUnit, Building]) => e.typeOfBuilding == unitManager.race.supplyClass)
   }
   private def calcLockedSums = {
-    val normallyLocked = locked.foldLeft(ResourceRequestSums.empty)(_ + _)
-    val highPrioLocks = lockedWithoutFunds.foldLeft(ResourceRequestSums.empty)(_ + _)
+    val normallyLocked = locked.foldLeft(ResourceRequestSum.empty)(_ + _)
+    val highPrioLocks = lockedWithoutFunds.foldLeft(ResourceRequestSum.empty)(_ + _)
     normallyLocked + highPrioLocks
   }
 }
@@ -195,6 +202,8 @@ trait ResourceApproval {
     this.asInstanceOf[ResourceApprovalSuccess]
   }
   def ifSuccess[T](then: ResourceApprovalSuccess => T): T
+
+  lazy val sum = ResourceRequestSum(minerals, gas, supply)
 }
 
 case class Supplies(used: Int, total: Int) {
@@ -209,7 +218,7 @@ case class ResourceApprovalSuccess(minerals: Int, gas: Int, supply: Int) extends
 }
 
 object ResourceApprovalSuccess {
-  def apply(sums: ResourceRequestSums): ResourceApprovalSuccess = ResourceApprovalSuccess(sums.minerals, sums.gas,
+  def apply(sums: ResourceRequestSum): ResourceApprovalSuccess = ResourceApprovalSuccess(sums.minerals, sums.gas,
     sums.supply)
 }
 
@@ -231,7 +240,7 @@ case class MineralsRequest(amount: Int) extends ResourceRequest
 case class GasRequest(amount: Int) extends ResourceRequest
 case class SupplyRequest(amount: Int) extends ResourceRequest
 case class ResourceRequests(requests: Seq[ResourceRequest], priority: Priority, whatFor: Class[_ <: WrapsUnit]) {
-  val sum = requests.foldLeft(ResourceRequestSums.empty)((acc, e) => {
+  val sum = requests.foldLeft(ResourceRequestSum.empty)((acc, e) => {
     acc + e
   })
 }
@@ -263,12 +272,12 @@ case class LockedResources[T <: WrapsUnit](reqs: ResourceRequests, employer: Emp
   def whatFor = reqs.whatFor
 }
 
-case class ResourceRequestSums(minerals: Int, gas: Int, supply: Int) {
-  def canCoverCost(other: ResourceRequestSums) = (minerals >= other.minerals || other.minerals == 0) &&
-                                                 (gas >= other.gas || other.gas == 0) &&
-                                                 (supply >= other.supply || other.supply == 0)
+case class ResourceRequestSum(minerals: Int, gas: Int, supply: Int) {
+  def canCoverCost(other: ResourceRequestSum) = (minerals >= other.minerals || other.minerals == 0) &&
+                                                (gas >= other.gas || other.gas == 0) &&
+                                                (supply >= other.supply || other.supply == 0)
 
-  def +(other: ResourceRequestSums) = ResourceRequestSums(minerals + other.minerals, gas + other.gas,
+  def +(other: ResourceRequestSum) = ResourceRequestSum(minerals + other.minerals, gas + other.gas,
     supply + other.supply)
 
   def mineralGasSum: Int = minerals + gas
@@ -276,12 +285,12 @@ case class ResourceRequestSums(minerals: Int, gas: Int, supply: Int) {
   def equalValue(proof: ResourceApprovalSuccess) = minerals == proof.minerals && gas == proof.gas &&
                                                    supply == proof.supply
 
-  def +(e: LockedResources[_]): ResourceRequestSums = {
+  def +(e: LockedResources[_]): ResourceRequestSum = {
     val sum = e.reqs.sum
     copy(minerals = minerals + sum.minerals, gas = gas + sum.gas, supply = supply + sum.supply)
   }
 
-  def +(e: ResourceRequest): ResourceRequestSums = {
+  def +(e: ResourceRequest): ResourceRequestSum = {
     e match {
       case m: MineralsRequest => copy(minerals = minerals + m.amount)
       case g: GasRequest => copy(gas = gas + g.amount)
@@ -291,9 +300,9 @@ case class ResourceRequestSums(minerals: Int, gas: Int, supply: Int) {
 }
 case class MinsGas(mins: Int, gas: Int)
 
-object ResourceRequestSums {
-  val empty = ResourceRequestSums(0, 0, 0)
-  implicit val ord = Ordering.by[ResourceRequestSums, Int](_.mineralGasSum)
+object ResourceRequestSum {
+  val empty = ResourceRequestSum(0, 0, 0)
+  implicit val ord = Ordering.by[ResourceRequestSum, Int](_.mineralGasSum)
 }
 
 

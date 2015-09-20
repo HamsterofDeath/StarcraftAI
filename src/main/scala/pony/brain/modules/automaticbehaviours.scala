@@ -66,6 +66,7 @@ object Terran {
                       new ShieldUnit(universe) ::
                       new IrradiateUnit(universe) ::
                       new CloakSelfGhost(universe) ::
+                      new GoToInitialPosition(universe) ::
                       new CloakSelfWraith(universe) ::
                       /*
                                             new RepairDamagedBuilding ::
@@ -146,41 +147,95 @@ object Terran {
     }
   }
 
+  class FormationHelper(override val universe: Universe, distance: Int = 0) extends HasUniverse {
+    def allOutsideNonBlacklisted = {
+      val map = mapLayers.reallyFreeBuildingTiles
+      defenseLines.iterator.flatMap(_.pointsOutside).filterNot(blacklisted).filter(map.free)
+    }
+
+    def allInsideNonBlacklisted = {
+      val map = mapLayers.reallyFreeBuildingTiles
+      defenseLines.iterator.flatMap(_.pointsInside).filterNot(blacklisted).filter(map.free)
+    }
+
+    def blacklisted(e: MapTilePosition) = blocked.contains(e)
+
+    def cleanBlacklist(dispose: (MapTilePosition, BlacklistReason) => Boolean) = {
+      blocked.filter(e => dispose(e._1, e._2))
+      .foreach(e => whiteList_!(e._1))
+    }
+
+    private val myDefenseLines = LazyVal.from {
+      bases.bases.flatMap { base =>
+        strategicMap.defenseLineOf(base).map(_.tileDistance(distance))
+      }
+    }
+
+    universe.bases.register((base: Base) => {
+      myDefenseLines.invalidate()
+    })
+
+    def defenseLines = myDefenseLines.get
+
+    def blackList_!(tile: MapTilePosition): Unit = {
+      blocked.put(tile, BlacklistReason(universe.currentTick))
+    }
+
+    def whiteList_!(tilePosition: MapTilePosition): Unit = {
+      blocked.remove(tilePosition)
+    }
+
+    def reasonForBlacklisting(tilePosition: MapTilePosition) = blocked.get(tilePosition)
+
+    private val blocked = mutable.HashMap.empty[MapTilePosition, BlacklistReason]
+
+    case class BlacklistReason(when: Int)
+
+  }
+
+  class GoToInitialPosition(universe: Universe) extends DefaultBehaviour[Mobile](universe) {
+    private val helper = new FormationHelper(universe)
+
+    private val ignore = mutable.HashSet.empty[Mobile]
+
+    override protected def lift(t: Mobile): SingleUnitBehaviour[Mobile] = new SingleUnitBehaviour[Mobile](t, meta) {
+      override def shortName: String = "IP"
+      override def toOrder(what: Objective) = {
+        if (ignore(t)) {
+          Nil
+        } else {
+          helper.allInsideNonBlacklisted.toStream.headOption.map { where =>
+            ignore += t
+            helper.blacklisted(where)
+            Orders.AttackMove(t, where)
+          }.toList
+        }
+      }
+    }
+  }
+
   class RevealHiddenUnitsPermanenly(universe: Universe) extends DefaultBehaviour[MobileDetector](universe) {
     override protected def lift(t: MobileDetector): SingleUnitBehaviour[MobileDetector] = ???
   }
 
   class SetupMineField(universe: Universe) extends DefaultBehaviour[Vulture](universe) {
 
+    private val helper = new FormationHelper(universe, 2)
+
     override def renderDebug(renderer: Renderer): Unit = {
-      defenseLines.get.foreach { defLine =>
+      helper.defenseLines.foreach { defLine =>
         defLine.pointsOutside.foreach { tile =>
           renderer.in_!(Color.White).drawCircleAroundTile(tile)
         }
       }
     }
 
-    universe.bases.register((base: Base) => {
-      defenseLines.invalidate()
-    })
-
     override def onTick(): Unit = {
       super.onTick()
       ifNth(137) {
-        val remove = plannedDrops.filter(_._2 + 240 < universe.currentTick)
-        remove.keys.foreach(plannedDrops.remove)
+        helper.cleanBlacklist((_, reason) => reason.when + 240 < universe.currentTick)
       }
     }
-
-    private def evalDefenseLines = {
-      bases.bases.flatMap { base =>
-        strategicMap.defenseLineOf(base)
-      }
-    }
-
-    private val defenseLines = LazyVal.from(evalDefenseLines)
-
-    private val plannedDrops = mutable.HashMap.empty[MapTilePosition, Int]
 
     override def priority = SecondPriority.Less
 
@@ -200,25 +255,12 @@ object Terran {
             def beLazy = Idle -> Nil
             // TODO include test in tech trait
             if (t.spiderMineCount > 0 && t.canCastNow(SpiderMines)) {
-              val reallyFreeBuildingTiles = mapLayers.reallyFreeBuildingTiles
-              val candiates = defenseLines.get.flatMap(_.pointsOutside)
-              if (candiates.nonEmpty) {
-                val filtered = candiates.iterator
-                               .filter(e => {
-                                 reallyFreeBuildingTiles.free(e) && !plannedDrops.contains(e)
-                               })
-
-                if (filtered.nonEmpty) {
-                  val dropMineHere = filtered.minBy(_.distanceToSquared(t.currentTile))
-                  plannedDrops += ((dropMineHere, universe.currentTick))
-                  DroppingMine(dropMineHere) -> t.toOrder(SpiderMines, dropMineHere).toList
-                }
-                else {
-                  beLazy
-                }
-              } else {
-                beLazy
-              }
+              val candiates = helper.allOutsideNonBlacklisted
+              val dropMineHere = candiates.minByOpt(_.distanceToSquared(t.currentTile))
+              dropMineHere.foreach(helper.blackList_!)
+              dropMineHere.map { where =>
+                DroppingMine(where) -> t.toOrder(SpiderMines, where).toList
+              }.getOrElse(beLazy)
             } else {
               beLazy
             }
@@ -269,7 +311,6 @@ object Terran {
           Nil
         }
       }
-
     }
   }
 

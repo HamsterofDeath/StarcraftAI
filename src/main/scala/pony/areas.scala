@@ -31,7 +31,10 @@ case class CuttingLine(line: Line) {
 
 class StrategicMap(resources: Seq[ResourceArea], walkable: Grid2D, game: Game) {
 
-  case class DefenseLine(chokePoint: ChokePoint, defendedAreas: Map[Grid2D, Set[ResourceArea]], defended: Grid2D) {
+  case class DefenseLine(chokePoint: ChokePoint, defendedAreas: Map[Grid2D, Set[ResourceArea]], defended: Grid2D,
+                         distanceBetweenTiles: Int) {
+
+    def tileDistance(distance: Int) = copy(distanceBetweenTiles = distance)
 
     lazy val mergedArea = {
       val mut = walkable.blockedMutableCopy
@@ -46,7 +49,7 @@ class StrategicMap(resources: Seq[ResourceArea], walkable: Grid2D, game: Game) {
       val mineTiles = ArrayBuffer.empty[MapTilePosition]
       outsidePoints.foreach { p =>
         if (blocked.free(p)) {
-          p.asArea.extendedBy(1).tiles.foreach(blocked.block_!)
+          p.asArea.extendedBy(distanceBetweenTiles).tiles.foreach(blocked.block_!)
           mineTiles += p
         }
       }
@@ -78,7 +81,7 @@ class StrategicMap(resources: Seq[ResourceArea], walkable: Grid2D, game: Game) {
 
     val defLine = cutOffBy.map { case (choke, areas) =>
       val defendedArea = areas.find(_._1.free(tile)).get._1
-      DefenseLine(choke, areas, defendedArea)
+      DefenseLine(choke, areas, defendedArea, 1)
     }
     defLine
   }
