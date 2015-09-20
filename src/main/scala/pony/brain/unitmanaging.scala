@@ -46,7 +46,7 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
     ownUnits.existsComplete(c)
   }
   def nextJobReorganisationRequest = {
-    val ret = reorganizeJobQueue.lastOption
+    val ret = reorganizeJobQueue.lastOption.filterNot(_.hasFailed)
     if (reorganizeJobQueue.nonEmpty) {
       reorganizeJobQueue.remove(0)
     }
@@ -476,8 +476,20 @@ trait CanAcceptUnitSwitch[T <: WrapsUnit] extends UnitWithJob[T] {
 trait Interruptable {
   def interruptableNow = true
 }
+
+object JobCounter {
+  private var jobs = 0
+  def next() = {
+    jobs += 1
+    jobs
+  }
+}
+
+
 abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: T, val priority: Priority)
   extends HasUniverse {
+
+  private val myJobId = JobCounter.next()
 
   private var forceFail = false
   protected def fail() = {
@@ -535,7 +547,7 @@ abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: 
   def noCommandsForTicks_!(n: Int): Unit = {
     noCommandsForTicks = n
   }
-  override def toString: String = s"${getClass.className} of $unit of $employer"
+  override def toString: String = s"[J#${myJobId}] ${getClass.className} of $unit of $employer"
   def isFinished: Boolean
   def onFinishOrFail(): Unit = {
     listeners.foreach(_.onFinishOrFail(hasFailed))
@@ -567,20 +579,29 @@ trait HasFunding {
   def proofForFunding: ResourceApproval
   def resources: ResourceManager
   def stillLocksResources = !explicitlyUnlocked && !autoUnlocked
+  def notifyResourcesDisapproved_!(): Unit = {
+    trace(s"Resources of $this just got disapproved")
+    unlockManually_!()
+  }
+  private var unlockedDebug        : Any = null
+  private var unlockedManuallyDebug: Any = null
+
   def unlockManually_!(): Unit = {
     assert(!explicitlyUnlocked, s"Don't do that twice")
     assert(!autoUnlocked, s"Too slow")
     trace(s"Manually unlocking $proofForFunding of $this")
     unlock_!()
     explicitlyUnlocked = true
+    unlockedManuallyDebug = Thread.currentThread().getStackTrace
   }
   def unlock_!(): Unit = {
     if (!explicitlyUnlocked) {
-      assert(!autoUnlocked)
+      assert(!autoUnlocked, s"Already unlocked: $this")
       proofForFunding match {
         case suc: ResourceApprovalSuccess =>
           autoUnlocked = true
           resources.unlock_!(suc)
+          unlockedDebug = Thread.currentThread().getStackTrace
         case _ =>
       }
     } else {
@@ -590,12 +611,19 @@ trait HasFunding {
 }
 
 trait JobHasFunding[T <: WrapsUnit] extends UnitWithJob[T] with HasUniverse with HasFunding {
+  self =>
 
   assert(proofForFunding.isFunded, s"Problem, check $this")
 
   def canReleaseResources = age == 0 && stillLocksResources
 
+  override def notifyResourcesDisapproved_!(): Unit = {
+    super.notifyResourcesDisapproved_!()
+    fail()
+  }
+
   listen_!(failed => {
+    trace(s"Unlock because $self failed")
     unlock_!()
   })
 }
@@ -617,11 +645,13 @@ class TrainUnit[F <: UnitFactory, T <: Mobile](factory: F, trainType: Class[_ <:
     info(s"Training $trainType")
     Orders.Train(unit, trainType).toSeq
   }
+
   override def onTick(): Unit = {
     super.onTick()
 
     if (!startedToProduce && age > 20 && factory.isProducing) {
       startedToProduce = true
+      trace(s"Job $this starte to produce ${trainType.className}")
       unlockManually_!()
     }
   }
@@ -730,14 +760,21 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, bu
     val size = Size.shared(unitType.tileWidth(), unitType.tileHeight())
     Area(buildWhere, size)
   }
+  assert(resources.detailedLocks.exists(e => e.whatFor == buildingType && e.reqs.sum == funding.sum),
+    s"Something is wrong, check $this, it is supposed to have ${
+      funding.sum
+    } funding, but the resource manager only has ${resources.detailedLocks} locked")
+
   private var startedMovingToSite       = false
   private var startedActualConstruction = false
   private var finishedConstruction      = false
   private var resourcesUnlocked         = false
   private var constructs                = Option.empty[Building]
+
   override def onTick(): Unit = {
     super.onTick()
-    if (startedActualConstruction && !resourcesUnlocked) {
+    if (startedActualConstruction && !resourcesUnlocked && constructs.isDefined) {
+      trace(s"Construction job $this no longer needs to lock resources")
       unlockManually_!()
       resourcesUnlocked = true
       mapLayers.unblockBuilding_!(area)
@@ -912,7 +949,7 @@ object PriorityChain {
 
 trait UnitRequest[T <: WrapsUnit] {
 
-  private val onDispostActions    = ArrayBuffer.empty[OnClearAction]
+  private val onDisposeActions    = ArrayBuffer.empty[OnClearAction]
   private var picker              = Option.empty[UnitWithJob[T] => PriorityChain]
   private var filter              = Option.empty[T => Boolean]
   private var autoCleanAfterTick  = true
@@ -935,10 +972,10 @@ trait UnitRequest[T <: WrapsUnit] {
   def acceptable(unit: T) = filter.map(_.apply(unit)).getOrElse(true)
   def clearable = autoCleanAfterTick
   def dispose(): Unit = {
-    onDispostActions.foreach(_.onClear())
+    onDisposeActions.foreach(_.onClear())
   }
   def doOnDispose_![X](u: => X) = {
-    onDispostActions += (() => u)
+    onDisposeActions += (() => u)
   }
 
   if (classOf[Building].isAssignableFrom(typeOfRequestedUnit)) {
@@ -988,6 +1025,8 @@ case class BuildUnitRequest[T <: WrapsUnit](universe: Universe, typeOfRequestedU
                                             belongsTo: Option[ResourceArea] = None)
   extends UnitRequest[T] with HasFunding with HasUniverse {
 
+  self =>
+
   def isAddon = classOf[Addon].isAssignableFrom(typeOfRequestedUnit)
 
   def isBuilding = classOf[Building].isAssignableFrom(typeOfRequestedUnit)
@@ -1008,6 +1047,7 @@ case class BuildUnitRequest[T <: WrapsUnit](universe: Universe, typeOfRequestedU
     super.dispose()
     // for buildings, the resources need to be locked until the building process has begun
     if (unlocksResourcesOnDispose) {
+      trace(s"Unlock during dispose: $self")
       unlock_!()
     }
   }
@@ -1154,6 +1194,7 @@ class JobReAssignments(universe: Universe) extends OrderlessAIModule[Controllabl
               } else {
                 unitManager.assignJob_!(new BusyDoingNothing(optimizeMe.unit, nobody))
               }
+              assert(!old.hasFailed)
               unitManager.assignJob_!(old.newFor(replacement.onlyMember))
             case _ =>
               if (optimizeMe.couldSwitchInTheFuture) {

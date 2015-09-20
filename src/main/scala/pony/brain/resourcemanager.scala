@@ -131,11 +131,9 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
               } to satisfy ${requests} of $employer")
               requiredToFree.foreach { case (j, unlockable) =>
                 val before = detailedLocks.count(_ == unlockable)
-                j.unlockManually_!()
+                j.notifyResourcesDisapproved_!()
                 val after = detailedLocks.count(_ == unlockable)
                 assert(before - 1 == after, s"Failed unlocking of $unlockable of $j")
-                val targetUnit = j.unit
-                unitManager.nobody.assignJob_!(new BusyDoingNothing(targetUnit, unitManager.nobody))
               }
               if (lock) lock_!(requests, employer)
               ResourceApprovalSuccess(requests.sum)
@@ -152,6 +150,7 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
     if (forcedLocked && result.failed) {
       forceLockInternal_!(requests, employer)
     }
+    trace(s"Result: $result")
     result
   }
   def detailedLocks = locked.toSeq

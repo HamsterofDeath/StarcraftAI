@@ -201,7 +201,7 @@ object Terran {
     override protected def lift(t: Mobile): SingleUnitBehaviour[Mobile] = new SingleUnitBehaviour[Mobile](t, meta) {
       override def shortName: String = "IP"
       override def toOrder(what: Objective) = {
-        if (universe.time.minutes <= 3 || ignore(t) || t.isBeingCreated) {
+        if (universe.time.minutes <= 4 || ignore(t) || t.isBeingCreated) {
           Nil
         } else {
           helper.allInsideNonBlacklisted.toStream.headOption.map { where =>
@@ -214,7 +214,7 @@ object Terran {
     }
   }
 
-  class RevealHiddenUnitsPermanenly(universe: Universe) extends DefaultBehaviour[MobileDetector](universe) {
+  class UseComsat(universe: Universe) extends DefaultBehaviour[MobileDetector](universe) {
     override protected def lift(t: MobileDetector): SingleUnitBehaviour[MobileDetector] = ???
   }
 

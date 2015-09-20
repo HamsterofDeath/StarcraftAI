@@ -28,8 +28,12 @@ class ProvideNewBuildings(universe: Universe)
         // TODO fix it if it ever happens
         error(s"Computation returned no result: $in")
         BackgroundComputationResult.nothing[WorkerUnit](() => {
-          in.jobRequest.forceUnlockOnDispose_!()
-          in.jobRequest.dispose()
+          if (in.jobRequest.stillLocksResources) {
+            in.jobRequest.forceUnlockOnDispose_!()
+            in.jobRequest.dispose()
+          } else {
+            warn(s"Why is the same request processed again?")
+          }
         })
       case Some(startJob) =>
         BackgroundComputationResult.result(startJob.toSeq, () => false, () => {
