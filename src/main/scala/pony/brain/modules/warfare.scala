@@ -498,7 +498,7 @@ object Strategy {
     override def suggestUnits = {
       IdealUnitRatio(classOf[Marine], 15)(timingHelpers.phase.isAnyTime) ::
       IdealUnitRatio(classOf[Firebat], 3)(timingHelpers.phase.isSinceEarlyMid) ::
-      IdealUnitRatio(classOf[Medic], 4)(timingHelpers.phase.isSinceVeryEarlyMid) ::
+      IdealUnitRatio(classOf[Medic], 4)(timingHelpers.phase.isSinceEarlyMid) ::
       IdealUnitRatio(classOf[Ghost], 2)(timingHelpers.phase.isSinceLateMid) ::
       IdealUnitRatio(classOf[Vulture], 1)(timingHelpers.phase.isSinceLateMid) ::
       IdealUnitRatio(classOf[Tank], 1)(timingHelpers.phase.isSinceLateMid) ::
