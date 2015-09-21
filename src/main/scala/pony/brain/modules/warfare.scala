@@ -121,8 +121,9 @@ trait UnitRequestHelper extends AIModule[UnitFactory] {
       }
       if (takeCareOfDependencies) {
         result.notExistingMissingRequiments.foreach { requirement =>
-          if (!unitManager.plannedToBuild(requirement)) {
+          if (!unitManager.existsOrPlanned(requirement)) {
             def isAddon = classOf[Addon].isAssignableFrom(requirement)
+            trace(s"Planning to build $requirement because it is required for $mobileType")
             if (isAddon) {
               addonHelper.requestAddon(requirement.asInstanceOf[Class[_ <: Addon]])
             } else {
@@ -246,8 +247,15 @@ class EnqueueArmy(universe: Universe) extends OrderlessAIModule[UnitFactory](uni
       val existingRatio = p.existing.getOrElse(t, 0.0)
       existingRatio - idealRatio
     }
-    mostMissing.filter { case (c, _) => universe.unitManager.allRequirementsFulfilled(c) }
-    .foreach { case (thisOne, _) =>
+    val (canBuild, needsSomething) =
+      mostMissing.partition { case (c, _) => universe.unitManager.allRequirementsFulfilled(c) }
+
+    val canBuildNow = mostMissing.filterNot { case (c, _) => universe.unitManager.requirementsQueuedToBuild(c) }
+    canBuildNow.take(1).foreach { case (thisOne, _) =>
+      requestUnit(thisOne, takeCareOfDependencies = false)
+    }
+
+    needsSomething.foreach { case (thisOne, _) =>
       requestUnit(thisOne, takeCareOfDependencies = true)
     }
   }
@@ -322,8 +330,7 @@ object Strategy {
         bases.mainBase.map(_.mainBuilding.tilePosition).flatMap { where =>
           val others = strategicMap.domainsButWithout(covered)
           if (others.nonEmpty) {
-            val (choke, what) = others
-                                .minBy(_._1.center.distanceToSquared(where))
+            val (choke, what) = others.minBy(_._1.center.distanceToSquared(where))
             val target = what.values.flatten.minBy(_.patches.map(_.center.distanceToSquared(where)).getOrElse(999999))
             Some(target)
           } else {

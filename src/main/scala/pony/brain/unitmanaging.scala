@@ -227,6 +227,11 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
     m.isEmpty && i.isEmpty
   }
 
+  def requirementsQueuedToBuild[T <: WrapsUnit](c: Class[_ <: T]) = {
+    val (_, i) = findMissingRequirements[T](collection.immutable.Set(c))
+    i.nonEmpty
+  }
+
   private def findMissingRequirements[T <: WrapsUnit](c: Set[Class[_ <: T]]) = {
     val mustHave = c.flatMap(race.techTree.requiredFor)
     val i = mutable.Set.empty[Class[_ <: Building]]
@@ -360,12 +365,15 @@ class UnitCollector[T <: WrapsUnit : Manifest](req: UnitJobRequests[T], override
   def collect_!(includeCandidates: Seq[UnitWithJob[T]] = Nil): Option[UnitCollector[T]] = {
     val um = unitManager
     val available = {
-      val potential = (um.allOfEmployer(um.Nobody) ++ um.allNotOfEmployer(um.Nobody))
-                      .filter(_.priority < req.priority)
-                      .filter(interrupts)
-                      .++(includeCandidates)
-                      .filter(requests)
-                      .map(typed)
+      val potential = {
+        val all = um.allOfEmployer(um.Nobody) ++ um.allNotOfEmployer(um.Nobody)
+        val requested = all.filter(requests)
+        val withoutHigherPrio = requested
+                                .filter(_.priority < req.priority)
+        val withInterruptable = withoutHigherPrio.filter(interrupts)
+        val withExplicitCandidates = withInterruptable ++ includeCandidates
+        withExplicitCandidates.map(typed)
+      }
       priorityRule.fold(potential.toVector) { rule =>
         potential.toVector.sortBy(rule.giveRating)
       }
@@ -502,7 +510,7 @@ abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: 
   protected def omitRepeatedOrders = false
 
   unit match {
-    case cd: CanDie => assert(!cd.isDead)
+    case cd: CanDie if cd.isDead => fail()
     case _ =>
   }
 
@@ -529,17 +537,21 @@ abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: 
 
   private var lastOrder: Seq[UnitOrder] = Nil
   def ordersForThisTick = {
-    if (noCommandsForTicks > 0) {
-      noCommandsForTicks -= 1
+    if (hasFailed) {
       Nil
     } else {
-      noCommandsForTicks = everyNth
-      val nextOrder = ordersForTick
-      if (omitRepeatedOrders && nextOrder == lastOrder) {
+      if (noCommandsForTicks > 0) {
+        noCommandsForTicks -= 1
         Nil
       } else {
-        lastOrder = nextOrder
-        nextOrder
+        noCommandsForTicks = everyNth
+        val nextOrder = ordersForTick
+        if (omitRepeatedOrders && nextOrder == lastOrder) {
+          Nil
+        } else {
+          lastOrder = nextOrder
+          nextOrder
+        }
       }
     }
   }
@@ -642,6 +654,7 @@ class TrainUnit[F <: UnitFactory, T <: Mobile](factory: F, trainType: Class[_ <:
   private var startedToProduce = false
   override def proofForFunding = funding
   override def getOrder: Seq[UnitOrder] = {
+    assert(!hasFailed, s"$this has failed, but is still asked for its order")
     info(s"Training $trainType")
     Orders.Train(unit, trainType).toSeq
   }
@@ -1165,7 +1178,7 @@ object UnitJobRequests {
 
 class SendOrdersToStarcraft(universe: Universe) extends AIModule[Controllable](universe) {
   override def ordersForTick: Traversable[UnitOrder] = {
-    unitManager.allJobsByUnitType[Controllable].flatMap { job =>
+    unitManager.allJobsByUnitType[Controllable].filterNot(_.hasFailed).flatMap { job =>
       job.ordersForThisTick
     }
   }
