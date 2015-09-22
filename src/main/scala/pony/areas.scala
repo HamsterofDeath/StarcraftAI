@@ -3,18 +3,20 @@ package pony
 import bwapi.Game
 import pony.brain.Base
 
+import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.Future
 
 case class ResourceArea(patches: Option[MineralPatchGroup], geysirs: Set[Geysir]) {
   val resources = patches.map(_.patches).getOrElse(Nil) ++ geysirs
   def center = patches.map(_.center).getOrElse(geysirs.head.tilePosition)
-  def isPatchId(id:Int) = patches.fold(false)(_.patchId == id)
+  def isPatchId(id: Int) = patches.fold(false)(_.patchId == id)
   lazy val coveredTiles = resources.flatMap(_.area.tiles).toSet
 }
 
 case class PotentialDomain(coveredOnLand: Seq[ResourceArea], needsToControl: Seq[MapTilePosition])
 case class ChokePoint(center: MapTilePosition, lines: Seq[CuttingLine], index: Int = -1)
+case class NarrowPoint(where: MapTilePosition, index: Int)
 
 case class RelativePoint(xOff: Int, yOff: Int) extends HasXY {
   lazy val opposite = RelativePoint(-xOff, -yOff)
@@ -31,8 +33,13 @@ case class CuttingLine(line: Line) {
 
 class StrategicMap(resources: Seq[ResourceArea], walkable: Grid2D, game: Game) {
 
-  case class DefenseLine(chokePoint: ChokePoint, defendedAreas: Map[Grid2D, Set[ResourceArea]], defended: Grid2D,
-                         distanceBetweenTiles: Int) {
+  case class FrontLine(chokePoint: ChokePoint,
+                       defendedAreas: Map[Grid2D, Set[ResourceArea]],
+                       defended: Grid2D,
+                       outerTerritory: Grid2D,
+                       distanceBetweenTiles: Int) {
+
+    def isDefenseLine = outerTerritory.freeCount > defended.freeCount
 
     def tileDistance(distance: Int) = copy(distanceBetweenTiles = distance)
 
@@ -66,9 +73,9 @@ class StrategicMap(resources: Seq[ResourceArea], walkable: Grid2D, game: Game) {
     def pointsInside = scatteredPointsInside.getOrElse(Vector.empty)
   }
 
-  def defenseLineOf(base: Base): Option[DefenseLine] = defenseLineOf(base.mainBuilding.area.centerTile)
+  def defenseLineOf(base: Base): Option[FrontLine] = defenseLineOf(base.mainBuilding.area.centerTile)
 
-  def defenseLineOf(tile: MapTilePosition): Option[DefenseLine] = {
+  def defenseLineOf(tile: MapTilePosition): Option[FrontLine] = {
     val cutOffBy = {
       val candidates = domains.filter(_._2.keysIterator.exists(_.free(tile)))
       if (candidates.nonEmpty) {
@@ -80,21 +87,71 @@ class StrategicMap(resources: Seq[ResourceArea], walkable: Grid2D, game: Game) {
     }
 
     val defLine = cutOffBy.map { case (choke, areas) =>
-      val defendedArea = areas.find(_._1.free(tile)).get._1
-      DefenseLine(choke, areas, defendedArea, 1)
-    }
+      val (inside, outside) = areas.partition(_._1.free(tile))
+      val insideArea = {
+        val ret = walkable.mutableCopy
+        inside.keys.foreach { section =>
+          ret.or_!(section.mutableCopy)
+        }
+        ret
+      }
+      val outsideArea = {
+        val ret = walkable.mutableCopy
+        outside.keys.foreach { section =>
+          ret.or_!(section.mutableCopy)
+        }
+        ret
+      }
+      FrontLine(choke, areas, insideArea.asReadOnlyCopy, outsideArea.asReadOnlyCopy, 1)
+    }.filter {_.isDefenseLine}
     defLine
+  }
+
+  private val myNarrowPassages = FileStorageLazyVal.from({
+    val tooMany = {
+      val lines = tryCutters(8).map { e => e.split }
+      walkable.allFree.toVector.par.flatMap { freeSpot =>
+        lines.map { case (l, r) => l.movedBy(freeSpot) -> r.movedBy(freeSpot) }
+        .filter { case (left, right) =>
+          walkable.anyBlockedOnLine(left) &&
+          walkable.anyBlockedOnLine(right)
+        }
+      }.map { case (a, b) => Line(a.a, b.b) }.seq
+    }
+    val byReferencePoint = new
+        mutable.HashMap[MapTilePosition, mutable.Set[Line]] with mutable.MultiMap[MapTilePosition, Line]
+    tooMany.foreach { line =>
+      val close = byReferencePoint.filter(_._1.distanceTo(line.center) <= 15)
+                  .minByOpt(_._1.distanceTo(line.center))
+      close match {
+        case Some((pos, _)) =>
+          byReferencePoint.addBinding(pos, line)
+        case None =>
+          byReferencePoint.addBinding(line.center, line)
+      }
+    }
+    byReferencePoint.map { case (_, lines) =>
+      val sum = lines.foldLeft((0, 0))((acc, e) => (acc._1 + e.center.x, acc._2 + e.center.y))
+      MapTilePosition.shared(sum._1 / lines.size, sum._2 / lines.size)
+    }.zipWithIndex.map { case (where, index) =>
+      NarrowPoint(where, index)
+    }
+
+  }, s"narrow_${game.mapHash()}_${game.mapName()}")
+
+  private def tryCutters(size: Int) = {
+    val lineLength = size
+    (-lineLength, -lineLength) ::(0, -lineLength) ::(lineLength, -lineLength) ::(lineLength, 0) :: Nil map
+    { case (x, y) =>
+      val point = RelativePoint(x, y)
+      Line(point.asMapTile, point.opposite.asMapTile)
+    }
   }
 
   private val mapData = FileStorageLazyVal.from({
     info(s"Analyzing map ${game.mapFileName()}")
     val tooMany = {
-      val lineLength = 4
-      val tries = (-lineLength, -lineLength) ::(0, -lineLength) ::(lineLength, -lineLength) ::(lineLength, 0) :: Nil map
-                  { case (x, y) =>
-                    val point = RelativePoint(x, y)
-                    Line(point.asMapTile, point.opposite.asMapTile)
-                  }
+      val tries = tryCutters(4)
 
       val findSubAreasOfThis = walkable
       val myAreas = findSubAreasOfThis.areas
@@ -176,6 +233,8 @@ class StrategicMap(resources: Seq[ResourceArea], walkable: Grid2D, game: Game) {
   }
 
   def domains = myDomains.get
+
+  def narrowPoints = myNarrowPassages.get
 
   def domainsButWithout(these: Set[ResourceArea]) = {
     domains.flatMap { case (choke, areas) =>

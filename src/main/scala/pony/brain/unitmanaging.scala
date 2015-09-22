@@ -456,7 +456,7 @@ class Employer[T <: WrapsUnit : Manifest](override val universe: Universe) exten
 
   def hiredBySomeoneMoreImportant_!(unit: T): Unit = {
     assert(employees.contains(unit), s"$unit not in $this")
-    info(s"$unit got hired by someone else")
+    trace(s"$unit got hired by someone else")
     employees -= unit
   }
 

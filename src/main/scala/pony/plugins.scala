@@ -32,6 +32,11 @@ class ChokePointRenderer(override val universe: Universe) extends AIPlugIn with 
           renderer.drawTextAtTile(s"Chokepoint ${choke.index}", line.center)
         }
       }
+
+      strategicMap.narrowPoints.foreach { narrow =>
+        renderer.drawStar(narrow.where)
+        renderer.drawTextAtTile(s"Narrow ${narrow.index}", narrow.where)
+      }
     }
   }
 }
@@ -324,6 +329,13 @@ class DebugHelper(main: MainAI) extends AIPlugIn with HasUniverse {
                   strategicMap.domains.find(_._1.index.toString == id).foreach { choke =>
                     ownUnits.mineByType[Mobile].filterNot(_.isInstanceOf[WorkerUnit]).foreach { u =>
                       world.orderQueue.queue_!(new AttackMove(u, choke._1.center.randomized(3)))
+                    }
+                  }
+
+                case List(x, id) if x == "n" || x == "narrow" =>
+                  strategicMap.narrowPoints.find(_.index.toString == id).foreach { narrow =>
+                    ownUnits.mineByType[Mobile].filterNot(_.isInstanceOf[WorkerUnit]).foreach { u =>
+                      world.orderQueue.queue_!(new AttackMove(u, narrow.where.randomized(3)))
                     }
                   }
               }

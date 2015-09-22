@@ -152,9 +152,10 @@ class ProvideSuggestedAddons(universe: Universe)
   override def onTick(): Unit = {
     val buildUs = strategy.current.suggestAddons
                   .filter(_.isActive)
-    val todo = for (builder <- ownUnits.allAddonBuilders;
-                    addon <- buildUs
-                    if builder.canBuildAddon(addon.addon) & !builder.hasAddonAttached) yield (builder, addon)
+    val todo = (for (builder <- ownUnits.allAddonBuilders;
+                     addon <- buildUs
+                     if builder.canBuildAddon(addon.addon) & !builder.hasAddonAttached) yield (builder, addon))
+               .toVector
     todo.foreach { case (builder, what) =>
       requestAddon(what.addon)
     }
@@ -251,7 +252,7 @@ class EnqueueArmy(universe: Universe) extends OrderlessAIModule[UnitFactory](uni
       mostMissing.partition { case (c, _) => universe.unitManager.allRequirementsFulfilled(c) }
 
     val canBuildNow = mostMissing.filterNot { case (c, _) => universe.unitManager.requirementsQueuedToBuild(c) }
-    canBuildNow.take(1).foreach { case (thisOne, _) =>
+    (canBuildNow.take(1) ++ canBuildNow.drop(1).filter(_._1.toUnitType.gasPrice() == 0)).foreach { case (thisOne, _) =>
       requestUnit(thisOne, takeCareOfDependencies = false)
     }
 

@@ -250,12 +250,10 @@ trait NewBaseListener {
 
 case class Base(mainBuilding: MainBuilding)(world: DefaultWorld) {
 
-  val myMineralGroup = world.mineralPatches.nearestTo(mainBuilding.tilePosition)
-  val myGeysirs      = world.myUnits.geysirs
-                       .filter(g => mainBuilding.area.distanceTo(g.area) < 5)
-                       .toSet
+  val resourceArea = world.mineralPatches.resourceAreas.minBy(c => mainBuilding.area.distanceTo(c.center))
 
-  val resourceArea = ResourceArea(myMineralGroup, myGeysirs)
+  val myMineralGroup = resourceArea.patches
+  val myGeysirs      = resourceArea.geysirs
 
   info(
     s"""

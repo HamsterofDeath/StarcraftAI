@@ -634,6 +634,9 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
 
 class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet, bitSetContainsBlocked: Boolean = true)
   extends Grid2D(cols, rows, bitSet, bitSetContainsBlocked) {
+  def invertedMutable = {
+    mutable.BitSet
+  }
 
   def areaSize(anyContained: MapTilePosition) = {
     val isFree = free(anyContained)
@@ -661,8 +664,11 @@ class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet, bitSetContains
   def asReadOnlyCopy = new Grid2D(cols, rows, bitSet.clone.toImmutable)
 
   def or_!(other: MutableGrid2D) = {
-    assert(containsBlocked == other.containsBlocked)
-    bitSet |= other.data
+    if (containsBlocked == other.containsBlocked) {
+      bitSet |= other.data
+    } else {
+      bitSet |= mutable.BitSet.fromBitMask(other.data.toBitMask.map(~_))
+    }
     this
   }
   protected def data = bitSet
@@ -723,7 +729,13 @@ class MineralAnalyzer(map: AnalyzedMap, myUnits: Units) {
     patchGroups.toSeq
   }
   val resourceAreas = {
-    groups.map { patchGroup => ResourceArea(Some(patchGroup), Set.empty) }
+    groups.map { patchGroup =>
+      val geysirs = myUnits.geysirs
+                    .filter(_.area.distanceTo(patchGroup.center) < 10)
+                    .toSet
+
+      ResourceArea(Some(patchGroup), geysirs)
+    }
   }
 
   def nearestTo(position: MapTilePosition) = {

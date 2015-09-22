@@ -88,6 +88,7 @@ case class Line(a: MapTilePosition, b: MapTilePosition) {
   def movedBy(center: HasXY) = {
     Line(a.movedBy(center), b.movedBy(center))
   }
+  def split = Line(a, center) -> Line(center, b)
 }
 
 

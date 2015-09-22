@@ -72,9 +72,7 @@ object Terran {
                                             new RepairDamagedBuilding ::
                                             new RepairDamagedUnit ::
                                            new RevealHiddenUnitsPermanenly ::
-                                           new SetupMineField ::
                                            new Scout ::
-                                           new Cloak ::
                                            new DoNotStray ::
                                            new HealDamagedUnit ::
                                            new FixMedicalProblem ::

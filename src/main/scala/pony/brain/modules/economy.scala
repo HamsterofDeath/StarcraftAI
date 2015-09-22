@@ -100,7 +100,7 @@ class ProvideExpansions(universe: Universe) extends OrderlessAIModule[WorkerUnit
             val buildingSpot = AlternativeBuildingSpot
                                .fromExpensive(new ConstructionSiteFinder(universe).forResourceArea(resources))(_.find)
             requestBuilding(race.resourceDepositClass, takeCareOfDependencies = false, saveMoneyIfPoor = true,
-              buildingSpot, belongsTo = plannedExpansionPoint, priority = Priority.ConstructBuilding)
+              buildingSpot, belongsTo = plannedExpansionPoint, priority = Priority.Expand)
           }
       }
     }

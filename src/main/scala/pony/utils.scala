@@ -14,6 +14,13 @@ class Renderer(game: Game, private var color: bwapi.Color) {
     game.drawLineMap(from.mapX, from.mapY, to.mapX, to.mapY, color)
   }
 
+  def drawStar(where: MapTilePosition): Unit = {
+    game.drawLineMap(where.movedBy(-3, -3).asMapPosition.toNative, where.movedBy(3, 3).asMapPosition.toNative, color)
+    game.drawLineMap(where.movedBy(3, -3).asMapPosition.toNative, where.movedBy(-3, 3).asMapPosition.toNative, color)
+    game.drawLineMap(where.movedBy(-3, 0).asMapPosition.toNative, where.movedBy(3, 0).asMapPosition.toNative, color)
+    game.drawLineMap(where.movedBy(0, -3).asMapPosition.toNative, where.movedBy(0, 3).asMapPosition.toNative, color)
+  }
+
   def drawLine(from: MapPosition, to: MapPosition): Unit = {
     game.drawLineMap(from.x, from.y, to.x, to.y, color)
   }

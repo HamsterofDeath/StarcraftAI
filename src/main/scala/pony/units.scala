@@ -1086,7 +1086,6 @@ trait HasSingleTargetSpells extends Mobile with HasMana {
     lastCast = universe.currentTick
     Orders.TechOnTarget(this, target, tech)
   }
-
 }
 
 trait HasSinglePointMagicSpell extends Mobile {
@@ -1258,7 +1257,8 @@ class Battlecruiser(unit: APIUnit)
 class ScienceVessel(unit: APIUnit)
   extends AnyUnit(unit) with AirUnit with SupportUnit with CanDetectHidden with Mechanic with HasSingleTargetSpells with
           IsBig with IsShip {
-  override val spells = Nil
+  override type CasterType = ScienceVessel
+  override val spells = List(Spells.DefenseMatrix, Spells.Irradiate)
 }
 
 trait SimplePosition extends WrapsUnit {

@@ -362,7 +362,7 @@ class ConstructionSiteFinder(universe: Universe) {
     new SubFinder {
       override def find: Option[MapTilePosition] = {
         // background
-        val possible = helper.blockSpiralClockWise(resources.center, 10)
+        val possible = helper.blockSpiralClockWise(resources.center, 25)
                        .filter { candidate =>
                          def correctArea = {
                            val area = Area(candidate, size)
@@ -371,8 +371,8 @@ class ConstructionSiteFinder(universe: Universe) {
                          def lineOfSight = {
                            resources.patches.exists { mpg =>
                              mpg.patches.exists { p =>
-                               AreaHelper
-                               .directLineOfSight(p.area.centerTile, candidate, universe.mapLayers.rawWalkableMap)
+                               AreaHelper.directLineOfSight(p.area.centerTile, candidate,
+                                 universe.mapLayers.rawWalkableMap)
                              }
                            }
                          }
