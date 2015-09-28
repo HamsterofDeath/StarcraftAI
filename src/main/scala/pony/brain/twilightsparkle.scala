@@ -143,6 +143,7 @@ object AIModule {
 
 class TwilightSparkle(world: DefaultWorld) {
   self =>
+
   val universe: Universe = new Universe {
     override def bases = self.bases
     override def world = self.world
@@ -154,6 +155,7 @@ class TwilightSparkle(world: DefaultWorld) {
     override def myUnits = world.myUnits
     override def enemyUnits = world.enemyUnits
     override def strategicMap = world.strategicMap
+    override def pathFinder = self.pathFinder
     override def strategy = self.strategy
   }
   private val bases     = new Bases(world)
@@ -162,7 +164,7 @@ class TwilightSparkle(world: DefaultWorld) {
 
   def plugins = aiModules
 
-  private val aiModules   = List(
+  private val aiModules      = List(
     new DefaultBehaviours(universe),
     new GatherMinerals(universe),
     new GatherGas(universe),
@@ -181,6 +183,8 @@ class TwilightSparkle(world: DefaultWorld) {
   private val unitManager    = new UnitManager(universe)
   private val upgradeManager = new UpgradeManager(universe)
   private val maps           = new MapLayers(universe)
+  private val pathFinder     = new PathFinder(maps)
+
   def pluginByType[T <: AIModule[_]:Manifest] = {
     val c = manifest[T].runtimeClass
     aiModules.find(e => c.isAssignableFrom(e.getClass)).get.asInstanceOf[T]
@@ -209,6 +213,8 @@ class TwilightSparkle(world: DefaultWorld) {
 }
 
 class Bases(world: DefaultWorld) {
+  def isCovered(field: ResourceArea) = myBases.exists(_.resourceArea == field)
+
   private val myBases = ArrayBuffer.empty[Base]
   def rich = {
     val singleValuable = myMineralFields.exists(_.value > 15000)
@@ -250,7 +256,7 @@ trait NewBaseListener {
 
 case class Base(mainBuilding: MainBuilding)(world: DefaultWorld) {
 
-  val resourceArea = world.mineralPatches.resourceAreas.minBy(c => mainBuilding.area.distanceTo(c.center))
+  val resourceArea = world.resourceAnalyzer.resourceAreas.minBy(c => mainBuilding.area.distanceTo(c.center))
 
   val myMineralGroup = resourceArea.patches
   val myGeysirs      = resourceArea.geysirs

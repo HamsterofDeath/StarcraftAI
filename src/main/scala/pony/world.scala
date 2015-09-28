@@ -279,8 +279,8 @@ case class Resources(minerals: Int, gas: Int, supply: Supplies) {
 class DefaultWorld(game: Game) extends WorldListener with WorldEventDispatcher {
 
   // these must be initialized after the first tick. making them lazy solves this
-  lazy val mineralPatches = new MineralAnalyzer(map, myUnits)
-  lazy val strategicMap   = new StrategicMap(mineralPatches.resourceAreas, map.walkableGrid, game)
+  lazy val resourceAnalyzer = new ResourceAnalyzer(map, myUnits)
+  lazy val strategicMap     = new StrategicMap(resourceAnalyzer.resourceAreas, map.walkableGrid, game)
 
   val map        = new AnalyzedMap(game)
   val myUnits    = new Units(game, false)
@@ -713,7 +713,7 @@ class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet, bitSetContains
   def inArea(x: Int, y: Int) = x >= 0 && y >= 0 && x < cols && y < rows
 }
 
-class MineralAnalyzer(map: AnalyzedMap, myUnits: Units) {
+class ResourceAnalyzer(map: AnalyzedMap, myUnits: Units) {
 
   val groups        = {
     val patchGroups = ArrayBuffer.empty[MineralPatchGroup]

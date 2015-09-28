@@ -10,7 +10,8 @@ case class ResourceArea(patches: Option[MineralPatchGroup], geysirs: Set[Geysir]
   val resources = patches.map(_.patches).getOrElse(Nil) ++ geysirs
   def center = patches.map(_.center).getOrElse(geysirs.head.tilePosition)
   def isPatchId(id: Int) = patches.fold(false)(_.patchId == id)
-  lazy val coveredTiles = resources.flatMap(_.area.tiles).toSet
+  lazy val coveredTiles             = resources.flatMap(_.area.tiles).toSet
+  lazy val mostAnnoyingMinePosition = center
 }
 
 case class PotentialDomain(coveredOnLand: Seq[ResourceArea], needsToControl: Seq[MapTilePosition])

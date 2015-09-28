@@ -270,7 +270,7 @@ class MineralDebugRenderer(override val universe: Universe) extends AIPlugIn wit
   override protected def tickPlugIn(): Unit = {
     lazyWorld.debugger.debugRender { renderer =>
       renderer.in_!(Color.Yellow)
-      world.mineralPatches.groups.foreach { mpg =>
+      world.resourceAnalyzer.groups.foreach { mpg =>
         mpg.patches.foreach { mp =>
           renderer.writeText(mp.tilePosition, s"#${mpg.patchId}")
         }
@@ -298,7 +298,7 @@ class DebugHelper(main: MainAI) extends AIPlugIn with HasUniverse {
             case "expand" | "e" =>
               params match {
                 case List(mineralsId) =>
-                  val patch = world.mineralPatches.groups.find(_.patchId.toString == mineralsId).get
+                  val patch = world.resourceAnalyzer.groups.find(_.patchId.toString == mineralsId).get
                   main.brain.pluginByType[ProvideExpansions].forceExpand(patch)
               }
 
@@ -319,7 +319,7 @@ class DebugHelper(main: MainAI) extends AIPlugIn with HasUniverse {
             case "attack" | "a" =>
               params match {
                 case List(x, id) if x == "m" || x == "minerals" =>
-                  world.mineralPatches.groups.find(_.patchId.toString == id).foreach { group =>
+                  world.resourceAnalyzer.groups.find(_.patchId.toString == id).foreach { group =>
                     ownUnits.mineByType[Mobile].filterNot(_.isInstanceOf[WorkerUnit]).foreach { u =>
                       world.orderQueue.queue_!(new AttackMove(u, group.center.randomized(12)))
                     }

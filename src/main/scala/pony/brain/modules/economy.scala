@@ -319,6 +319,7 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
             state = Idle
           }
           def noop = Orders.NoUpdate(myWorker)
+          // TODO use speed cheat
           val (newState, order) = state match {
             case Idle if myWorker.isCarryingMinerals =>
               ReturningMineralsAfterInterruption -> returnDelivery

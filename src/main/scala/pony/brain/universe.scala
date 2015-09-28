@@ -20,7 +20,9 @@ trait Universe {
   def enemyUnits: Units
   def mapLayers: MapLayers
   def strategicMap: StrategicMap
+  def pathFinder: PathFinder
   def strategy: Strategies
+  def resourceFields = world.resourceAnalyzer
   private def evalRace = (myUnits.allMobiles ++ myUnits.allBuildings).next.mySCRace
   private val race0 = LazyVal.from(evalRace)
   def myRace = race0.get

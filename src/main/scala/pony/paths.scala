@@ -11,10 +11,14 @@ case class Path(waypoints: Seq[MapTilePosition], solved: Boolean, solvable: Bool
 class PathFinder(mapLayers: MapLayers) {
   implicit def convBack(gn: GridNode2DInt): MapTilePosition = MapTilePosition.shared(gn.getX, gn.getY)
 
+  def findPath(from: MapTilePosition, to: MapTilePosition) = BWFuture {
+    spawn.findPath(from, to)
+  }
+
   class AstarPathFinder(grid: Array[Array[GridNode2DInt]]) {
     private implicit def conv(mtp: MapTilePosition): GridNode2DInt = grid(mtp.x)(mtp.y)
 
-    def findPath(from: MapTilePosition, to: MapTilePosition): Unit = {
+    def findPath(from: MapTilePosition, to: MapTilePosition) = {
       val finder = new AStarSearch[GridNode2DInt](from, to)
       finder.performSearch()
       val path = finder.getSolution.asScala.map(e => e: MapTilePosition)
@@ -22,7 +26,7 @@ class PathFinder(mapLayers: MapLayers) {
     }
   }
 
-  private def astar(grid: Grid2D) = {
+  private def to2DArray(grid: Grid2D) = {
 
     val asGrid = Array.ofDim[GridNode2DInt](grid.cols, grid.rows)
     implicit def conv(mtp: MapTilePosition): GridNode2DInt = asGrid(mtp.x)(mtp.y)
@@ -63,7 +67,7 @@ class PathFinder(mapLayers: MapLayers) {
     asGrid
   }
 
-  def spawn = new AstarPathFinder(astar(mapLayers.reallyFreeBuildingTiles))
+  def spawn = new AstarPathFinder(to2DArray(mapLayers.reallyFreeBuildingTiles))
 }
 
 class AreaHelper(source: Grid2D) {

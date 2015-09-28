@@ -220,12 +220,18 @@ object Terran {
 
     private val helper = new FormationHelper(universe, 2)
 
+    private def suggestMinePositions = {
+      val defense = helper.allOutsideNonBlacklisted
+      val neutralResourceFields = universe.resourceFields.resourceAreas.filterNot { field =>
+        universe.bases.isCovered(field)
+      }.map {_.mostAnnoyingMinePosition}
+      defense ++ neutralResourceFields
+    }
+
     override def renderDebug(renderer: Renderer): Unit = {
-      helper.defenseLines.foreach { defLine =>
-        defLine.pointsOutside.foreach { tile =>
+      suggestMinePositions.foreach { tile =>
           renderer.in_!(Color.White).drawCircleAroundTile(tile)
         }
-      }
     }
 
     override def onTick(): Unit = {
@@ -253,7 +259,7 @@ object Terran {
             def beLazy = Idle -> Nil
             // TODO include test in tech trait
             if (t.spiderMineCount > 0 && t.canCastNow(SpiderMines)) {
-              val candiates = helper.allOutsideNonBlacklisted
+              val candiates = suggestMinePositions
               val dropMineHere = candiates.minByOpt(_.distanceToSquared(t.currentTile))
               dropMineHere.foreach(helper.blackList_!)
               dropMineHere.map { where =>
