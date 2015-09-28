@@ -3,7 +3,6 @@ package pony.astar;
 
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import pony.util.CollectionUtils;
 
 import java.io.Serializable;
 import java.util.Iterator;
@@ -13,29 +12,17 @@ import java.util.Iterator;
  *
  * @author HamsterofDeath Created 22.12.2007 @ 16:12:03
  */
-public abstract class Node implements Iterable, Serializable {
+public abstract class Node<T extends Node<T>> implements Iterable, Serializable {
     private static final int  MS_MASK_GET_STATE    = 3;
     private static final int  MS_MASK_DELETE_STATE = ~3;
     private static final long serialVersionUID     = 0L;
     private static final NodeState[] NODE_STATES = NodeState.values();
     @Nullable
-    protected Node m_parent;
+    protected T   m_parent;
     /**
      * 30 Bits Pathcost, 2 Bits state
      */
     protected int m_costAndState;
-
-    protected static boolean isNotWalkable(
-            @Nullable
-            final Node p_node) {
-        return p_node == null || CollectionUtils.isEmpty(p_node.getNodes());
-    }
-
-    public static boolean isWalkable(
-            @Nullable
-            final Node p_node) {
-        return p_node != null && CollectionUtils.containsElements(p_node.getNodes());
-    }
 
     /**
      * @param p_parent A directly known Node. Otherwise, the returned value is not defined.
@@ -43,15 +30,15 @@ public abstract class Node implements Iterable, Serializable {
      */
     public abstract int evalCostFromParent(
             @NotNull
-            final Node p_parent);
+            final T p_parent);
 
-    public int getEstimatedTotalCost(final Node p_target, final Heuristics p_heuristics) {
-        return (m_costAndState >>> 2) + p_heuristics.estimateCost(this, p_target);
+    public int getEstimatedTotalCost(final T p_target, final Heuristics<T> p_heuristics) {
+        return (m_costAndState >>> 2) + p_heuristics.estimateCost((T) this, p_target);
     }
 
     public void setNewParent(
             @NotNull
-            final Node p_parent) {
+            final T p_parent) {
         assert isOpen();
         assert p_parent.isClosed();
         m_parent = p_parent;
@@ -91,9 +78,7 @@ public abstract class Node implements Iterable, Serializable {
         setState(NodeState.OPEN);
     }
 
-    public Heuristics suggestHeuristics() {
-        return null;
-    }
+    public abstract Heuristics suggestHeuristics();
 
     public abstract void remove();
 
@@ -115,21 +100,17 @@ public abstract class Node implements Iterable, Serializable {
         return m_parent;
     }
 
-    public boolean supportsShortcuts() {
-        return false;
-    }
+    public abstract boolean supportsShortcuts();
 
-    public boolean canReachDirectly(
+    public abstract boolean canReachDirectly(
             @NotNull
-            final Node p_node, final SearchContext p_ctx) {
-        throw new UnsupportedOperationException("Impl me!");
-    }
+            final T p_node);
 
     public abstract void addNode(
             @NotNull
-            final Node p_node);
+            final T p_node);
 
-    public abstract void remove(final Node p_node);
+    public abstract void remove(final T p_node);
 
     public int getWholePathCost() {
         return m_costAndState >>> 2;
@@ -139,9 +120,9 @@ public abstract class Node implements Iterable, Serializable {
      * @return All parents in a row
      */
     @NotNull
-    public Iterator<Node> iterator() {
-        return new Iterator<Node>() {
-            private Node m_current;
+    public Iterator<T> iterator() {
+        return new Iterator<T>() {
+            private T m_current;
             private boolean m_endReached;
 
             public boolean hasNext() {
@@ -149,7 +130,7 @@ public abstract class Node implements Iterable, Serializable {
                     return false;
                 }
                 if (m_current == null) {
-                    m_current = Node.this;
+                    m_current = (T) Node.this;
                     if (m_current.m_parent == null) {
                         return false;
                     }
@@ -159,7 +140,7 @@ public abstract class Node implements Iterable, Serializable {
                 return !m_endReached;
             }
 
-            public Node next() {
+            public T next() {
                 return m_current = m_current.m_parent;
             }
 

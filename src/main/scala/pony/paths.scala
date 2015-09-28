@@ -1,10 +1,70 @@
 package pony
 
-import pony.brain.{HasUniverse, Universe}
+import pony.astar.{AStarSearch, GridNode2DInt, Heuristics}
+import pony.brain.{Base, HasUniverse, Universe}
 
+import scala.collection.JavaConverters._
 import scala.collection.mutable
 
-case class Path(waypoints: Seq[MapTilePosition])
+case class Path(waypoints: Seq[MapTilePosition], solved: Boolean, solvable: Boolean, bestEffort: MapTilePosition)
+
+class PathFinder(mapLayers: MapLayers) {
+  implicit def convBack(gn: GridNode2DInt): MapTilePosition = MapTilePosition.shared(gn.getX, gn.getY)
+
+  class AstarPathFinder(grid: Array[Array[GridNode2DInt]]) {
+    private implicit def conv(mtp: MapTilePosition): GridNode2DInt = grid(mtp.x)(mtp.y)
+
+    def findPath(from: MapTilePosition, to: MapTilePosition): Unit = {
+      val finder = new AStarSearch[GridNode2DInt](from, to)
+      finder.performSearch()
+      val path = finder.getSolution.asScala.map(e => e: MapTilePosition)
+      Path(path, finder.isSolved, !finder.isUnsolvable, finder.getTargetOrNearestReachable)
+    }
+  }
+
+  private def astar(grid: Grid2D) = {
+
+    val asGrid = Array.ofDim[GridNode2DInt](grid.cols, grid.rows)
+    implicit def conv(mtp: MapTilePosition): GridNode2DInt = asGrid(mtp.x)(mtp.y)
+    // fill the grid
+    grid.allFree.foreach { e =>
+      asGrid(e.x)(e.y) = new GridNode2DInt(e.x, e.y) {
+        override def suggestHeuristics(): Heuristics[GridNode2DInt] = {
+          (from: GridNode2DInt, to: GridNode2DInt) => from.distanceTo(to).toInt
+        }
+        override def supportsShortcuts(): Boolean = true
+        override def canReachDirectly(node: GridNode2DInt) = {
+          grid.connectedByLine(e, node)
+        }
+      }
+    }
+    // connect the grid
+    grid.allFree.foreach { mtp =>
+      val (left, right, up, down) = mtp.leftRightUpDown
+      val leftFree = grid.free(left)
+      val rightFree = grid.free(right)
+      val upFree = grid.free(up)
+      val downFree = grid.free(down)
+      val here = asGrid(mtp.x)(mtp.y)
+      if (leftFree) here.addNode(left)
+      if (rightFree) here.addNode(right)
+      if (upFree) here.addNode(up)
+      if (downFree) here.addNode(down)
+      if (leftFree && upFree) here.addNode(mtp.movedBy(-1, -1))
+      if (leftFree && downFree) here.addNode(mtp.movedBy(-1, 1))
+      if (rightFree && upFree) here.addNode(mtp.movedBy(1, -1))
+      if (rightFree && downFree) here.addNode(mtp.movedBy(1, 1))
+    }
+    //save memory
+    grid.allFree.foreach { e =>
+      e.done()
+    }
+
+    asGrid
+  }
+
+  def spawn = new AstarPathFinder(astar(mapLayers.reallyFreeBuildingTiles))
+}
 
 class AreaHelper(source: Grid2D) {
   private val baseOn = source.ensureContainsBlocked
@@ -252,11 +312,11 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   def unblockBuilding_!(where: Area): Unit = {
     plannedBuildings.free_!(where)
   }
+  universe.bases.register((base: Base) => {
+    justWorkerPaths = evalWorkerPaths
+  })
+
   def tick(): Unit = {
-    ifNth(59) {
-      // TODO only do this when a new base is built
-      justWorkerPaths = evalWorkerPaths
-    }
   }
   private def evalWorkerPaths = {
     trace("Re-evaluation of worker paths")

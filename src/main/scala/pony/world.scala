@@ -532,6 +532,10 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
   def spiralAround(center: MapTilePosition, size: Int = 45) = new GeometryHelpers(cols, rows)
                                                               .blockSpiralClockWise(center, size)
 
+  def asNodes = {
+
+  }
+
   override def toString = s"$cols*$rows, $freeCount free"
 
   private val lazyAreas = LazyVal.from {new AreaHelper(self).findFreeAreas}

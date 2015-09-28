@@ -7,7 +7,8 @@ import java.util.zip.{Deflater, ZipEntry, ZipInputStream, ZipOutputStream}
 import bwapi.Game
 import org.apache.commons.io.FileUtils
 
-import scala.util.Try
+import scala.concurrent.Future
+import scala.util.{Failure, Success, Try}
 
 class Renderer(game: Game, private var color: bwapi.Color) {
   def drawLine(from: MapTilePosition, to: MapTilePosition): Unit = {
@@ -190,5 +191,30 @@ object FileStorageLazyVal {
       info(s"Data directory is ${file.getAbsolutePath}")
       assert(file.mkdir())
     }
+  }
+}
+
+class BWFuture[T](future: Future[T], incomplete: T) {
+  def result = future.value match {
+    case Some(Success(x)) => x
+    case Some(Failure(e)) => throw e
+    case _ => incomplete
+  }
+
+}
+
+object BWFuture {
+
+  import scala.concurrent.ExecutionContext.Implicits.global
+
+  def apply[T](produce: => T, ifIncomplete: T) = {
+    val fut = Future {produce}
+    new BWFuture(fut, ifIncomplete)
+  }
+
+  def apply[T](produce: => T) = {
+    val fut = Future {produce}
+    val asOption = fut.map(Some(_))
+    new BWFuture(asOption, None)
   }
 }

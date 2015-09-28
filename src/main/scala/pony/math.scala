@@ -19,6 +19,7 @@ trait HasXY {
 
 }
 case class MapTilePosition(x: Int, y: Int) extends HasXY {
+  def leftRightUpDown = (movedBy(-1, 0), movedBy(1, 0), movedBy(0, -1), movedBy(0, 1))
 
   def asArea = Area(this, this)
 

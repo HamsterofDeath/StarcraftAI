@@ -17,21 +17,18 @@ import java.util.PriorityQueue;
  *
  * @author HamsterofDeath Created 22.12.2007 @ 16:25:24
  */
-public class AStarSearch {
-    public static AStarSearch instance;
+public class AStarSearch<T extends Node<T>> {
     @NotNull
-    final         Heuristics  m_heuristics;
+    final         Heuristics m_heuristics;
     @NotNull
-    private final Node        m_start;
+    private final T          m_start;
     @NotNull
-    private final Node        m_target;
+    private final T          m_target;
     @NotNull
-    private final Collection<Node> m_allOpened = new ArrayList<Node>(100000);
-    @Nullable
-    private final SearchContext m_ctx;
-    private       Comparator<Node>    m_estimationCmp = new Comparator<Node>() {
+    private final Collection<T>    m_allOpened     = new ArrayList<T>(1024);
+    private       Comparator<T>    m_estimationCmp = new Comparator<T>() {
         @SuppressWarnings({"MethodWithMultipleReturnPoints"})
-        public int compare(final Node o1, final Node o2) {
+        public int compare(final T o1, final T o2) {
             final int l_cost2 = o2.getEstimatedTotalCost(m_target, m_heuristics);
             final int l_cost1 = o1.getEstimatedTotalCost(m_target, m_heuristics);
             if (l_cost1 > l_cost2) {
@@ -46,44 +43,20 @@ public class AStarSearch {
         }
     };
     @NotNull
-    private final PriorityQueue<Node> m_open          = new PriorityQueue<Node>(8192, m_estimationCmp);
+    private final PriorityQueue<T> m_open          = new PriorityQueue<T>(8192, m_estimationCmp);
     @Nullable
-    private List<Node>        m_solution;
+    private List<T>           m_solution;
     private SearchResultState m_searchResultState;
-    private Node              m_bestFound;
+    private T                 m_bestFound;
 
     public AStarSearch(
             @NotNull
-            final Node p_start,
+            final T p_start,
             @NotNull
-            final Node p_target,
+            final T p_target,
             @Nullable
             final Heuristics p_heuristics) {
-        this(p_start, p_target, p_heuristics, null);
-    }
-
-    public AStarSearch(
-            @NotNull
-            final Node p_start,
-            @NotNull
-            final Node p_target,
-            @NotNull
-            final SearchContext p_ctx) {
-        this(p_start, p_target, null, p_ctx);
-    }
-
-    public AStarSearch(
-            @NotNull
-            final Node p_start,
-            @NotNull
-            final Node p_target,
-            @Nullable
-            final Heuristics p_heuristics,
-            @Nullable
-            final SearchContext p_ctx) {
         super();
-        m_ctx = p_ctx;
-        instance = this;
         m_start = p_start;
         m_target = p_target;
         if (p_heuristics == null) {
@@ -95,9 +68,9 @@ public class AStarSearch {
 
     public AStarSearch(
             @NotNull
-            final Node p_start,
+            final T p_start,
             @NotNull
-            final Node p_target) {
+            final T p_target) {
         this(p_start, p_target, p_start.suggestHeuristics());
     }
 
@@ -109,7 +82,7 @@ public class AStarSearch {
             while (m_searchResultState == SearchResultState.RUNNING) {
 
                 @Nullable
-                final Node l_bestCandidate = m_bestFound = m_open.peek();
+                final T l_bestCandidate = m_bestFound = m_open.peek();
                 if (l_bestCandidate == null) {
                     m_searchResultState = SearchResultState.NOT_SOLVABLE;
                 } else {
@@ -118,8 +91,8 @@ public class AStarSearch {
                     if (l_bestCandidate == m_target) {
                         m_searchResultState = SearchResultState.SOLUTION_FOUND;
                     } else {
-                        final Node[] l_nodes = l_bestCandidate.getNodes();
-                        for (final Node l_node : l_nodes) {
+                        final T[] l_nodes = (T[]) l_bestCandidate.getNodes();
+                        for (final T l_node : l_nodes) {
                             //for performance reasons, null means "no more elements". this way, a fixed size
                             // array can be (re)used
                             if (l_node == null) {
@@ -151,12 +124,12 @@ public class AStarSearch {
         }
 
         if (m_target.getParent() != null) {
-            final List<Node> l_list = CollectionUtils.asList(m_target.iterator());
+            final List<T> l_list = CollectionUtils.asList(m_target.iterator());
             Collections.reverse(l_list);
             optimizePath(l_list);
             m_solution = l_list;
         } else {
-            final List<Node> l_list = CollectionUtils.asList(m_bestFound.iterator());
+            final List<T> l_list = CollectionUtils.asList(m_bestFound.iterator());
             Collections.reverse(l_list);
             optimizePath(l_list);
             m_solution = l_list;
@@ -169,12 +142,12 @@ public class AStarSearch {
         return this;
     }
 
-    private void optimizePath(final List<Node> p_list) {
+    private void optimizePath(final List<T> p_list) {
         if (!p_list.isEmpty()) {
             if (p_list.get(0).supportsShortcuts()) {
                 for (int i = 0; i < p_list.size() - 2; i++) {
                     final Node l_node = p_list.get(i);
-                    while (p_list.size() - i > 2 && l_node.canReachDirectly(p_list.get(i + 2), m_ctx)) {
+                    while (p_list.size() - i > 2 && l_node.canReachDirectly(p_list.get(i + 2))) {
                         p_list.remove(i + 1);
                     }
                 }
@@ -195,7 +168,7 @@ public class AStarSearch {
         m_allOpened.add(m_start);
     }
 
-    private void open(final Node p_node, final Node p_parent) {
+    private void open(final T p_node, final T p_parent) {
         m_allOpened.add(p_node);
         p_node.open();
         p_node.setNewParent(p_parent);
@@ -208,7 +181,7 @@ public class AStarSearch {
     }
 
     @Nullable
-    public Node getTargetOrNearestReachable() {
+    public T getTargetOrNearestReachable() {
         if (m_searchResultState == SearchResultState.SOLUTION_FOUND) {
             return m_target;
         } else if (m_searchResultState == SearchResultState.NOT_SOLVABLE && m_bestFound != null) {
@@ -217,17 +190,17 @@ public class AStarSearch {
         return null;
     }
 
-    public int evalCostToGoal(final Node p_tNode) {
+    public int evalCostToGoal(final T p_tNode) {
         return m_heuristics.estimateCost(p_tNode, m_target);
     }
 
     @NotNull
-    public Node getTarget() {
+    public T getTarget() {
         return m_target;
     }
 
     @Nullable
-    public List<Node> getSolution() {
+    public List<T> getSolution() {
         return m_solution;
     }
 

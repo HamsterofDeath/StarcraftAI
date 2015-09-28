@@ -5,7 +5,6 @@ import pony.brain.Base
 
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
-import scala.concurrent.Future
 
 case class ResourceArea(patches: Option[MineralPatchGroup], geysirs: Set[Geysir]) {
   val resources = patches.map(_.patches).getOrElse(Nil) ++ geysirs
@@ -63,14 +62,12 @@ class StrategicMap(resources: Seq[ResourceArea], walkable: Grid2D, game: Game) {
       mineTiles.sortBy(_.distanceToSquared(chokePoint.center)).toVector
     }
 
-    import scala.concurrent.ExecutionContext.Implicits.global
+    private lazy val scatteredPointsOutside = BWFuture(evalScatteredPoints(mergedArea.blocked), Vector.empty)
+    private lazy val scatteredPointsInside  = BWFuture(evalScatteredPoints(mergedArea.free), Vector.empty)
 
-    private lazy val scatteredPointsOutside = Future {evalScatteredPoints(mergedArea.blocked)}
-    private lazy val scatteredPointsInside  = Future {evalScatteredPoints(mergedArea.free)}
+    def pointsOutside = scatteredPointsOutside.result
 
-    def pointsOutside = scatteredPointsOutside.getOrElse(Vector.empty)
-
-    def pointsInside = scatteredPointsInside.getOrElse(Vector.empty)
+    def pointsInside = scatteredPointsInside.result
   }
 
   def defenseLineOf(base: Base): Option[FrontLine] = defenseLineOf(base.mainBuilding.area.centerTile)

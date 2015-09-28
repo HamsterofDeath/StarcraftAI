@@ -2,8 +2,6 @@ import org.pmw.tinylog
 import org.pmw.tinylog.{Configurator, Level}
 
 import scala.collection.mutable
-import scala.concurrent.Future
-import scala.util.{Failure, Success}
 
 /**
  * Created by HoD on 01.08.2015.
@@ -102,15 +100,6 @@ package object pony {
       buff.remove(where)
     }
   }
-  implicit class RichFuture[T](val f: Future[T]) extends AnyVal {
-    def getOrElse(ifIncomplete: T) = f.value match {
-      case Some(Success(x)) => x
-      case Some(Failure(e)) => throw e
-      case _ => ifIncomplete
-    }
-
-  }
-
   implicit class RichBoolean(val b: Boolean) extends AnyVal {
     def not = !b
     def ifElse[T](ifTrue: T, ifFalse: T) = if (b) ifTrue else ifFalse
