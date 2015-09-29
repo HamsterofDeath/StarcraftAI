@@ -25,10 +25,25 @@ trait HasUniverse {
   def world = universe.world
   def strategicMap = universe.strategicMap
   def strategy = universe.strategy
+  def worldDominationPlan = universe.worldDominationPlan
   def ifNth(nth: Int)(u: => Unit) = {
     if (universe.currentTick % nth == 0) {
       u
     }
+  }
+}
+
+trait HasLazyVals {
+  private val lazyVals = ArrayBuffer.empty[LazyVal[_]]
+
+  def oncePerTick[T](t: => T) = {
+    val l = LazyVal.from(t)
+    lazyVals += l
+    l
+  }
+
+  def onTick(): Unit = {
+    lazyVals.foreach(_.invalidate())
   }
 }
 
@@ -157,10 +172,12 @@ class TwilightSparkle(world: DefaultWorld) {
     override def strategicMap = world.strategicMap
     override def pathFinder = self.pathFinder
     override def strategy = self.strategy
+    override def worldDominationPlan = self.worldDomination
   }
-  private val bases     = new Bases(world)
-  private val resources = new ResourceManager(universe)
-  private val strategy  = new Strategies(universe)
+  private val bases           = new Bases(world)
+  private val resources       = new ResourceManager(universe)
+  private val strategy        = new Strategies(universe)
+  private val worldDomination = new WorldDominationPlan(universe)
 
   def plugins = aiModules
 

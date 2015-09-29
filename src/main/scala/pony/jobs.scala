@@ -15,11 +15,13 @@ case class SecondPriority(importance: Double) {
 }
 
 object SecondPriority {
-  val None    = SecondPriority(0)
-  val Less    = SecondPriority(0.25)
-  val Default = SecondPriority(0.5)
-  val More    = SecondPriority(0.75)
-  val Max     = SecondPriority(1.0)
+  val None     = SecondPriority(0)
+  val EvenLess = SecondPriority(0.1)
+  val Less     = SecondPriority(0.25)
+  val Default  = SecondPriority(0.5)
+  val More     = SecondPriority(0.75)
+  val EvenMore = SecondPriority(0.9)
+  val Max      = SecondPriority(1.0)
 
   implicit val ordering = Ordering.by[SecondPriority, Double](_.importance)
 }

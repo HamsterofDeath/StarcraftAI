@@ -31,6 +31,7 @@ case class MapTilePosition(x: Int, y: Int) extends HasXY {
     movedBy(xRand.toInt, yRand.toInt)
   }
   def movedBy(offX: Int, offY: Int) = MapTilePosition.shared(x + offX, y + offY)
+  def /(i: Int) = MapTilePosition.shared(x / i, y / i)
   def asTilePosition = new TilePosition(x, y)
   def asNative = MapTilePosition.nativeShared(x, y)
   def mapX = tileSize * x

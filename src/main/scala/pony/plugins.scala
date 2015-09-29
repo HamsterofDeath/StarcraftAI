@@ -3,7 +3,6 @@ package pony
 import java.text.DecimalFormat
 
 import bwapi.Color
-import pony.Orders.AttackMove
 import pony.brain.modules.{GatherMineralsAtSinglePatch, ProvideExpansions}
 import pony.brain.{HasUniverse, TwilightSparkle, UnitWithJob, Universe}
 
@@ -317,27 +316,18 @@ class DebugHelper(main: MainAI) extends AIPlugIn with HasUniverse {
                   unitManager.jobByUnitIdString(id).foreach {debugUnit}
               }
             case "attack" | "a" =>
-              params match {
+              val target = params match {
                 case List(x, id) if x == "m" || x == "minerals" =>
-                  world.resourceAnalyzer.groups.find(_.patchId.toString == id).foreach { group =>
-                    ownUnits.mineByType[Mobile].filterNot(_.isInstanceOf[WorkerUnit]).foreach { u =>
-                      world.orderQueue.queue_!(new AttackMove(u, group.center.randomized(12)))
-                    }
-                  }
+                  world.resourceAnalyzer.groups.find(_.patchId.toString == id).map(_.center)
 
                 case List(x, id) if x == "c" || x == "choke" =>
-                  strategicMap.domains.find(_._1.index.toString == id).foreach { choke =>
-                    ownUnits.mineByType[Mobile].filterNot(_.isInstanceOf[WorkerUnit]).foreach { u =>
-                      world.orderQueue.queue_!(new AttackMove(u, choke._1.center.randomized(3)))
-                    }
-                  }
+                  strategicMap.domains.find(_._1.index.toString == id).map(_._1.center)
 
                 case List(x, id) if x == "n" || x == "narrow" =>
-                  strategicMap.narrowPoints.find(_.index.toString == id).foreach { narrow =>
-                    ownUnits.mineByType[Mobile].filterNot(_.isInstanceOf[WorkerUnit]).foreach { u =>
-                      world.orderQueue.queue_!(new AttackMove(u, narrow.where.randomized(3)))
-                    }
-                  }
+                  strategicMap.narrowPoints.find(_.index.toString == id).map(_.where)
+              }
+              target.foreach { where =>
+                main.brain.universe.worldDominationPlan.initiateAttack(where)
               }
           }
         case Nil =>

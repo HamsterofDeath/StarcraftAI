@@ -98,12 +98,20 @@ class Renderer(game: Game, private var color: bwapi.Color) {
   }
 }
 
-class LazyVal[T](gen: => T) extends Serializable {
+class LazyVal[T](gen: => T, onValueChange: Option[() => Unit]) extends Serializable {
   private var evaluated = false
   private var value: T  = _
   def get = {
     if (!evaluated)
-      value = gen
+      if (onValueChange.isDefined) {
+        val newVal = gen
+        if (newVal != value) {
+          onValueChange.foreach(_ ())
+          value = newVal
+        }
+      } else {
+        value = gen
+      }
 
     evaluated = true
     value
@@ -111,15 +119,18 @@ class LazyVal[T](gen: => T) extends Serializable {
 
   def invalidate(): Unit = {
     evaluated = false
-    value = null.asInstanceOf[T]
+    if (onValueChange.isEmpty) {
+      value = null.asInstanceOf[T]
+    }
   }
 }
 
 object LazyVal {
-  def from[T](t: => T) = new LazyVal(t)
+  def from[T](t: => T) = new LazyVal(t, None)
+  def from[T](t: => T, onValueChange: => Unit) = new LazyVal(t, Some(() => onValueChange))
 }
 
-class FileStorageLazyVal[T](gen: => T, fileName: String) extends LazyVal(gen) {
+class FileStorageLazyVal[T](gen: => T, fileName: String) extends LazyVal(gen, None) {
 
   private var loaded = false
   override def invalidate(): Unit = {

@@ -4,6 +4,7 @@ package brain
 import java.text.DecimalFormat
 
 import pony.brain.modules.Strategy.Strategies
+import pony.brain.modules.WorldDominationPlan
 
 import scala.collection.mutable.ArrayBuffer
 
@@ -22,6 +23,7 @@ trait Universe {
   def strategicMap: StrategicMap
   def pathFinder: PathFinder
   def strategy: Strategies
+  def worldDominationPlan: WorldDominationPlan
   def resourceFields = world.resourceAnalyzer
   private def evalRace = (myUnits.allMobiles ++ myUnits.allBuildings).next.mySCRace
   private val race0 = LazyVal.from(evalRace)

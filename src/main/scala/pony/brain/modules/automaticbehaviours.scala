@@ -71,14 +71,13 @@ object Terran {
                       /*
                                             new RepairDamagedBuilding ::
                                             new RepairDamagedUnit ::
-                                           new RevealHiddenUnitsPermanenly ::
+                                           new UseComsat ::
                                            new Scout ::
                                            new DoNotStray ::
                                            new HealDamagedUnit ::
                                            new FixMedicalProblem ::
                                            new BlindDetector ::
-                                           new Evade ::
-                                           new StopToFire ::
+                                           new Dance ::
                       */
                       new FocusFire(universe) ::
                       Nil).map(_.cast)
@@ -95,6 +94,25 @@ object Terran {
 
   class ContinueInterruptedConstruction(universe: Universe) extends DefaultBehaviour[SCV](universe) {
     override protected def lift(t: SCV): SingleUnitBehaviour[SCV] = ???
+  }
+
+  class MigrateTowardsPosition(universe: Universe) extends DefaultBehaviour[Mobile](universe) {
+    override def priority = SecondPriority.Less
+
+    override def canControl(u: WrapsUnit): Boolean = super.canControl(u) && !u.isInstanceOf[WorkerUnit]
+
+    override def onTick(): Unit = {
+      super.onTick()
+    }
+
+    override protected def lift(t: Mobile): SingleUnitBehaviour[Mobile] = new SingleUnitBehaviour[Mobile](t, meta) {
+      override def shortName: String = "M"
+      override def toOrder(what: Objective) = {
+        worldDominationPlan.attackOf(t).map { attack =>
+          attack.suggestActionFor(t).asOrder.toList
+        }.getOrElse(Nil)
+      }
+    }
   }
 
   class StimSelf(universe: Universe) extends DefaultBehaviour[CanUseStimpack](universe) {
@@ -145,51 +163,6 @@ object Terran {
     }
   }
 
-  class FormationHelper(override val universe: Universe, distance: Int = 0) extends HasUniverse {
-    def allOutsideNonBlacklisted = {
-      val map = mapLayers.reallyFreeBuildingTiles
-      defenseLines.iterator.flatMap(_.pointsOutside).filterNot(blacklisted).filter(map.free)
-    }
-
-    def allInsideNonBlacklisted = {
-      val map = mapLayers.reallyFreeBuildingTiles
-      defenseLines.iterator.flatMap(_.pointsInside).filterNot(blacklisted).filter(map.free)
-    }
-
-    def blacklisted(e: MapTilePosition) = blocked.contains(e)
-
-    def cleanBlacklist(dispose: (MapTilePosition, BlacklistReason) => Boolean) = {
-      blocked.filter(e => dispose(e._1, e._2))
-      .foreach(e => whiteList_!(e._1))
-    }
-
-    private val myDefenseLines = LazyVal.from {
-      bases.bases.flatMap { base =>
-        strategicMap.defenseLineOf(base).map(_.tileDistance(distance))
-      }
-    }
-
-    universe.bases.register((base: Base) => {
-      myDefenseLines.invalidate()
-    })
-
-    def defenseLines = myDefenseLines.get
-
-    def blackList_!(tile: MapTilePosition): Unit = {
-      blocked.put(tile, BlacklistReason(universe.currentTick))
-    }
-
-    def whiteList_!(tilePosition: MapTilePosition): Unit = {
-      blocked.remove(tilePosition)
-    }
-
-    def reasonForBlacklisting(tilePosition: MapTilePosition) = blocked.get(tilePosition)
-
-    private val blocked = mutable.HashMap.empty[MapTilePosition, BlacklistReason]
-
-    case class BlacklistReason(when: Int)
-
-  }
 
   class GoToInitialPosition(universe: Universe) extends DefaultBehaviour[Mobile](universe) {
     private val helper = new FormationHelper(universe)
@@ -225,7 +198,7 @@ object Terran {
       val neutralResourceFields = universe.resourceFields.resourceAreas.filterNot { field =>
         universe.bases.isCovered(field)
       }.map {_.mostAnnoyingMinePosition}
-      defense ++ neutralResourceFields
+      defense //++ neutralResourceFields
     }
 
     override def renderDebug(renderer: Renderer): Unit = {
@@ -241,7 +214,7 @@ object Terran {
       }
     }
 
-    override def priority = SecondPriority.Less
+    override def priority = SecondPriority.EvenLess
 
     override protected def lift(t: Vulture): SingleUnitBehaviour[Vulture] = new SingleUnitBehaviour[Vulture](t, meta) {
 

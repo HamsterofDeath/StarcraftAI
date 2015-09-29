@@ -312,6 +312,13 @@ trait PreHiringResult[T <: WrapsUnit] {
     case one: ExactlyOneSuccess[T] => todo(one.onlyOne)
     case _ =>
   }
+
+  def ifNotZero[X](todo: Seq[T] => X) = this match {
+    case many: AtLeastOneSuccess[T] =>
+      val canHireThese = many.canHire.valuesIterator.flatten.toVector
+      todo(canHireThese)
+    case _ =>
+  }
 }
 
 class FailedPreHiringResult[T <: WrapsUnit] extends PreHiringResult[T] {
@@ -858,7 +865,8 @@ case object HoldPosition extends Behaviour
 case object FallBack extends Behaviour
 case object Undefined extends Behaviour
 
-case class Objective(target: Option[(MapTilePosition, Int)], how: Behaviour)
+case class TargetPosition(where: MapTilePosition, randomize: Int)
+case class Objective(target: Option[TargetPosition], how: Behaviour)
 
 object Objective {
   val initial = Objective(None, Undefined)

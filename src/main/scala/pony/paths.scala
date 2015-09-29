@@ -6,7 +6,11 @@ import pony.brain.{Base, HasUniverse, Universe}
 import scala.collection.JavaConverters._
 import scala.collection.mutable
 
-case class Path(waypoints: Seq[MapTilePosition], solved: Boolean, solvable: Boolean, bestEffort: MapTilePosition)
+case class Path(waypoints: Seq[MapTilePosition], solved: Boolean, solvable: Boolean, bestEffort: MapTilePosition) {
+  def nextFor(t: Mobile) = {
+    waypoints.minBy(_.distanceToSquared(t.currentTile))
+  }
+}
 
 class PathFinder(mapLayers: MapLayers) {
   implicit def convBack(gn: GridNode2DInt): MapTilePosition = MapTilePosition.shared(gn.getX, gn.getY)

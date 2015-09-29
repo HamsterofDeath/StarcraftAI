@@ -2,6 +2,117 @@ package pony
 package brain
 package modules
 
+import scala.collection.mutable
+import scala.collection.mutable.ArrayBuffer
+
+class FormationHelper(override val universe: Universe, distance: Int = 0) extends HasUniverse {
+  def allOutsideNonBlacklisted = {
+    val map = mapLayers.reallyFreeBuildingTiles
+    defenseLines.iterator.flatMap(_.pointsOutside).filterNot(blacklisted).filter(map.free)
+  }
+
+  def allInsideNonBlacklisted = {
+    val map = mapLayers.reallyFreeBuildingTiles
+    defenseLines.iterator.flatMap(_.pointsInside).filterNot(blacklisted).filter(map.free)
+  }
+
+  def blacklisted(e: MapTilePosition) = blocked.contains(e)
+
+  def cleanBlacklist(dispose: (MapTilePosition, BlacklistReason) => Boolean) = {
+    blocked.filter(e => dispose(e._1, e._2))
+    .foreach(e => whiteList_!(e._1))
+  }
+
+  private val myDefenseLines = LazyVal.from {
+    bases.bases.flatMap { base =>
+      strategicMap.defenseLineOf(base).map(_.tileDistance(distance))
+    }
+  }
+
+  universe.bases.register((base: Base) => {
+    myDefenseLines.invalidate()
+  })
+
+  def defenseLines = myDefenseLines.get
+
+  def blackList_!(tile: MapTilePosition): Unit = {
+    blocked.put(tile, BlacklistReason(universe.currentTick))
+  }
+
+  def whiteList_!(tilePosition: MapTilePosition): Unit = {
+    blocked.remove(tilePosition)
+  }
+
+  def reasonForBlacklisting(tilePosition: MapTilePosition) = blocked.get(tilePosition)
+
+  private val blocked = mutable.HashMap.empty[MapTilePosition, BlacklistReason]
+
+  case class BlacklistReason(when: Int)
+
+}
+
+class WorldDominationPlan(override val universe: Universe) extends HasUniverse with HasLazyVals {
+
+  universe.register_!(() => {
+    onTick()
+    attacks.foreach(_.onTick())
+  })
+
+  trait Action {
+    def asOrder: UnitOrder
+  }
+
+  case class MoveToPosition(who: Mobile, where: MapTilePosition) extends Action {
+    override def asOrder = Orders.Move(who, where)
+  }
+  case class StayInPosition(who: Mobile) extends Action {
+    override def asOrder = Orders.NoUpdate(who)
+  }
+
+  class Attack(private var currentForce: Set[Mobile], where: TargetPosition) {
+    class SubObjective
+
+    def onTick(): Unit = {
+      currentForce = currentForce.filter(_.isInGame)
+    }
+
+    def force = currentForce
+
+    private val centerOfForce = oncePerTick {
+      currentForce.foldLeft(MapTilePosition.shared(0, 0))((acc, e) =>
+        acc.movedBy(e.currentTile)
+      ) / currentForce.size
+    }
+
+    def currentCenter = centerOfForce.get
+
+    private val pathToFollow = universe.pathFinder.findPath(currentCenter, where.where)
+
+    def suggestActionFor(t: Mobile) = {
+      pathToFollow.result match {
+        case None =>
+          StayInPosition(t)
+        case Some(path) =>
+          val whereTo = path.nextFor(t)
+          MoveToPosition(t, whereTo)
+      }
+    }
+  }
+
+  private val attacks = ArrayBuffer.empty[Attack]
+
+  def attackOf(m: Mobile) = attacks.find(_.force(m))
+
+  def initiateAttack(where: MapTilePosition): Unit = {
+    val employer = new Employer[Mobile](universe)
+    val req = UnitJobRequests.idleOfType(employer, classOf[Mobile], 9999)
+    val result = unitManager.request(req, buildIfNoneAvailable = false)
+    result.ifNotZero { seq =>
+      attacks += new Attack(seq.toSet, TargetPosition(where, 10))
+    }
+  }
+}
+
 trait AddonRequestHelper extends AIModule[CanBuildAddons] {
   self =>
 

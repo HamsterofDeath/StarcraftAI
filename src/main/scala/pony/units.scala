@@ -2,10 +2,10 @@ package pony
 
 import bwapi.{Order, Race, TechType, Unit => APIUnit, UnitType, UpgradeType, WeaponType}
 import pony.Upgrades.{IsTech, SinglePointMagicSpell, SingleTargetMagicSpell}
-import pony.brain.{HasUniverse, PriorityChain, UnitWithJob, Universe}
+import pony.brain.{HasLazyVals, HasUniverse, PriorityChain, UnitWithJob, Universe}
 
 import scala.collection.immutable.HashMap
-import scala.collection.mutable.{ArrayBuffer, ListBuffer}
+import scala.collection.mutable.ListBuffer
 
 
 trait NiceToString extends WrapsUnit {
@@ -42,7 +42,7 @@ trait OrderHistorySupport extends WrapsUnit {
   }
 }
 
-trait WrapsUnit extends HasUniverse {
+trait WrapsUnit extends HasUniverse with HasLazyVals {
 
   def currentOrder = curOrder.get
 
@@ -50,15 +50,8 @@ trait WrapsUnit extends HasUniverse {
   def isInGame = true
   def canDoDamage = false
 
-  private val lazyVals = ArrayBuffer.empty[LazyVal[_]]
 
   private val curOrder = oncePerTick {nativeUnit.getOrder}
-
-  def oncePerTick[T](t: => T) = {
-    val l = LazyVal.from(t)
-    lazyVals += l
-    l
-  }
 
   private var creationTick = -1
   val unitId            = WrapsUnit.nextId
@@ -97,8 +90,8 @@ trait WrapsUnit extends HasUniverse {
   private val unfinished = oncePerTick(nativeUnit.getRemainingBuildTime > 0 || !nativeUnit.isCompleted)
 
   def isBeingCreated = unfinished.get
-  def onTick() = {
-    lazyVals.foreach(_.invalidate())
+  override def onTick() = {
+    super.onTick()
   }
 }
 
