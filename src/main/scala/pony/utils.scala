@@ -98,7 +98,7 @@ class Renderer(game: Game, private var color: bwapi.Color) {
   }
 }
 
-class LazyVal[T](gen: => T, onValueChange: Option[() => Unit]) extends Serializable {
+class LazyVal[T](gen: => T, onValueChange: Option[() => Unit] = None) extends Serializable {
   private var evaluated = false
   private var value: T  = _
   def get = {
