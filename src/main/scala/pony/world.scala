@@ -675,7 +675,7 @@ class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet, bitSetContains
   }
   def asReadOnly: Grid2D = this
 
-  def asReadOnlyCopyifMutable = new Grid2D(cols, rows, bitSet.clone.toImmutable)
+  override def asReadOnlyCopyifMutable = new Grid2D(cols, rows, bitSet.clone.toImmutable)
 
   def or_!(other: MutableGrid2D) = {
     if (containsBlocked == other.containsBlocked) {
