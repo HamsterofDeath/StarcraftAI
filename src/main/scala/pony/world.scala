@@ -428,6 +428,7 @@ class Units(game: Game, hostile: Boolean) {
   }
   def allBuildings = allByType[Building]
   def allMobiles = allByType[Mobile]
+  def allCompletedMobiles = allMobiles.filterNot(_.isBeingCreated)
   def allAddonBuilders = allByType[CanBuildAddons]
   def allAddons = allByType[Addon]
   def existsIncomplete(c: Class[_ <: WrapsUnit]) = allByClass(c).exists(_.isBeingCreated)
@@ -527,6 +528,10 @@ class Units(game: Game, hostile: Boolean) {
 class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
              protected val containsBlocked: Boolean = true) extends Serializable {
   self =>
+
+  def nearestFree(p: MapTilePosition) = {
+    spiralAround(p).find(free)
+  }
   def blockedMutableCopy = new MutableGrid2D(cols, rows, mutable.BitSet.empty, false)
 
   def spiralAround(center: MapTilePosition, size: Int = 45) = new GeometryHelpers(cols, rows)
@@ -620,7 +625,9 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
   def blocked = size - walkable
   def walkable = areaDataBitSet.size
   def blocked(p: MapTilePosition): Boolean = !free(p)
+  def includesAndBlocked(p: MapTilePosition): Boolean = includes(p) && blocked(p)
   def free(p: MapTilePosition): Boolean = free(p.x, p.y)
+  def containsAndFree(p: MapTilePosition): Boolean = includes(p) && free(p)
   def containsAsData(x: Int, y: Int): Boolean = !free(x, y)
   def allFree = if (containsBlocked) allIndexes.filterNot(areaDataBitSet).map(indexToTile) else bitSetToTiles
   def all: Iterator[MapTilePosition] = new Iterator[MapTilePosition] {
@@ -788,6 +795,9 @@ case class MineralPatchGroup(patchId: Int) {
 class AnalyzedMap(game: Game) {
   val sizeX = game.mapWidth() * 4
   val sizeY = game.mapHeight() * 4
+
+  val tileSizeX = game.mapWidth()
+  val tileSizeY = game.mapHeight()
 
   val empty       = new Grid2D(sizeX, sizeY, Set.empty)
   val emptyZoomed = empty.zoomedOut

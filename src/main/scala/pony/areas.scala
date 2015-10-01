@@ -3,7 +3,6 @@ package pony
 import bwapi.Game
 import pony.brain.Base
 
-import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
 case class ResourceArea(patches: Option[MineralPatchGroup], geysirs: Set[Geysir]) {
@@ -116,8 +115,7 @@ class StrategicMap(resources: Seq[ResourceArea], walkable: Grid2D, game: Game) {
         }
       }.map { case (a, b) => Line(a.a, b.b) }.seq
     }
-    val byReferencePoint = new
-        mutable.HashMap[MapTilePosition, mutable.Set[Line]] with mutable.MultiMap[MapTilePosition, Line]
+    val byReferencePoint = multiMap[MapTilePosition, Line]
     tooMany.foreach { line =>
       val close = byReferencePoint.filter(_._1.distanceTo(line.center) <= 15)
                   .minByOpt(_._1.distanceTo(line.center))
@@ -204,6 +202,7 @@ class StrategicMap(resources: Seq[ResourceArea], walkable: Grid2D, game: Game) {
       }.seq
     }
 
+    println("\nGrouping choke points...")
     val groupedByArea = tooMany.filter(_._2.size > 1)
                         .groupBy(_._2.values.toSet)
     val reduced = groupedByArea.values.map { manyWithSameValue =>
@@ -216,9 +215,11 @@ class StrategicMap(resources: Seq[ResourceArea], walkable: Grid2D, game: Game) {
       manyWithSameValue.minBy(_._1.center.distanceToSquared(center))
     }.toVector
     val complete = reduced.zipWithIndex.map { case ((choke, value), index) => choke.copy(index = index) -> value }
-    complete.map { case (choke, map) =>
+    val ret = complete.map { case (choke, map) =>
       choke -> map.map { case (area, res) => area -> res.map(_.coveredTiles) }
     }
+    println("Done!")
+    ret
   }, s"mapdata_${game.mapHash()}_${game.mapName()}")
 
   private val myDomains = LazyVal.from {

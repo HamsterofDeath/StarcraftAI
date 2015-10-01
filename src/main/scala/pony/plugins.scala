@@ -108,10 +108,33 @@ class UnitSecondLevelJobRenderer(override val universe: Universe) extends AIPlug
   override def lazyWorld: DefaultWorld = universe.world
 }
 
+class PathDebugRenderer(override val universe: Universe) extends AIPlugIn with HasUniverse {
+  override protected def tickPlugIn(): Unit = {
+    lazyWorld.debugger.debugRender { renderer =>
+      renderer.in_!(Color.Green)
+      universe.worldDominationPlan.allAttacks.foreach { attack =>
+        val center = attack.currentCenter
+        val count = attack.force.size
+        renderer.drawCircleAround(center.asMapPosition, math.round(math.sqrt(count)).toInt)
+        attack.completePath.result.foreach { path =>
+          var prev = Option.empty[MapTilePosition]
+          path.waypoints.zipWithIndex.foreach { case (tile, index) =>
+            renderer.drawTextAtTile(s"P$index", tile)
+            prev.foreach { p =>
+              renderer.drawLine(p, tile)
+            }
+            prev = Some(tile)
+          }
+        }
+      }
+    }
+  }
+}
+
 class UnitDebugRenderer(override val universe: Universe) extends AIPlugIn with HasUniverse {
   override protected def tickPlugIn(): Unit = {
     lazyWorld.debugger.debugRender { renderer =>
-      universe.myUnits.allMobiles.filter(_.isSelected).foreach { m =>
+      universe.myUnits.allCompletedMobiles.filter(_.isSelected).foreach { m =>
         val center = m.currentPosition
         m match {
           case a: AirWeapon =>
@@ -127,7 +150,7 @@ class UnitDebugRenderer(override val universe: Universe) extends AIPlugIn with H
         }
       }
 
-      universe.enemyUnits.allMobiles.filter(_.isHarmlessNow).foreach { cd =>
+      universe.enemyUnits.allCompletedMobiles.filter(_.isHarmlessNow).foreach { cd =>
         renderer.in_!(Color.Green).drawCrossedOutOnTile(cd.currentTile)
       }
     }
@@ -151,10 +174,12 @@ class StatsRenderer(override val universe: Universe) extends AIPlugIn with HasUn
 
       debugString += {
         val locked = resources.lockedResources
+        val forceLocked = resources.forceLocks
         val locks = resources.detailedLocks
-        val counts = locks.map(_.whatFor).groupBy(identity).map { case (c, am) => c -> am.size }
+        val allLocks = forceLocked ++ locks
+        val counts = allLocks.map(_.whatFor).groupBy(identity).map { case (c, am) => c -> am.size }
         val details = counts.toList.map { case (k, v) => s"${k.className}*$v" }.mkString(", ")
-        s"${locked.minerals}m, ${locked.gas}g, ${locked.supply}s locked, ${locks.size} locks, $details"
+        s"${locked.minerals}m, ${locked.gas}g, ${locked.supply}s locked, ${allLocks.size} locks, $details"
       }
 
       debugString += {

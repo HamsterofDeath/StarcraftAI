@@ -24,6 +24,8 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
     }
   }
 
+  def forceLocks = lockedWithoutFunds.toList
+
   def forceLockInternal_![T <: WrapsUnit](req: ResourceRequests, employer: Employer[T]) = {
     if (!isAlreadyForceLocked(req, employer)) {
       lockedWithoutFunds += LockedResources(req, employer)

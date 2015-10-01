@@ -5,7 +5,6 @@ import pony.brain.modules.Strategy.Strategies
 import pony.brain.modules._
 
 import scala.collection.mutable.ArrayBuffer
-import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, Future}
 
@@ -173,6 +172,7 @@ class TwilightSparkle(world: DefaultWorld) {
     override def pathFinder = self.pathFinder
     override def strategy = self.strategy
     override def worldDominationPlan = self.worldDomination
+    override def unitGrid = self.unitGrid
   }
   private val bases           = new Bases(world)
   private val resources       = new ResourceManager(universe)
@@ -201,15 +201,13 @@ class TwilightSparkle(world: DefaultWorld) {
   private val upgradeManager = new UpgradeManager(universe)
   private val maps           = new MapLayers(universe)
   private val pathFinder     = new PathFinder(maps)
+  private val unitGrid       = new UnitGrid(universe)
 
   def pluginByType[T <: AIModule[_]:Manifest] = {
     val c = manifest[T].runtimeClass
     aiModules.find(e => c.isAssignableFrom(e.getClass)).get.asInstanceOf[T]
   }
   def queueOrdersForTick(): Unit = {
-    if (world.isFirstTick) {
-      bases.findMainBase()
-    }
 
     world.enemyUnits.consumeFresh_! {_.init_!(universe)}
 
@@ -218,6 +216,8 @@ class TwilightSparkle(world: DefaultWorld) {
     unitManager.tick()
     strategy.tick()
     bases.tick()
+    worldDomination.onTick()
+    unitGrid.onTick()
 
     val tick = world.tickCount
 
@@ -258,12 +258,11 @@ class Bases(world: DefaultWorld) {
 
   private val newBaseListeners = ArrayBuffer.empty[NewBaseListener]
 
-  def register(newBaseListener: NewBaseListener): Unit = {
+  def register(newBaseListener: NewBaseListener, notifyForExisting: Boolean): Unit = {
     newBaseListeners += newBaseListener
-  }
-
-  def findMainBase(): Unit = {
-    world.myUnits.firstByType[MainBuilding].foreach {myBases += new Base(_)(world)}
+    if (notifyForExisting) {
+      myBases.foreach(newBaseListener.newBase)
+    }
   }
 }
 trait NewBaseListener {

@@ -5,24 +5,41 @@ import pony.brain.{Base, HasUniverse, Universe}
 
 import scala.collection.JavaConverters._
 import scala.collection.mutable
+import scala.collection.mutable.ArrayBuffer
 
-case class Path(waypoints: Seq[MapTilePosition], solved: Boolean, solvable: Boolean, bestEffort: MapTilePosition) {
+class MigrationPath(follow: Path) {
+  private val remaining = new mutable.HashMap[Mobile, ArrayBuffer[MapTilePosition]]
+
   def nextFor(t: Mobile) = {
-    waypoints.minBy(_.distanceToSquared(t.currentTile))
+    val todo = remaining.getOrElseUpdate(t, ArrayBuffer.empty ++ follow.waypoints)
+    val closest = todo.minBy(_.distanceToSquared(t.currentTile))
+    if (closest.distanceToSquared(t.currentTile) <= 5) {
+      todo.removeUntilInclusive(_ == closest)
+    }
+    closest
   }
 }
+
+case class Path(waypoints: Seq[MapTilePosition], solved: Boolean, solvable: Boolean, bestEffort: MapTilePosition)
 
 class PathFinder(mapLayers: MapLayers) {
   implicit def convBack(gn: GridNode2DInt): MapTilePosition = MapTilePosition.shared(gn.getX, gn.getY)
 
   def findPath(from: MapTilePosition, to: MapTilePosition) = BWFuture {
-    spawn.findPath(from, to)
+    val fromFixed = mapLayers.rawWalkableMap.nearestFree(from)
+    val toFixed = mapLayers.rawWalkableMap.nearestFree(to)
+    for (a <- fromFixed; b <- toFixed) yield spawn.findPath(a, b)
   }
 
   class AstarPathFinder(grid: Array[Array[GridNode2DInt]]) {
-    private implicit def conv(mtp: MapTilePosition): GridNode2DInt = grid(mtp.x)(mtp.y)
+    private implicit def conv(mtp: MapTilePosition): GridNode2DInt = {
+      val ret = grid(mtp.x)(mtp.y)
+      assert(ret != null, s"Map tile $mtp is not free!")
+      ret
+    }
 
     def findPath(from: MapTilePosition, to: MapTilePosition) = {
+      info(s"Searching path from $from to $to")
       val finder = new AStarSearch[GridNode2DInt](from, to)
       finder.performSearch()
       val path = finder.getSolution.asScala.map(e => e: MapTilePosition)
@@ -33,7 +50,11 @@ class PathFinder(mapLayers: MapLayers) {
   private def to2DArray(grid: Grid2D) = {
 
     val asGrid = Array.ofDim[GridNode2DInt](grid.cols, grid.rows)
-    implicit def conv(mtp: MapTilePosition): GridNode2DInt = asGrid(mtp.x)(mtp.y)
+    implicit def conv(mtp: MapTilePosition): GridNode2DInt = {
+      val ret = asGrid(mtp.x)(mtp.y)
+      assert(ret != null, s"$mtp was null?")
+      ret
+    }
     // fill the grid
     grid.allFree.foreach { e =>
       asGrid(e.x)(e.y) = new GridNode2DInt(e.x, e.y) {
@@ -49,19 +70,39 @@ class PathFinder(mapLayers: MapLayers) {
     // connect the grid
     grid.allFree.foreach { mtp =>
       val (left, right, up, down) = mtp.leftRightUpDown
-      val leftFree = grid.free(left)
-      val rightFree = grid.free(right)
-      val upFree = grid.free(up)
-      val downFree = grid.free(down)
+      val leftFree = grid.containsAndFree(left)
+      val rightFree = grid.containsAndFree(right)
+      val upFree = grid.containsAndFree(up)
+      val downFree = grid.containsAndFree(down)
       val here = asGrid(mtp.x)(mtp.y)
       if (leftFree) here.addNode(left)
       if (rightFree) here.addNode(right)
       if (upFree) here.addNode(up)
       if (downFree) here.addNode(down)
-      if (leftFree && upFree) here.addNode(mtp.movedBy(-1, -1))
-      if (leftFree && downFree) here.addNode(mtp.movedBy(-1, 1))
-      if (rightFree && upFree) here.addNode(mtp.movedBy(1, -1))
-      if (rightFree && downFree) here.addNode(mtp.movedBy(1, 1))
+      if (leftFree && upFree) {
+        val moved = mtp.movedBy(-1, -1)
+        if (grid.free(moved)) {
+          here.addNode(moved)
+        }
+      }
+      if (leftFree && downFree) {
+        val moved = mtp.movedBy(-1, 1)
+        if (grid.free(moved)) {
+          here.addNode(moved)
+        }
+      }
+      if (rightFree && upFree) {
+        val moved = mtp.movedBy(1, -1)
+        if (grid.free(moved)) {
+          here.addNode(moved)
+        }
+      }
+      if (rightFree && downFree) {
+        val moved = mtp.movedBy(1, 1)
+        if (grid.free(moved)) {
+          here.addNode(moved)
+        }
+      }
     }
     //save memory
     grid.allFree.foreach { e =>
@@ -255,6 +296,78 @@ object AreaHelper {
 
 }
 
+class UnitGrid(override val universe: Universe) extends HasUniverse {
+  private val map        = universe.world.map
+  private val myUnits    = Array.ofDim[mutable.HashSet[Mobile]](map.tileSizeX, map.tileSizeY)
+  private val enemyUnits = Array.ofDim[mutable.HashSet[Mobile]](map.tileSizeX, map.tileSizeY)
+  private val touched    = mutable.HashSet.empty[mutable.HashSet[Mobile]]
+
+  def onTick(): Unit = {
+    //reset
+    touched.foreach { modified =>
+      modified.clear()
+    }
+    touched.clear()
+    // update
+    universe.myUnits.allCompletedMobiles.foreach { m =>
+      val units = {
+        val pos = m.currentTile
+        val existing = myUnits(pos.x)(pos.y)
+        if (existing == null) {
+          val newSet = mutable.HashSet.empty[Mobile]
+          myUnits(pos.x)(pos.y) = newSet
+          newSet
+        } else {
+          existing
+        }
+      }
+      touched += units
+      units += m
+    }
+    universe.enemyUnits.allCompletedMobiles.foreach { m =>
+      val units = {
+        val pos = m.currentTile
+        val existing = enemyUnits(pos.x)(pos.y)
+        if (existing == null) {
+          val newSet = mutable.HashSet.empty[Mobile]
+          enemyUnits(pos.x)(pos.y) = newSet
+          newSet
+        } else {
+          existing
+        }
+      }
+      touched += units
+      units += m
+    }
+
+  }
+
+  def allInRangeOf(position: MapTilePosition, radius: Int, mine: Boolean): Traversable[Mobile] = {
+    val fromX = 0 max position.x - radius
+    val toX = map.tileSizeX min position.x + radius
+    val fromY = 0 max position.y - radius
+    val toY = map.tileSizeY min position.y + radius
+    val radSqr = radius * radius
+    val x2 = position.x
+    val y2 = position.y
+    def dstSqr(x: Int, y: Int) = {
+      val xx = x - x2
+      val yy = y - y2
+      xx * xx + yy * yy
+    }
+
+    new Traversable[Mobile] {
+      override def foreach[U](f: (Mobile) => U): Unit = {
+        val on = if (mine) myUnits else enemyUnits
+        for (x <- fromX to toX; y <- fromY to toY
+             if dstSqr(x, y) <= radius) {
+          on(x)(y).foreach(f)
+        }
+      }
+    }
+  }
+}
+
 class MapLayers(override val universe: Universe) extends HasUniverse {
 
   private val rawMapWalk                 = world.map.walkableGrid
@@ -322,7 +435,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   }
   universe.bases.register((base: Base) => {
     justWorkerPaths = evalWorkerPaths
-  })
+  }, true)
 
   def tick(): Unit = {
   }

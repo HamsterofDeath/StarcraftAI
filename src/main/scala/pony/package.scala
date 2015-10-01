@@ -12,6 +12,11 @@ package object pony {
   def !!! : Nothing = !!!("Something is not as it should be")
   def !!!(msg: String): Nothing = throw new RuntimeException(msg)
 
+  import scala.concurrent.ExecutionContext.Implicits.global
+
+  implicit val exCon = global
+
+  def multiMap[K, V] = new mutable.HashMap[K, mutable.Set[V]] with mutable.MultiMap[K, V]
   type SCUnitType = Class[_ <: WrapsUnit]
   val tileSize  = 32
   var tickCount = 0
@@ -98,6 +103,12 @@ package object pony {
       val where = buff.indexWhere(elemIdentifier)
       assert(where >= 0, s"Not found $elemIdentifier in $buff")
       buff.remove(where)
+    }
+
+    def removeUntilInclusive(elemIdentifier: T => Boolean): Unit = {
+      val where = buff.indexWhere(elemIdentifier)
+      assert(where >= 0, s"Not found $elemIdentifier in $buff")
+      buff.remove(0, where + 1)
     }
   }
   implicit class RichBoolean(val b: Boolean) extends AnyVal {

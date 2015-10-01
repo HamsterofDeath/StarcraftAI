@@ -16,10 +16,10 @@ class Renderer(game: Game, private var color: bwapi.Color) {
   }
 
   def drawStar(where: MapTilePosition): Unit = {
-    game.drawLineMap(where.movedBy(-3, -3).asMapPosition.toNative, where.movedBy(3, 3).asMapPosition.toNative, color)
-    game.drawLineMap(where.movedBy(3, -3).asMapPosition.toNative, where.movedBy(-3, 3).asMapPosition.toNative, color)
-    game.drawLineMap(where.movedBy(-3, 0).asMapPosition.toNative, where.movedBy(3, 0).asMapPosition.toNative, color)
-    game.drawLineMap(where.movedBy(0, -3).asMapPosition.toNative, where.movedBy(0, 3).asMapPosition.toNative, color)
+    game.drawLineMap(where.movedBy(-3, -3).nativeMapPosition, where.movedBy(3, 3).nativeMapPosition, color)
+    game.drawLineMap(where.movedBy(3, -3).nativeMapPosition, where.movedBy(-3, 3).nativeMapPosition, color)
+    game.drawLineMap(where.movedBy(-3, 0).nativeMapPosition, where.movedBy(3, 0).nativeMapPosition, color)
+    game.drawLineMap(where.movedBy(0, -3).nativeMapPosition, where.movedBy(0, 3).nativeMapPosition, color)
   }
 
   def drawLine(from: MapPosition, to: MapPosition): Unit = {
@@ -205,27 +205,23 @@ object FileStorageLazyVal {
   }
 }
 
-class BWFuture[T](future: Future[T], incomplete: T) {
+class BWFuture[T](val future: Future[T], incomplete: T) {
   def result = future.value match {
     case Some(Success(x)) => x
     case Some(Failure(e)) => throw e
     case _ => incomplete
   }
 
+  def map[X](f: T => X) = new BWFuture(future.map(f), f(incomplete))
+
 }
 
 object BWFuture {
-
-  import scala.concurrent.ExecutionContext.Implicits.global
 
   def apply[T](produce: => T, ifIncomplete: T) = {
     val fut = Future {produce}
     new BWFuture(fut, ifIncomplete)
   }
 
-  def apply[T](produce: => T) = {
-    val fut = Future {produce}
-    val asOption = fut.map(Some(_))
-    new BWFuture(asOption, None)
-  }
+  def apply[T](produce: => Option[T]): BWFuture[Option[T]] = BWFuture(produce, None)
 }

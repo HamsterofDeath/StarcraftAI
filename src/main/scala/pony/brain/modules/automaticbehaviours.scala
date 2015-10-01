@@ -8,9 +8,7 @@ import pony.Upgrades.Terran.{GhostCloak, InfantryCooldown, SpiderMines, WraithCl
 import scala.collection.mutable
 
 abstract class DefaultBehaviour[T <: Mobile : Manifest](override val universe: Universe) extends HasUniverse {
-  private val controlled      = new
-      collection.mutable.HashMap[Objective, collection.mutable.Set[SingleUnitBehaviour[T]]]
-      with mutable.MultiMap[Objective, SingleUnitBehaviour[T]]
+  private val controlled      = multiMap[Objective, SingleUnitBehaviour[T]]
   private val unit2behaviour  = mutable.HashMap.empty[T, SingleUnitBehaviour[T]]
   private val controlledUnits = mutable.HashSet.empty[T]
 
@@ -68,6 +66,7 @@ object Terran {
                       new CloakSelfGhost(universe) ::
                       new GoToInitialPosition(universe) ::
                       new CloakSelfWraith(universe) ::
+                      new MigrateTowardsPosition(universe) ::
                       /*
                                             new RepairDamagedBuilding ::
                                             new RepairDamagedUnit ::

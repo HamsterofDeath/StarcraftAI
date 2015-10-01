@@ -25,6 +25,7 @@ case class MapTilePosition(x: Int, y: Int) extends HasXY {
 
   val asTuple       = (x, y)
   val asMapPosition = MapPosition(x * tileSize, y * tileSize)
+  def nativeMapPosition = asMapPosition.toNative
   def randomized(shuffle: Int) = {
     val xRand = math.random * shuffle - shuffle * 0.5
     val yRand = math.random * shuffle - shuffle * 0.5
@@ -37,6 +38,7 @@ case class MapTilePosition(x: Int, y: Int) extends HasXY {
   def mapX = tileSize * x
   def mapY = tileSize * y
   def movedBy(other: HasXY) = MapTilePosition.shared(x + other.x, y + other.y)
+  def movedByNew(other: HasXY) = MapTilePosition(x + other.x, y + other.y)
   override def toString = s"($x,$y)"
 }
 object MapTilePosition {

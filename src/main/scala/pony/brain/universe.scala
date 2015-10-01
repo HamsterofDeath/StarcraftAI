@@ -23,6 +23,7 @@ trait Universe {
   def strategicMap: StrategicMap
   def pathFinder: PathFinder
   def strategy: Strategies
+  def unitGrid: UnitGrid
   def worldDominationPlan: WorldDominationPlan
   def resourceFields = world.resourceAnalyzer
   private def evalRace = (myUnits.allMobiles ++ myUnits.allBuildings).next.mySCRace

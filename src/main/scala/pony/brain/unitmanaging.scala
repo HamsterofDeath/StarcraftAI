@@ -23,9 +23,7 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
   private val reorganizeJobQueue          = ListBuffer.empty[CanAcceptUnitSwitch[_ <: WrapsUnit]]
   private val unfulfilledRequestsThisTick = ArrayBuffer.empty[UnitJobRequests[_ <: WrapsUnit]]
   private val assignments                 = mutable.HashMap.empty[WrapsUnit, UnitWithJob[_ <: WrapsUnit]]
-  private val byEmployer                  = new
-      mutable.HashMap[Employer[_ <: WrapsUnit], mutable.Set[UnitWithJob[_ <: WrapsUnit]]]
-      with mutable.MultiMap[Employer[_ <: WrapsUnit], UnitWithJob[_ <: WrapsUnit]]
+  private val byEmployer                  = multiMap[Employer[_ <: WrapsUnit], UnitWithJob[_ <: WrapsUnit]]
   private var unfulfilledRequestsLastTick = unfulfilledRequestsThisTick.toVector
   def allIdleMobiles = allJobsByType[BusyDoingNothing[Mobile]].filter(_.unit.isInstanceOf[Mobile])
   def allJobsByType[T <: UnitWithJob[_] : Manifest] = {
@@ -360,8 +358,7 @@ class PartialPreHiringResult[T <: WrapsUnit](override val canHire: Map[UnitReque
 class UnitCollector[T <: WrapsUnit : Manifest](req: UnitJobRequests[T], override val universe: Universe)
   extends HasUniverse {
 
-  private val hired                      = new
-      mutable.HashMap[UnitRequest[T], mutable.Set[T]] with mutable.MultiMap[UnitRequest[T], T]
+  private val hired                      = multiMap[UnitRequest[T], T]
   private val remainingAmountsPerRequest = mutable.HashMap.empty ++
                                            req.requests.map { e => e -> e.amount }.toMap
   def onlyMember = {

@@ -479,7 +479,13 @@ trait IndestructibleUnit extends WrapsUnit {
 
 }
 
+trait AutoPilot extends Mobile {
+  override def isAutoPilot = true
+}
+
 trait Mobile extends WrapsUnit with Controllable {
+
+  def isAutoPilot = false
 
   private val defenseMatrix = oncePerTick {
     nativeUnit.getDefenseMatrixPoints > 0 || nativeUnit.getDefenseMatrixTimer > 0
@@ -1184,7 +1190,7 @@ class Reaver(unit: APIUnit)
 
 class Scarab(unit: APIUnit) extends AnyUnit(unit) with SimplePosition
 class SpiderMine(unit: APIUnit)
-  extends AnyUnit(unit) with IndestructibleUnit with SimplePosition with GroundUnit with IsSmall
+  extends AnyUnit(unit) with IndestructibleUnit with SimplePosition with GroundUnit with IsSmall with AutoPilot
 
 class Marine(unit: APIUnit)
   extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with CanUseStimpack with MobileRangeWeapon with

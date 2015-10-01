@@ -31,7 +31,7 @@ class FormationHelper(override val universe: Universe, distance: Int = 0) extend
 
   universe.bases.register((base: Base) => {
     myDefenseLines.invalidate()
-  })
+  }, true)
 
   def defenseLines = myDefenseLines.get
 
@@ -53,10 +53,7 @@ class FormationHelper(override val universe: Universe, distance: Int = 0) extend
 
 class WorldDominationPlan(override val universe: Universe) extends HasUniverse with HasLazyVals {
 
-  universe.register_!(() => {
-    onTick()
-    attacks.foreach(_.onTick())
-  })
+  def allAttacks = attacks.toVector
 
   trait Action {
     def asOrder: UnitOrder
@@ -65,12 +62,12 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse w
   case class MoveToPosition(who: Mobile, where: MapTilePosition) extends Action {
     override def asOrder = Orders.Move(who, where)
   }
+
   case class StayInPosition(who: Mobile) extends Action {
     override def asOrder = Orders.NoUpdate(who)
   }
 
   class Attack(private var currentForce: Set[Mobile], where: TargetPosition) {
-    class SubObjective
 
     def onTick(): Unit = {
       currentForce = currentForce.filter(_.isInGame)
@@ -80,7 +77,7 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse w
 
     private val centerOfForce = oncePerTick {
       currentForce.foldLeft(MapTilePosition.shared(0, 0))((acc, e) =>
-        acc.movedBy(e.currentTile)
+        acc.movedByNew(e.currentTile)
       ) / currentForce.size
     }
 
@@ -88,8 +85,12 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse w
 
     private val pathToFollow = universe.pathFinder.findPath(currentCenter, where.where)
 
+    def completePath = pathToFollow
+
+    private val migration = pathToFollow.map(_.map(new MigrationPath(_)))
+
     def suggestActionFor(t: Mobile) = {
-      pathToFollow.result match {
+      migration.result match {
         case None =>
           StayInPosition(t)
         case Some(path) =>
@@ -101,6 +102,11 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse w
 
   private val attacks = ArrayBuffer.empty[Attack]
 
+  override def onTick(): Unit = {
+    super.onTick()
+    attacks.foreach(_.onTick())
+
+  }
   def attackOf(m: Mobile) = attacks.find(_.force(m))
 
   def initiateAttack(where: MapTilePosition): Unit = {
@@ -108,7 +114,7 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse w
     val req = UnitJobRequests.idleOfType(employer, classOf[Mobile], 9999)
     val result = unitManager.request(req, buildIfNoneAvailable = false)
     result.ifNotZero { seq =>
-      attacks += new Attack(seq.toSet, TargetPosition(where, 10))
+      attacks += new Attack(seq.toSet.filterNot(_.isAutoPilot), TargetPosition(where, 10))
     }
   }
 }
@@ -363,7 +369,9 @@ class EnqueueArmy(universe: Universe) extends OrderlessAIModule[UnitFactory](uni
       mostMissing.partition { case (c, _) => universe.unitManager.allRequirementsFulfilled(c) }
 
     val canBuildNow = mostMissing.filterNot { case (c, _) => universe.unitManager.requirementsQueuedToBuild(c) }
-    (canBuildNow.take(1) ++ canBuildNow.drop(1).filter(_._1.toUnitType.gasPrice() == 0)).foreach { case (thisOne, _) =>
+    val highestPriority = canBuildNow.take(1)
+    val alternatives = canBuildNow.iterator.drop(1).filter(_._1.toUnitType.gasPrice() == 0)
+    (highestPriority ++ alternatives).foreach { case (thisOne, _) =>
       requestUnit(thisOne, takeCareOfDependencies = false)
     }
 
