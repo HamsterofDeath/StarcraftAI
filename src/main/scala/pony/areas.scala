@@ -99,7 +99,7 @@ class StrategicMap(resources: Seq[ResourceArea], walkable: Grid2D, game: Game) {
         }
         ret
       }
-      FrontLine(choke, areas, insideArea.asReadOnlyCopy, outsideArea.asReadOnlyCopy, 1)
+      FrontLine(choke, areas, insideArea.asReadOnlyCopyifMutable, outsideArea.asReadOnlyCopyifMutable, 1)
     }.filter {_.isDefenseLine}
     defLine
   }

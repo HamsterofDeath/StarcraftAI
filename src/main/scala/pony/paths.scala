@@ -12,11 +12,13 @@ class MigrationPath(follow: Path) {
 
   def nextFor(t: Mobile) = {
     val todo = remaining.getOrElseUpdate(t, ArrayBuffer.empty ++ follow.waypoints)
-    val closest = todo.minBy(_.distanceToSquared(t.currentTile))
-    if (closest.distanceToSquared(t.currentTile) <= 5) {
-      todo.removeUntilInclusive(_ == closest)
+    val closest = todo.minByOpt(_.distanceToSquared(t.currentTile))
+    closest.map { c =>
+      if (c.distanceToSquared(t.currentTile) <= 5) {
+        todo.removeUntilInclusive(_ == c)
+      }
+      c
     }
-    closest
   }
 }
 
@@ -25,9 +27,11 @@ case class Path(waypoints: Seq[MapTilePosition], solved: Boolean, solvable: Bool
 class PathFinder(mapLayers: MapLayers) {
   implicit def convBack(gn: GridNode2DInt): MapTilePosition = MapTilePosition.shared(gn.getX, gn.getY)
 
+  private val on = mapLayers.reallyFreeBuildingTiles.asReadOnlyCopyifMutable
+
   def findPath(from: MapTilePosition, to: MapTilePosition) = BWFuture {
-    val fromFixed = mapLayers.rawWalkableMap.nearestFree(from)
-    val toFixed = mapLayers.rawWalkableMap.nearestFree(to)
+    val fromFixed = on.nearestFree(from)
+    val toFixed = on.nearestFree(to)
     for (a <- fromFixed; b <- toFixed) yield spawn.findPath(a, b)
   }
 
@@ -112,7 +116,7 @@ class PathFinder(mapLayers: MapLayers) {
     asGrid
   }
 
-  def spawn = new AstarPathFinder(to2DArray(mapLayers.reallyFreeBuildingTiles))
+  def spawn = new AstarPathFinder(to2DArray(on))
 }
 
 class AreaHelper(source: Grid2D) {
@@ -533,7 +537,7 @@ class ConstructionSiteFinder(universe: Universe) {
                                          .or_!(universe.mapLayers.blockedByPotentialAddons.mutableCopy)
   private val freeToBuildOnIgnoreUnits = universe.mapLayers.freeBuildingTiles.mutableCopy
                                          .or_!(universe.mapLayers.blockedByPotentialAddons.mutableCopy)
-                                         .asReadOnlyCopy
+                                         .asReadOnlyCopyifMutable
   private val helper                   = new GeometryHelpers(universe.world.map.sizeX, universe.world.map.sizeY)
   def forResourceArea(resources: ResourceArea): SubFinder = {
     // we magically know this by now

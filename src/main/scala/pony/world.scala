@@ -541,6 +541,9 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
 
   }
 
+  def asReadOnlyCopyifMutable = this
+
+
   override def toString = s"$cols*$rows, $freeCount free"
 
   private val lazyAreas = LazyVal.from {new AreaHelper(self).findFreeAreas}
@@ -672,7 +675,7 @@ class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet, bitSetContains
   }
   def asReadOnly: Grid2D = this
 
-  def asReadOnlyCopy = new Grid2D(cols, rows, bitSet.clone.toImmutable)
+  def asReadOnlyCopyifMutable = new Grid2D(cols, rows, bitSet.clone.toImmutable)
 
   def or_!(other: MutableGrid2D) = {
     if (containsBlocked == other.containsBlocked) {

@@ -94,8 +94,12 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse w
         case None =>
           StayInPosition(t)
         case Some(path) =>
-          val whereTo = path.nextFor(t)
-          MoveToPosition(t, whereTo)
+          path.nextFor(t) match {
+            case Some(where) =>
+              MoveToPosition(t, where)
+            case None =>
+              StayInPosition(t)
+          }
       }
     }
   }
