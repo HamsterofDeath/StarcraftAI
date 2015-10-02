@@ -16,8 +16,7 @@ import java.util.List;
 public abstract class GridNode2DInt extends Node<GridNode2DInt> {
     private final int m_x;
     private final int m_y;
-    private List<GridNode2DInt> m_connections = new ArrayList<GridNode2DInt>(8);
-    private GridNode2DInt[] m_nodes;
+    private List<GridNode2DInt> m_nodes = new ArrayList<GridNode2DInt>(8);
 
     public GridNode2DInt(final int p_x, final int p_y) {
         this.m_x = p_x;
@@ -27,45 +26,29 @@ public abstract class GridNode2DInt extends Node<GridNode2DInt> {
     public int evalCostFromParent(
             @NotNull
             final GridNode2DInt p_parent) {
-        final GridNode2DInt l_other = p_parent;
 
-        //noinspection AccessingNonPublicFieldOfAnotherObject,NumericCastThatLosesPrecision
-        return (int) Math.sqrt((double) (l_other.m_x * this.m_x + l_other.m_y * this.m_y));
+        return (int) Math.sqrt((double) (p_parent.m_x * this.m_x + p_parent.m_y * this.m_y));
     }
 
-    public Node[] getNodes() {
+    public List<GridNode2DInt> getNodes() {
         return this.m_nodes;
     }
 
-    public void done() {
-        this.m_nodes = m_connections.toArray(new GridNode2DInt[m_connections.size()]);
-        this.m_connections = null;
-    }
 
     public void remove() {
-        assert this.m_nodes == null;
-        assert this.m_connections != null;
-        for (final GridNode2DInt l_connection : this.m_connections) {
-            l_connection.remove(this);
+        for (GridNode2DInt m_node : m_nodes) {
+            m_node.remove(this);
         }
     }
 
     public void addNode(
             @NotNull
             final GridNode2DInt p_node) {
-        assert this.m_nodes == null;
-        assert this.m_connections != null;
-        //noinspection SuspiciousMethodCalls
-        assert !m_connections.contains(p_node);
-        m_connections.add(p_node);
+        m_nodes.add(p_node);
     }
 
     public void remove(final GridNode2DInt p_node) {
-        assert this.m_nodes == null;
-        assert this.m_connections != null;
-        //noinspection SuspiciousMethodCalls
-        assert m_connections.contains(p_node);
-        m_connections.remove(p_node);
+        m_nodes.remove(p_node);
     }
 
     public int getX() {

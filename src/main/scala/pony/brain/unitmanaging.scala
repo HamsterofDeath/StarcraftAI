@@ -167,6 +167,9 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
         case cd: CanDie if cd.isDead =>
           assignments.remove(cd)
           byEmployer.removeBinding(job.employer, job)
+        case res: MineralPatch =>
+          assignments.remove(res)
+          byEmployer.removeBinding(job.employer, job)
         case _ =>
       }
       job.onFinishOrFail()

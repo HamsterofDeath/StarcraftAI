@@ -63,11 +63,21 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse w
     override def asOrder = Orders.Move(who, where)
   }
 
+  case class AttackToPosition(who: Mobile, where: MapTilePosition) extends Action {
+    override def asOrder = Orders.AttackMove(who, where)
+  }
+
   case class StayInPosition(who: Mobile) extends Action {
     override def asOrder = Orders.NoUpdate(who)
   }
 
   class Attack(private var currentForce: Set[Mobile], where: TargetPosition) {
+    def hasMembers = currentForce.nonEmpty
+
+    def hasEnded = !hasMembers || allReachedDestination
+    def hasNotEnded = !hasEnded
+
+    def allReachedDestination = migration.result.exists(_.allReachedDestination)
 
     def onTick(): Unit = {
       currentForce = currentForce.filter(_.isInGame)
@@ -95,8 +105,9 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse w
           StayInPosition(t)
         case Some(path) =>
           path.nextFor(t) match {
-            case Some(where) =>
-              MoveToPosition(t, where)
+            case Some(targetTile) =>
+              AttackToPosition(t, targetTile)
+            //MoveToPosition(t, targetTile)
             case None =>
               StayInPosition(t)
           }
@@ -109,11 +120,16 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse w
   override def onTick(): Unit = {
     super.onTick()
     attacks.foreach(_.onTick())
-
+    attacks.retain(_.hasNotEnded)
   }
+
   def attackOf(m: Mobile) = attacks.find(_.force(m))
 
-  def initiateAttack(where: MapTilePosition): Unit = {
+  def initiateAttack(where: MapTilePosition, complete: Boolean = true): Unit = {
+    //this attack has priority over an existing one
+    if (complete) {
+      attacks.clear()
+    }
     val employer = new Employer[Mobile](universe)
     val req = UnitJobRequests.idleOfType(employer, classOf[Mobile], 9999)
     val result = unitManager.request(req, buildIfNoneAvailable = false)

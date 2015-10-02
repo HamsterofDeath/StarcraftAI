@@ -7,14 +7,18 @@ import scala.collection.JavaConverters._
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
-class MigrationPath(follow: Path) {
-  private val remaining = new mutable.HashMap[Mobile, ArrayBuffer[MapTilePosition]]
+class MigrationPath(follow: Paths) {
+  def allReachedDestination = remaining.nonEmpty && remaining.iterator.filter(_._1.isInGame).forall(_._2.isEmpty)
+
+  private val remaining = mutable.HashMap.empty[Mobile, ArrayBuffer[MapTilePosition]]
+  private val counter   = mutable.HashMap.empty[Mobile, Int]
 
   def nextFor(t: Mobile) = {
-    val todo = remaining.getOrElseUpdate(t, ArrayBuffer.empty ++ follow.waypoints)
+    val index = counter.getOrElseUpdate(t, counter.size) % follow.pathCount
+    val todo = remaining.getOrElseUpdate(t, ArrayBuffer.empty ++ follow.paths(index).waypoints)
     val closest = todo.minByOpt(_.distanceToSquared(t.currentTile))
     closest.map { c =>
-      if (c.distanceToSquared(t.currentTile) <= 5) {
+      if (c.distanceToSquared(t.currentTile) <= 25) {
         todo.removeUntilInclusive(_ == c)
       }
       c
@@ -22,7 +26,11 @@ class MigrationPath(follow: Path) {
   }
 }
 
-case class Path(waypoints: Seq[MapTilePosition], solved: Boolean, solvable: Boolean, bestEffort: MapTilePosition)
+case class Path(waypoints: Seq[MapTilePosition])
+
+case class Paths(paths: Seq[Path], solved: Boolean, solvable: Boolean, bestEffort: MapTilePosition) {
+  val pathCount = paths.size
+}
 
 class PathFinder(mapLayers: MapLayers) {
   implicit def convBack(gn: GridNode2DInt): MapTilePosition = MapTilePosition.shared(gn.getX, gn.getY)
@@ -32,7 +40,7 @@ class PathFinder(mapLayers: MapLayers) {
   def findPath(from: MapTilePosition, to: MapTilePosition) = BWFuture {
     val fromFixed = on.nearestFree(from)
     val toFixed = on.nearestFree(to)
-    for (a <- fromFixed; b <- toFixed) yield spawn.findPath(a, b)
+    for (a <- fromFixed; b <- toFixed) yield spawn.findPath(a, b, 10)
   }
 
   class AstarPathFinder(grid: Array[Array[GridNode2DInt]]) {
@@ -42,12 +50,25 @@ class PathFinder(mapLayers: MapLayers) {
       ret
     }
 
-    def findPath(from: MapTilePosition, to: MapTilePosition) = {
+    def findPath(from: MapTilePosition, to: MapTilePosition, width: Int) = {
       info(s"Searching path from $from to $to")
       val finder = new AStarSearch[GridNode2DInt](from, to)
-      finder.performSearch()
-      val path = finder.getSolution.asScala.map(e => e: MapTilePosition)
-      Path(path, finder.isSolved, !finder.isUnsolvable, finder.getTargetOrNearestReachable)
+      var first = Option.empty[Path]
+      val paths = (0 to width).iterator.map { _ =>
+        finder.performSearch()
+        val waypoints = finder.getSolution.asScala.map(e => e: MapTilePosition).toVector
+        //block the path, then search again to get streets
+        finder.getFullSolution.asScala.toVector.drop(15).dropRight(10).foreach(_.remove())
+        if (first.isEmpty) first = Some(Path(waypoints))
+        waypoints
+      }.takeWhile { candidate =>
+        candidate.forall { pointOnLine =>
+          first.get.waypoints.exists { old =>
+            on.connectedByLine(old, pointOnLine)
+          }
+        }
+      }.toVector
+      Paths(paths.map(Path), finder.isSolved, !finder.isUnsolvable, finder.getTargetOrNearestReachable)
     }
   }
 
@@ -107,10 +128,6 @@ class PathFinder(mapLayers: MapLayers) {
           here.addNode(moved)
         }
       }
-    }
-    //save memory
-    grid.allFree.foreach { e =>
-      e.done()
     }
 
     asGrid
@@ -346,7 +363,7 @@ class UnitGrid(override val universe: Universe) extends HasUniverse {
 
   }
 
-  def allInRangeOf(position: MapTilePosition, radius: Int, mine: Boolean): Traversable[Mobile] = {
+  def allInRangeOf(position: MapTilePosition, radius: Int, friendly: Boolean): Traversable[Mobile] = {
     val fromX = 0 max position.x - radius
     val toX = map.tileSizeX min position.x + radius
     val fromY = 0 max position.y - radius
@@ -362,10 +379,13 @@ class UnitGrid(override val universe: Universe) extends HasUniverse {
 
     new Traversable[Mobile] {
       override def foreach[U](f: (Mobile) => U): Unit = {
-        val on = if (mine) myUnits else enemyUnits
-        for (x <- fromX to toX; y <- fromY to toY
-             if dstSqr(x, y) <= radius) {
-          on(x)(y).foreach(f)
+        val on = if (friendly) myUnits else enemyUnits
+        for (x <- fromX until toX; y <- fromY until toY
+             if dstSqr(x, y) <= radSqr) {
+          val mobiles = on(x)(y)
+          if (mobiles != null) {
+            mobiles.foreach(f)
+          }
         }
       }
     }

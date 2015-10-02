@@ -522,7 +522,13 @@ trait Mobile extends WrapsUnit with Controllable {
     MapTilePosition.shared(tp.getX / 32, tp.getY / 32)
   }
 
+  private val myArea = oncePerTick {
+    Area(myTile.get, Size.shared(1, 1))
+  }
+
   def currentTile = myTile.get
+
+  def blockedArea = myArea.get
 
   def currentPositionNative = currentPosition.toNative
 
@@ -557,7 +563,7 @@ trait ArmedUnit extends WrapsUnit {
 
 }
 
-trait SpiderMines extends WrapsUnit {
+trait HasSpiderMines extends WrapsUnit {
   private val mines = oncePerTick {nativeUnit.getSpiderMineCount}
   def spiderMineCount = mines.get
 }
@@ -739,6 +745,7 @@ trait Weapon extends Controllable {
 
   override def canDoDamage = true
 
+  def isReadyToFireWeapon = cooldownTimer == 0
   def cooldownTimer = nativeUnit.getAirWeaponCooldown max nativeUnit.getGroundWeaponCooldown
   def isAttacking = isStartingToAttack || cooldownTimer > 0
   def isStartingToAttack = nativeUnit.isStartingAttack
@@ -1220,7 +1227,7 @@ class Medic(unit: APIUnit)
   override type CasterType = Medic
 }
 class Vulture(unit: APIUnit)
-  extends AnyUnit(unit) with GroundUnit with GroundWeapon with SpiderMines with MediumAttackGround with Mechanic with
+  extends AnyUnit(unit) with GroundUnit with GroundWeapon with HasSpiderMines with MediumAttackGround with Mechanic with
           MobileRangeWeapon with IsMedium with IsVehicle with ConcussiveGroundDamage with HasSinglePointMagicSpell {
   override val spells = List(Upgrades.Terran.SpiderMines)
   override type Caster = Vulture

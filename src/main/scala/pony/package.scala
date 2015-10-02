@@ -99,6 +99,10 @@ package object pony {
       buff.remove(where)
     }
 
+    def retain(f: T => Boolean): Unit = {
+      buff --= buff.filterNot(f)
+    }
+
     def removeFirstMatch(elemIdentifier: T => Boolean): Unit = {
       val where = buff.indexWhere(elemIdentifier)
       assert(where >= 0, s"Not found $elemIdentifier in $buff")

@@ -6,8 +6,10 @@ import bwapi.Color
 import pony.Upgrades.Terran.{GhostCloak, InfantryCooldown, SpiderMines, WraithCloak}
 
 import scala.collection.mutable
+import scala.collection.mutable.ArrayBuffer
 
-abstract class DefaultBehaviour[T <: Mobile : Manifest](override val universe: Universe) extends HasUniverse {
+abstract class DefaultBehaviour[T <: Mobile : Manifest](override val universe: Universe)
+  extends HasUniverse with HasLazyVals {
   private val controlled      = multiMap[Objective, SingleUnitBehaviour[T]]
   private val unit2behaviour  = mutable.HashMap.empty[T, SingleUnitBehaviour[T]]
   private val controlledUnits = mutable.HashSet.empty[T]
@@ -19,7 +21,6 @@ abstract class DefaultBehaviour[T <: Mobile : Manifest](override val universe: U
   protected def meta = SingleUnitBehaviourMeta(priority, refuseCommandsForTicks)
 
   def renderDebug(renderer: Renderer): Unit = {}
-
 
   def behaviourOf(unit: Mobile) = {
     ifControlsOpt(unit) {identity}
@@ -52,7 +53,6 @@ abstract class DefaultBehaviour[T <: Mobile : Manifest](override val universe: U
 
   protected def lift(t: T): SingleUnitBehaviour[T]
 
-  def onTick(): Unit = {}
 }
 
 object Terran {
@@ -81,6 +81,22 @@ object Terran {
                       new FocusFire(universe) ::
                       Nil).map(_.cast)
     allOfThem
+  }
+
+  class Dance(universe: Universe) extends DefaultBehaviour[Mobile with Weapon](universe) {
+
+    override def priority: SecondPriority = SecondPriority.More
+
+    override protected def lift(t: Mobile with Weapon): SingleUnitBehaviour[Mobile with Weapon] = new
+        SingleUnitBehaviour[Mobile with Weapon](t, meta) {
+
+      override def shortName: String = "D"
+      override def toOrder(what: Objective) = {
+        if (!t.isReadyToFireWeapon && t.canAttack()) {
+
+        }
+      }
+    }
   }
 
   class RepairDamagedBuilding(universe: Universe) extends DefaultBehaviour[SCV](universe) {
@@ -162,7 +178,6 @@ object Terran {
     }
   }
 
-
   class GoToInitialPosition(universe: Universe) extends DefaultBehaviour[Mobile](universe) {
     private val helper = new FormationHelper(universe)
 
@@ -189,8 +204,24 @@ object Terran {
   }
 
   class SetupMineField(universe: Universe) extends DefaultBehaviour[Vulture](universe) {
+    trait State
+    case object Idle extends State
+    case class DroppingMine(tile: MapTilePosition) extends State
+    val beLazy = Idle -> Nil
 
     private val helper = new FormationHelper(universe, 2)
+
+    private val plannedDrops = ArrayBuffer.empty[(Area, Int)]
+
+    private val mined = oncePerTick {
+      plannedDrops.retain(_._2 + 120 > universe.currentTick)
+      val area = universe.mapLayers.reallyFreeBuildingTiles.mutableCopy
+      universe.myUnits.allByType[SpiderMine].foreach { mine =>
+        area.block_!(mine.blockedArea.extendedBy(1))
+        plannedDrops.foreach(e => area.block_!(e._1))
+      }
+      area
+    }
 
     private def suggestMinePositions = {
       val defense = helper.allOutsideNonBlacklisted
@@ -202,8 +233,8 @@ object Terran {
 
     override def renderDebug(renderer: Renderer): Unit = {
       suggestMinePositions.foreach { tile =>
-          renderer.in_!(Color.White).drawCircleAroundTile(tile)
-        }
+        renderer.in_!(Color.White).drawCircleAroundTile(tile)
+      }
     }
 
     override def onTick(): Unit = {
@@ -217,26 +248,36 @@ object Terran {
 
     override protected def lift(t: Vulture): SingleUnitBehaviour[Vulture] = new SingleUnitBehaviour[Vulture](t, meta) {
 
-      trait State
-      case object Idle extends State
-      case class DroppingMine(tile: MapTilePosition) extends State
-
       private var state: State            = Idle
       private var originalSpiderMineCount = t.spiderMineCount
+
+      def freeArea = mined.get
 
       override def shortName: String = "LM"
       override def toOrder(what: Objective) = {
         val (newState, orders) = state match {
           case Idle =>
-            def beLazy = Idle -> Nil
             // TODO include test in tech trait
             if (t.spiderMineCount > 0 && t.canCastNow(SpiderMines)) {
-              val candiates = suggestMinePositions
-              val dropMineHere = candiates.minByOpt(_.distanceToSquared(t.currentTile))
-              dropMineHere.foreach(helper.blackList_!)
-              dropMineHere.map { where =>
-                DroppingMine(where) -> t.toOrder(SpiderMines, where).toList
-              }.getOrElse(beLazy)
+              val enemies = universe.unitGrid.allInRangeOf(t.currentTile, 10, friendly = false)
+              if (enemies.nonEmpty) {
+                // drop mines on sight of enemy
+                val on = freeArea
+                val freeTarget = on.spiralAround(t.currentTile).find(on.free)
+                freeTarget.map { where =>
+                  on.block_!(where.asArea.extendedBy(1))
+                  plannedDrops += where.asArea.extendedBy(1) -> universe.currentTick
+                  DroppingMine(where) -> t.toOrder(SpiderMines, where).toList
+                }.getOrElse(beLazy)
+              } else {
+                // place mines on strategic positions
+                val candiates = suggestMinePositions
+                val dropMineHere = candiates.minByOpt(_.distanceToSquared(t.currentTile))
+                dropMineHere.foreach(helper.blackList_!)
+                dropMineHere.map { where =>
+                  DroppingMine(where) -> t.toOrder(SpiderMines, where).toList
+                }.getOrElse(beLazy)
+              }
             } else {
               beLazy
             }

@@ -111,20 +111,20 @@ class UnitSecondLevelJobRenderer(override val universe: Universe) extends AIPlug
 class PathDebugRenderer(override val universe: Universe) extends AIPlugIn with HasUniverse {
   override protected def tickPlugIn(): Unit = {
     lazyWorld.debugger.debugRender { renderer =>
-      renderer.in_!(Color.Green)
+      renderer.in_!(Color.Purple)
       universe.worldDominationPlan.allAttacks.foreach { attack =>
         val center = attack.currentCenter
         val count = attack.force.size
         renderer.drawCircleAround(center.asMapPosition, math.round(math.sqrt(count)).toInt)
         attack.completePath.result.foreach { path =>
           var prev = Option.empty[MapTilePosition]
-          path.waypoints.zipWithIndex.foreach { case (tile, index) =>
+          path.paths.foreach(_.waypoints.zipWithIndex.foreach { case (tile, index) =>
             renderer.drawTextAtTile(s"P$index", tile)
             prev.foreach { p =>
               renderer.drawLine(p, tile)
             }
             prev = Some(tile)
-          }
+          })
         }
       }
     }

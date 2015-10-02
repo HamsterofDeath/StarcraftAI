@@ -6,6 +6,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.io.Serializable;
 import java.util.Iterator;
+import java.util.List;
 
 /**
  * Developed with pleasure :)<br>
@@ -26,7 +27,6 @@ public abstract class Node<T extends Node<T>> implements Iterable, Serializable 
 
     /**
      * @param p_parent A directly known Node. Otherwise, the returned value is not defined.
-     * @return
      */
     public abstract int evalCostFromParent(
             @NotNull
@@ -50,7 +50,7 @@ public abstract class Node<T extends Node<T>> implements Iterable, Serializable 
         setState(NodeState.OPEN);
     }
 
-    public abstract pony.astar.Node[] getNodes();
+    public abstract List<T> getNodes();
 
     public boolean isClosed() {
         return getState() == NodeState.CLOSED;

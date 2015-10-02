@@ -46,6 +46,7 @@ public class AStarSearch<T extends Node<T>> {
     private final PriorityQueue<T> m_open          = new PriorityQueue<T>(8192, m_estimationCmp);
     @Nullable
     private List<T>           m_solution;
+    private List<T>           m_fullSolution;
     private SearchResultState m_searchResultState;
     private T                 m_bestFound;
 
@@ -91,8 +92,7 @@ public class AStarSearch<T extends Node<T>> {
                     if (l_bestCandidate == m_target) {
                         m_searchResultState = SearchResultState.SOLUTION_FOUND;
                     } else {
-                        final T[] l_nodes = (T[]) l_bestCandidate.getNodes();
-                        for (final T l_node : l_nodes) {
+                        for (final T l_node : l_bestCandidate.getNodes()) {
                             //for performance reasons, null means "no more elements". this way, a fixed size
                             // array can be (re)used
                             if (l_node == null) {
@@ -126,11 +126,13 @@ public class AStarSearch<T extends Node<T>> {
         if (m_target.getParent() != null) {
             final List<T> l_list = CollectionUtils.asList(m_target.iterator());
             Collections.reverse(l_list);
+            m_fullSolution = new ArrayList<>(l_list);
             optimizePath(l_list);
             m_solution = l_list;
         } else {
             final List<T> l_list = CollectionUtils.asList(m_bestFound.iterator());
             Collections.reverse(l_list);
+            m_fullSolution = new ArrayList<>(l_list);
             optimizePath(l_list);
             m_solution = l_list;
         }
@@ -175,11 +177,6 @@ public class AStarSearch<T extends Node<T>> {
         m_open.add(p_node);
     }
 
-    @NotNull
-    public Heuristics getHeuristics() {
-        return m_heuristics;
-    }
-
     @Nullable
     public T getTargetOrNearestReachable() {
         if (m_searchResultState == SearchResultState.SOLUTION_FOUND) {
@@ -190,23 +187,13 @@ public class AStarSearch<T extends Node<T>> {
         return null;
     }
 
-    public int evalCostToGoal(final T p_tNode) {
-        return m_heuristics.estimateCost(p_tNode, m_target);
-    }
-
-    @NotNull
-    public T getTarget() {
-        return m_target;
-    }
-
     @Nullable
     public List<T> getSolution() {
         return m_solution;
     }
 
-    public boolean isFinished() {
-        return SearchResultState.SOLUTION_FOUND == m_searchResultState ||
-               SearchResultState.NOT_SOLVABLE == m_searchResultState;
+    public List<T> getFullSolution() {
+        return m_fullSolution;
     }
 
     public boolean isSolved() {
