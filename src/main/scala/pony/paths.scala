@@ -15,13 +15,15 @@ class MigrationPath(follow: Paths) {
 
   def nextFor(t: Mobile) = {
     val index = counter.getOrElseUpdate(t, counter.size) % follow.pathCount
-    val todo = remaining.getOrElseUpdate(t, ArrayBuffer.empty ++ follow.paths(index).waypoints)
+    val initialFullPath = follow.paths(index)
+    val todo = remaining.getOrElseUpdate(t, ArrayBuffer.empty ++ initialFullPath.waypoints)
     val closest = todo.minByOpt(_.distanceToSquared(t.currentTile))
     closest.map { c =>
       if (c.distanceToSquared(t.currentTile) <= 25) {
         todo.removeUntilInclusive(_ == c)
       }
-      c
+      val isOver30Percent = todo.size / initialFullPath.waypoints.size.toDouble <= 0.7
+      c -> isOver30Percent
     }
   }
 }
@@ -363,7 +365,8 @@ class UnitGrid(override val universe: Universe) extends HasUniverse {
 
   }
 
-  def allInRangeOf(position: MapTilePosition, radius: Int, friendly: Boolean): Traversable[Mobile] = {
+  def allInRangeOf[T <: Mobile : Manifest](position: MapTilePosition, radius: Int,
+                                           friendly: Boolean): Traversable[T] = {
     val fromX = 0 max position.x - radius
     val toX = map.tileSizeX min position.x + radius
     val fromY = 0 max position.y - radius
@@ -377,14 +380,18 @@ class UnitGrid(override val universe: Universe) extends HasUniverse {
       xx * xx + yy * yy
     }
 
-    new Traversable[Mobile] {
-      override def foreach[U](f: (Mobile) => U): Unit = {
+    new Traversable[T] {
+      override def foreach[U](f: (T) => U): Unit = {
+        val filter = manifest[T].runtimeClass
         val on = if (friendly) myUnits else enemyUnits
         for (x <- fromX until toX; y <- fromY until toY
              if dstSqr(x, y) <= radSqr) {
           val mobiles = on(x)(y)
           if (mobiles != null) {
-            mobiles.foreach(f)
+            val byType = mobiles.iterator.filter(e => filter.isAssignableFrom(e.getClass))
+            byType.foreach { e =>
+              f(e.asInstanceOf[T])
+            }
           }
         }
       }

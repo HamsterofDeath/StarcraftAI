@@ -578,6 +578,8 @@ trait GroundWeapon extends Weapon {
   val groundDamageMultiplier = groundWeapon.damageFactor()
   val groundDamageType: DamageType
 
+  override def weaponRangeRadius: Int = super.weaponRangeRadius max groundRange
+
   override def assumeShotDelayOn(target: CanDie) = {
     if (canAttack(target)) {
       damageDelayFactorGround
@@ -692,6 +694,8 @@ trait AirWeapon extends Weapon {
   val airDamageMultiplier = airWeapon.damageFactor()
   val airDamageType: DamageType
 
+  override def weaponRangeRadius: Int = super.weaponRangeRadius max airRange
+
   override def assumeShotDelayOn(target: CanDie) = {
     if (canAttack(target)) {
       damageDelayFactorAir
@@ -772,6 +776,9 @@ trait Weapon extends Controllable {
   }
 
   def isInWeaponRange(target: CanDie): Boolean = false // needs to be overriden to return true
+
+  def weaponRangeRadius = 0
+
 }
 
 trait MobileRangeWeapon extends RangeWeapon with Mobile {

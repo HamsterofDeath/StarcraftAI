@@ -105,9 +105,12 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse w
           StayInPosition(t)
         case Some(path) =>
           path.nextFor(t) match {
-            case Some(targetTile) =>
-              AttackToPosition(t, targetTile)
-            //MoveToPosition(t, targetTile)
+            case Some((targetTile, attackMove)) =>
+              if (attackMove) {
+                AttackToPosition(t, targetTile)
+              } else {
+                MoveToPosition(t, targetTile)
+              }
             case None =>
               StayInPosition(t)
           }

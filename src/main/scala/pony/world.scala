@@ -537,10 +537,6 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
   def spiralAround(center: MapTilePosition, size: Int = 45) = new GeometryHelpers(cols, rows)
                                                               .blockSpiralClockWise(center, size)
 
-  def asNodes = {
-
-  }
-
   def asReadOnlyCopyifMutable = this
 
 

@@ -76,8 +76,8 @@ object Terran {
                                            new HealDamagedUnit ::
                                            new FixMedicalProblem ::
                                            new BlindDetector ::
-                                           new Dance ::
                       */
+                      new Dance(universe) ::
                       new FocusFire(universe) ::
                       Nil).map(_.cast)
     allOfThem
@@ -87,14 +87,64 @@ object Terran {
 
     override def priority: SecondPriority = SecondPriority.More
 
+    override def canControl(u: WrapsUnit): Boolean = super.canControl(u) && u.isInstanceOf[Weapon]
+
     override protected def lift(t: Mobile with Weapon): SingleUnitBehaviour[Mobile with Weapon] = new
         SingleUnitBehaviour[Mobile with Weapon](t, meta) {
 
+      trait State
+      case object Idle extends State
+      case class Fallback(to: MapTilePosition, startedAtTick: Int) extends State
+
+      private var state: State    = Idle
+      private var runningCommands = List.empty[UnitOrder]
+      private val beLazy          = (Idle, List.empty[UnitOrder])
+
       override def shortName: String = "D"
       override def toOrder(what: Objective) = {
-        if (!t.isReadyToFireWeapon && t.canAttack()) {
+        val (newState, newOrder) = state match {
+          case Idle =>
+            val coolingDown = !t.isReadyToFireWeapon
+            lazy val dancePartners = {
+              val allEnemies = universe.unitGrid.allInRangeOf[Mobile](t.currentTile, t.weaponRangeRadius / 32,
+              friendly = false)
+              allEnemies.collect
+              { case enemy: Weapon if enemy.initialNativeType.topSpeed <= t.initialNativeType.topSpeed &&
+                                      enemy.weaponRangeRadius <= t.weaponRangeRadius =>
+                enemy
+              }
+            }
+            if (coolingDown && dancePartners.nonEmpty) {
+              val on = universe.mapLayers.reallyFreeBuildingTiles
+              var xSum = 0
+              var ySum = 0
+              for (dp <- dancePartners) {
+                val diff = dp.currentTile.diffTo(t.currentTile)
+                xSum += diff.x
+                ySum += diff.y
+              }
+              val ref = t.currentTile.movedBy(MapTilePosition(xSum, ySum))
+              val whereToGo = on.spiralAround(t.currentTile, 8).drop(49).filter { c =>
+                c.distanceToSquared(ref) < t.currentTile.distanceToSquared(ref)
+              }.find {on.free}
 
+              whereToGo.map { where =>
+                Fallback(where, universe.currentTick) -> Orders.Move(t, where).toList
+              }.getOrElse(beLazy)
+            } else {
+              beLazy
+            }
+          case current@Fallback(where, startedWhen) =>
+            if (t.isReadyToFireWeapon || startedWhen + 24 < universe.currentTick || t.currentTile == where) {
+              beLazy
+            } else {
+              (current, runningCommands)
+            }
         }
+        state = newState
+        runningCommands = newOrder
+        runningCommands
+
       }
     }
   }
@@ -252,15 +302,18 @@ object Terran {
       private var originalSpiderMineCount = t.spiderMineCount
 
       def freeArea = mined.get
+      private var inBattle = false
 
+      override def priority = if (inBattle) SecondPriority.EvenMore else super.priority
       override def shortName: String = "LM"
       override def toOrder(what: Objective) = {
         val (newState, orders) = state match {
           case Idle =>
             // TODO include test in tech trait
             if (t.spiderMineCount > 0 && t.canCastNow(SpiderMines)) {
-              val enemies = universe.unitGrid.allInRangeOf(t.currentTile, 10, friendly = false)
+              val enemies = universe.unitGrid.allInRangeOf[GroundUnit](t.currentTile, 10, friendly = false)
               if (enemies.nonEmpty) {
+                inBattle = true
                 // drop mines on sight of enemy
                 val on = freeArea
                 val freeTarget = on.spiralAround(t.currentTile).find(on.free)
@@ -270,6 +323,7 @@ object Terran {
                   DroppingMine(where) -> t.toOrder(SpiderMines, where).toList
                 }.getOrElse(beLazy)
               } else {
+                inBattle = false
                 // place mines on strategic positions
                 val candiates = suggestMinePositions
                 val dropMineHere = candiates.minByOpt(_.distanceToSquared(t.currentTile))
@@ -279,15 +333,18 @@ object Terran {
                 }.getOrElse(beLazy)
               }
             } else {
+              inBattle = false
               beLazy
             }
 
           case myState@DroppingMine(where) if t.canCastNow(SpiderMines) =>
             myState -> t.toOrder(SpiderMines, where).toList
           case DroppingMine(_) if t.spiderMineCount < originalSpiderMineCount =>
+            inBattle = false
             originalSpiderMineCount = t.spiderMineCount
             Idle -> Nil
           case myState@DroppingMine(_) =>
+            inBattle = false
             myState -> Nil
         }
         state = newState

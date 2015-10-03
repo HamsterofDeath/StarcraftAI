@@ -19,6 +19,10 @@ trait HasXY {
 
 }
 case class MapTilePosition(x: Int, y: Int) extends HasXY {
+  def diffTo(other: MapTilePosition) = {
+    MapTilePosition.shared(other.x - x, other.y - y)
+  }
+
   def leftRightUpDown = (movedBy(-1, 0), movedBy(1, 0), movedBy(0, -1), movedBy(0, 1))
 
   def asArea = Area(this, this)
@@ -69,6 +73,9 @@ object MapTilePosition {
     else {
       nativeStrange.computeIfAbsent((x, y), nativeComputer)
     }
+
+  val zero = MapTilePosition.shared(0, 0)
+
 }
 
 case class Size(x: Int, y: Int) extends HasXY {
