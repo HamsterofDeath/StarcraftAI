@@ -217,6 +217,7 @@ class BWFuture[T](val future: Future[T], incomplete: T) {
 }
 
 object BWFuture {
+  def none[T] = apply(Option.empty[T])
 
   def apply[T](produce: => T, ifIncomplete: T) = {
     val fut = Future {produce}
@@ -224,4 +225,6 @@ object BWFuture {
   }
 
   def apply[T](produce: => Option[T]): BWFuture[Option[T]] = BWFuture(produce, None)
+
+  def some[T](produce: => T) = BWFuture(Some(produce))
 }

@@ -35,6 +35,10 @@ package object pony {
     if (doIt && Info.includes(logLevel))
       tinylog.Logger.info(s"[$tick] ${a.toString}")
   }
+  def majorInfo(a: => Any, doIt: Boolean = true): Unit = {
+    if (doIt && Info.includes(logLevel))
+      tinylog.Logger.info(s"<MAJOR> [$tick] ${a.toString}")
+  }
   def debug(a: => Any, doIt: Boolean = true): Unit = {
     if (Debug.includes(logLevel))
       tinylog.Logger.debug(s"[$tick] ${a.toString}")

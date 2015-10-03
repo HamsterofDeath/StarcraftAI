@@ -264,6 +264,8 @@ trait WorldEventDispatcher extends WorldListener {
 }
 
 case class Resources(minerals: Int, gas: Int, supply: Supplies) {
+  def moreMineralsThanGas = minerals > gas
+
   val asSum = ResourceRequestSum(minerals, gas, supply.available)
 
   def supplyTotal = supply.total
@@ -385,6 +387,8 @@ abstract class OnKillListener[T <: WrapsUnit](val unit:T) {
 }
 
 class Units(game: Game, hostile: Boolean) {
+  def byId(id: Int) = knownUnits.get(id)
+
   private def ownAndNeutral = !hostile
 
   private val killListeners = mutable.HashMap.empty[Int, OnKillListener[_]]
@@ -421,7 +425,7 @@ class Units(game: Game, hostile: Boolean) {
     }
   }
 
-  private val knownUnits = mutable.HashMap.empty[Long, WrapsUnit]
+  private val knownUnits = mutable.HashMap.empty[Int, WrapsUnit]
   private var initial    = true
   def buildingAt(upperLeft:MapTilePosition) = {
     allBuildings.find(_.area.upperLeft == upperLeft)
@@ -537,8 +541,7 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
   def spiralAround(center: MapTilePosition, size: Int = 45) = new GeometryHelpers(cols, rows)
                                                               .blockSpiralClockWise(center, size)
 
-  def asReadOnlyCopyifMutable = this
-
+  def asReadOnlyCopyIfMutable = this
 
   override def toString = s"$cols*$rows, $freeCount free"
 
@@ -671,7 +674,7 @@ class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet, bitSetContains
   }
   def asReadOnly: Grid2D = this
 
-  override def asReadOnlyCopyifMutable = new Grid2D(cols, rows, bitSet.clone.toImmutable)
+  override def asReadOnlyCopyIfMutable = new Grid2D(cols, rows, bitSet.clone.toImmutable)
 
   def or_!(other: MutableGrid2D) = {
     if (containsBlocked == other.containsBlocked) {

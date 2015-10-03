@@ -254,6 +254,8 @@ class Bases(world: DefaultWorld) {
       myBases += newBase
       newBaseListeners.foreach(_.newBase(newBase))
     }
+
+    myBases.retain(!_.mainBuilding.isDead)
   }
 
   private val newBaseListeners = ArrayBuffer.empty[NewBaseListener]

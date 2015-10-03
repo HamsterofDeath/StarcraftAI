@@ -3,7 +3,7 @@ package brain
 package modules
 
 import bwapi.Color
-import pony.Upgrades.Terran.{GhostCloak, InfantryCooldown, SpiderMines, WraithCloak}
+import pony.Upgrades.Terran.{GhostCloak, InfantryCooldown, SpiderMines, TankSiegeMode, WraithCloak}
 
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
@@ -66,6 +66,7 @@ object Terran {
                       new CloakSelfGhost(universe) ::
                       new GoToInitialPosition(universe) ::
                       new CloakSelfWraith(universe) ::
+                      new SiegeUnsiegeSelf(universe) ::
                       new MigrateTowardsPosition(universe) ::
                       /*
                                             new RepairDamagedBuilding ::
@@ -193,6 +194,34 @@ object Terran {
         }
       }
       override def shortName: String = s"Stim"
+    }
+  }
+
+  class SiegeUnsiegeSelf(universe: Universe) extends DefaultBehaviour[Tank](universe) {
+    override protected def lift(t: Tank) = new SingleUnitBehaviour[Tank](t, meta) {
+
+      override def preconditionOk = upgrades.hasResearched(TankSiegeMode)
+
+      override def blocksForTicks: Int = 10
+
+      override def toOrder(what: Objective) = {
+        val enemyNear = universe.unitGrid.allInRangeOf[Mobile](t.currentTile, 12, friendly = false).nonEmpty
+
+        if (t.isSieged) {
+          if (enemyNear) {
+            Nil
+          } else {
+            Orders.TechOnSelf(t, TankSiegeMode).toList
+          }
+        } else {
+          if (enemyNear) {
+            Orders.TechOnSelf(t, TankSiegeMode).toList
+          } else {
+            Nil
+          }
+        }
+      }
+      override def shortName: String = s"S"
     }
   }
 
@@ -534,7 +563,7 @@ class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
   private val me2Enemy           = mutable.HashMap.empty[MobileRangeWeapon, CanDie]
   private val prioritizedTargets = LazyVal.from {
     val prioritized = universe.enemyUnits.allCanDie.toVector.sortBy { e =>
-      (e.isHarmlessNow.ifElse(1, 0), enemy2Attackers.contains(e).ifElse(0, 1), -e.price.sum)
+      (e.isHarmlessNow.ifElse(1, 0), enemy2Attackers.contains(e).ifElse(0, 1), -e.price.sum, e.hitPoints.sum)
     }
     prioritized
   }

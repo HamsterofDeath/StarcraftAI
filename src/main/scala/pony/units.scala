@@ -324,6 +324,8 @@ trait SpellcasterBuilding extends Building with Controllable {
 }
 
 case class HitPoints(hitpoints: Int, shield: Int) {
+  def sum = hitpoints + shield
+
   def <=(other: HitPoints): Boolean = <=(other.hitpoints, other.shield)
 
   def <=(otherHp: Int, otherShield: Int) = {
@@ -827,9 +829,16 @@ trait CanBuildAddons extends Building {
   def notifyDetach_!(addon: Addon): Unit = {
     trace(s"Addon $addon detached from $this")
     assert(attached.isDefined)
-    attached = Some(addon)
+    assert(attached.contains(addon))
+    attached = None
   }
   def hasAddonAttached = attached.isDefined
+  override def onTick(): Unit = {
+    super.onTick()
+    attached.filter(_.isDead).foreach { dead =>
+      notifyDetach_!(dead)
+    }
+  }
 }
 
 trait WorkerUnit extends Killable with Mobile with GroundUnit with GroundWeapon with Floating {
@@ -911,6 +920,8 @@ trait NormalAirDamage extends AirWeapon {
   override val airDamageType = Normal
 }
 
+trait UpgradeLimitLifter extends Building
+
 trait SupportUnit extends Mobile
 
 class SupplyDepot(unit: APIUnit) extends AnyUnit(unit) with ImmobileSupplyProvider
@@ -947,7 +958,7 @@ class Starport(unit: APIUnit) extends AnyUnit(unit) with UnitFactory with CanBui
 class Academy(unit: APIUnit) extends AnyUnit(unit) with Upgrader
 class Armory(unit: APIUnit) extends AnyUnit(unit) with Upgrader
 class EngineeringBay(unit: APIUnit) extends AnyUnit(unit) with Upgrader
-class ScienceFacility(unit: APIUnit) extends AnyUnit(unit) with Upgrader with CanBuildAddons
+class ScienceFacility(unit: APIUnit) extends AnyUnit(unit) with Upgrader with CanBuildAddons with UpgradeLimitLifter
 
 class MissileTurret(unit: APIUnit)
   extends AnyUnit(unit) with ArmedBuilding with CanDetectHidden with SlowAttackAir with AirWeapon with
@@ -976,12 +987,12 @@ trait SlowAttackGround extends GroundWeapon {
 trait MobileDetector extends CanDetectHidden with Mobile
 trait CanDetectHidden extends WrapsUnit
 trait CanSiege extends Mobile {
-  private var sieged = false
-  def isSieged = sieged
-  def sieged_!(flag: Boolean): Unit = {
-    sieged = flag
+  private val sieged = oncePerTick {
+    nativeUnit.isSieged
   }
+  def isSieged = sieged.get
 }
+
 trait CanUseStimpack extends Mobile with Weapon with HasSingleTargetSpells {
   private val stimmed = LazyVal.from(nativeUnit.isStimmed || stimTime > 0)
   def isStimmed = stimmed.get
@@ -1048,6 +1059,11 @@ object Spells {
   case object WraithCloak extends SingleTargetSpell[Wraith, Wraith](Upgrades.Terran.WraithCloak) {
     override def isAffected(m: Wraith) = {
       m.isCloaked
+    }
+  }
+  case object TankSiege extends SingleTargetSpell[Tank, Tank](Upgrades.Terran.TankSiegeMode) {
+    override def isAffected(m: Tank) = {
+      m.isSieged
     }
   }
 
@@ -1243,7 +1259,10 @@ class Vulture(unit: APIUnit)
 
 class Tank(unit: APIUnit)
   extends AnyUnit(unit) with GroundUnit with GroundWeapon with InstantAttackGround with Mechanic with CanSiege with
-          MobileRangeWeapon with IsBig with IsVehicle with ExplosiveGroundDamage
+          MobileRangeWeapon with IsBig with IsVehicle with ExplosiveGroundDamage with HasSingleTargetSpells {
+  override type CasterType = Tank
+  override val spells = List(Spells.TankSiege)
+}
 class Goliath(unit: APIUnit)
   extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with InstantAttackGround with SlowAttackAir with
           Mechanic with

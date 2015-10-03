@@ -366,6 +366,8 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
           order.toList.filterNot(_.isNoop)
         }
         override def isFinished = miningTarget.patch.remainingMinerals <= 0
+
+        override def hasFailed: Boolean = super.hasFailed || base.mainBuilding.isDead
       }
 
       object MiningOrganization {

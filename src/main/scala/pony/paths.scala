@@ -37,7 +37,7 @@ case class Paths(paths: Seq[Path], solved: Boolean, solvable: Boolean, bestEffor
 class PathFinder(mapLayers: MapLayers) {
   implicit def convBack(gn: GridNode2DInt): MapTilePosition = MapTilePosition.shared(gn.getX, gn.getY)
 
-  private val on = mapLayers.reallyFreeBuildingTiles.asReadOnlyCopyifMutable
+  private val on = mapLayers.reallyFreeBuildingTiles.asReadOnlyCopyIfMutable
 
   def findPath(from: MapTilePosition, to: MapTilePosition) = BWFuture {
     val fromFixed = on.nearestFree(from)
@@ -564,7 +564,7 @@ class ConstructionSiteFinder(universe: Universe) {
                                          .or_!(universe.mapLayers.blockedByPotentialAddons.mutableCopy)
   private val freeToBuildOnIgnoreUnits = universe.mapLayers.freeBuildingTiles.mutableCopy
                                          .or_!(universe.mapLayers.blockedByPotentialAddons.mutableCopy)
-                                         .asReadOnlyCopyifMutable
+                                         .asReadOnlyCopyIfMutable
   private val helper                   = new GeometryHelpers(universe.world.map.sizeX, universe.world.map.sizeY)
   def forResourceArea(resources: ResourceArea): SubFinder = {
     // we magically know this by now

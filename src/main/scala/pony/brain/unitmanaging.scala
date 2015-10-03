@@ -373,16 +373,16 @@ class UnitCollector[T <: WrapsUnit : Manifest](req: UnitJobRequests[T], override
     val um = unitManager
     val available = {
       val potential = {
-        val all = um.allOfEmployer(um.Nobody) ++ um.allNotOfEmployer(um.Nobody)
-        val requested = all.filter(requests)
+                        val all = um.allOfEmployer(um.Nobody).iterator ++ um.allNotOfEmployer(um.Nobody).iterator
+                        val requested = all.filter(_.unit.isInGame).filter(requests)
         val withoutHigherPrio = requested
                                 .filter(_.priority < req.priority)
         val withInterruptable = withoutHigherPrio.filter(interrupts)
         val withExplicitCandidates = withInterruptable ++ includeCandidates
         withExplicitCandidates.map(typed)
-      }
-      priorityRule.fold(potential.toVector) { rule =>
-        potential.toVector.sortBy(rule.giveRating)
+                      }.toVector
+      priorityRule.fold(potential) { rule =>
+        potential.sortBy(rule.giveRating)
       }
     }
 

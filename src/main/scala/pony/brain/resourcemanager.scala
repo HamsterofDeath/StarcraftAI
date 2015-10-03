@@ -84,7 +84,7 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
     val result = {
       trace(s"Incoming resource request: $requests")
       // first check if we have enough resources
-      val hasEnoughDespiteLocking = myUnlockedResources.asSum.canCoverCost(requests.sum)
+      val hasEnoughDespiteLocking = unlockedResources.asSum.canCoverCost(requests.sum)
       def approvalFail = {
         failedToProvideThisTick += requests
         ResourceApprovalFail
@@ -114,7 +114,7 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
           }
 
           var freed = ResourceRequestSum(0, 0, 0)
-          val available = myUnlockedResources.asSum
+          val available = unlockedResources.asSum
           def needsMore = !((freed + available) canCoverCost requests.sum)
           val requiredToFree = freeableResources.takeWhile { case (job, singleLocked) =>
             val stillNeedsMore = needsMore
@@ -177,8 +177,8 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
   def gatheredMinerals = nativeGame.self().gatheredMinerals()
   def gatheredGas = nativeGame.self().gatheredGas()
   def currentResources = myResources
-  def supplies = myUnlockedResources.supply
-  private def myUnlockedResources = myResources - lockedResources
+  def supplies = unlockedResources.supply
+  def unlockedResources = myResources - lockedResources
   def lockedResources = lockedSums.get
   def plannedSuppliesToAdd = {
     unitManager

@@ -72,6 +72,8 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse w
   }
 
   class Attack(private var currentForce: Set[Mobile], where: TargetPosition) {
+    assert(currentForce.nonEmpty, "WTF?")
+
     def hasMembers = currentForce.nonEmpty
 
     def hasEnded = !hasMembers || allReachedDestination
@@ -120,26 +122,99 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse w
 
   private val attacks = ArrayBuffer.empty[Attack]
 
+  private           var planInProgress: BWFuture[Option[Attacks]] = BWFuture(None)
+  @volatile private var thinking                                  = false
+
   override def onTick(): Unit = {
     super.onTick()
     attacks.foreach(_.onTick())
     attacks.retain(_.hasNotEnded)
+    if (thinking) {
+      planInProgress.result.foreach { plan =>
+        attacks ++= plan.parts
+        thinking = false
+        planInProgress = BWFuture.none
+        majorInfo(s"Attack plan finished!")
+      }
+    }
   }
 
   def attackOf(m: Mobile) = attacks.find(_.force(m))
 
   def initiateAttack(where: MapTilePosition, complete: Boolean = true): Unit = {
+    majorInfo(s"Initiating attack of $where")
+    assert(!thinking, s"Cannot multitask, sorry")
     //this attack has priority over an existing one
     if (complete) {
       attacks.clear()
     }
+
     val employer = new Employer[Mobile](universe)
     val req = UnitJobRequests.idleOfType(employer, classOf[Mobile], 9999)
     val result = unitManager.request(req, buildIfNoneAvailable = false)
     result.ifNotZero { seq =>
-      attacks += new Attack(seq.toSet.filterNot(_.isAutoPilot), TargetPosition(where, 10))
+      thinking = true
+      val independent = seq.filterNot(_.isAutoPilot).map { u => u.nativeUnitId -> u.currentTile }
+      val helper = new GroupingHelper(universe)
+      planInProgress = BWFuture.some {
+        val grouped = helper.groupUnits(independent)
+        val newAttacks = grouped.map { group =>
+          val asUnits = group.memberIds.map(e => ownUnits.byId(e).getOr(s"Id $e missing").asInstanceOf[Mobile])
+          new Attack(asUnits.toSet, TargetPosition(where, 10))
+        }
+        Attacks(newAttacks)
+      }
     }
   }
+
+  case class Attacks(parts: Seq[Attack])
+}
+
+class GroupingHelper(override val universe: Universe) extends HasUniverse {
+  private val maxDst = 10 * 10
+  class Group {
+
+    def memberIds = members.iterator.map(_._1)
+
+    def evalCenter = {
+      var x = 0
+      var y = 0
+      members.foreach { case (_, p) =>
+        x += p.x
+        y += p.y
+      }
+      x /= members.size
+      y /= members.size
+      MapTilePosition.shared(x, y)
+    }
+
+    def add_!(elem: (Int, MapTilePosition)): Unit = {
+      members += elem
+      center = evalCenter
+    }
+
+    private val members = ArrayBuffer.empty[((Int, MapTilePosition))]
+    private var center  = MapTilePosition.zero
+    def canJoin(e: (Int, MapTilePosition)) = {
+      e._2.distanceToSquared(center) < maxDst && map.connectedByLine(center, e._2)
+    }
+  }
+
+  def groupUnits(independent: Seq[(Int, MapTilePosition)]) = {
+    val groups = ArrayBuffer.empty[Group]
+    independent.foreach { elem =>
+      groups.find(_.canJoin(elem)) match {
+        case Some(joinMe) => joinMe.add_!(elem)
+        case None =>
+          val ng = new Group
+          groups += ng
+          ng.add_!(elem)
+      }
+    }
+    groups.toSeq
+  }
+
+  private val map = universe.mapLayers.rawWalkableMap.asReadOnlyCopyIfMutable
 }
 
 trait AddonRequestHelper extends AIModule[CanBuildAddons] {
@@ -307,9 +382,12 @@ class ProvideUpgrades(universe: Universe) extends OrderlessAIModule[Upgrader](un
   private val helper     = new HelperAIModule[WorkerUnit](universe) with BuildingRequestHelper
   private val researched = collection.mutable.Map.empty[Upgrade, Int]
 
+  private def hasLimitDisabler = universe.myUnits.allByType[UpgradeLimitLifter].nonEmpty
+
   override def onTick(): Unit = {
+    val maxLimitEnabled = hasLimitDisabler
     strategy.current.suggestUpgrades
-    .filterNot(e => researched.contains(e.upgrade))
+    .filterNot(e => researched.getOrElse(e.upgrade, 0) == maxLimitEnabled.ifElse(e.maxLevel, 1))
     .filter(_.isActive)
     .foreach { request =>
       val wantedUpgrade = request.upgrade
@@ -393,7 +471,8 @@ class EnqueueArmy(universe: Universe) extends OrderlessAIModule[UnitFactory](uni
 
     val canBuildNow = mostMissing.filterNot { case (c, _) => universe.unitManager.requirementsQueuedToBuild(c) }
     val highestPriority = canBuildNow.take(1)
-    val alternatives = canBuildNow.iterator.drop(1).filter(_._1.toUnitType.gasPrice() == 0)
+    val alternatives = canBuildNow.iterator.drop(1).filter(
+      _._1.toUnitType.gasPrice() == 0 && universe.resources.unlockedResources.moreMineralsThanGas)
     (highestPriority ++ alternatives).foreach { case (thisOne, _) =>
       requestUnit(thisOne, takeCareOfDependencies = false)
     }
@@ -491,6 +570,8 @@ object Strategy {
   }
 
   case class UpgradeToResearch(upgrade: Upgrade)(active: => Boolean) {
+    val maxLevel = upgrade.nativeType.fold(_.maxRepeats, _ => 1)
+
     def isActive = active
   }
   case class AddonToAdd(addon: Class[_ <: Addon], requestNewBuildings: Boolean)(active: => Boolean) {
@@ -547,6 +628,8 @@ object Strategy {
       UpgradeToResearch(Upgrades.Terran.VehicleWeapons)(timingHelpers.phase.isSinceMid) ::
       UpgradeToResearch(Upgrades.Terran.VehicleArmor)(timingHelpers.phase.isSinceMid) ::
       UpgradeToResearch(Upgrades.Terran.GoliathRange)(timingHelpers.phase.isSinceLateMid) ::
+      UpgradeToResearch(Upgrades.Terran.EMP)(timingHelpers.phase.isSinceLateMid) ::
+      UpgradeToResearch(Upgrades.Terran.ScienceVesselEnergy)(timingHelpers.phase.isSinceLateMid) ::
       Nil
   }
 
