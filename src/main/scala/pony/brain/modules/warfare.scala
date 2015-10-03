@@ -228,14 +228,21 @@ class GroupingHelper(override val universe: Universe) extends HasUniverse {
 trait AddonRequestHelper extends AIModule[CanBuildAddons] {
   self =>
 
-  def requestAddon[T <: Addon](addonType: Class[_ <: T]): Unit = {
+  private val helper = new HelperAIModule[WorkerUnit](universe) with BuildingRequestHelper
+
+  def requestAddon[T <: Addon](addonType: Class[_ <: T], handleDependencies: Boolean = false): Unit = {
     val req = ResourceRequests.forUnit(universe.myRace, addonType, Priority.Addon)
     val result = resources.request(req, self)
     result.ifSuccess { suc =>
       val unitReq = UnitJobRequests.addonConstructor(self, addonType)
       trace(s"Financing possible for $addonType, requesting build")
       val result = unitManager.request(unitReq)
-      if (result.hasAnyMissingRequirements || !result.success) {
+      if (handleDependencies && result.hasAnyMissingRequirements) {
+        result.notExistingMissingRequiments.foreach { what =>
+          helper.requestBuilding(what, handleDependencies)
+        }
+
+      } else if (!result.success) {
         resources.unlock_!(suc)
       } else {
         result.ifOne { one =>
@@ -380,7 +387,7 @@ class ProvideSuggestedAddons(universe: Universe)
                      if builder.canBuildAddon(addon.addon) & !builder.hasAddonAttached) yield (builder, addon))
                .toVector
     todo.foreach { case (builder, what) =>
-      requestAddon(what.addon)
+      requestAddon(what.addon, what.requestNewBuildings)
     }
   }
 }
@@ -539,6 +546,7 @@ object Strategy {
         def isSinceMid = time.minutes >= 8
         def isSincePostMid = time.minutes >= 9
         def isSinceLateMid = time.minutes >= 13
+        def isSinceVeryLateMid = time.minutes >= 16
         def isBeforeLate = time.minutes <= 20
 
         def isAnyTime = true
@@ -548,7 +556,8 @@ object Strategy {
 
   trait TerranDefaults extends LongTermStrategy {
     override def suggestAddons: Seq[AddonToAdd] = {
-      AddonToAdd(classOf[Comsat], requestNewBuildings = false)(unitManager.existsAndDone(classOf[Academy])) ::
+      AddonToAdd(classOf[Comsat], requestNewBuildings = true)(
+        unitManager.existsAndDone(classOf[Academy]) || timingHelpers.phase.isSinceEarlyMid) ::
       AddonToAdd(classOf[MachineShop], requestNewBuildings = false)(unitManager.existsAndDone(classOf[Factory])) ::
       AddonToAdd(classOf[ControlTower], requestNewBuildings = false)(unitManager.existsAndDone(classOf[Starport])) ::
       Nil
@@ -561,7 +570,8 @@ object Strategy {
           val others = strategicMap.domainsButWithout(covered)
           if (others.nonEmpty) {
             val (choke, what) = others.minBy(_._1.center.distanceToSquared(where))
-            val target = what.values.flatten.minBy(_.patches.map(_.center.distanceToSquared(where)).getOrElse(999999))
+            val target = what.values.flatten.maxBy(
+              e => (e.mineralsAndGas, -e.patches.map(_.center.distanceToSquared(where)).getOrElse(999999)))
             Some(target)
           } else {
             None
@@ -575,7 +585,7 @@ object Strategy {
       val (poor, rich) = bases.myMineralFields.partition(_.remainingPercentage < expansionThreshold)
       poor.size > rich.size && rich.size <= 3
     }
-    protected def expansionThreshold = 0.5
+    protected def expansionThreshold = 0.6
   }
 
   case class UpgradeToResearch(upgrade: Upgrade)(active: => Boolean) {
@@ -628,6 +638,7 @@ object Strategy {
       IdealUnitRatio(classOf[Tank], 5)(timingHelpers.phase.isSinceEarlyMid) ::
       IdealUnitRatio(classOf[Goliath], 3)(timingHelpers.phase.isSinceMid) ::
       IdealUnitRatio(classOf[ScienceVessel], 1)(timingHelpers.phase.isSinceLateMid) ::
+      IdealUnitRatio(classOf[Dropship], 1)(timingHelpers.phase.isSinceLateMid) ::
       Nil
     }
     override def suggestUpgrades: Seq[UpgradeToResearch] =
@@ -639,6 +650,17 @@ object Strategy {
       UpgradeToResearch(Upgrades.Terran.GoliathRange)(timingHelpers.phase.isSinceLateMid) ::
       UpgradeToResearch(Upgrades.Terran.EMP)(timingHelpers.phase.isSinceLateMid) ::
       UpgradeToResearch(Upgrades.Terran.ScienceVesselEnergy)(timingHelpers.phase.isSinceLateMid) ::
+      UpgradeToResearch(Upgrades.Terran.Irradiate)(timingHelpers.phase.isSinceLateMid) ::
+      UpgradeToResearch(Upgrades.Terran.CruiserGun)(timingHelpers.phase.isSinceVeryLateMid) ::
+      UpgradeToResearch(Upgrades.Terran.CruiserEnergy)(timingHelpers.phase.isSinceVeryLateMid) ::
+      UpgradeToResearch(Upgrades.Terran.MarineRange)(timingHelpers.phase.isSinceVeryLateMid) ::
+      UpgradeToResearch(Upgrades.Terran.InfantryCooldown)(timingHelpers.phase.isSinceVeryLateMid) ::
+      UpgradeToResearch(Upgrades.Terran.InfantryArmor)(timingHelpers.phase.isSinceVeryLateMid) ::
+      UpgradeToResearch(Upgrades.Terran.InfantryWeapons)(timingHelpers.phase.isSinceVeryLateMid) ::
+      UpgradeToResearch(Upgrades.Terran.GhostStop)(timingHelpers.phase.isSinceVeryLateMid) ::
+      UpgradeToResearch(Upgrades.Terran.GhostCloak)(timingHelpers.phase.isSinceVeryLateMid) ::
+      UpgradeToResearch(Upgrades.Terran.GhostEnergy)(timingHelpers.phase.isSinceVeryLateMid) ::
+      UpgradeToResearch(Upgrades.Terran.GhostVisiblityRange)(timingHelpers.phase.isSinceVeryLateMid) ::
       Nil
   }
 

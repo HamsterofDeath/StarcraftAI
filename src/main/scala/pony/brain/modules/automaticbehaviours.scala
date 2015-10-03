@@ -210,7 +210,7 @@ object Terran {
       override def toOrder(what: Objective) = {
         val enemyNear = {
           val trav = universe.unitGrid.allInRangeOf[GroundUnit](t.currentTile, 12, friendly = false)
-          trav.exists(!_.isHarmlessNow)
+          trav.view.filter(!_.isHarmlessNow).take(4).size >= 3
         }
 
         if (t.isSieged) {
@@ -271,7 +271,7 @@ object Terran {
     override protected def lift(t: Mobile): SingleUnitBehaviour[Mobile] = new SingleUnitBehaviour[Mobile](t, meta) {
       override def shortName: String = "IP"
       override def toOrder(what: Objective) = {
-        if (universe.time.minutes <= 4 || ignore(t) || t.isBeingCreated) {
+        if (universe.time.minutes <= 5 || ignore(t) || t.isBeingCreated) {
           Nil
         } else {
           helper.allInsideNonBlacklisted.toStream.headOption.map { where =>

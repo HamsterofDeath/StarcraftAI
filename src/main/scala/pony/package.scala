@@ -1,3 +1,4 @@
+import bwapi.Game
 import org.pmw.tinylog
 import org.pmw.tinylog.{Configurator, Level}
 
@@ -136,4 +137,9 @@ package object pony {
   case object Error extends LogLevel(5)
 
   case object Off extends LogLevel(6)
+
+  implicit class GameWrap(val game: Game) extends AnyVal {
+    def suggestFileName = s"${game.mapName()}_${game.mapHash()}.bin"
+  }
+
 }

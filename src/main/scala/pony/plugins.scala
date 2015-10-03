@@ -42,14 +42,16 @@ class ChokePointRenderer(override val universe: Universe) extends AIPlugIn with 
 
 class WalkableRenderer extends AIPlugIn {
   override protected def tickPlugIn(): Unit = {
-    lazyWorld.debugger.debugRender { renderer =>
-      renderer.in_!(Color.Red)
+    if (lazyWorld.debugger.isMapDebug) {
+      lazyWorld.debugger.debugRender { renderer =>
+        renderer.in_!(Color.Red)
 
-      val walkable = lazyWorld.map.walkableGrid
-      walkable.all
-      .filter(walkable.blocked)
-      .foreach { blocked =>
-        renderer.drawCrossedOutOnTile(blocked)
+        val walkable = lazyWorld.map.walkableGrid
+        walkable.all
+        .filter(walkable.blocked)
+        .foreach { blocked =>
+          renderer.drawCrossedOutOnTile(blocked)
+        }
       }
     }
   }
@@ -57,14 +59,16 @@ class WalkableRenderer extends AIPlugIn {
 
 class BuildableRenderer(ignoreWalkable: Boolean) extends AIPlugIn {
   override protected def tickPlugIn(): Unit = {
-    lazyWorld.debugger.debugRender { renderer =>
-      renderer.in_!(Color.Grey)
+    if (lazyWorld.debugger.isMapDebug) {
+      lazyWorld.debugger.debugRender { renderer =>
+        renderer.in_!(Color.Grey)
 
-      val builable = lazyWorld.map.buildableGrid
-      builable.allBlocked
-      .filter { e => !ignoreWalkable || !lazyWorld.map.walkableGrid.blocked(e) }
-      .foreach { blocked =>
-        renderer.drawCrossedOutOnTile(blocked)
+        val builable = lazyWorld.map.buildableGrid
+        builable.allBlocked
+        .filter { e => !ignoreWalkable || !lazyWorld.map.walkableGrid.blocked(e) }
+        .foreach { blocked =>
+          renderer.drawCrossedOutOnTile(blocked)
+        }
       }
     }
   }
@@ -222,11 +226,11 @@ class StatsRenderer(override val universe: Universe) extends AIPlugIn with HasUn
         }.toList.sorted
       }
 
-      debugString += {
+      debugString ++= {
         val formatted = unitManager.jobsByType.map { case (jobType, members) =>
           s"${jobType.className}/${members.size}"
         }
-        s"Job/units: ${formatted.toList.sorted.mkString(", ")}"
+        "Job/units:" :: formatted.toList.sorted
       }
 
       debugString ++= {
@@ -244,45 +248,47 @@ class BlockedBuildingSpotsRenderer(override val universe: Universe) extends AIPl
   override val lazyWorld = universe.world
 
   override protected def tickPlugIn(): Unit = {
-    lazyWorld.debugger.debugRender { renderer =>
-      renderer.in_!(Color.Orange)
-      val area = mapLayers.blockedByBuildingTiles
-      area.allBlocked
-      .foreach { blocked =>
-        renderer.drawCrossedOutOnTile(blocked)
+    if (lazyWorld.debugger.isMapDebug) {
+      lazyWorld.debugger.debugRender { renderer =>
+        renderer.in_!(Color.Orange)
+        val area = mapLayers.blockedByBuildingTiles
+        area.allBlocked
+        .foreach { blocked =>
+          renderer.drawCrossedOutOnTile(blocked)
+        }
       }
-    }
-    lazyWorld.debugger.debugRender { renderer =>
-      renderer.in_!(Color.White)
-      val area = mapLayers.blockedByPlannedBuildings
-      area.allBlocked
-      .foreach { blocked =>
-        renderer.drawCrossedOutOnTile(blocked)
+      lazyWorld.debugger.debugRender { renderer =>
+        renderer.in_!(Color.White)
+        val area = mapLayers.blockedByPlannedBuildings
+        area.allBlocked
+        .foreach { blocked =>
+          renderer.drawCrossedOutOnTile(blocked)
+        }
       }
-    }
-    lazyWorld.debugger.debugRender { renderer =>
-      renderer.in_!(Color.Blue)
-      val area = mapLayers.blockedByResources
-      area.allBlocked
-      .foreach { blocked =>
-        renderer.drawCrossedOutOnTile(blocked)
+      lazyWorld.debugger.debugRender { renderer =>
+        renderer.in_!(Color.Blue)
+        val area = mapLayers.blockedByResources
+        area.allBlocked
+        .foreach { blocked =>
+          renderer.drawCrossedOutOnTile(blocked)
+        }
       }
-    }
-    lazyWorld.debugger.debugRender { renderer =>
-      renderer.in_!(Color.Grey)
-      val area = mapLayers.blockedByWorkerPaths
-      area.allBlocked
-      .foreach { blocked =>
-        renderer.drawCrossedOutOnTile(blocked)
+      lazyWorld.debugger.debugRender { renderer =>
+        renderer.in_!(Color.Grey)
+        val area = mapLayers.blockedByWorkerPaths
+        area.allBlocked
+        .foreach { blocked =>
+          renderer.drawCrossedOutOnTile(blocked)
+        }
       }
-    }
 
-    lazyWorld.debugger.debugRender { renderer =>
-      renderer.in_!(Color.Grey)
-      val area = mapLayers.blockedByMobileUnits
-      area.allBlocked
-      .foreach { blocked =>
-        renderer.drawCrossedOutOnTile(blocked)
+      lazyWorld.debugger.debugRender { renderer =>
+        renderer.in_!(Color.Grey)
+        val area = mapLayers.blockedByMobileUnits
+        area.allBlocked
+        .foreach { blocked =>
+          renderer.drawCrossedOutOnTile(blocked)
+        }
       }
     }
   }
@@ -335,6 +341,10 @@ class DebugHelper(main: MainAI) extends AIPlugIn with HasUniverse {
               universe.world.debugger.off()
             case "debugon" | "don" =>
               universe.world.debugger.on()
+            case "debugmoff" | "dmoff" =>
+              universe.world.debugger.mapOff()
+            case "debugmon" | "dmon" =>
+              universe.world.debugger.mapOn()
             case "debug" | "d" =>
               params match {
                 case List(id) =>

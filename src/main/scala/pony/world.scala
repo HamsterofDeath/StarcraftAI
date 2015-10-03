@@ -51,9 +51,9 @@ class TerranTechTree extends TechTree {
     Upgrades.Terran.GoliathRange -> classOf[MachineShop],
     Upgrades.Terran.CruiserGun -> classOf[PhysicsLab],
     Upgrades.Terran.CruiserEnergy -> classOf[PhysicsLab],
-    Upgrades.Terran.Irradiate -> classOf[PhysicsLab],
-    Upgrades.Terran.EMP -> classOf[PhysicsLab],
-    Upgrades.Terran.ScienceVesselEnergy -> classOf[PhysicsLab],
+    Upgrades.Terran.Irradiate -> classOf[ScienceFacility],
+    Upgrades.Terran.EMP -> classOf[ScienceFacility],
+    Upgrades.Terran.ScienceVesselEnergy -> classOf[ScienceFacility],
     Upgrades.Terran.GhostCloak -> classOf[CovertOps],
     Upgrades.Terran.GhostEnergy -> classOf[CovertOps],
     Upgrades.Terran.GhostStop -> classOf[CovertOps],
@@ -333,17 +333,26 @@ class DefaultWorld(game: Game) extends WorldListener with WorldEventDispatcher {
 }
 
 class Debugger(game: Game) {
+  def isMapDebug = debuggingMap
+
   val renderer = new Renderer(game, Color.Green)
-  private var debugging  = true
-  private var countTicks = 0
+  private var debugging    = true
+  private var debuggingMap = false
+  private var countTicks   = 0
   def on(): Unit = {
     debugging = true
   }
   def off(): Unit = {
     debugging = false
   }
+  def mapOn(): Unit = {
+    debuggingMap = true
+  }
+  def mapOff(): Unit = {
+    debuggingMap = false
+  }
 
-  def isDebugging = debugging
+  def isDebugging = debugging || debuggingMap
 
   def speed(int: Int): Unit = {
     game.setLocalSpeed(int)
@@ -751,16 +760,34 @@ class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet, bitSetContains
   def inArea(x: Int, y: Int) = x >= 0 && y >= 0 && x < cols && y < rows
 }
 
+case class SerializablePatchGroup(areas: Seq[Area])
+
 class ResourceAnalyzer(map: AnalyzedMap, myUnits: Units) {
 
-  val groups        = {
+  lazy val groups = myGroups.get.zipWithIndex.map { case (serializable, index) =>
+    val pg = new MineralPatchGroup(index)
+    serializable.areas.foreach { e =>
+      val minerals = myUnits.minerals.find(_.area == e).getOr(s"Could not find minerals at $e")
+      pg.addPatch(minerals)
+    }
+    pg
+  }
+
+  private val myGroups = FileStorageLazyVal.from({
+    info(s"Calculating mineral groups...")
     val patchGroups = ArrayBuffer.empty[MineralPatchGroup]
-    val pf = new AreaHelper(map.walkableGrid)
-    val constantOrder = myUnits.minerals.toVector.sortBy(p => p.tilePosition.x + p.tilePosition.y * 1024)
-    constantOrder.foreach { mp =>
-      patchGroups.find(g => !g.contains(mp) &&
-                            g.patches.map(_.area.distanceTo(mp.tilePosition)).min <= 10 &&
-                            g.patches.exists(p => pf.directLineOfSight(mp.area, p.area))) match {
+    val allMins = ArrayBuffer.empty ++= myUnits.minerals
+    val pathFinder = PathFinder.on(map.walkableGrid)
+    allMins.foreach { mp =>
+      patchGroups.find { g =>
+        def isNew = !g.contains(mp)
+        def isClose = {
+          val startingPoint = map.walkableGrid.nearestFree(g.center)
+                              .getOr(s"Count not find any free point around ${g.center}")
+          pathFinder.findPathNow(startingPoint, mp.tilePosition).length < 15
+        }
+        isNew && isClose
+      } match {
         case Some(group) => group.addPatch(mp)
         case None =>
           val newGroup = new MineralPatchGroup(patchGroups.size)
@@ -768,9 +795,11 @@ class ResourceAnalyzer(map: AnalyzedMap, myUnits: Units) {
           patchGroups += newGroup
       }
     }
-    patchGroups.toSeq
-  }
-  val resourceAreas = {
+
+    patchGroups.toSeq.map(e => SerializablePatchGroup(e.patches.map(_.area).toSeq))
+  }, s"mineralgroups_${map.game.suggestFileName}")
+
+  lazy val resourceAreas = {
     groups.map { patchGroup =>
       val geysirs = myUnits.geysirs
                     .filter(_.area.distanceTo(patchGroup.center) < 10)
@@ -823,7 +852,8 @@ case class MineralPatchGroup(patchId: Int) {
   }
 }
 
-class AnalyzedMap(game: Game) {
+class AnalyzedMap(val game: Game) {
+
   val sizeX = game.mapWidth() * 4
   val sizeY = game.mapHeight() * 4
 

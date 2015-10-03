@@ -28,53 +28,28 @@ class MigrationPath(follow: Paths) {
   }
 }
 
-case class Path(waypoints: Seq[MapTilePosition])
+case class Path(waypoints: Seq[MapTilePosition]) {
+  lazy val length = {
+    if (waypoints.size <= 1)
+      0
+    else
+      waypoints.sliding(2, 1).map { case Seq(a, b) => a.distanceTo(b) }.sum
+  }
+}
 
 case class Paths(paths: Seq[Path], solved: Boolean, solvable: Boolean, bestEffort: MapTilePosition) {
   val pathCount = paths.size
 }
 
-class PathFinder(mapLayers: MapLayers) {
+object PathFinder {
+
   implicit def convBack(gn: GridNode2DInt): MapTilePosition = MapTilePosition.shared(gn.getX, gn.getY)
 
-  private val on = mapLayers.freeWalkableTiles.asReadOnlyCopyIfMutable
-
-  def findPath(from: MapTilePosition, to: MapTilePosition) = BWFuture {
-    val fromFixed = on.nearestFree(from)
-    val toFixed = on.nearestFree(to)
-    for (a <- fromFixed; b <- toFixed) yield spawn.findPath(a, b, 10)
+  def on(map: Grid2D) = {
+    new PathFinder(map)
   }
 
-  class AstarPathFinder(grid: Array[Array[GridNode2DInt]]) {
-    private implicit def conv(mtp: MapTilePosition): GridNode2DInt = {
-      val ret = grid(mtp.x)(mtp.y)
-      assert(ret != null, s"Map tile $mtp is not free!")
-      ret
-    }
-
-    def findPath(from: MapTilePosition, to: MapTilePosition, width: Int) = {
-      info(s"Searching path from $from to $to")
-      val finder = new AStarSearch[GridNode2DInt](from, to)
-      var first = Option.empty[Path]
-      val paths = (0 to width).iterator.map { _ =>
-        finder.performSearch()
-        val waypoints = finder.getSolution.asScala.map(e => e: MapTilePosition).toVector
-        //block the path, then search again to get streets
-        finder.getFullSolution.asScala.toVector.drop(15).dropRight(10).foreach(_.remove())
-        if (first.isEmpty) first = Some(Path(waypoints))
-        waypoints
-      }.takeWhile { candidate =>
-        candidate.forall { pointOnLine =>
-          first.get.waypoints.exists { old =>
-            on.connectedByLine(old, pointOnLine)
-          }
-        }
-      }.toVector
-      Paths(paths.map(Path), finder.isSolved, !finder.isUnsolvable, finder.getTargetOrNearestReachable)
-    }
-  }
-
-  private def to2DArray(grid: Grid2D) = {
+  def to2DArray(grid: Grid2D) = {
 
     val asGrid = Array.ofDim[GridNode2DInt](grid.cols, grid.rows)
     implicit def conv(mtp: MapTilePosition): GridNode2DInt = {
@@ -133,6 +108,62 @@ class PathFinder(mapLayers: MapLayers) {
     }
 
     asGrid
+  }
+
+}
+
+class PathFinder(on: Grid2D) {
+
+  import PathFinder._
+
+  def this(mapLayers: MapLayers) {
+    this(mapLayers.freeWalkableTiles)
+  }
+
+  def findPath(from: MapTilePosition, to: MapTilePosition) = BWFuture {
+    val fromFixed = on.nearestFree(from)
+    val toFixed = on.nearestFree(to)
+    for (a <- fromFixed; b <- toFixed) yield spawn.findPath(a, b, 10)
+  }
+
+  def findPathNow(from: MapTilePosition, to: MapTilePosition) = {
+    spawn.findPathNow(from, to)
+  }
+
+  class AstarPathFinder(grid: Array[Array[GridNode2DInt]]) {
+    private implicit def conv(mtp: MapTilePosition): GridNode2DInt = {
+      val ret = grid(mtp.x)(mtp.y)
+      assert(ret != null, s"Map tile $mtp is not free!")
+      ret
+    }
+
+    def findPathNow(from: MapTilePosition, to: MapTilePosition) = {
+      Path(new AStarSearch[GridNode2DInt](from, to).performSearch()
+           .getSolution.asScala
+           .map(e => MapTilePosition.shared(e.getX, e.getY))
+           .toVector)
+    }
+
+    def findPath(from: MapTilePosition, to: MapTilePosition, width: Int) = {
+      info(s"Searching path from $from to $to")
+      val finder = new AStarSearch[GridNode2DInt](from, to)
+      var first = Option.empty[Path]
+      val paths = (0 to width).iterator.map { _ =>
+        finder.performSearch()
+        val waypoints = finder.getSolution.asScala.map(e => e: MapTilePosition).toVector
+        //block the path, then search again to get streets
+        finder.getFullSolution.asScala.toVector.drop(15).dropRight(10).foreach(_.remove())
+        if (first.isEmpty) first = Some(Path(waypoints))
+        waypoints
+      }.takeWhile { candidate =>
+        candidate.forall { pointOnLine =>
+          first.get.waypoints.exists { old =>
+            on.connectedByLine(old, pointOnLine)
+          }
+        }
+      }.toVector
+      Paths(paths.map(Path), finder.isSolved, !finder.isUnsolvable, finder.getTargetOrNearestReachable)
+    }
   }
 
   def spawn = new AstarPathFinder(to2DArray(on))

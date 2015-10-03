@@ -19,6 +19,8 @@ trait HasXY {
 
 }
 case class MapTilePosition(x: Int, y: Int) extends HasXY {
+  def isAtStorePosition = x >= 1000 && y >= 1000
+
   def diffTo(other: MapTilePosition) = {
     MapTilePosition.shared(other.x - x, other.y - y)
   }

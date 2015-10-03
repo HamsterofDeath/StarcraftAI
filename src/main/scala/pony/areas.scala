@@ -7,6 +7,7 @@ import scala.collection.mutable.ArrayBuffer
 
 case class ResourceArea(patches: Option[MineralPatchGroup], geysirs: Set[Geysir]) {
   val resources = patches.map(_.patches).getOrElse(Nil) ++ geysirs
+  def mineralsAndGas = resources.iterator.map(_.remaining).sum
   def center = patches.map(_.center).getOrElse(geysirs.head.tilePosition)
   def isPatchId(id: Int) = patches.fold(false)(_.patchId == id)
   lazy val coveredTiles             = resources.flatMap(_.area.tiles).toSet
@@ -105,6 +106,7 @@ class StrategicMap(resources: Seq[ResourceArea], walkable: Grid2D, game: Game) {
   }
 
   private val myNarrowPassages = FileStorageLazyVal.from({
+    info(s"Calculating narrow passages...")
     val tooMany = {
       val lines = tryCutters(8).map { e => e.split }
       walkable.allFree.toVector.par.flatMap { freeSpot =>
@@ -133,7 +135,7 @@ class StrategicMap(resources: Seq[ResourceArea], walkable: Grid2D, game: Game) {
       NarrowPoint(where, index)
     }
 
-  }, s"narrow_${game.mapHash()}_${game.mapName()}")
+  }, s"narrow_${game.suggestFileName}")
 
   private def tryCutters(size: Int) = {
     val lineLength = size
@@ -220,7 +222,7 @@ class StrategicMap(resources: Seq[ResourceArea], walkable: Grid2D, game: Game) {
     }
     println("Done!")
     ret
-  }, s"mapdata_${game.mapHash()}_${game.mapName()}")
+  }, s"mapdata_${game.suggestFileName}")
 
   private val myDomains = LazyVal.from {
     val raw = mapData.get

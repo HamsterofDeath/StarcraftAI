@@ -259,7 +259,7 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
       new UnitCollector(req, universe).collect_!()
     }
 
-    val (missing, incomplete) = findMissingRequirements(req.allTypes)
+    val (missing, incomplete) = findMissingRequirements(req.allRequiredTypes)
     val result = if (missing.isEmpty && incomplete.isEmpty) {
       val hr = hireResult
       hr match {
@@ -1087,7 +1087,9 @@ trait RateCandidate[T <: WrapsUnit] {
 }
 
 case class UnitJobRequests[T <: WrapsUnit : Manifest](requests: Seq[UnitRequest[T]], employer: Employer[T],
-                                                      priority: Priority) {
+                                                      priority: Priority,
+                                                      makeSureDependenciesCleared: Set[Class[_ <: WrapsUnit]] = Set
+                                                                                                                .empty) {
   private val types = requests.map(_.typeOfRequestedUnit).toSet
   def canInterrupt(unit: UnitWithJob[_ <: WrapsUnit]) = {
     assert(priority > unit.priority, "Oops :(")
@@ -1100,7 +1102,7 @@ case class UnitJobRequests[T <: WrapsUnit : Manifest](requests: Seq[UnitRequest[
   }
 
   assert(requests.forall(_.clearable) || requests.forall(!_.clearable))
-  def allTypes = requests.map(_.typeOfRequestedUnit).toSet
+  def allRequiredTypes = requests.map(_.typeOfRequestedUnit).toSet ++ makeSureDependenciesCleared
   def priorityRule: Option[RateCandidate[T]] = {
     val picker = if (requests.size == 1) requests.head.ratingFuntion else None
     picker.map { nat => new RateCandidate[T] {
@@ -1160,7 +1162,7 @@ object UnitJobRequests {
     val req = AnyUnitRequest(mainType, 1)
               .withFilter_!(e => !e.isBeingCreated && !e.hasAddonAttached && !e.isBuildingAddon)
 
-    UnitJobRequests(req.toSeq, employer, priority)
+    UnitJobRequests(req.toSeq, employer, priority, Set(what))
   }
 
   def idleOfType[T <: WrapsUnit : Manifest](employer: Employer[T], ofType: Class[_ <: T], amount: Int = 1,

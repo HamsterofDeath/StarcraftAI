@@ -32,7 +32,7 @@ class ProvideNewBuildings(universe: Universe)
             in.jobRequest.forceUnlockOnDispose_!()
             in.jobRequest.dispose()
           } else {
-            warn(s"Why is the same request processed again?")
+            warn(s"Why is the same request processed again? -> ${in.jobRequest}")
           }
         })
       case Some(startJob) =>
@@ -53,7 +53,12 @@ class ProvideNewBuildings(universe: Universe)
     // we do them one by one, it's simpler
     val buildingRelated = unitManager.failedToProvideByType[Building]
     val constructionRequests = buildingRelated.collect {
-      case buildIt: BuildUnitRequest[Building] if buildIt.proofForFunding.isFunded && !buildIt.isAddon =>
+      case buildIt: BuildUnitRequest[Building]
+        if buildIt.proofForFunding.isFunded &&
+           !buildIt.isAddon &&
+           universe.resources.detailedLocks.exists { lock =>
+             lock.whatFor == buildIt.typeOfRequestedUnit && lock.reqs.sum == buildIt.funding.sum
+           } =>
         buildIt
     }
     val anyOfThese = constructionRequests.headOption
@@ -365,7 +370,9 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
           state = newState
           order.toList.filterNot(_.isNoop)
         }
-        override def isFinished = miningTarget.patch.remainingMinerals <= 0
+        override def isFinished = miningTarget.patch.remainingMinerals <= 0 ||
+                                  !miningTarget.patch.isInGame ||
+                                  miningTarget.patch.tilePosition.isAtStorePosition
 
         override def hasFailed: Boolean = super.hasFailed || base.mainBuilding.isDead
       }
