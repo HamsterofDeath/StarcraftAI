@@ -16,7 +16,7 @@ class MigrationPath(follow: Paths) {
   def nextFor(t: Mobile) = {
     val index = counter.getOrElseUpdate(t, counter.size) % follow.pathCount
     val initialFullPath = follow.paths(index)
-    val todo = remaining.getOrElseUpdate(t, ArrayBuffer.empty ++ initialFullPath.waypoints)
+    val todo = remaining.getOrElseUpdate(t, ArrayBuffer.empty ++= initialFullPath.waypoints)
     val closest = todo.minByOpt(_.distanceToSquared(t.currentTile))
     closest.map { c =>
       if (c.distanceToSquared(t.currentTile) <= 25) {
@@ -151,7 +151,7 @@ class AreaHelper(source: Grid2D) {
         if (area.nonEmpty) {
           areas += {
             val asGrid = new Grid2D(baseOn.cols, baseOn.rows, area, false)
-            used ++= area
+            used |= mutable.BitSet.fromBitMaskNoCopy(area.toBitMask)
             asGrid
           }
         }
@@ -181,10 +181,10 @@ class AreaHelper(source: Grid2D) {
     ret
   }
 
-  private def floodFill(start: MapTilePosition): mutable.BitSet = {
+  private def floodFill(start: MapTilePosition) = {
     val ret = mutable.BitSet.empty
     AreaHelper.traverseTilesOfArea(start, (x, y) => ret += x + y * baseOn.cols, baseOn)
-    ret
+    ret.immutableWrapper
   }
 
   def directLineOfSight(a: Area, b: MapTilePosition): Boolean = {

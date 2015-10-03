@@ -24,10 +24,12 @@ trait OrderHistorySupport extends WrapsUnit {
   }
   override def onTick(): Unit = {
     super.onTick()
-    if (universe.unitManager.hasJob(this)) {
-      history += HistoryElement(nativeUnit.getOrder, nativeUnit.getOrderTarget, universe.unitManager.jobOf(this))
-      if (history.size > maxHistory) {
-        history.remove(0)
+    if (universe.world.debugger.isDebugging) {
+      if (universe.unitManager.hasJob(this)) {
+        history += HistoryElement(nativeUnit.getOrder, nativeUnit.getOrderTarget, universe.unitManager.jobOf(this))
+        if (history.size > maxHistory) {
+          history.remove(0)
+        }
       }
     }
   }
@@ -324,6 +326,8 @@ trait SpellcasterBuilding extends Building with Controllable {
 }
 
 case class HitPoints(hitpoints: Int, shield: Int) {
+  def isDead = hitpoints == 0
+
   def sum = hitpoints + shield
 
   def <=(other: HitPoints): Boolean = <=(other.hitpoints, other.shield)
@@ -441,7 +445,7 @@ trait CanDie extends WrapsUnit {
   val price = Price(nativeUnit.getType.mineralPrice(), nativeUnit.getType.gasPrice())
 
   private var dead = false
-  def isDead = dead
+  def isDead = dead || currentHp.isDead
 
   override def isInGame: Boolean = !isDead
 

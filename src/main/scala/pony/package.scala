@@ -7,7 +7,7 @@ import scala.collection.mutable
  * Created by HoD on 01.08.2015.
  */
 package object pony {
-  Configurator.defaultConfig().level(Level.TRACE).formatPattern("{level}:{message}").activate()
+  Configurator.defaultConfig().level(Level.DEBUG).formatPattern("{level}:{message}").activate()
 
   def !!! : Nothing = !!!("Something is not as it should be")
   def !!!(msg: String): Nothing = throw new RuntimeException(msg)
@@ -122,6 +122,10 @@ package object pony {
   implicit class RichBoolean(val b: Boolean) extends AnyVal {
     def not = !b
     def ifElse[T](ifTrue: T, ifFalse: T) = if (b) ifTrue else ifFalse
+  }
+  implicit class RichBitSet(val b: mutable.BitSet) extends AnyVal {
+    def immutableCopy = collection.immutable.BitSet.fromBitMaskNoCopy(b.toBitMask)
+    def immutableWrapper = b.toImmutable
   }
   case object Trace extends LogLevel(1)
   case object Debug extends LogLevel(2)

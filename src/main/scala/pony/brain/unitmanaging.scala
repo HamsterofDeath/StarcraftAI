@@ -138,7 +138,7 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
       val done = assignments.filter { case (_, job) => job.isFinished }.values
       val failed = assignments.filter { case (_, job) => job.hasFailed }.values
 
-      debug(s"${failed.size}/${done.size} jobs failed/finished, putting units on the market again",
+      trace(s"${failed.size}/${done.size} jobs failed/finished, putting units on the market again",
         failed.nonEmpty || done.nonEmpty)
 
       failed.foreach { failure =>
@@ -150,7 +150,7 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
       assert(ret.size == ret.distinct.size, s"A job is failed and finished at the same time")
       ret
     }
-    debug(s"Cleaning up ${removeUs.size} finished/failed jobs", removeUs.nonEmpty)
+    trace(s"Cleaning up ${removeUs.size} finished/failed jobs", removeUs.nonEmpty)
 
     removeUs.foreach { job =>
       job.unit match {
@@ -362,7 +362,7 @@ class UnitCollector[T <: WrapsUnit : Manifest](req: UnitJobRequests[T], override
   extends HasUniverse {
 
   private val hired                      = multiMap[UnitRequest[T], T]
-  private val remainingAmountsPerRequest = mutable.HashMap.empty ++
+  private val remainingAmountsPerRequest = mutable.HashMap.empty ++=
                                            req.requests.map { e => e -> e.amount }.toMap
   def onlyMember = {
     assert(hasOneMember)
@@ -529,7 +529,7 @@ abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: 
   private var dead = false
 
   ownUnits.registerKill_!(OnKillListener.on(unit, () => {
-    debug(s"Unit $unit died, aborting $this")
+    trace(s"Unit $unit died, aborting $this")
     dead = true
   }))
 
@@ -553,7 +553,9 @@ abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: 
       } else {
         noCommandsForTicks = everyNth
         val nextOrder = ordersForTick
-        if (omitRepeatedOrders && nextOrder == lastOrder) {
+        if (!nextOrder.exists(_.forceRepetition) &&
+            omitRepeatedOrders &&
+            nextOrder == lastOrder) {
           Nil
         } else {
           lastOrder = nextOrder
@@ -566,7 +568,7 @@ abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: 
   def noCommandsForTicks_!(n: Int): Unit = {
     noCommandsForTicks = n
   }
-  override def toString: String = s"[J#${myJobId}] ${getClass.className} of $unit of $employer"
+  override def toString: String = s"[J#$myJobId] ${getClass.className} of $unit of $employer"
   def isFinished: Boolean
   def onFinishOrFail(): Unit = {
     listeners.foreach(_.onFinishOrFail(hasFailed))
@@ -872,7 +874,7 @@ object Objective {
   val initial = Objective(None, Undefined)
 }
 
-case class SingleUnitBehaviourMeta(priority: SecondPriority, refuseCommandsForTicks: Int)
+case class SingleUnitBehaviourMeta(priority: SecondPriority, refuseCommandsForTicks: Int, forceRepeats: Boolean)
 
 abstract class SingleUnitBehaviour[T <: Mobile](val unit: T, meta: SingleUnitBehaviourMeta) {
   def toOrder(what: Objective): Seq[UnitOrder]
@@ -880,6 +882,7 @@ abstract class SingleUnitBehaviour[T <: Mobile](val unit: T, meta: SingleUnitBeh
   def shortName: String
   def priority = meta.priority
   def blocksForTicks = meta.refuseCommandsForTicks
+  def forceRepeats = meta.forceRepeats
 }
 
 class BusyDoingSomething[T <: Mobile](employer: Employer[T], behaviour: Seq[SingleUnitBehaviour[T]],
@@ -900,7 +903,7 @@ class BusyDoingSomething[T <: Mobile](employer: Employer[T], behaviour: Seq[Sing
   override def isFinished = false
   override protected def ordersForTick = {
     val options = active.map { rule =>
-      rule -> rule.toOrder(objective).map(_.lockingFor_!(rule.blocksForTicks))
+      rule -> rule.toOrder(objective).map(_.lockingFor_!(rule.blocksForTicks).forceRepeat_!(rule.forceRepeats))
     }.filter(_._2.nonEmpty)
     if (options.isEmpty) {
       Nil
@@ -908,7 +911,6 @@ class BusyDoingSomething[T <: Mobile](employer: Employer[T], behaviour: Seq[Sing
       options.maxBy(_._1.priority)._2
     }
   }
-
 }
 
 class BusyDoingNothing[T <: WrapsUnit](unit: T, employer: Employer[T])
@@ -1195,17 +1197,17 @@ class SendOrdersToStarcraft(universe: Universe) extends AIModule[Controllable](u
 class JobReAssignments(universe: Universe) extends OrderlessAIModule[Controllable](universe) {
   override def onTick(): Unit = {
     unitManager.nextJobReorganisationRequest.foreach { optimizeMe =>
-      debug(s"Trying to find better unit for job $optimizeMe")
+      trace(s"Trying to find better unit for job $optimizeMe")
       if (optimizeMe.hasToSwitchLater) {
         // try again later
-        debug(s"Not found, try again later")
+        trace(s"Not found, try again later")
         unitManager.tryFindBetterEmployeeFor(optimizeMe)
       } else {
         def doTyped[T <: WrapsUnit : Manifest](old: CanAcceptUnitSwitch[T]) = {
           val uc = new UnitCollector(old.asRequest, universe).collect_!(List(old))
           uc match {
             case Some(replacement) if replacement.hasOneMember && replacement.onlyMember == optimizeMe.unit =>
-              debug(s"Same unit chosen as best worker")
+              trace(s"Same unit chosen as best worker")
             case Some(replacement) if replacement.hasOneMember && replacement.onlyMember != optimizeMe.unit =>
               info(s"Replacement found: ${replacement.onlyMember}")
               //someone else might have already done this somewhere else
@@ -1220,7 +1222,7 @@ class JobReAssignments(universe: Universe) extends OrderlessAIModule[Controllabl
             case _ =>
               if (optimizeMe.couldSwitchInTheFuture) {
                 // try again later
-                debug(s"Not found, try again later")
+                trace(s"Not found, try again later")
                 unitManager.tryFindBetterEmployeeFor(optimizeMe)
               }
           }

@@ -14,11 +14,13 @@ abstract class DefaultBehaviour[T <: Mobile : Manifest](override val universe: U
   private val unit2behaviour  = mutable.HashMap.empty[T, SingleUnitBehaviour[T]]
   private val controlledUnits = mutable.HashSet.empty[T]
 
+  def forceRepeatedCommands = false
+
   def priority = SecondPriority.Default
 
   def refuseCommandsForTicks = 0
 
-  protected def meta = SingleUnitBehaviourMeta(priority, refuseCommandsForTicks)
+  protected def meta = SingleUnitBehaviourMeta(priority, refuseCommandsForTicks, forceRepeatedCommands)
 
   def renderDebug(renderer: Renderer): Unit = {}
 
@@ -198,14 +200,18 @@ object Terran {
   }
 
   class SiegeUnsiegeSelf(universe: Universe) extends DefaultBehaviour[Tank](universe) {
+
+    override def forceRepeatedCommands = true
+
     override protected def lift(t: Tank) = new SingleUnitBehaviour[Tank](t, meta) {
 
       override def preconditionOk = upgrades.hasResearched(TankSiegeMode)
 
-      override def blocksForTicks: Int = 10
-
       override def toOrder(what: Objective) = {
-        val enemyNear = universe.unitGrid.allInRangeOf[Mobile](t.currentTile, 12, friendly = false).nonEmpty
+        val enemyNear = {
+          val trav = universe.unitGrid.allInRangeOf[GroundUnit](t.currentTile, 12, friendly = false)
+          trav.exists(!_.isHarmlessNow)
+        }
 
         if (t.isSieged) {
           if (enemyNear) {

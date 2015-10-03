@@ -3,6 +3,7 @@ package pony
 import bwapi.{Color, Game, Player, PlayerType, Position, TilePosition}
 import pony.brain.{ResourceRequestSum, Supplies}
 
+import scala.collection.immutable.BitSet
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.language.postfixOps
@@ -388,6 +389,7 @@ abstract class OnKillListener[T <: WrapsUnit](val unit:T) {
 
 class Units(game: Game, hostile: Boolean) {
   def byId(id: Int) = knownUnits.get(id)
+  def byIdExpectExisting(id: Int) = knownUnits(id)
 
   private def ownAndNeutral = !hostile
 
@@ -419,11 +421,33 @@ class Units(game: Game, hostile: Boolean) {
           e.onKillUnTyped(died)
           killListeners.remove(u.getID)
         }
-        knownUnits -= u.getID
+        removeUnit(u)
         graveyard += u.getID
       }
     }
   }
+
+  private val classIndexes    = mutable.HashSet.empty[Class[_]]
+  private val preparedByClass = multiMap[Class[_], WrapsUnit]
+
+  private def removeUnit(u: bwapi.Unit): Unit = {
+    val removed = knownUnits.remove(u.getID)
+    removed.foreach { what =>
+      classIndexes.foreach { c =>
+        preparedByClass.removeBinding(c, what)
+      }
+    }
+  }
+
+  def registerUnit(u: bwapi.Unit, lifted: WrapsUnit) = {
+    knownUnits.put(u.getID, lifted)
+    classIndexes.foreach { c =>
+      if (c.isAssignableFrom(lifted.getClass)) {
+        preparedByClass.addBinding(c, lifted)
+      }
+    }
+  }
+
 
   private val knownUnits = mutable.HashMap.empty[Int, WrapsUnit]
   private var initial    = true
@@ -446,10 +470,14 @@ class Units(game: Game, hostile: Boolean) {
     allByClass(lookFor)
   }
   def allByClass[T <: WrapsUnit](lookFor: Class[T]): Iterator[T] = {
-    all.filter { e =>
-      lookFor.isAssignableFrom(e.getClass)
-    }.map(_.asInstanceOf[T])
+    def lazyCreate = {
+      classIndexes += lookFor
+      mutable.HashSet.empty ++= all.filter { e => lookFor.isAssignableFrom(e.getClass) }
+    }
+    val cached = preparedByClass.getOrElseUpdate(lookFor, lazyCreate)
+    cached.iterator.asInstanceOf[Iterator[T]]
   }
+
   def all = knownUnits.valuesIterator
   def allCanDie = allByType[CanDie]
 
@@ -516,11 +544,11 @@ class Units(game: Game, hostile: Boolean) {
             val lifted = UnitWrapper.lift(u)
             fresh += lifted
             info(s"${ownAndNeutral.ifElse("Own", "Hostile")} unit added: $lifted")
-            knownUnits.put(u.getID, lifted)
+            registerUnit(u, lifted)
           case Some(unit) if unit.initialNativeType != u.getType =>
             info(s"Unit morphed from ${unit.initialNativeType} to ${u.getType}")
             val lifted = UnitWrapper.lift(u)
-            knownUnits.put(u.getID, lifted)
+            registerUnit(u, lifted)
             fresh += lifted
           case _ => // noop
         }
@@ -529,7 +557,7 @@ class Units(game: Game, hostile: Boolean) {
   }
 }
 
-class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
+class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitSet,
              protected val containsBlocked: Boolean = true) extends Serializable {
   self =>
 
@@ -592,7 +620,8 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: collection.Set[Int],
     }
     mut.asReadOnly
   }
-  def mutableCopy = new MutableGrid2D(cols, rows, mutable.BitSet.empty ++ areaDataBitSet, containsBlocked)
+  def mutableCopy = new
+      MutableGrid2D(cols, rows, mutable.BitSet.fromBitMaskNoCopy(areaDataBitSet.toBitMask), containsBlocked)
   def allBlocked = if (containsBlocked) bitSetToTiles else allIndexes.filterNot(areaDataBitSet).map(indexToTile)
   private def allIndexes = Iterator.range(0, size)
   def size = cols * rows
@@ -674,7 +703,7 @@ class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet, bitSetContains
   }
   def asReadOnly: Grid2D = this
 
-  override def asReadOnlyCopyIfMutable = new Grid2D(cols, rows, bitSet.clone.toImmutable)
+  override def asReadOnlyCopyIfMutable = new Grid2D(cols, rows, bitSet)
 
   def or_!(other: MutableGrid2D) = {
     if (containsBlocked == other.containsBlocked) {
@@ -801,7 +830,7 @@ class AnalyzedMap(game: Game) {
   val tileSizeX = game.mapWidth()
   val tileSizeY = game.mapHeight()
 
-  val empty       = new Grid2D(sizeX, sizeY, Set.empty)
+  val empty       = new Grid2D(sizeX, sizeY, BitSet.empty)
   val emptyZoomed = empty.zoomedOut
 
   val walkableGridZoomed = {

@@ -7,6 +7,13 @@ import scala.collection.mutable.ArrayBuffer
 import scala.util.Try
 
 abstract class UnitOrder {
+  def forceRepetition = forceAllowRepeats
+
+  def forceRepeat_!(forceRepeats: Boolean) = {
+    forceAllowRepeats = forceRepeats
+    this
+  }
+
   def lockTicks = locks
 
   def obsolete = !myUnit.isInGame
@@ -31,11 +38,13 @@ abstract class UnitOrder {
   def issueOrderToGame(): Unit
   def renderDebug(renderer: Renderer): Unit
 
-  private var locks = 0
+  private var locks             = 0
+  private var forceAllowRepeats = false
   def lockingFor_!(ticks: Int) = {
     locks = ticks
     this
   }
+
 }
 
 object Orders {

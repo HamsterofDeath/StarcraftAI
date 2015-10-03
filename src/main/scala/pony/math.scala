@@ -152,6 +152,7 @@ case class Area(upperLeft: MapTilePosition, sizeOfArea: Size) {
           f(MapTilePosition.shared(upperLeft.x + sizeOfArea.x, upperLeft.y + y))
         }
       }
+      override def isEmpty = false
     }
 
   }

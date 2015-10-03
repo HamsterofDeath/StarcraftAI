@@ -153,8 +153,15 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse w
     val req = UnitJobRequests.idleOfType(employer, classOf[Mobile], 9999)
     val result = unitManager.request(req, buildIfNoneAvailable = false)
     result.ifNotZero { seq =>
-      thinking = true
       val independent = seq.filterNot(_.isAutoPilot).map { u => u.nativeUnitId -> u.currentTile }
+      assert(independent.forall(e => universe.mapLayers.rawWalkableMap.includes(e._2)),
+        s"""Unit alive but outside map?
+            |${
+          val ids = independent.filterNot(e => universe.mapLayers.rawWalkableMap.includes(e._2)).map(_._1)
+          val problem = ids.map(universe.myUnits.byIdExpectExisting)
+          problem.mkString("\n")
+        }
+            |""".stripMargin)
       val helper = new GroupingHelper(universe)
       planInProgress = BWFuture.some {
         val grouped = helper.groupUnits(independent)
@@ -164,6 +171,7 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse w
         }
         Attacks(newAttacks)
       }
+      thinking = true
     }
   }
 
@@ -225,7 +233,7 @@ trait AddonRequestHelper extends AIModule[CanBuildAddons] {
     val result = resources.request(req, self)
     result.ifSuccess { suc =>
       val unitReq = UnitJobRequests.addonConstructor(self, addonType)
-      debug(s"Financing possible for $addonType, requesting build")
+      trace(s"Financing possible for $addonType, requesting build")
       val result = unitManager.request(unitReq)
       if (result.hasAnyMissingRequirements || !result.success) {
         resources.unlock_!(suc)
@@ -296,7 +304,7 @@ trait BuildingRequestHelper extends AIModule[WorkerUnit] {
       val unitReq = UnitJobRequests.newOfType(universe, buildingEmployer, buildingType, suc,
         customBuildingPosition = customBuildingPosition, belongsTo = belongsTo,
         priority = priority)
-      debug(s"Financing possible for $buildingType, requesting build")
+      trace(s"Financing possible for $buildingType, requesting build")
       val result = unitManager.request(unitReq)
       if (result.hasAnyMissingRequirements) {
         resources.unlock_!(suc)
@@ -328,7 +336,7 @@ trait UnitRequestHelper extends AIModule[UnitFactory] {
     val result = resources.request(req, mobileEmployer)
     result.ifSuccess { suc =>
       val unitReq = UnitJobRequests.newOfType(universe, mobileEmployer, mobileType, suc)
-      debug(s"Financing possible for $mobileType, requesting training")
+      trace(s"Financing possible for $mobileType, requesting training")
       val result = unitManager.request(unitReq)
       if (result.hasAnyMissingRequirements) {
         // do not forget to unlock the resources again
