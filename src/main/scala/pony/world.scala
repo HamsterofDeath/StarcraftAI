@@ -80,6 +80,7 @@ class TerranTechTree extends TechTree {
   override protected val builtBy: Map[Class[_ <: WrapsUnit], Class[_ <: Building]] = Map(
     classOf[Comsat] -> classOf[CommandCenter],
     classOf[NuclearSilo] -> classOf[CommandCenter],
+    classOf[Dropship] -> classOf[Starport],
     classOf[MachineShop] -> classOf[Factory],
     classOf[ControlTower] -> classOf[Starport],
     classOf[PhysicsLab] -> classOf[ScienceFacility],
@@ -94,7 +95,6 @@ class TerranTechTree extends TechTree {
     classOf[Goliath] -> classOf[Factory],
     classOf[Wraith] -> classOf[Starport],
     classOf[Battlecruiser] -> classOf[Starport],
-    classOf[Shuttle] -> classOf[Starport],
     classOf[ScienceVessel] -> classOf[Starport]
   )
 
@@ -103,7 +103,7 @@ class TerranTechTree extends TechTree {
 
     val additional: Map[Class[_ <: WrapsUnit], Set[_ <: Class[_ <: Building]]] = Map(
       classOf[Factory] -> classOf[Barracks].toSet,
-      classOf[Comsat] -> classOf[CommandCenter].toSet,
+      classOf[Comsat] -> Set(classOf[CommandCenter], classOf[Academy]),
       classOf[Starport] -> classOf[Factory].toSet,
       classOf[ScienceFacility] -> classOf[Starport].toSet,
       classOf[ControlTower] -> classOf[Starport].toSet,
@@ -265,6 +265,10 @@ trait WorldEventDispatcher extends WorldListener {
 }
 
 case class Resources(minerals: Int, gas: Int, supply: Supplies) {
+  def >(min: Int, gas: Int, supply: Int) = {
+    minerals >= min && this.gas >= gas && this.supplyRemaining >= supply
+  }
+
   def moreMineralsThanGas = minerals > gas
 
   val asSum = ResourceRequestSum(minerals, gas, supply.available)
@@ -333,26 +337,27 @@ class DefaultWorld(game: Game) extends WorldListener with WorldEventDispatcher {
 }
 
 class Debugger(game: Game) {
-  def isMapDebug = debuggingMap
+  def isFullDebug = fullDebugMode
 
   val renderer = new Renderer(game, Color.Green)
-  private var debugging    = true
-  private var debuggingMap = false
-  private var countTicks   = 0
+  private var debugging     = true
+  private var fullDebugMode = false
+  private var countTicks    = 0
   def on(): Unit = {
     debugging = true
   }
   def off(): Unit = {
     debugging = false
   }
-  def mapOn(): Unit = {
-    debuggingMap = true
+  def fullOn(): Unit = {
+    on()
+    fullDebugMode = true
   }
-  def mapOff(): Unit = {
-    debuggingMap = false
+  def fullOff(): Unit = {
+    fullDebugMode = false
   }
 
-  def isDebugging = debugging || debuggingMap
+  def isDebugging = debugging || fullDebugMode
 
   def speed(int: Int): Unit = {
     game.setLocalSpeed(int)

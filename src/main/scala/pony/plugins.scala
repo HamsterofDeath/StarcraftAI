@@ -42,7 +42,7 @@ class ChokePointRenderer(override val universe: Universe) extends AIPlugIn with 
 
 class WalkableRenderer extends AIPlugIn {
   override protected def tickPlugIn(): Unit = {
-    if (lazyWorld.debugger.isMapDebug) {
+    if (lazyWorld.debugger.isFullDebug) {
       lazyWorld.debugger.debugRender { renderer =>
         renderer.in_!(Color.Red)
 
@@ -59,7 +59,7 @@ class WalkableRenderer extends AIPlugIn {
 
 class BuildableRenderer(ignoreWalkable: Boolean) extends AIPlugIn {
   override protected def tickPlugIn(): Unit = {
-    if (lazyWorld.debugger.isMapDebug) {
+    if (lazyWorld.debugger.isFullDebug) {
       lazyWorld.debugger.debugRender { renderer =>
         renderer.in_!(Color.Grey)
 
@@ -226,17 +226,19 @@ class StatsRenderer(override val universe: Universe) extends AIPlugIn with HasUn
         }.toList.sorted
       }
 
-      debugString ++= {
-        val formatted = unitManager.jobsByType.map { case (jobType, members) =>
-          s"${jobType.className}/${members.size}"
+      if (debugger.isFullDebug) {
+        debugString ++= {
+          val formatted = unitManager.jobsByType.map { case (jobType, members) =>
+            s"${jobType.className}/${members.size}"
+          }
+          "Job/units:" :: formatted.toList.sorted
         }
-        "Job/units:" :: formatted.toList.sorted
-      }
 
-      debugString ++= {
-        unitManager.employers.map { emp =>
-          s"$emp has ${unitManager.jobsOf(emp).size} units"
-        }.toList.sorted
+        debugString ++= {
+          unitManager.employers.map { emp =>
+            s"$emp has ${unitManager.jobsOf(emp).size} units"
+          }.toList.sorted
+        }
       }
 
       debugString.zipWithIndex.foreach { case (txt, line) => renderer.drawTextOnScreen(txt, line) }
@@ -248,7 +250,7 @@ class BlockedBuildingSpotsRenderer(override val universe: Universe) extends AIPl
   override val lazyWorld = universe.world
 
   override protected def tickPlugIn(): Unit = {
-    if (lazyWorld.debugger.isMapDebug) {
+    if (lazyWorld.debugger.isFullDebug) {
       lazyWorld.debugger.debugRender { renderer =>
         renderer.in_!(Color.Orange)
         val area = mapLayers.blockedByBuildingTiles
@@ -342,9 +344,9 @@ class DebugHelper(main: MainAI) extends AIPlugIn with HasUniverse {
             case "debugon" | "don" =>
               universe.world.debugger.on()
             case "debugmoff" | "dmoff" =>
-              universe.world.debugger.mapOff()
+              universe.world.debugger.fullOff()
             case "debugmon" | "dmon" =>
-              universe.world.debugger.mapOn()
+              universe.world.debugger.fullOn()
             case "debug" | "d" =>
               params match {
                 case List(id) =>

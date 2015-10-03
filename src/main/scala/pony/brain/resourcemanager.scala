@@ -18,6 +18,10 @@ object ResourceManager {
 }
 
 class ResourceManager(override val universe: Universe) extends HasUniverse {
+  def couldAffordNow(e: SCUnitType): Boolean = {
+    unlockedResources >(e.toUnitType.mineralPrice(), e.toUnitType.gasPrice(), e.toUnitType.supplyRequired())
+  }
+
   def forceLock_![T <: WrapsUnit](req: ResourceRequests, employer: Employer[T]) = {
     if (!isAlreadyForceLocked(req, employer)) {
       forceLockInternal_!(req, employer)

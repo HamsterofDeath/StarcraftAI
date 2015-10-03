@@ -351,7 +351,14 @@ object Terran {
                 inBattle = true
                 // drop mines on sight of enemy
                 val on = freeArea
-                val freeTarget = on.spiralAround(t.currentTile).find(on.free)
+                val freeTarget = on.spiralAround(t.currentTile).find { where =>
+                  val free = on.free(where)
+                  def noOwnUnits = {
+                    !universe.unitGrid.allInRangeOf[Mobile](where, 3, friendly = true)
+                     .exists(e => !e.isInstanceOf[HasSpiderMines] && !e.isAutoPilot)
+                  }
+                  free && noOwnUnits
+                }
                 freeTarget.map { where =>
                   on.block_!(where.asArea.extendedBy(1))
                   plannedDrops += where.asArea.extendedBy(1) -> universe.currentTick

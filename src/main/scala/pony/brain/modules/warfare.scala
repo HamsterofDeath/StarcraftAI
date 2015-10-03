@@ -241,7 +241,7 @@ trait AddonRequestHelper extends AIModule[CanBuildAddons] {
         result.notExistingMissingRequiments.foreach { what =>
           helper.requestBuilding(what, handleDependencies)
         }
-
+        resources.unlock_!(suc)
       } else if (!result.success) {
         resources.unlock_!(suc)
       } else {
@@ -485,10 +485,8 @@ class EnqueueArmy(universe: Universe) extends OrderlessAIModule[UnitFactory](uni
       mostMissing.partition { case (c, _) => universe.unitManager.allRequirementsFulfilled(c) }
 
     val canBuildNow = mostMissing.filterNot { case (c, _) => universe.unitManager.requirementsQueuedToBuild(c) }
-    val highestPriority = canBuildNow.take(1)
-    val alternatives = canBuildNow.iterator.drop(1).filter(
-      _._1.toUnitType.gasPrice() == 0 && universe.resources.unlockedResources.moreMineralsThanGas)
-    (highestPriority ++ alternatives).foreach { case (thisOne, _) =>
+    val highestPriority = canBuildNow
+    highestPriority.iterator.takeWhile(e => resources.couldAffordNow(e._1)).foreach { case (thisOne, _) =>
       requestUnit(thisOne, takeCareOfDependencies = false)
     }
 
@@ -585,7 +583,7 @@ object Strategy {
       val (poor, rich) = bases.myMineralFields.partition(_.remainingPercentage < expansionThreshold)
       poor.size > rich.size && rich.size <= 3
     }
-    protected def expansionThreshold = 0.6
+    protected def expansionThreshold = 0.5
   }
 
   case class UpgradeToResearch(upgrade: Upgrade)(active: => Boolean) {

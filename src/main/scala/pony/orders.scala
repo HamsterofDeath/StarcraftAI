@@ -114,7 +114,7 @@ object Orders {
       basis.nativeUnit.buildAddon(builtWhat.toUnitType)
     }
     override def renderDebug(renderer: Renderer): Unit = {
-      renderer.in_!(Color.White).drawOutline(basis.area)
+      renderer.in_!(Color.White).drawOutline(basis.addonArea)
     }
   }
 
