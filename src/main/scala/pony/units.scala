@@ -179,7 +179,7 @@ object Upgrades {
   }
   trait CastAtFreeTile extends SinglePointMagicSpell {
     override def canBeCastAt(where: MapTilePosition, by: Mobile) =
-      by.universe.mapLayers.reallyFreeBuildingTiles.free(where)
+      by.universe.mapLayers.freeWalkableTiles.free(where)
   }
   trait CastOnSelf extends SingleTargetMagicSpell {
     self =>

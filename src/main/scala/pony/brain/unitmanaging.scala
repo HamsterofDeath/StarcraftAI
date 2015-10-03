@@ -785,7 +785,7 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, bu
   assert(resources.detailedLocks.exists(e => e.whatFor == buildingType && e.reqs.sum == funding.sum),
     s"Something is wrong, check $this, it is supposed to have ${
       funding.sum
-    } funding, but the resource manager only has ${resources.detailedLocks} locked")
+    } funding, but the resource manager only has\n ${resources.detailedLocks.mkString("\n")}\nlocked")
 
   private var startedMovingToSite       = false
   private var startedActualConstruction = false

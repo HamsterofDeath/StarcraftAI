@@ -37,7 +37,7 @@ case class Paths(paths: Seq[Path], solved: Boolean, solvable: Boolean, bestEffor
 class PathFinder(mapLayers: MapLayers) {
   implicit def convBack(gn: GridNode2DInt): MapTilePosition = MapTilePosition.shared(gn.getX, gn.getY)
 
-  private val on = mapLayers.reallyFreeBuildingTiles.asReadOnlyCopyIfMutable
+  private val on = mapLayers.freeWalkableTiles.asReadOnlyCopyIfMutable
 
   def findPath(from: MapTilePosition, to: MapTilePosition) = BWFuture {
     val fromFixed = on.nearestFree(from)
@@ -402,6 +402,7 @@ class UnitGrid(override val universe: Universe) extends HasUniverse {
 class MapLayers(override val universe: Universe) extends HasUniverse {
 
   private val rawMapWalk                 = world.map.walkableGrid
+  private val rawMapWalk2                = world.map.walkableGrid.mutableCopy
   private val rawMapBuild                = world.map.buildableGrid.mutableCopy
   private val plannedBuildings           = world.map.empty.zoomedOut.mutableCopy
   private var justBuildings              = evalOnlyBuildings
@@ -411,11 +412,14 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   private var justWorkerPaths            = evalWorkerPaths
   private var justBlockingMobiles        = evalOnlyMobileBlockingUnits
   private var justAddonLocations         = evalPotentialAddonLocations
-  private var withBuildings              = evalWithBuildings
-  private var withBuildingsAndResources  = evalWithBuildingsAndResources
-  private var withEverythingStatic       = evalEverythingStatic
-  private var withEverythingBlocking     = evalEverythingBlocking
-  private var lastUpdatePerformedInTick  = universe.currentTick
+
+  private var withBuildings                   = evalWithBuildings
+  private var withBuildingsAndResources       = evalWithBuildingsAndResources
+  private var withEverythingStaticBuildable   = evalEverythingStaticBuildable
+  private var withEverythingStaticWalkable    = evalEverythingStaticWalkable
+  private var withEverythingBlockingBuildable = evalEverythingBlockingBuildable
+  private var withEverythingBlockingWalkable  = evalEverythingBlockingWalkable
+  private var lastUpdatePerformedInTick       = universe.currentTick
   def isOnIsland(tilePosition: MapTilePosition) = {
     val areaInQuestion = rawMapWalk.areas.find(_.free(tilePosition))
     !areaInQuestion.contains(rawWalkableMap.areas.maxBy(_.freeCount))
@@ -428,11 +432,15 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   def blockedByPlannedBuildings = plannedBuildings.asReadOnly
   def freeBuildingTiles = {
     update()
-    withEverythingStatic.asReadOnly
+    withEverythingStaticBuildable.asReadOnly
   }
   def reallyFreeBuildingTiles = {
     update()
-    withEverythingBlocking.asReadOnly
+    withEverythingBlockingBuildable.asReadOnly
+  }
+  def freeWalkableTiles = {
+    update()
+    withEverythingBlockingWalkable.asReadOnly
   }
   def blockedByBuildingTiles = {
     update()
@@ -497,16 +505,20 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   private def update(): Unit = {
     if (lastUpdatePerformedInTick != universe.currentTick) {
       lastUpdatePerformedInTick = universe.currentTick
+
       justBuildings = evalOnlyBuildings
       justMines = evalOnlyMines
       justBlockedForMainBuilding = evalOnlyBlockedForMainBuildings
       justMineralsAndGas = evalOnlyResources
       justBlockingMobiles = evalOnlyMobileBlockingUnits
       justAddonLocations = evalPotentialAddonLocations
-      withEverythingBlocking = evalEverythingBlocking
+
       withBuildings = evalWithBuildings
       withBuildingsAndResources = evalWithBuildingsAndResources
-      withEverythingStatic = evalEverythingStatic
+      withEverythingStaticBuildable = evalEverythingStaticBuildable
+      withEverythingStaticWalkable = evalEverythingStaticWalkable
+      withEverythingBlockingBuildable = evalEverythingBlockingBuildable
+      withEverythingBlockingWalkable = evalEverythingBlockingWalkable
     }
   }
   private def evalWithBuildings = rawMapBuild.mutableCopy.or_!(justBuildings)
@@ -546,11 +558,16 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
     }
     ret
   }
-  private def evalEverythingStatic = withBuildingsAndResources.mutableCopy
-                                     .or_!(plannedBuildings)
-                                     .or_!(justWorkerPaths)
-                                     .or_!(rawMapBuild)
-  private def evalEverythingBlocking = withEverythingStatic.mutableCopy.or_!(justBlockingMobiles)
+  private def evalEverythingStaticBuildable = withBuildingsAndResources.mutableCopy
+                                              .or_!(plannedBuildings)
+                                              .or_!(justWorkerPaths)
+                                              .or_!(rawMapBuild)
+  private def evalEverythingStaticWalkable = withBuildingsAndResources.mutableCopy
+                                             .or_!(plannedBuildings)
+                                             .or_!(justWorkerPaths)
+                                             .or_!(rawMapWalk2)
+  private def evalEverythingBlockingBuildable = withEverythingStaticBuildable.mutableCopy.or_!(justBlockingMobiles)
+  private def evalEverythingBlockingWalkable = withEverythingStaticWalkable.mutableCopy.or_!(justBlockingMobiles)
 }
 
 trait SubFinder {

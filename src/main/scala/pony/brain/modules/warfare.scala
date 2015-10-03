@@ -7,12 +7,12 @@ import scala.collection.mutable.ArrayBuffer
 
 class FormationHelper(override val universe: Universe, distance: Int = 0) extends HasUniverse {
   def allOutsideNonBlacklisted = {
-    val map = mapLayers.reallyFreeBuildingTiles
+    val map = mapLayers.freeWalkableTiles
     defenseLines.iterator.flatMap(_.pointsOutside).filterNot(blacklisted).filter(map.free)
   }
 
   def allInsideNonBlacklisted = {
-    val map = mapLayers.reallyFreeBuildingTiles
+    val map = mapLayers.freeWalkableTiles
     defenseLines.iterator.flatMap(_.pointsInside).filterNot(blacklisted).filter(map.free)
   }
 
@@ -572,7 +572,8 @@ object Strategy {
       }
     }
     protected def expandNow = {
-      bases.myMineralFields.forall(_.remainingPercentage < expansionThreshold)
+      val (poor, rich) = bases.myMineralFields.partition(_.remainingPercentage < expansionThreshold)
+      poor.size > rich.size && rich.size <= 3
     }
     protected def expansionThreshold = 0.5
   }
@@ -612,7 +613,7 @@ object Strategy {
     override def determineScore: Int = 50
 
     override def suggestProducers = {
-      val myBases = bases.myMineralFields.count(_.value > 1000)
+      val myBases = bases.myMineralFields.count(_.remainingPercentage > 0.25)
 
       IdealProducerCount(classOf[Barracks], myBases)(timingHelpers.phase.isAnyTime) ::
       IdealProducerCount(classOf[Factory], myBases * 3)(timingHelpers.phase.isAnyTime) ::

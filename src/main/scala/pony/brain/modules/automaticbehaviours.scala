@@ -118,7 +118,7 @@ object Terran {
               }
             }
             if (coolingDown && dancePartners.nonEmpty) {
-              val on = universe.mapLayers.reallyFreeBuildingTiles
+              val on = universe.mapLayers.freeWalkableTiles
               var xSum = 0
               var ySum = 0
               for (dp <- dancePartners) {
@@ -300,7 +300,7 @@ object Terran {
 
     private val mined = oncePerTick {
       plannedDrops.retain(_._2 + 120 > universe.currentTick)
-      val area = universe.mapLayers.reallyFreeBuildingTiles.mutableCopy
+      val area = universe.mapLayers.freeWalkableTiles.mutableCopy
       universe.myUnits.allByType[SpiderMine].foreach { mine =>
         area.block_!(mine.blockedArea.extendedBy(1))
         plannedDrops.foreach(e => area.block_!(e._1))
