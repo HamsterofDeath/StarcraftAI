@@ -486,7 +486,13 @@ class EnqueueArmy(universe: Universe) extends OrderlessAIModule[UnitFactory](uni
 
     val canBuildNow = mostMissing.filterNot { case (c, _) => universe.unitManager.requirementsQueuedToBuild(c) }
     val highestPriority = canBuildNow
-    highestPriority.iterator.takeWhile(e => resources.couldAffordNow(e._1)).foreach { case (thisOne, _) =>
+    highestPriority.view.takeWhile { e =>
+      val rich = resources.couldAffordNow(e._1)
+      def mineralsOverflow = resources.unlockedResources.moreMineralsThanGas &&
+                             resources.unlockedResources.minerals > 400
+      def gasOverflow = resources.unlockedResources.moreGasThanMinerals && resources.unlockedResources.gas > 400
+      rich || mineralsOverflow || gasOverflow
+    }.foreach { case (thisOne, _) =>
       requestUnit(thisOne, takeCareOfDependencies = false)
     }
 
@@ -560,15 +566,25 @@ object Strategy {
       AddonToAdd(classOf[ControlTower], requestNewBuildings = false)(unitManager.existsAndDone(classOf[Starport])) ::
       Nil
     }
+
     override def suggestNextExpansion = {
       val shouldExpand = expandNow
       if (shouldExpand) {
         val covered = bases.bases.map(_.resourceArea).toSet
+        val dangerous = strategicMap.resources.filter { res =>
+          universe.unitGrid.allInRangeOf[Mobile](res.center, 10, friendly = false).nonEmpty
+        }.toSet
         bases.mainBase.map(_.mainBuilding.tilePosition).flatMap { where =>
-          val others = strategicMap.domainsButWithout(covered)
+          val others = strategicMap.resources
+                       .filterNot(covered)
+                       .filterNot(dangerous)
+                       .filter { where =>
+                         universe.myUnits.allByType[TransporterUnit].nonEmpty ||
+                         mapLayers.rawWalkableMap
+                         .areInSameArea(where.center, bases.mainBase.get.mainBuilding.tilePosition)
+                       }
           if (others.nonEmpty) {
-            val (choke, what) = others.minBy(_._1.center.distanceToSquared(where))
-            val target = what.values.flatten.maxBy(
+            val target = others.maxBy(
               e => (e.mineralsAndGas, -e.patches.map(_.center.distanceToSquared(where)).getOrElse(999999)))
             Some(target)
           } else {

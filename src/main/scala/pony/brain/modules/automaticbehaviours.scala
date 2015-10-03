@@ -127,8 +127,8 @@ object Terran {
                 ySum += diff.y
               }
               val ref = t.currentTile.movedBy(MapTilePosition(xSum, ySum))
-              val whereToGo = on.spiralAround(t.currentTile, 8).drop(49).filter { c =>
-                c.distanceToSquared(ref) < t.currentTile.distanceToSquared(ref)
+              val whereToGo = on.spiralAround(t.currentTile, 8).drop(36).filter { c =>
+                c.distanceToSquared(ref) <= t.currentTile.distanceToSquared(ref)
               }.find {on.free}
 
               whereToGo.map { where =>
@@ -208,19 +208,22 @@ object Terran {
       override def preconditionOk = upgrades.hasResearched(TankSiegeMode)
 
       override def toOrder(what: Objective) = {
-        val enemyNear = {
-          val trav = universe.unitGrid.allInRangeOf[GroundUnit](t.currentTile, 12, friendly = false)
+        val trav = universe.unitGrid.allInRangeOf[GroundUnit](t.currentTile, 12, friendly = false)
+        def enemiesNear = {
           trav.view.filter(!_.isHarmlessNow).take(4).size >= 3
+        }
+        def anyNear = {
+          trav.exists(!_.isHarmlessNow)
         }
 
         if (t.isSieged) {
-          if (enemyNear) {
+          if (anyNear) {
             Nil
           } else {
             Orders.TechOnSelf(t, TankSiegeMode).toList
           }
         } else {
-          if (enemyNear) {
+          if (enemiesNear) {
             Orders.TechOnSelf(t, TankSiegeMode).toList
           } else {
             Nil
@@ -354,7 +357,7 @@ object Terran {
                 val freeTarget = on.spiralAround(t.currentTile).find { where =>
                   val free = on.free(where)
                   def noOwnUnits = {
-                    !universe.unitGrid.allInRangeOf[Mobile](where, 3, friendly = true)
+                    !universe.unitGrid.allInRangeOf[Mobile](where, 4, friendly = true)
                      .exists(e => !e.isInstanceOf[HasSpiderMines] && !e.isAutoPilot)
                   }
                   free && noOwnUnits

@@ -265,11 +265,13 @@ trait WorldEventDispatcher extends WorldListener {
 }
 
 case class Resources(minerals: Int, gas: Int, supply: Supplies) {
+  def moreGasThanMinerals = minerals < gas
+
   def >(min: Int, gas: Int, supply: Int) = {
     minerals >= min && this.gas >= gas && this.supplyRemaining >= supply
   }
 
-  def moreMineralsThanGas = minerals > gas
+  def moreMineralsThanGas = minerals > gas * 1.5
 
   val asSum = ResourceRequestSum(minerals, gas, supply.available)
 
@@ -574,6 +576,8 @@ class Units(game: Game, hostile: Boolean) {
 class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitSet,
              protected val containsBlocked: Boolean = true) extends Serializable {
   self =>
+  def areInSameArea(a: MapTilePosition, b: MapTilePosition) =
+    areaWhichContains(a) == areaWhichContains(b)
 
   def nearestFree(p: MapTilePosition) = {
     spiralAround(p).find(free)

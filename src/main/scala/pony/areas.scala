@@ -31,7 +31,7 @@ case class CuttingLine(line: Line) {
   def absoluteTo = line.b
 }
 
-class StrategicMap(resources: Seq[ResourceArea], walkable: Grid2D, game: Game) {
+class StrategicMap(val resources: Seq[ResourceArea], walkable: Grid2D, game: Game) {
 
   case class FrontLine(chokePoint: ChokePoint,
                        defendedAreas: Map[Grid2D, Set[ResourceArea]],

@@ -718,7 +718,8 @@ class ConstructAddon[W <: CanBuildAddons, A <: Addon](employer: Employer[W],
       startedConstruction = basis.isBuildingAddon
     }
     if (startedConstruction && !stoppedConstruction) {
-      stoppedConstruction = basis.hasCompleteAddon
+      val addon = basis.hasCompleteAddon
+      stoppedConstruction = addon
     }
   }
   override def onFinishOrFail(): Unit = {

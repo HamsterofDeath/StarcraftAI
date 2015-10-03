@@ -110,7 +110,9 @@ object WrapsUnit {
 }
 
 trait StaticallyPositioned extends WrapsUnit {
-  val tilePosition          = MapTilePosition.shared(nativeUnit.getTilePosition.getX, nativeUnit.getTilePosition.getY)
+  def tilePosition = myTilePosition.get
+  val myTilePosition        = oncePerTick(
+    MapTilePosition.shared(nativeUnit.getTilePosition.getX, nativeUnit.getTilePosition.getY))
   val position              = tilePosition.asMapPosition
   val size                  = Size.shared(nativeUnit.getType.tileWidth(), nativeUnit.getType.tileHeight())
   val area                  = Area(tilePosition, size)

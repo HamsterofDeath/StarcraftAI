@@ -662,9 +662,9 @@ class ConstructionSiteFinder(universe: Universe) {
 
     val withStreets = freeToBuildOn.mutableCopy
     // add "streets" to make sure that we don't lock ourselves in too much
+    /*
     withStreets.block_!(Line(near.movedBy(-20, 0), near.movedBy(20, 0)))
     withStreets.block_!(Line(near.movedBy(0, 20), near.movedBy(0, -20)))
-    /*
         withStreets.block_!(Line(near.movedBy(-20, -20), near.movedBy(20, 20)))
         withStreets.block_!(Line(near.movedBy(-20, 20), near.movedBy(20, -20)))
     */
