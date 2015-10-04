@@ -22,7 +22,6 @@ trait TechTree {
   }
   def upgraderFor(upgrade: Upgrade) = upgrades(upgrade)
 
-
   def canBuild(factory: Class[_ <: UnitFactory], mobile: Class[_ <: Mobile]) = {
     builtBy(mobile) == factory
   }
@@ -131,10 +130,10 @@ sealed trait SCRace {
       workerClass
     } else
     if (classOf[ResourceGatherPoint].isAssignableFrom(unitType)) {
-        resourceDepositClass
+      resourceDepositClass
     } else
     if (classOf[MainBuilding].isAssignableFrom(unitType)) {
-        resourceDepositClass
+      resourceDepositClass
     } else
     if (classOf[SupplyProvider].isAssignableFrom(unitType)) {
       supplyClass
@@ -386,7 +385,7 @@ class Debugger(game: Game) {
 }
 
 object OnKillListener {
-  def on[T <: WrapsUnit, X](unit:T, doThis:() => X) = new OnKillListener[T](unit) {
+  def on[T <: WrapsUnit, X](unit: T, doThis: () => X) = new OnKillListener[T](unit) {
     override def onKill(t: T): Unit = {
       assert(t == unit)
       doThis()
@@ -394,9 +393,9 @@ object OnKillListener {
   }
 }
 
-abstract class OnKillListener[T <: WrapsUnit](val unit:T) {
-  def onKill(t:T)
-  def onKillUnTyped(t:WrapsUnit) = {
+abstract class OnKillListener[T <: WrapsUnit](val unit: T) {
+  def onKill(t: T)
+  def onKillUnTyped(t: WrapsUnit) = {
     assert(unit == t)
     onKill(unit)
   }
@@ -418,12 +417,12 @@ class Units(game: Game, hostile: Boolean) {
     fresh.clear()
   }
 
-  def registerKill_![T <: WrapsUnit](listener:OnKillListener[T]):Unit = {
+  def registerKill_![T <: WrapsUnit](listener: OnKillListener[T]): Unit = {
     // this will always replace the latest listener
     killListeners += ((listener.nativeUnitId, listener))
   }
 
-  private val graveyard = mutable.HashSet.empty[Int]
+  private val graveyard = mutable.HashMap.empty[Int, WrapsUnit]
 
   def dead_!(dead: Seq[bwapi.Unit]) = {
     dead.foreach { u =>
@@ -437,8 +436,14 @@ class Units(game: Game, hostile: Boolean) {
           e.onKillUnTyped(died)
           killListeners.remove(u.getID)
         }
-        removeUnit(u)
-        graveyard += u.getID
+        val nowDead = removeUnit(u)
+        nowDead.foreach {
+          case cd: CanDie => cd.notifyDead_!()
+          case _ =>
+        }
+        nowDead.foreach { e =>
+          graveyard += ((u.getID, e))
+        }
       }
     }
   }
@@ -446,13 +451,15 @@ class Units(game: Game, hostile: Boolean) {
   private val classIndexes    = mutable.HashSet.empty[Class[_]]
   private val preparedByClass = multiMap[Class[_], WrapsUnit]
 
-  private def removeUnit(u: bwapi.Unit): Unit = {
+  private def removeUnit(u: bwapi.Unit) = {
     val removed = knownUnits.remove(u.getID)
     removed.foreach { what =>
       classIndexes.foreach { c =>
         preparedByClass.removeBinding(c, what)
       }
     }
+    removed.foreach(_.notifyRemoved_!())
+    removed
   }
 
   def registerUnit(u: bwapi.Unit, lifted: WrapsUnit) = {
@@ -464,10 +471,9 @@ class Units(game: Game, hostile: Boolean) {
     }
   }
 
-
   private val knownUnits = mutable.HashMap.empty[Int, WrapsUnit]
   private var initial    = true
-  def buildingAt(upperLeft:MapTilePosition) = {
+  def buildingAt(upperLeft: MapTilePosition) = {
     allBuildings.find(_.area.upperLeft == upperLeft)
   }
   def allBuildings = allByType[Building]
@@ -498,6 +504,7 @@ class Units(game: Game, hostile: Boolean) {
   def allCanDie = allByType[CanDie]
 
   import scala.collection.JavaConverters._
+
   def firstByType[T: Manifest]: Option[T] = {
     val lookFor = manifest[T].runtimeClass
     mine.find(lookFor.isInstance).map(_.asInstanceOf[T])
@@ -554,7 +561,7 @@ class Units(game: Game, hostile: Boolean) {
       }
     }
     if (record) {
-      if (!graveyard(u.getID)) {
+      if (!graveyard.contains(u.getID)) {
         knownUnits.get(u.getID) match {
           case None =>
             val lifted = UnitWrapper.lift(u)
@@ -673,8 +680,8 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
   }
   def free(x: Int, y: Int): Boolean = {
     assert(includes(x, y), s"$x / $y is not inside $cols, $rows")
-      val coord = x + y * cols
-      if (containsBlocked) !areaDataBitSet(coord) else areaDataBitSet(coord)
+    val coord = x + y * cols
+    if (containsBlocked) !areaDataBitSet(coord) else areaDataBitSet(coord)
   }
   def blocked = size - walkable
   def walkable = areaDataBitSet.size
@@ -787,7 +794,7 @@ class ResourceAnalyzer(map: AnalyzedMap, myUnits: Units) {
     pg
   }
 
-  private val myGroups = FileStorageLazyVal.from({
+  private val myGroups = FileStorageLazyVal.fromFunction({
     info(s"Calculating mineral groups...")
     val patchGroups = ArrayBuffer.empty[MineralPatchGroup]
     val allMins = ArrayBuffer.empty ++= myUnits.minerals
@@ -796,9 +803,10 @@ class ResourceAnalyzer(map: AnalyzedMap, myUnits: Units) {
       patchGroups.find { g =>
         def isNew = !g.contains(mp)
         def isClose = {
-          val startingPoint = map.walkableGrid.nearestFree(g.center)
-                              .getOr(s"Count not find any free point around ${g.center}")
-          pathFinder.findPathNow(startingPoint, mp.tilePosition).length < 15
+          g.allTiles.exists { check =>
+            val path = pathFinder.findPathNow(check, mp.tilePosition)
+            path.isPerfectSolution && path.length < 20
+          }
         }
         isNew && isClose
       } match {
@@ -816,7 +824,7 @@ class ResourceAnalyzer(map: AnalyzedMap, myUnits: Units) {
   lazy val resourceAreas = {
     groups.map { patchGroup =>
       val geysirs = myUnits.geysirs
-                    .filter(_.area.distanceTo(patchGroup.center) < 10)
+                    .filter(_.area.distanceTo(patchGroup.center) < 20)
                     .toSet
 
       ResourceArea(Some(patchGroup), geysirs)
@@ -836,8 +844,9 @@ class ResourceAnalyzer(map: AnalyzedMap, myUnits: Units) {
      """.stripMargin)
 }
 
-
 case class MineralPatchGroup(patchId: Int) {
+  def allTiles = myPatches.iterator.flatMap(_.area.tiles)
+
   private val myPatches      = mutable.HashSet.empty[MineralPatch]
   private val myCenter       = new LazyVal[MapTilePosition](calcCenter)
   private val myValue        = new LazyVal[Int](myPatches.foldLeft(0)((acc, mp) => acc + mp.remaining))

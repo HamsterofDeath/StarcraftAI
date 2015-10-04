@@ -189,7 +189,7 @@ class FileStorageLazyVal[T](gen: => T, fileName: String) extends LazyVal(gen, No
 }
 
 object FileStorageLazyVal {
-  def from[T](gen: => T, unique: String) = new FileStorageLazyVal(gen, unique)
+  def fromFunction[T](gen: => T, unique: String) = new FileStorageLazyVal(gen, unique)
 
   def fileByName(fileName: String) = {
     initRoot()

@@ -10,9 +10,15 @@ import scala.collection.mutable.ArrayBuffer
 
 abstract class DefaultBehaviour[T <: Mobile : Manifest](override val universe: Universe)
   extends HasUniverse with HasLazyVals {
-  private val controlled      = multiMap[Objective, SingleUnitBehaviour[T]]
   private val unit2behaviour  = mutable.HashMap.empty[T, SingleUnitBehaviour[T]]
   private val controlledUnits = mutable.HashSet.empty[T]
+
+  override def onTick(): Unit = {
+    super.onTick()
+    val remove = controlledUnits.filterNot(_.isInGame)
+    controlledUnits --= remove
+    unit2behaviour --= remove
+  }
 
   def forceRepeatedCommands = false
 
@@ -47,7 +53,6 @@ abstract class DefaultBehaviour[T <: Mobile : Manifest](override val universe: U
   def add_!(u: WrapsUnit, objective: Objective) = {
     assert(canControl(u))
     val behaviour = lift(u.asInstanceOf[T])
-    controlled.addBinding(objective, behaviour)
     controlledUnits += behaviour.unit
     unit2behaviour.put(behaviour.unit, behaviour)
   }

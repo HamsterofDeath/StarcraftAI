@@ -7,7 +7,6 @@ import pony.brain.{HasLazyVals, HasUniverse, PriorityChain, UnitWithJob, Univers
 import scala.collection.immutable.HashMap
 import scala.collection.mutable.ListBuffer
 
-
 trait NiceToString extends WrapsUnit {
   override def toString = s"[$unitIdText] ${getClass.className}"
 }
@@ -45,6 +44,13 @@ trait OrderHistorySupport extends WrapsUnit {
 }
 
 trait WrapsUnit extends HasUniverse with HasLazyVals {
+
+  private var inGame = true
+
+  def notifyRemoved_!(): Unit = {
+    inGame = false
+  }
+
   def onMorph(getType: UnitType) = {
 
   }
@@ -54,9 +60,8 @@ trait WrapsUnit extends HasUniverse with HasLazyVals {
   def currentOrder = curOrder.get
 
   def age = universe.currentTick - creationTick
-  def isInGame = true
+  def isInGame = inGame
   def canDoDamage = false
-
 
   private val curOrder = oncePerTick {nativeUnit.getOrder}
 
@@ -117,13 +122,18 @@ object WrapsUnit {
 trait StaticallyPositioned extends WrapsUnit {
   override def shouldReRegisterOnMorph = true
   def tilePosition = myTilePosition.get
-  val myTilePosition        = oncePerTick(
-    MapTilePosition.shared(nativeUnit.getTilePosition.getX, nativeUnit.getTilePosition.getY))
-  val position              = tilePosition.asMapPosition
-  val size                  = Size.shared(nativeUnit.getType.tileWidth(), nativeUnit.getType.tileHeight())
-  val area                  = Area(tilePosition, size)
-  val nativeMapTilePosition = tilePosition.asNative
-  val nativeMapPosition     = tilePosition.asMapPosition.toNative
+  val myTilePosition = oncePerTick {
+    val position = nativeUnit.getTilePosition
+    val x = position.getX
+    val y = position.getY
+    MapTilePosition.shared(x, y)
+  }
+  val size           = Size.shared(nativeUnit.getType.tileWidth(), nativeUnit.getType.tileHeight())
+  private val myArea = oncePerTick {
+    Area(tilePosition, size)
+  }
+  val area = myArea.get
+  def nativeMapPosition = tilePosition.asMapPosition.toNative
   override def center = area.center
 
   override def toString: String = {
@@ -455,7 +465,7 @@ trait CanDie extends WrapsUnit {
   private var dead = false
   def isDead = dead || currentHp.isDead
 
-  override def isInGame: Boolean = !isDead
+  override def isInGame: Boolean = super.isInGame && !isDead
 
   def notifyDead_!(): Unit = {
     dead = true
@@ -716,7 +726,6 @@ trait AirWeapon extends Weapon {
     } else
       super.assumeShotDelayOn(target)
   }
-
 
   private val damage = LazyVal.from(evalDamage(airWeapon, airDamageType, airDamageMultiplier, true))
 
@@ -1267,7 +1276,6 @@ class Vulture(unit: APIUnit)
   override val spells = List(Upgrades.Terran.SpiderMines)
   override type Caster = Vulture
 }
-
 
 class Tank(unit: APIUnit)
   extends AnyUnit(unit) with GroundUnit with GroundWeapon with InstantAttackGround with Mechanic with CanSiege with

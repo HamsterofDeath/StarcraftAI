@@ -76,7 +76,7 @@ public class AStarSearch<T extends Node<T>> {
     }
 
     @SuppressWarnings({"ConstantConditions"})
-    public AStarSearch performSearch() {
+    public AStarSearch<T> performSearch() {
         init();
         {
             m_searchResultState = SearchResultState.RUNNING;

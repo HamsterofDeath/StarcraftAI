@@ -28,7 +28,8 @@ class MigrationPath(follow: Paths) {
   }
 }
 
-case class Path(waypoints: Seq[MapTilePosition]) {
+case class Path(waypoints: Seq[MapTilePosition], solved: Boolean, solvable: Boolean, bestEffort: MapTilePosition) {
+  def isPerfectSolution = solved
   lazy val length = {
     if (waypoints.size <= 1)
       0
@@ -37,7 +38,7 @@ case class Path(waypoints: Seq[MapTilePosition]) {
   }
 }
 
-case class Paths(paths: Seq[Path], solved: Boolean, solvable: Boolean, bestEffort: MapTilePosition) {
+case class Paths(paths: Seq[Path]) {
   val pathCount = paths.size
 }
 
@@ -138,22 +139,26 @@ class PathFinder(on: Grid2D) {
     }
 
     def findPathNow(from: MapTilePosition, to: MapTilePosition) = {
-      Path(new AStarSearch[GridNode2DInt](from, to).performSearch()
-           .getSolution.asScala
+      val a = new AStarSearch[GridNode2DInt](from, to).performSearch()
+      Path(a.getSolution.asScala
            .map(e => MapTilePosition.shared(e.getX, e.getY))
-           .toVector)
+           .toVector,
+        a.isSolved, !a.isUnsolvable, a.getTargetOrNearestReachable)
     }
 
     def findPath(from: MapTilePosition, to: MapTilePosition, width: Int) = {
       info(s"Searching path from $from to $to")
       val finder = new AStarSearch[GridNode2DInt](from, to)
       var first = Option.empty[Path]
+      def pathFrom(seq: Seq[MapTilePosition]) = {
+        Path(seq, finder.isSolved, !finder.isUnsolvable, finder.getTargetOrNearestReachable)
+      }
       val paths = (0 to width).iterator.map { _ =>
         finder.performSearch()
         val waypoints = finder.getSolution.asScala.map(e => e: MapTilePosition).toVector
         //block the path, then search again to get streets
         finder.getFullSolution.asScala.toVector.drop(15).dropRight(10).foreach(_.remove())
-        if (first.isEmpty) first = Some(Path(waypoints))
+        if (first.isEmpty) first = Some(pathFrom(waypoints))
         waypoints
       }.takeWhile { candidate =>
         candidate.forall { pointOnLine =>
@@ -162,7 +167,7 @@ class PathFinder(on: Grid2D) {
           }
         }
       }.toVector
-      Paths(paths.map(Path), finder.isSolved, !finder.isUnsolvable, finder.getTargetOrNearestReachable)
+      Paths(paths.map(pathFrom))
     }
   }
 

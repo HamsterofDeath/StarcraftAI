@@ -105,7 +105,7 @@ class StrategicMap(val resources: Seq[ResourceArea], walkable: Grid2D, game: Gam
     defLine
   }
 
-  private val myNarrowPassages = FileStorageLazyVal.from({
+  private val myNarrowPassages = FileStorageLazyVal.fromFunction({
     info(s"Calculating narrow passages...")
     val tooMany = {
       val lines = tryCutters(8).map { e => e.split }
@@ -146,10 +146,14 @@ class StrategicMap(val resources: Seq[ResourceArea], walkable: Grid2D, game: Gam
     }
   }
 
-  private val mapData = FileStorageLazyVal.from({
+  private val mapData = FileStorageLazyVal.fromFunction({
+    val charsInLine = 80
+    val tilesPerChunk = 100
+
     info(s"Analyzing map ${game.mapFileName()}")
+    @volatile var checked = 0
     val tooMany = {
-      val tries = tryCutters(8)
+      val tries = tryCutters(6)
 
       val findSubAreasOfThis = walkable
       val myAreas = findSubAreasOfThis.areas
@@ -161,6 +165,14 @@ class StrategicMap(val resources: Seq[ResourceArea], walkable: Grid2D, game: Gam
 
         val freeSpotsToCheck = area.allFree.toVector
         freeSpotsToCheck.par.flatMap { center =>
+          checked += 1
+          if (checked % tilesPerChunk == 0) {
+            print(".")
+          }
+          if (checked % (tilesPerChunk * charsInLine) == 0) {
+            println()
+          }
+
           val cutters = tries.map(_.movedBy(center))
                         .filter(line => area.anyBlockedOnLine(line))
                         .flatMap { line =>
@@ -183,7 +195,7 @@ class StrategicMap(val resources: Seq[ResourceArea], walkable: Grid2D, game: Gam
             val cuttingLines = cutters.map(CuttingLine)
             val chokePoint = ChokePoint(center, cuttingLines)
             val grouped = relevantResources.groupBy { r1 =>
-              val mainArea = subAreas.find(_.free(r1.center))
+              val mainArea = subAreas.find(subArea => r1.coveredTiles.exists(subArea.free))
               def ok = r1.resources.forall(e => subAreas.find(_.free(e.tilePosition)) == mainArea)
               if (ok) mainArea else None
             }
@@ -205,7 +217,8 @@ class StrategicMap(val resources: Seq[ResourceArea], walkable: Grid2D, game: Gam
     }
 
     println("\nGrouping choke points...")
-    val groupedByArea = tooMany.filter(_._2.size > 1)
+    val onlyUseful = tooMany.filter(_._2.size > 1)
+    val groupedByArea = onlyUseful
                         .groupBy(_._2.values.toSet)
     val reduced = groupedByArea.values.map { manyWithSameValue =>
       val center = {
@@ -222,7 +235,7 @@ class StrategicMap(val resources: Seq[ResourceArea], walkable: Grid2D, game: Gam
     }
     println("Done!")
     ret
-  }, s"mapdata_${game.suggestFileName}")
+  }, s"chokepoints_${game.suggestFileName}")
 
   private val myDomains = LazyVal.from {
     val raw = mapData.get

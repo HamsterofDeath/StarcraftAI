@@ -241,6 +241,7 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
 
     def onTick(): Unit = {
       minerals.tick()
+      Micro.MiningOrganization.onTick()
       val missing = idealNumberOfWorkers - teamSize
       if (missing > 0) {
         val result = universe.unitManager.request(UnitJobRequests.idleOfType(emp, classOf[WorkerUnit], missing))
@@ -370,7 +371,7 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
           state = newState
           order.toList.filterNot(_.isNoop)
         }
-        override def isFinished = miningTarget.patch.tilePosition.isAtStorePosition
+        override def isFinished = !miningTarget.patch.isInGame
 
         override def hasFailed: Boolean = super.hasFailed || base.mainBuilding.isDead
       }
@@ -380,6 +381,11 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
 
         minerals.patches.foreach { mp =>
           assignments.put(mp, new MinedPatch(mp))
+        }
+
+        def onTick(): Unit = {
+          val remove = assignments.keysIterator.filterNot(_.isInGame).toSet
+          assignments --= remove
         }
 
         def findBestPatch(worker: WorkerUnit) = {
