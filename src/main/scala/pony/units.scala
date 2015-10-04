@@ -45,6 +45,11 @@ trait OrderHistorySupport extends WrapsUnit {
 }
 
 trait WrapsUnit extends HasUniverse with HasLazyVals {
+  def onMorph(getType: UnitType) = {
+
+  }
+
+  def shouldReRegisterOnMorph: Boolean
 
   def currentOrder = curOrder.get
 
@@ -110,6 +115,7 @@ object WrapsUnit {
 }
 
 trait StaticallyPositioned extends WrapsUnit {
+  override def shouldReRegisterOnMorph = true
   def tilePosition = myTilePosition.get
   val myTilePosition        = oncePerTick(
     MapTilePosition.shared(nativeUnit.getTilePosition.getX, nativeUnit.getTilePosition.getY))
@@ -492,7 +498,7 @@ trait AutoPilot extends Mobile {
 }
 
 trait Mobile extends WrapsUnit with Controllable {
-
+  override def shouldReRegisterOnMorph = false
   def isAutoPilot = false
 
   private val defenseMatrix = oncePerTick {
@@ -1224,7 +1230,7 @@ class Reaver(unit: APIUnit)
   extends AnyUnit(unit) with GroundUnit with GroundWeapon with Mechanic with IsBig with IsVehicle with
           NormalGroundDamage with SlowAttackGround
 
-class Scarab(unit: APIUnit) extends AnyUnit(unit) with SimplePosition
+class Scarab(unit: APIUnit) extends AnyUnit(unit) with SimplePosition with Mobile with AutoPilot with IsSmall
 class SpiderMine(unit: APIUnit)
   extends AnyUnit(unit) with IndestructibleUnit with SimplePosition with GroundUnit with IsSmall with AutoPilot
 
@@ -1308,6 +1314,7 @@ trait SimplePosition extends WrapsUnit {
 
 class Irrelevant(unit: APIUnit) extends AnyUnit(unit) {
   override def center = !!!(s"Why did this get called?")
+  override def shouldReRegisterOnMorph: Boolean = false
 }
 
 trait Geysir extends Resource with BlockingTiles

@@ -87,14 +87,14 @@ class StrategicMap(val resources: Seq[ResourceArea], walkable: Grid2D, game: Gam
     val defLine = cutOffBy.map { case (choke, areas) =>
       val (inside, outside) = areas.partition(_._1.free(tile))
       val insideArea = {
-        val ret = walkable.mutableCopy
+        val ret = walkable.emptySameSize(false)
         inside.keys.foreach { section =>
           ret.or_!(section.mutableCopy)
         }
         ret
       }
       val outsideArea = {
-        val ret = walkable.mutableCopy
+        val ret = walkable.emptySameSize(false)
         outside.keys.foreach { section =>
           ret.or_!(section.mutableCopy)
         }
@@ -149,7 +149,7 @@ class StrategicMap(val resources: Seq[ResourceArea], walkable: Grid2D, game: Gam
   private val mapData = FileStorageLazyVal.from({
     info(s"Analyzing map ${game.mapFileName()}")
     val tooMany = {
-      val tries = tryCutters(4)
+      val tries = tryCutters(8)
 
       val findSubAreasOfThis = walkable
       val myAreas = findSubAreasOfThis.areas

@@ -563,9 +563,12 @@ class Units(game: Game, hostile: Boolean) {
             registerUnit(u, lifted)
           case Some(unit) if unit.initialNativeType != u.getType =>
             info(s"Unit morphed from ${unit.initialNativeType} to ${u.getType}")
-            val lifted = UnitWrapper.lift(u)
-            registerUnit(u, lifted)
-            fresh += lifted
+            if (unit.shouldReRegisterOnMorph) {
+              val lifted = UnitWrapper.lift(u)
+              registerUnit(u, lifted)
+              fresh += lifted
+              unit.onMorph(u.getType)
+            }
           case _ => // noop
         }
       }
@@ -578,6 +581,8 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
   self =>
   def areInSameArea(a: MapTilePosition, b: MapTilePosition) =
     areaWhichContains(a) == areaWhichContains(b)
+
+  def emptySameSize(blocked: Boolean) = new MutableGrid2D(cols, rows, mutable.BitSet.empty, blocked)
 
   def nearestFree(p: MapTilePosition) = {
     spiralAround(p).find(free)
@@ -721,7 +726,7 @@ class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet, bitSetContains
   }
   def asReadOnly: Grid2D = this
 
-  override def asReadOnlyCopyIfMutable = new Grid2D(cols, rows, bitSet)
+  override def asReadOnlyCopyIfMutable = new Grid2D(cols, rows, bitSet, containsBlocked)
 
   def or_!(other: MutableGrid2D) = {
     if (containsBlocked == other.containsBlocked) {

@@ -639,9 +639,9 @@ object Strategy {
     override def suggestProducers = {
       val myBases = bases.myMineralFields.count(_.remainingPercentage > 0.25)
 
-      IdealProducerCount(classOf[Barracks], myBases)(timingHelpers.phase.isAnyTime) ::
+      IdealProducerCount(classOf[Barracks], (myBases / 2) max 1)(timingHelpers.phase.isAnyTime) ::
       IdealProducerCount(classOf[Factory], myBases * 3)(timingHelpers.phase.isAnyTime) ::
-      IdealProducerCount(classOf[Starport], myBases)(timingHelpers.phase.isSincePostMid) ::
+      IdealProducerCount(classOf[Starport], (myBases / 2) max 1)(timingHelpers.phase.isSincePostMid) ::
       Nil
     }
     override def suggestUnits = {

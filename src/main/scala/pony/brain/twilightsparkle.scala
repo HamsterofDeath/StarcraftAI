@@ -209,6 +209,7 @@ class TwilightSparkle(world: DefaultWorld) {
   }
   def queueOrdersForTick(): Unit = {
 
+    world.myUnits.consumeFresh_! {_.init_!(universe)}
     world.enemyUnits.consumeFresh_! {_.init_!(universe)}
 
     maps.tick()

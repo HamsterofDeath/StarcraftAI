@@ -132,6 +132,7 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
     unfulfilledRequestsThisTick.clear()
 
     //clean/update
+    ownUnits.all.foreach(_.onTick())
     assignments.valuesIterator.foreach(_.onTick())
     enemies.all.foreach(_.onTick())
     val removeUs = {
@@ -176,7 +177,6 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
     }
 
     def initialJobOf[T <: WrapsUnit](unit: T) = {
-      unit.init_!(universe)
       if (unit.isBeingCreated) {
         unit match {
           case b: Building =>
@@ -535,7 +535,7 @@ abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: 
 
   def hasNotYetSpendResources: Boolean = true
   def onTick(): Unit = {
-    unit.onTick()
+
   }
   def onStealUnit() = {}
   def shortDebugString: String
