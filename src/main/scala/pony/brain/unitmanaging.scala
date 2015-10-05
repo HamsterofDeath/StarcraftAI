@@ -373,14 +373,20 @@ class UnitCollector[T <: WrapsUnit : Manifest](req: UnitJobRequests[T], override
     val um = unitManager
     val available = {
       val potential = {
-                        val all = um.allOfEmployer(um.Nobody).iterator ++ um.allNotOfEmployer(um.Nobody).iterator
-                        val requested = all.filter(_.unit.isInGame).filter(requests)
-        val withoutHigherPrio = requested
+        val all = um.allOfEmployer(um.Nobody).iterator ++ um.allNotOfEmployer(um.Nobody).iterator
+        val defaultSuggestions = all.filter(_.unit.isInGame)
+                                 .filter {
+                                   _.unit match {
+                                     case a: AutoPilot => a.isManuallyControlled
+                                     case _ => true
+                                   }
+                                 }
                                 .filter(_.priority < req.priority)
-        val withInterruptable = withoutHigherPrio.filter(interrupts)
-        val withExplicitCandidates = withInterruptable ++ includeCandidates
-        withExplicitCandidates.map(typed)
-                      }.toVector
+                                 .filter(interrupts)
+                                 .filter(requests)
+        val withExplicitCandidates = defaultSuggestions ++ includeCandidates
+        withExplicitCandidates.map(typed).toVector
+      }
       priorityRule.fold(potential) { rule =>
         potential.sortBy(rule.giveRating)
       }
@@ -500,7 +506,6 @@ object JobCounter {
   }
 }
 
-
 abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: T, val priority: Priority)
   extends HasUniverse {
 
@@ -510,7 +515,6 @@ abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: 
   protected def fail() = {
     forceFail = true
   }
-
 
   def renderDebug(renderer: Renderer): Unit = {}
 
@@ -783,6 +787,13 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, bu
     val size = Size.shared(unitType.tileWidth(), unitType.tileHeight())
     Area(buildWhere, size)
   }
+
+  listen_!(new JobFinishedListener[W] {
+    override def onFinishOrFail(failed: Boolean): Unit = {
+      mapLayers.unblockBuilding_!(area)
+    }
+  })
+
   assert(resources.detailedLocks.exists(e => e.whatFor == buildingType && e.reqs.sum == funding.sum),
     s"Something is wrong, check $this, it is supposed to have ${
       funding.sum
@@ -1136,7 +1147,8 @@ object UnitJobRequests {
 
   def builderOf[T <: Mobile, F <: UnitFactory : Manifest](wantedType: Class[_ <: T],
                                                           employer: Employer[F],
-                                                          priority: Priority = Priority.Default): UnitJobRequests[F] = {
+                                                          priority: Priority = Priority
+                                                                               .Default): UnitJobRequests[F] = {
 
     val actualClass = employer.universe.myRace.specialize(manifest[F].runtimeClass.asInstanceOf[Class[F]])
     val req = AnyFactoryRequest[F, T](actualClass, 1, wantedType)

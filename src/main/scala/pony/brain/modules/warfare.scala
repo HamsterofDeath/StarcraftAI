@@ -153,17 +153,19 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse w
     val req = UnitJobRequests.idleOfType(employer, classOf[Mobile], 9999)
     val result = unitManager.request(req, buildIfNoneAvailable = false)
     result.ifNotZero { seq =>
-      val independent = seq.filterNot(_.isAutoPilot).map { u => u.nativeUnitId -> u.currentTile }
-      assert(independent.forall(e => universe.mapLayers.rawWalkableMap.includes(e._2)),
-        s"""Unit alive but outside map?
-            |${
-          val ids = independent.filterNot(e => universe.mapLayers.rawWalkableMap.includes(e._2)).map(_._1)
-          val problem = ids.map(universe.myUnits.byIdExpectExisting)
-          problem.mkString("\n")
-        }
-            |""".stripMargin)
+      val independent = seq.map { u => u.nativeUnitId -> u.currentTile }
       val helper = new GroupingHelper(universe)
       planInProgress = BWFuture.some {
+        val on = universe.mapLayers.rawWalkableMap
+        assert(independent.forall(e => on.includes(e._2)),
+          s"""Unit alive but outside map?
+              |${
+            val ids = independent.filterNot(e => on.includes(e._2)).map(_._1)
+            val problem = ids.map(universe.myUnits.byIdExpectExisting)
+            problem.mkString("\n")
+          }
+              |""".stripMargin)
+
         val grouped = helper.groupUnits(independent)
         val newAttacks = grouped.map { group =>
           val asUnits = group.memberIds.map(e => ownUnits.byId(e).getOr(s"Id $e missing").asInstanceOf[Mobile])
@@ -490,7 +492,8 @@ class EnqueueArmy(universe: Universe) extends OrderlessAIModule[UnitFactory](uni
       val rich = resources.couldAffordNow(e._1)
       def mineralsOverflow = resources.unlockedResources.moreMineralsThanGas &&
                              resources.unlockedResources.minerals > 400
-      def gasOverflow = resources.unlockedResources.moreGasThanMinerals && resources.unlockedResources.gas > 400
+      def gasOverflow = resources.unlockedResources.moreGasThanMinerals &&
+                        resources.unlockedResources.gas > 400
       rich || mineralsOverflow || gasOverflow
     }.foreach { case (thisOne, _) =>
       requestUnit(thisOne, takeCareOfDependencies = false)
@@ -700,13 +703,14 @@ object Strategy {
   class TerranAirSuperiority(override val universe: Universe) extends LongTermStrategy with TerranDefaults {
 
     override def suggestUnits = {
-      IdealUnitRatio(classOf[Marine], 3)(timingHelpers.phase.isBeforeLate) ::
-      IdealUnitRatio(classOf[Medic], 1)(timingHelpers.phase.isBeforeLate) ::
-      IdealUnitRatio(classOf[Ghost], 1)(timingHelpers.phase.isMid) ::
-      IdealUnitRatio(classOf[Vulture], 3)(timingHelpers.phase.isBeforeLate) ::
+      IdealUnitRatio(classOf[Marine], 3)(timingHelpers.phase.isSinceMid) ::
+      IdealUnitRatio(classOf[Medic], 1)(timingHelpers.phase.isSinceMid) ::
+      IdealUnitRatio(classOf[Ghost], 1)(timingHelpers.phase.isSinceMid) ::
+      IdealUnitRatio(classOf[Vulture], 1)(timingHelpers.phase.isSinceMid) ::
       IdealUnitRatio(classOf[Tank], 1)(timingHelpers.phase.isSincePostMid) ::
+      IdealUnitRatio(classOf[Dropship], 1)(timingHelpers.phase.isSinceMid) ::
       IdealUnitRatio(classOf[Goliath], 1)(timingHelpers.phase.isSincePostMid) ::
-      IdealUnitRatio(classOf[Wraith], 8)(timingHelpers.phase.isSinceEarlyMid) ::
+      IdealUnitRatio(classOf[Wraith], 8)(timingHelpers.phase.isSinceMid) ::
       IdealUnitRatio(classOf[Battlecruiser], 3)(timingHelpers.phase.isSinceLateMid) ::
       IdealUnitRatio(classOf[ScienceVessel], 2)(timingHelpers.phase.isSincePostMid) ::
       Nil
@@ -730,30 +734,30 @@ object Strategy {
     override def suggestUpgrades =
       UpgradeToResearch(Upgrades.Terran.WraithCloak)(timingHelpers.phase.isAnyTime) ::
       UpgradeToResearch(Upgrades.Terran.ShipWeapons)(timingHelpers.phase.isAnyTime) ::
-      UpgradeToResearch(Upgrades.Terran.WraithEnergy)(timingHelpers.phase.isAnyTime) ::
-      UpgradeToResearch(Upgrades.Terran.EMP)(timingHelpers.phase.isAnyTime) ::
+      UpgradeToResearch(Upgrades.Terran.WraithEnergy)(timingHelpers.phase.isSinceVeryLateMid) ::
+      UpgradeToResearch(Upgrades.Terran.EMP)(timingHelpers.phase.isSinceVeryLateMid) ::
       UpgradeToResearch(Upgrades.Terran.ShipArmor)(timingHelpers.phase.isAnyTime) ::
-      UpgradeToResearch(Upgrades.Terran.CruiserGun)(timingHelpers.phase.isAnyTime) ::
-      UpgradeToResearch(Upgrades.Terran.CruiserEnergy)(timingHelpers.phase.isAnyTime) ::
-      UpgradeToResearch(Upgrades.Terran.SpiderMines)(timingHelpers.phase.isAnyTime) ::
-      UpgradeToResearch(Upgrades.Terran.ScienceVesselEnergy)(timingHelpers.phase.isAnyTime) ::
-      UpgradeToResearch(Upgrades.Terran.GhostCloak)(timingHelpers.phase.isAnyTime) ::
-      UpgradeToResearch(Upgrades.Terran.GhostStop)(timingHelpers.phase.isAnyTime) ::
-      UpgradeToResearch(Upgrades.Terran.Irradiate)(timingHelpers.phase.isAnyTime) ::
-      UpgradeToResearch(Upgrades.Terran.TankSiegeMode)(timingHelpers.phase.isAnyTime) ::
-      UpgradeToResearch(Upgrades.Terran.VehicleWeapons)(timingHelpers.phase.isAnyTime) ::
-      UpgradeToResearch(Upgrades.Terran.VehicleArmor)(timingHelpers.phase.isAnyTime) ::
-      UpgradeToResearch(Upgrades.Terran.InfantryWeapons)(timingHelpers.phase.isAnyTime) ::
-      UpgradeToResearch(Upgrades.Terran.InfantryCooldown)(timingHelpers.phase.isAnyTime) ::
-      UpgradeToResearch(Upgrades.Terran.GoliathRange)(timingHelpers.phase.isAnyTime) ::
-      UpgradeToResearch(Upgrades.Terran.VultureSpeed)(timingHelpers.phase.isAnyTime) ::
-      UpgradeToResearch(Upgrades.Terran.MedicFlare)(timingHelpers.phase.isAnyTime) ::
-      UpgradeToResearch(Upgrades.Terran.MedicHeal)(timingHelpers.phase.isAnyTime) ::
-      UpgradeToResearch(Upgrades.Terran.MedicEnergy)(timingHelpers.phase.isAnyTime) ::
-      UpgradeToResearch(Upgrades.Terran.InfantryArmor)(timingHelpers.phase.isAnyTime) ::
-      UpgradeToResearch(Upgrades.Terran.GhostEnergy)(timingHelpers.phase.isAnyTime) ::
-      UpgradeToResearch(Upgrades.Terran.GhostStop)(timingHelpers.phase.isAnyTime) ::
-      UpgradeToResearch(Upgrades.Terran.GhostVisiblityRange)(timingHelpers.phase.isAnyTime) ::
+      UpgradeToResearch(Upgrades.Terran.CruiserGun)(timingHelpers.phase.isSinceVeryLateMid) ::
+      UpgradeToResearch(Upgrades.Terran.CruiserEnergy)(timingHelpers.phase.isSinceVeryLateMid) ::
+      UpgradeToResearch(Upgrades.Terran.SpiderMines)(timingHelpers.phase.isSinceVeryLateMid) ::
+      UpgradeToResearch(Upgrades.Terran.ScienceVesselEnergy)(timingHelpers.phase.isSinceVeryLateMid) ::
+      UpgradeToResearch(Upgrades.Terran.GhostCloak)(timingHelpers.phase.isSinceVeryLateMid) ::
+      UpgradeToResearch(Upgrades.Terran.GhostStop)(timingHelpers.phase.isSinceVeryLateMid) ::
+      UpgradeToResearch(Upgrades.Terran.Irradiate)(timingHelpers.phase.isSinceVeryLateMid) ::
+      UpgradeToResearch(Upgrades.Terran.TankSiegeMode)(timingHelpers.phase.isSinceVeryLateMid) ::
+      UpgradeToResearch(Upgrades.Terran.VehicleWeapons)(timingHelpers.phase.isSinceVeryLateMid) ::
+      UpgradeToResearch(Upgrades.Terran.VehicleArmor)(timingHelpers.phase.isSinceVeryLateMid) ::
+      UpgradeToResearch(Upgrades.Terran.InfantryWeapons)(timingHelpers.phase.isSinceVeryLateMid) ::
+      UpgradeToResearch(Upgrades.Terran.InfantryCooldown)(timingHelpers.phase.isSinceVeryLateMid) ::
+      UpgradeToResearch(Upgrades.Terran.GoliathRange)(timingHelpers.phase.isSinceVeryLateMid) ::
+      UpgradeToResearch(Upgrades.Terran.VultureSpeed)(timingHelpers.phase.isSinceVeryLateMid) ::
+      UpgradeToResearch(Upgrades.Terran.MedicFlare)(timingHelpers.phase.isSinceMid) ::
+      UpgradeToResearch(Upgrades.Terran.MedicHeal)(timingHelpers.phase.isSinceMid) ::
+      UpgradeToResearch(Upgrades.Terran.MedicEnergy)(timingHelpers.phase.isSinceMid) ::
+      UpgradeToResearch(Upgrades.Terran.InfantryArmor)(timingHelpers.phase.isSinceVeryLateMid) ::
+      UpgradeToResearch(Upgrades.Terran.GhostEnergy)(timingHelpers.phase.isSinceVeryLateMid) ::
+      UpgradeToResearch(Upgrades.Terran.GhostStop)(timingHelpers.phase.isSinceVeryLateMid) ::
+      UpgradeToResearch(Upgrades.Terran.GhostVisiblityRange)(timingHelpers.phase.isSinceVeryLateMid) ::
       Nil
   }
 

@@ -505,6 +505,7 @@ trait IndestructibleUnit extends WrapsUnit {
 
 trait AutoPilot extends Mobile {
   override def isAutoPilot = true
+  def isManuallyControlled = !isAutoPilot
 }
 
 trait Mobile extends WrapsUnit with Controllable {

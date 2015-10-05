@@ -458,7 +458,14 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   private var lastUpdatePerformedInTick       = universe.currentTick
   def isOnIsland(tilePosition: MapTilePosition) = {
     val areaInQuestion = rawMapWalk.areas.find(_.free(tilePosition))
-    !areaInQuestion.contains(rawWalkableMap.areas.maxBy(_.freeCount))
+    val maxArea = rawWalkableMap.areas.sortBy(-_.freeCount)
+    if (maxArea.size > 1) {
+      val main = maxArea.head
+      val second = maxArea(1)
+      val assumeIslandMap = second.freeCount * 2 > main.freeCount
+      assumeIslandMap || !areaInQuestion.contains(main)
+    } else false
+
   }
   def rawWalkableMap = rawMapWalk
   def blockedByPotentialAddons = {
