@@ -439,6 +439,7 @@ class UnitCollector[T <: WrapsUnit : Manifest](req: UnitJobRequests[T], override
   def teamAsMap = hired.toSeq.map { case (k, v) => k -> v.toSet }.toMap
 }
 
+// TODO check if this class really has a purpose
 class Employer[T <: WrapsUnit : Manifest](override val universe: Universe) extends HasUniverse {
   self =>
   private var employees = ArrayBuffer.empty[T]
@@ -774,6 +775,25 @@ class ResearchUpgrade[U <: Upgrader](employer: Employer[U],
 
 }
 
+trait HasMovementTarget[T <: Mobile] extends UnitWithJob[T] {
+
+  protected def targetPosition: MapTilePosition
+
+  override protected def ordersForTick = {
+    val where = unit.currentTile
+    val to = targetPosition
+
+    val needsFerry = universe.mapLayers.rawWalkableMap.areInSameArea(where, to)
+    if (needsFerry) {
+      unitManager.
+    } else {
+      super.ordersForThisTick
+    }
+
+  }
+}
+
+
 class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, buildingType: Class[_ <: B],
                                                                    employer: Employer[W],
                                                                    val buildWhere: MapTilePosition,
@@ -1061,11 +1081,11 @@ case class BuildUnitRequest[T <: WrapsUnit](universe: Universe, typeOfRequestedU
 
   self =>
 
-  def isAddon = classOf[Addon].isAssignableFrom(typeOfRequestedUnit)
+  lazy val isAddon = classOf[Addon].isAssignableFrom(typeOfRequestedUnit)
 
-  def isBuilding = classOf[Building].isAssignableFrom(typeOfRequestedUnit)
+  lazy val isBuilding = classOf[Building].isAssignableFrom(typeOfRequestedUnit)
 
-  def isMobile = classOf[Mobile].isAssignableFrom(typeOfRequestedUnit)
+  lazy val isMobile = classOf[Mobile].isAssignableFrom(typeOfRequestedUnit)
 
   if (customBuildingPosition.shouldUse) {
     assert(typeOfRequestedUnit.toUnitType.isBuilding)

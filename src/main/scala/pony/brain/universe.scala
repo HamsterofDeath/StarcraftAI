@@ -4,7 +4,7 @@ package brain
 import java.text.DecimalFormat
 
 import pony.brain.modules.Strategy.Strategies
-import pony.brain.modules.WorldDominationPlan
+import pony.brain.modules.{FerryManager, WorldDominationPlan}
 
 import scala.collection.mutable.ArrayBuffer
 
@@ -24,6 +24,7 @@ trait Universe {
   def pathFinder: PathFinder
   def strategy: Strategies
   def unitGrid: UnitGrid
+  def ferryManager: FerryManager
   def worldDominationPlan: WorldDominationPlan
   def resourceFields = world.resourceAnalyzer
   private def evalRace = (myUnits.allMobiles ++ myUnits.allBuildings).next.mySCRace

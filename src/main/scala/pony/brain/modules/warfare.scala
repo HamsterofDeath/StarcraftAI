@@ -386,16 +386,28 @@ trait UpgradePrice {
 class ProvideSuggestedAndRequestedAddons(universe: Universe)
   extends OrderlessAIModule[CanBuildAddons](universe) with AddonRequestHelper {
 
+  private def canBuildMoreOf(addon: Class[_ <: Addon]) = {
+    val existing = ownUnits.allByClass(addon)
+    if (existing.isEmpty) {
+      true
+    } else {
+      val any = existing.next()
+      !any.isInstanceOf[Upgrader]
+    }
+  }
+
   override def onTick(): Unit = {
     val suggested = {
       val buildUs = strategy.current.suggestAddons
                     .filter(_.isActive)
-      (for (builder <- ownUnits.allAddonBuilders;
-            addon <- buildUs
-            if builder.canBuildAddon(addon.addon) & !builder.hasAddonAttached) yield (builder, addon))
-      .toVector
+      for (builder <- ownUnits.allAddonBuilders;
+           addon <- buildUs
+           if builder.canBuildAddon(addon.addon) & !builder.hasAddonAttached) yield (builder, addon)
     }
 
+    suggested.filter(e => canBuildMoreOf(e._2.addon)).foreach { case (builder, what) =>
+      requestAddon(what.addon, what.requestNewBuildings)
+    }
 
     val requested = unitManager.failedToProvideByType[Addon].collect {
       case attachIt: BuildUnitRequest[Addon]
@@ -406,13 +418,19 @@ class ProvideSuggestedAndRequestedAddons(universe: Universe)
         attachIt
     }
 
-    requested.foreach { req =>
-      requestAddonIfResourcesProvided(req.typeOfRequestedUnit, false, req.proofForFunding)
+    requested.filter { e =>
+      val ok = canBuildMoreOf(e.typeOfRequestedUnit)
+      if (!ok) {
+        info(s"Prevented duplicate production of ${e.typeOfRequestedUnit} - fixme")
+        e.forceUnlockOnDispose_!()
+        e.dispose()
+      }
+
+      ok
+    }.foreach { req =>
+      requestAddonIfResourcesProvided(req.typeOfRequestedUnit, handleDependencies = false, req.proofForFunding)
     }
 
-    suggested.foreach { case (builder, what) =>
-      requestAddon(what.addon, what.requestNewBuildings)
-    }
   }
 }
 

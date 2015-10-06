@@ -173,6 +173,7 @@ class TwilightSparkle(world: DefaultWorld) {
     override def strategy = self.strategy
     override def worldDominationPlan = self.worldDomination
     override def unitGrid = self.unitGrid
+    override def ferryManager = self.ferryManager
   }
   private val bases           = new Bases(world)
   private val resources       = new ResourceManager(universe)
@@ -202,6 +203,7 @@ class TwilightSparkle(world: DefaultWorld) {
   private val maps           = new MapLayers(universe)
   private val pathFinder     = new PathFinder(maps)
   private val unitGrid       = new UnitGrid(universe)
+  private val ferryManager   = new FerryManager(universe)
 
   def pluginByType[T <: AIModule[_]:Manifest] = {
     val c = manifest[T].runtimeClass
@@ -219,6 +221,7 @@ class TwilightSparkle(world: DefaultWorld) {
     bases.tick()
     worldDomination.onTick()
     unitGrid.onTick()
+    ferryManager.onTick()
 
     val tick = world.tickCount
 

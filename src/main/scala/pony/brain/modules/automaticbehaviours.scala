@@ -91,6 +91,16 @@ object Terran {
     allOfThem
   }
 
+  class FerryService(universe: Universe) extends DefaultBehaviour[TransporterUnit](universe) {
+    override protected def lift(t: TransporterUnit): SingleUnitBehaviour[TransporterUnit] = new
+        SingleUnitBehaviour[TransporterUnit](t, meta) {
+      override def shortName: String = "T"
+      override def toOrder(what: Objective): Seq[UnitOrder] = {
+
+      }
+    }
+  }
+
   class Dance(universe: Universe) extends DefaultBehaviour[Mobile with Weapon](universe) {
 
     override def priority: SecondPriority = SecondPriority.More
@@ -179,7 +189,7 @@ object Terran {
     }
 
     override protected def lift(t: Mobile): SingleUnitBehaviour[Mobile] = new SingleUnitBehaviour[Mobile](t, meta) {
-      override def shortName: String = "M"
+      override def shortName: String = "A"
       override def toOrder(what: Objective) = {
         worldDominationPlan.attackOf(t).map { attack =>
           attack.suggestActionFor(t).asOrder.toList
@@ -200,7 +210,7 @@ object Terran {
           Nil
         }
       }
-      override def shortName: String = s"Stim"
+      override def shortName: String = s"SS"
     }
   }
 
@@ -235,7 +245,7 @@ object Terran {
           }
         }
       }
-      override def shortName: String = s"S"
+      override def shortName: String = s"SS"
     }
   }
 
@@ -251,7 +261,7 @@ object Terran {
           Nil
         }
       }
-      override def shortName: String = s"Cloak"
+      override def shortName: String = s"C"
     }
   }
 
@@ -362,7 +372,7 @@ object Terran {
                 val freeTarget = on.spiralAround(t.currentTile).find { where =>
                   val free = on.free(where)
                   def noOwnUnits = {
-                    !universe.unitGrid.allInRangeOf[Mobile](where, 4, friendly = true)
+                    !universe.unitGrid.allInRangeOf[Mobile](where, 3, friendly = true)
                      .exists(e => !e.isInstanceOf[HasSpiderMines] && !e.isAutoPilot)
                   }
                   free && noOwnUnits

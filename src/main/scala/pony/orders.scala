@@ -40,6 +40,7 @@ abstract class UnitOrder {
 
   private var locks             = 0
   private var forceAllowRepeats = false
+
   def lockingFor_!(ticks: Int) = {
     locks = ticks
     this
