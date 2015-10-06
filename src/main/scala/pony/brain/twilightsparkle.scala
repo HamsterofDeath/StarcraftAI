@@ -189,7 +189,7 @@ class TwilightSparkle(world: DefaultWorld) {
     new ProvideNewSupply(universe),
     new ProvideExpansions(universe),
     new ProvideNewBuildings(universe),
-    new ProvideSuggestedAddons(universe),
+    new ProvideSuggestedAndRequestedAddons(universe),
     new EnqueueFactories(universe),
     new EnqueueArmy(universe),
     new ProvideUpgrades(universe),

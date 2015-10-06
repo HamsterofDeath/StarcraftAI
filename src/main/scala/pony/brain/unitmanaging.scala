@@ -162,10 +162,10 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
       }
 
       job.unit match {
-        case cd: CanDie if !cd.isDead =>
+        case cd: MaybeCanDie if !cd.isDead =>
           val newJob = new BusyDoingNothing(cd, Nobody)
           assignJob_!(newJob)
-        case cd: CanDie if cd.isDead =>
+        case cd: MaybeCanDie if cd.isDead =>
           assignments.remove(cd)
           byEmployer.removeBinding(job.employer, job)
         case res: MineralPatch =>
@@ -521,7 +521,7 @@ abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: 
   protected def omitRepeatedOrders = false
 
   unit match {
-    case cd: CanDie if cd.isDead => fail()
+    case cd: MaybeCanDie if cd.isDead => fail()
     case _ =>
   }
 
@@ -788,11 +788,10 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, bu
     Area(buildWhere, size)
   }
 
-  listen_!(new JobFinishedListener[W] {
-    override def onFinishOrFail(failed: Boolean): Unit = {
-      mapLayers.unblockBuilding_!(area)
-    }
+  listen_!((failed: Boolean) => {
+    mapLayers.unblockBuilding_!(area)
   })
+
 
   assert(resources.detailedLocks.exists(e => e.whatFor == buildingType && e.reqs.sum == funding.sum),
     s"Something is wrong, check $this, it is supposed to have ${

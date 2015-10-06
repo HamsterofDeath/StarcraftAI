@@ -235,6 +235,11 @@ trait AddonRequestHelper extends AIModule[CanBuildAddons] {
   def requestAddon[T <: Addon](addonType: Class[_ <: T], handleDependencies: Boolean = false): Unit = {
     val req = ResourceRequests.forUnit(universe.myRace, addonType, Priority.Addon)
     val result = resources.request(req, self)
+    requestAddonIfResourcesProvided(addonType, handleDependencies, result)
+  }
+
+  def requestAddonIfResourcesProvided[T <: Addon](addonType: Class[_ <: T], handleDependencies: Boolean,
+                                                  result: ResourceApproval): Unit = {
     result.ifSuccess { suc =>
       val unitReq = UnitJobRequests.addonConstructor(self, addonType)
       trace(s"Financing possible for $addonType, requesting build")
@@ -378,17 +383,34 @@ trait UpgradePrice {
 
 }
 
-class ProvideSuggestedAddons(universe: Universe)
+class ProvideSuggestedAndRequestedAddons(universe: Universe)
   extends OrderlessAIModule[CanBuildAddons](universe) with AddonRequestHelper {
 
   override def onTick(): Unit = {
-    val buildUs = strategy.current.suggestAddons
-                  .filter(_.isActive)
-    val todo = (for (builder <- ownUnits.allAddonBuilders;
-                     addon <- buildUs
-                     if builder.canBuildAddon(addon.addon) & !builder.hasAddonAttached) yield (builder, addon))
-               .toVector
-    todo.foreach { case (builder, what) =>
+    val suggested = {
+      val buildUs = strategy.current.suggestAddons
+                    .filter(_.isActive)
+      (for (builder <- ownUnits.allAddonBuilders;
+            addon <- buildUs
+            if builder.canBuildAddon(addon.addon) & !builder.hasAddonAttached) yield (builder, addon))
+      .toVector
+    }
+
+
+    val requested = unitManager.failedToProvideByType[Addon].collect {
+      case attachIt: BuildUnitRequest[Addon]
+        if attachIt.proofForFunding.isFunded &&
+           universe.resources.detailedLocks.exists { lock =>
+             lock.whatFor == attachIt.typeOfRequestedUnit && lock.reqs.sum == attachIt.funding.sum
+           } =>
+        attachIt
+    }
+
+    requested.foreach { req =>
+      requestAddonIfResourcesProvided(req.typeOfRequestedUnit, false, req.proofForFunding)
+    }
+
+    suggested.foreach { case (builder, what) =>
       requestAddon(what.addon, what.requestNewBuildings)
     }
   }

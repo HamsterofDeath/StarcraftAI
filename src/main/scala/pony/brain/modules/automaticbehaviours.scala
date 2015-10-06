@@ -496,7 +496,7 @@ class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
     invalidateQueue()
   })
 
-  class Attackers(val target: CanDie) {
+  class Attackers(val target: MaybeCanDie) {
     def isOutOfRange(myUnit: MobileRangeWeapon) = !myUnit.isInWeaponRange(target)
 
     def recalculatePlannedDamage_!(): Unit = {
@@ -580,8 +580,8 @@ class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
   def invalidateQueue(): Unit = {
     prioritizedTargets.invalidate()
   }
-  private val enemy2Attackers    = mutable.HashMap.empty[CanDie, Attackers]
-  private val me2Enemy           = mutable.HashMap.empty[MobileRangeWeapon, CanDie]
+  private val enemy2Attackers    = mutable.HashMap.empty[MaybeCanDie, Attackers]
+  private val me2Enemy           = mutable.HashMap.empty[MobileRangeWeapon, MaybeCanDie]
   private val prioritizedTargets = LazyVal.from {
     val prioritized = universe.enemyUnits.allCanDie.toVector.sortBy { e =>
       (e.isHarmlessNow.ifElse(1, 0), enemy2Attackers.contains(e).ifElse(0, 1), -e.price.sum, e.hitPoints.sum)
@@ -589,7 +589,7 @@ class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
     prioritized
   }
 
-  def suggestTarget(myUnit: MobileRangeWeapon): Option[CanDie] = {
+  def suggestTarget(myUnit: MobileRangeWeapon): Option[MaybeCanDie] = {
     val maybeAttackers = me2Enemy.get(myUnit)
                          .map(enemy2Attackers)
     val shouldLeaveTeam = {

@@ -428,7 +428,7 @@ class Units(game: Game, hostile: Boolean) {
     dead.foreach { u =>
       knownUnits.get(u.getID).foreach { died =>
         died match {
-          case cd: CanDie =>
+          case cd: MaybeCanDie =>
             cd.notifyDead_!()
           case _ =>
         }
@@ -438,7 +438,7 @@ class Units(game: Game, hostile: Boolean) {
         }
         val nowDead = removeUnit(u)
         nowDead.foreach {
-          case cd: CanDie => cd.notifyDead_!()
+          case cd: MaybeCanDie => cd.notifyDead_!()
           case _ =>
         }
         nowDead.foreach { e =>
@@ -501,7 +501,7 @@ class Units(game: Game, hostile: Boolean) {
   }
 
   def all = knownUnits.valuesIterator
-  def allCanDie = allByType[CanDie]
+  def allCanDie = allByType[MaybeCanDie]
 
   import scala.collection.JavaConverters._
 

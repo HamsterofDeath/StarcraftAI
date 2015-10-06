@@ -107,7 +107,7 @@ trait WrapsUnit extends HasUniverse with HasLazyVals {
   }
 }
 
-trait Controllable extends WrapsUnit with CanDie
+trait Controllable extends WrapsUnit with MaybeCanDie
 
 object WrapsUnit {
   private var counter = 0
@@ -149,7 +149,7 @@ trait IsInfantry extends WrapsUnit
 trait IsVehicle extends WrapsUnit
 trait IsShip extends WrapsUnit
 
-trait Building extends BlockingTiles with CanDie {
+trait Building extends BlockingTiles with MaybeCanDie {
   def isFloating = nativeUnit.isFlying
 
   override val armorType = Building
@@ -440,9 +440,9 @@ case object Building extends ArmorType {
   }
 }
 
-case class Armor(armorType: ArmorType, hp: HitPoints, armor: Int, owner: CanDie)
+case class Armor(armorType: ArmorType, hp: HitPoints, armor: Int, owner: MaybeCanDie)
 
-trait CanDie extends WrapsUnit {
+trait MaybeCanDie extends WrapsUnit {
   self =>
   def isHarmlessNow = isIncapacitated || !canDoDamage
 
@@ -605,7 +605,7 @@ trait GroundWeapon extends Weapon {
 
   override def weaponRangeRadius: Int = super.weaponRangeRadius max groundRange
 
-  override def assumeShotDelayOn(target: CanDie) = {
+  override def assumeShotDelayOn(target: MaybeCanDie) = {
     if (canAttack(target)) {
       damageDelayFactorGround
     } else
@@ -619,11 +619,11 @@ trait GroundWeapon extends Weapon {
     universe.upgrades.register_!(_ => damage.invalidate())
   }
 
-  override def canAttack(other: CanDie) = {
+  override def canAttack(other: MaybeCanDie) = {
     super.canAttack(other) || selfCanAttack(other)
   }
 
-  private def selfCanAttack(other: CanDie) = {
+  private def selfCanAttack(other: MaybeCanDie) = {
     matchOn[Boolean](other)(
     _ => groundCanAttackAir,
     _ => groundCanAttackGround,
@@ -638,7 +638,7 @@ trait GroundWeapon extends Weapon {
     }
   }
 
-  override def isInWeaponRange(other: CanDie) = {
+  override def isInWeaponRange(other: MaybeCanDie) = {
     if (selfCanAttack(other))
     // TODO use own logic here
       matchOn(other)(air => nativeUnit.isInWeaponRange(other.nativeUnit),
@@ -721,7 +721,7 @@ trait AirWeapon extends Weapon {
 
   override def weaponRangeRadius: Int = super.weaponRangeRadius max airRange
 
-  override def assumeShotDelayOn(target: CanDie) = {
+  override def assumeShotDelayOn(target: MaybeCanDie) = {
     if (canAttack(target)) {
       damageDelayFactorAir
     } else
@@ -735,11 +735,11 @@ trait AirWeapon extends Weapon {
     universe.upgrades.register_!(_ => damage.invalidate())
   }
   // air & groundweapon need to override this
-  override def canAttack(other: CanDie) = {
+  override def canAttack(other: MaybeCanDie) = {
     super.canAttack(other) || selfCanAttack(other)
   }
 
-  private def selfCanAttack(other: CanDie) = {
+  private def selfCanAttack(other: MaybeCanDie) = {
     matchOn(other)(
       _ => airCanAttackAir,
       _ => airCanAttackGround,
@@ -754,7 +754,7 @@ trait AirWeapon extends Weapon {
     }
   }
 
-  override def isInWeaponRange(other: CanDie) = {
+  override def isInWeaponRange(other: MaybeCanDie) = {
     if (selfCanAttack(other))
     // TODO use own logic
       matchOn(other)(air => nativeUnit.isInWeaponRange(other.nativeUnit),
@@ -769,7 +769,7 @@ trait AirWeapon extends Weapon {
 trait Weapon extends Controllable {
   self: WrapsUnit =>
 
-  def assumeShotDelayOn(target: CanDie): Int = !!!("This should never be called")
+  def assumeShotDelayOn(target: MaybeCanDie): Int = !!!("This should never be called")
 
   override def canDoDamage = true
 
@@ -778,14 +778,14 @@ trait Weapon extends Controllable {
   def isAttacking = isStartingToAttack || cooldownTimer > 0
   def isStartingToAttack = nativeUnit.isStartingAttack
   // air & groundweapon need to override this
-  def canAttack(other: CanDie) = false
-  def calculateDamageOn(other: CanDie, assumeHP: Int, assumeShields: Int,
+  def canAttack(other: MaybeCanDie) = false
+  def calculateDamageOn(other: MaybeCanDie, assumeHP: Int, assumeShields: Int,
                         shotCount: Int): DamageSingleAttack = calculateDamageOn(
     other.armor, assumeHP, assumeShields, shotCount)
   def calculateDamageOn(other: Armor, assumeHP: Int, assumeShields: Int, shotCount: Int): DamageSingleAttack = !!!(
     "Forgot to override this")
 
-  def matchOn[X](other: CanDie)
+  def matchOn[X](other: MaybeCanDie)
                 (ifAir: AirUnit => X, ifGround: GroundUnit => X, ifBuilding: Building => X) = other match {
     case a: AirUnit => ifAir(a)
     case g: GroundUnit => ifGround(g)
@@ -799,7 +799,7 @@ trait Weapon extends Controllable {
       targetsAir)
   }
 
-  def isInWeaponRange(target: CanDie): Boolean = false // needs to be overriden to return true
+  def isInWeaponRange(target: MaybeCanDie): Boolean = false // needs to be overriden to return true
 
   def weaponRangeRadius = 0
 
@@ -1168,13 +1168,13 @@ trait Organic extends Mobile {
   def isBlinded = nativeUnit.isBlind
 }
 
-trait IsSmall extends Mobile with CanDie {
+trait IsSmall extends Mobile with MaybeCanDie {
   override val armorType = Small
 }
-trait IsMedium extends Mobile with CanDie {
+trait IsMedium extends Mobile with MaybeCanDie {
   override val armorType = Medium
 }
-trait IsBig extends Mobile with CanDie {
+trait IsBig extends Mobile with MaybeCanDie {
   override val armorType = Large
 }
 
@@ -1240,7 +1240,9 @@ class Reaver(unit: APIUnit)
   extends AnyUnit(unit) with GroundUnit with GroundWeapon with Mechanic with IsBig with IsVehicle with
           NormalGroundDamage with SlowAttackGround
 
-class Scarab(unit: APIUnit) extends AnyUnit(unit) with SimplePosition with Mobile with AutoPilot with IsSmall
+class Scarab(unit: APIUnit)
+  extends AnyUnit(unit) with SimplePosition with Mobile with AutoPilot with IsSmall with GroundUnit with
+          IndestructibleUnit
 class SpiderMine(unit: APIUnit)
   extends AnyUnit(unit) with IndestructibleUnit with SimplePosition with GroundUnit with IsSmall with AutoPilot
 
