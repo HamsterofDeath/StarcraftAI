@@ -1,6 +1,6 @@
 package pony
 
-import bwapi.{Order, Race, TechType, Unit => APIUnit, UnitSizeType, UnitType, UpgradeType, WeaponType}
+import bwapi.{Order, Race, TechType, Unit => APIUnit, UnitType, UpgradeType, WeaponType}
 import pony.Upgrades.{IsTech, SinglePointMagicSpell, SingleTargetMagicSpell}
 import pony.brain.{HasLazyVals, HasUniverse, PriorityChain, UnitWithJob, Universe}
 
@@ -391,6 +391,8 @@ object DamageTypes {
 }
 
 sealed trait ArmorType {
+  def transportSize: Int
+
   def damageFactorIfHitBy(damageType: DamageType): DamageFactor
 }
 
@@ -403,6 +405,7 @@ case object Small extends ArmorType {
       case _ => !!!(s"Check $damageType")
     }
   }
+  override def transportSize = 1
 }
 case object Medium extends ArmorType {
   override def damageFactorIfHitBy(damageType: DamageType) = {
@@ -413,10 +416,11 @@ case object Medium extends ArmorType {
       case _ => !!!(s"Check $damageType")
     }
   }
-
+  override def transportSize = 2
 }
 case object Indestructible extends ArmorType {
   override def damageFactorIfHitBy(damageType: DamageType) = Zero
+  override def transportSize = !!!("This should never happen")
 }
 case object Large extends ArmorType {
   override def damageFactorIfHitBy(damageType: DamageType) = {
@@ -427,7 +431,7 @@ case object Large extends ArmorType {
       case _ => !!!(s"Check $damageType")
     }
   }
-
+  override def transportSize = 4
 }
 case object Building extends ArmorType {
   override def damageFactorIfHitBy(damageType: DamageType) = {
@@ -438,6 +442,8 @@ case object Building extends ArmorType {
       case _ => !!!(s"Check $damageType")
     }
   }
+
+  override def transportSize = !!!("This should never happen")
 }
 
 case class Armor(armorType: ArmorType, hp: HitPoints, armor: Int, owner: MaybeCanDie)
@@ -832,20 +838,15 @@ trait GroundUnit extends Killable with Mobile {
   def unLoaded = !loaded
 
   private val inFerry = oncePerTick {
-    val ferry = nativeUnit.getTransport
+    val nu = nativeUnit
+    val ferry = nu.getTransport
     if (ferry == null) None
-    else ownUnits.byNative(nativeUnit).asInstanceOf[Option[TransporterUnit]]
+    else ownUnits.byNative(nu).asInstanceOf[Option[TransporterUnit]]
   }
 
   def loaded = inFerry.get.isDefined
 
-  val transportSize = {
-    val size = initialNativeType.size
-    if (size == UnitSizeType.Small) 1
-    else if (size == UnitSizeType.Medium) 2
-    else if (size == UnitSizeType.Large) 4
-    else !!!(s"Check this: $size of $this")
-  }
+  lazy val transportSize = armorType.transportSize
 
 }
 

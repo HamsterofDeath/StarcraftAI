@@ -392,7 +392,12 @@ class ProvideSuggestedAndRequestedAddons(universe: Universe)
       true
     } else {
       val any = existing.next()
-      !any.isInstanceOf[Upgrader]
+      def noUpgrades = !any.isInstanceOf[Upgrader]
+      def requiredForUnit = race.techTree
+                            .requiredBy.get(any.getClass)
+                            .exists(_.exists(classOf[Mobile].isAssignableFrom))
+      noUpgrades || requiredForUnit
+
     }
   }
 

@@ -16,6 +16,15 @@ trait TechTree {
   protected val builtBy  : Map[Class[_ <: WrapsUnit], Class[_ <: WrapsUnit]]
   protected val dependsOn: Map[Class[_ <: WrapsUnit], Set[_ <: Class[_ <: Building]]]
   protected val upgrades : Map[Upgrade, Class[_ <: Upgrader]]
+  lazy    val requiredBy        = {
+    val result = multiMap[Class[_ <: WrapsUnit], Class[_ <: WrapsUnit]]
+    dependsOn.foreach { case (target, needs) =>
+      needs.foreach { c =>
+        result.addBinding(c, target)
+      }
+    }
+    result.toImmutable
+  }
   private val requirementsCache = mutable.HashMap.empty[Class[_ <: WrapsUnit], Set[Class[_ <: Building]]]
   def mainBuildingOf(addon: Class[_ <: Addon]) = {
     builtBy(addon).asInstanceOf[Class[_ <: CanBuildAddons]]

@@ -21,7 +21,14 @@ package object pony {
 
   implicit val exCon = global
 
-  def multiMap[K, V] = new mutable.HashMap[K, mutable.Set[V]] with mutable.MultiMap[K, V]
+  trait MMToImmutable[A, B] extends mutable.Map[A, mutable.Set[B]] {
+    self =>
+    def toImmutable = {
+      self.map { case (k, v) => k -> v.toSet }.toMap
+    }
+  }
+
+  def multiMap[K, V] = new mutable.HashMap[K, mutable.Set[V]] with mutable.MultiMap[K, V] with MMToImmutable[K, V]
   type SCUnitType = Class[_ <: WrapsUnit]
   val tileSize  = 32
   var tickCount = 0
