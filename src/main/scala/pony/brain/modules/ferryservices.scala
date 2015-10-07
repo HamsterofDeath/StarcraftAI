@@ -11,13 +11,32 @@ class FerryManager(override val universe: Universe) extends HasUniverse {
 
   private val employer = new Employer[TransporterUnit](universe)
 
-  def requestFerry(forWhat: Set[GroundUnit], to: MapTilePosition, buildNewIfRequired: Boolean = false) = {
-    val transporters = 1
-    val result = unitManager
-                 .request(UnitJobRequests.idleOfType(employer, race.transporterClass, transporters), buildNewIfRequired)
-    result.ifNotZero { seq =>
+  def planFor(ferry: TransporterUnit) = {
+    ferryPlans.find(_.ferry == ferry).filter(_.unloadedLeft)
+  }
 
+  def requestFerry(forWhat: GroundUnit, to: MapTilePosition, buildNewIfRequired: Boolean = false) = {
+    requestFerries(forWhat.toSet, to, buildNewIfRequired).headOption
+  }
+
+  def requestFerries(forWhat: Set[GroundUnit], to: MapTilePosition, buildNewIfRequired: Boolean = false) = {
+    val groups = ArrayBuffer.empty[FerryCargoBuilder]
+    val remaining = forWhat.toBuffer
+
+    while (remaining.nonEmpty) {
+      var open = new FerryCargoBuilder
+      remaining.iterator.takeWhile(open.canAdd).foreach(open.add_!)
+      remaining --= open.cargo
+      groups += open
     }
+
+    val result = unitManager
+                 .request(UnitJobRequests.idleOfType(employer, race.transporterClass, groups.size), buildNewIfRequired)
+    result.ifNotZero(seq => {
+      seq.zip(groups).map {
+        case (transporter, cargo) => FerryPlan(transporter, cargo.cargo.toSet, to)
+      }
+    }, Nil)
   }
 
   def onTick(): Unit = {
@@ -25,4 +44,23 @@ class FerryManager(override val universe: Universe) extends HasUniverse {
   }
 }
 
-case class FerryPlan(ferry: TransporterUnit, toTransport: Set[GroundUnit], toWhere: MapTilePosition)
+class FerryCargoBuilder {
+  private val myCargo = ArrayBuffer.empty[GroundUnit]
+  private var left    = 8
+
+  def cargo = myCargo.toSeq
+
+  def canAdd(g: GroundUnit) = left >= g.transportSize
+
+  def add_!(g: GroundUnit) = {
+    assert(canAdd(g))
+    myCargo += g
+    left -= g.transportSize
+  }
+}
+
+case class FerryPlan(ferry: TransporterUnit, toTransport: Set[GroundUnit], toWhere: MapTilePosition) {
+  def unloadedLeft = toTransport.exists(_.unLoaded)
+  assert(toTransport.map(_.transportSize).sum <= 8, s"Too many units for single transport: $toTransport")
+
+}

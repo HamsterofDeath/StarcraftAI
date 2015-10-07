@@ -327,6 +327,20 @@ class DebugHelper(main: MainAI) extends AIPlugIn with HasUniverse {
       Try(words match {
         case command :: params =>
           command match {
+            case "log" | "l" =>
+              params match {
+                case List(logLevel) =>
+
+                  setLogLevel_!(logLevel match {
+                    case "0" => LogLevels.Off
+                    case "1" => LogLevels.Error
+                    case "2" => LogLevels.Warn
+                    case "3" => LogLevels.Info
+                    case "4" => LogLevels.Debug
+                    case "5" => LogLevels.Trace
+                    case _ => !!!(logLevel)
+                  })
+              }
             case "expand" | "e" =>
               params match {
                 case List(mineralsId) =>

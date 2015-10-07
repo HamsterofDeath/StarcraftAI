@@ -157,6 +157,27 @@ object Orders {
       renderer.indicateTarget(myUnit.currentPosition, to)
     }
   }
+
+  case class BoardFerry(myUnit: GroundUnit, ferry: TransporterUnit) extends UnitOrder {
+    override def issueOrderToGame(): Unit = {
+      myUnit.nativeUnit.rightClick(ferry.nativeUnit)
+    }
+
+    override def renderDebug(renderer: Renderer): Unit = {
+      renderer.indicateTarget(myUnit.currentPosition, ferry.currentPosition)
+    }
+  }
+  case class LoadUnit(ferry: TransporterUnit, loadThis: GroundUnit) extends UnitOrder {
+    override def myUnit: WrapsUnit = ferry
+
+    override def issueOrderToGame(): Unit = {
+      myUnit.nativeUnit.rightClick(ferry.nativeUnit)
+    }
+
+    override def renderDebug(renderer: Renderer): Unit = {
+      renderer.indicateTarget(ferry.currentPosition, loadThis.currentPosition)
+    }
+  }
   case class AttackMove(myUnit: Mobile, where: MapTilePosition) extends UnitOrder {
 
     override def issueOrderToGame(): Unit = {

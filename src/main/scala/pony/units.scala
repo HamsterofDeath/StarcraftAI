@@ -1,11 +1,11 @@
 package pony
 
-import bwapi.{Order, Race, TechType, Unit => APIUnit, UnitType, UpgradeType, WeaponType}
+import bwapi.{Order, Race, TechType, Unit => APIUnit, UnitSizeType, UnitType, UpgradeType, WeaponType}
 import pony.Upgrades.{IsTech, SinglePointMagicSpell, SingleTargetMagicSpell}
 import pony.brain.{HasLazyVals, HasUniverse, PriorityChain, UnitWithJob, Universe}
 
 import scala.collection.immutable.HashMap
-import scala.collection.mutable.ListBuffer
+import scala.collection.mutable.{ArrayBuffer, ListBuffer}
 
 trait NiceToString extends WrapsUnit {
   override def toString = s"[$unitIdText] ${getClass.className}"
@@ -557,10 +557,13 @@ trait Mobile extends WrapsUnit with Controllable {
 
   def currentPositionNative = currentPosition.toNative
 
-  def currentPosition = {
+  private val myCurrentPosition = oncePerTick {
     val p = nativeUnit.getPosition
     MapPosition(p.getX, p.getY)
   }
+
+  def currentPosition = myCurrentPosition.get
+
 
   override def toString = s"${super.toString}@$currentTile"
 
@@ -826,6 +829,23 @@ trait AirUnit extends Killable with Mobile {
 }
 
 trait GroundUnit extends Killable with Mobile {
+  def unLoaded = !loaded
+
+  private val inFerry = oncePerTick {
+    val ferry = nativeUnit.getTransport
+    if (ferry == null) None
+    else ownUnits.byNative(nativeUnit).asInstanceOf[Option[TransporterUnit]]
+  }
+
+  def loaded = inFerry.get.isDefined
+
+  val transportSize = {
+    val size = initialNativeType.size
+    if (size == UnitSizeType.Small) 1
+    else if (size == UnitSizeType.Medium) 2
+    else if (size == UnitSizeType.Large) 4
+    else !!!(s"Check this: $size of $this")
+  }
 
 }
 
@@ -892,7 +912,7 @@ object WorkerUnit {
 }
 
 trait TransporterUnit extends AirUnit {
-
+  private val carrying = new ArrayBuffer[GroundUnit](4)
 }
 
 trait Ignored extends WrapsUnit

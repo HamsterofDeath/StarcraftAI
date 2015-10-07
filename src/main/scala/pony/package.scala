@@ -8,7 +8,11 @@ import scala.collection.mutable
  * Created by HoD on 01.08.2015.
  */
 package object pony {
-  Configurator.defaultConfig().level(Level.TRACE).formatPattern("{level}:{message}").activate()
+  setTinyLogLevel_!(Level.TRACE)
+
+  def setTinyLogLevel_!(newLevel: Level) = {
+    Configurator.defaultConfig().level(newLevel).formatPattern("{level}:{message}").activate()
+  }
 
   def !!! : Nothing = !!!("Something is not as it should be")
   def !!!(msg: String): Nothing = throw new RuntimeException(msg)
@@ -21,35 +25,42 @@ package object pony {
   type SCUnitType = Class[_ <: WrapsUnit]
   val tileSize  = 32
   var tickCount = 0
-  private var logLevel: LogLevel = Trace
-  def setLogLevel_!(logLevel: LogLevel): Unit = { this.logLevel = logLevel }
+  private var setTinyLogLevel_! : LogLevel = LogLevels.Trace
+
+  import LogLevels._
+
+  def setLogLevel_!(logLevel: LogLevel): Unit = {
+    setTinyLogLevel_!(logLevel.toTinyLogLevel)
+    this.setTinyLogLevel_! = logLevel
+  }
   def error(a: => Any, doIt: Boolean = true): Unit = {
-    if (doIt && Error.includes(logLevel))
+    if (doIt && Error.includes(setTinyLogLevel_!))
       tinylog.Logger.error(s"[$tick] ${a.toString}")
   }
   def tick = tickCount
   def warn(a: => Any, doIt: Boolean = true): Unit = {
-    if (doIt && Warn.includes(logLevel))
+    if (doIt && Warn.includes(setTinyLogLevel_!))
       tinylog.Logger.warn(s"[$tick] ${a.toString}")
   }
   def info(a: => Any, doIt: Boolean = true): Unit = {
-    if (doIt && Info.includes(logLevel))
+    if (doIt && Info.includes(setTinyLogLevel_!))
       tinylog.Logger.info(s"[$tick] ${a.toString}")
   }
   def majorInfo(a: => Any, doIt: Boolean = true): Unit = {
-    if (doIt && Info.includes(logLevel))
+    if (doIt && Info.includes(setTinyLogLevel_!))
       tinylog.Logger.info(s"<MAJOR> [$tick] ${a.toString}")
   }
   def debug(a: => Any, doIt: Boolean = true): Unit = {
-    if (Debug.includes(logLevel))
+    if (Debug.includes(setTinyLogLevel_!))
       tinylog.Logger.debug(s"[$tick] ${a.toString}")
   }
   def trace(a: => Any, doIt: Boolean = true): Unit = {
-    if (doIt && Trace.includes(logLevel))
+    if (doIt && Trace.includes(setTinyLogLevel_!))
       tinylog.Logger.trace(s"[$tick] ${a.toString}")
   }
-  sealed class LogLevel(val level: Int) {
+  abstract sealed class LogLevel(val level: Int) {
     def includes(other: LogLevel) = level >= other.level
+    def toTinyLogLevel: Level
   }
   implicit class RichOption[T](val o: Option[T]) extends AnyVal {
     def getOr(excuse: => String) = o match {
@@ -128,15 +139,30 @@ package object pony {
     def immutableCopy = collection.immutable.BitSet.fromBitMaskNoCopy(b.toBitMask)
     def immutableWrapper = b.toImmutable
   }
-  case object Trace extends LogLevel(1)
-  case object Debug extends LogLevel(2)
-  case object Info extends LogLevel(3)
+  object LogLevels {
+    case object Trace extends LogLevel(1) {
+      override def toTinyLogLevel = Level.TRACE
+    }
+    case object Debug extends LogLevel(2) {
+      override def toTinyLogLevel = Level.DEBUG
+    }
+    case object Info extends LogLevel(3) {
+      override def toTinyLogLevel = Level.INFO
+    }
 
-  case object Warn extends LogLevel(4)
+    case object Warn extends LogLevel(4) {
+      override def toTinyLogLevel = Level.WARNING
+    }
 
-  case object Error extends LogLevel(5)
+    case object Error extends LogLevel(5) {
+      override def toTinyLogLevel = Level.ERROR
+    }
 
-  case object Off extends LogLevel(6)
+    case object Off extends LogLevel(6) {
+      override def toTinyLogLevel = Level.OFF
+    }
+  }
+
 
   implicit class GameWrap(val game: Game) extends AnyVal {
     def suggestFileName = s"${game.mapName()}_${game.mapHash()}.bin"

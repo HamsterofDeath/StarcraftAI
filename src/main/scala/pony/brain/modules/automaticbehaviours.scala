@@ -75,6 +75,7 @@ object Terran {
                       new CloakSelfWraith(universe) ::
                       new SiegeUnsiegeSelf(universe) ::
                       new MigrateTowardsPosition(universe) ::
+                      new FerryService(universe) ::
                       /*
                                             new RepairDamagedBuilding ::
                                             new RepairDamagedUnit ::
@@ -96,7 +97,13 @@ object Terran {
         SingleUnitBehaviour[TransporterUnit](t, meta) {
       override def shortName: String = "T"
       override def toOrder(what: Objective): Seq[UnitOrder] = {
-
+        ferryManager.planFor(t).map { plan =>
+          val loadThis = plan.toTransport
+                         .view
+                         .filterNot(_.loaded)
+                         .minBy(_.currentTile.distanceToSquared(t.currentTile))
+          Orders.LoadUnit(t, loadThis)
+        }.toList
       }
     }
   }

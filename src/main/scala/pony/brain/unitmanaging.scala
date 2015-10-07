@@ -314,11 +314,13 @@ trait PreHiringResult[T <: WrapsUnit] {
     case _ =>
   }
 
-  def ifNotZero[X](todo: Seq[T] => X) = this match {
+  def ifNotZero[X](todo: Seq[T] => X): Unit = ifNotZero(todo, {})
+
+  def ifNotZero[X](todo: Seq[T] => X, orElse: X) = this match {
     case many: AtLeastOneSuccess[T] =>
       val canHireThese = many.canHire.valuesIterator.flatten.toVector
       todo(canHireThese)
-    case _ =>
+    case _ => orElse
   }
 }
 
@@ -775,7 +777,7 @@ class ResearchUpgrade[U <: Upgrader](employer: Employer[U],
 
 }
 
-trait HasMovementTarget[T <: Mobile] extends UnitWithJob[T] {
+trait HasMovementTarget[T <: GroundUnit] extends UnitWithJob[T] {
 
   protected def targetPosition: MapTilePosition
 
@@ -785,7 +787,13 @@ trait HasMovementTarget[T <: Mobile] extends UnitWithJob[T] {
 
     val needsFerry = universe.mapLayers.rawWalkableMap.areInSameArea(where, to)
     if (needsFerry) {
-      unitManager.
+      ferryManager.requestFerry(unit, to) match {
+        case Some(plan) =>
+          Orders.BoardFerry(unit, plan.ferry).toList
+        case None =>
+          //go there while waiting for ferry
+          Orders.Move(unit, to).toList
+      }
     } else {
       super.ordersForThisTick
     }
