@@ -598,7 +598,7 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
              protected val containsBlocked: Boolean = true) extends Serializable {
   self =>
   def areInSameArea(a: MapTilePosition, b: MapTilePosition) =
-    areaWhichContains(a) == areaWhichContains(b)
+    areaWhichContains(a).exists(_.containsAsData(b))
 
   def emptySameSize(blocked: Boolean) = new MutableGrid2D(cols, rows, mutable.BitSet.empty, blocked)
 

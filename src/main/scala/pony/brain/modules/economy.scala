@@ -289,7 +289,10 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
       }
 
       class GatherMineralsAtPatch(myWorker: WorkerUnit, miningTarget: MinedPatch)
-        extends UnitWithJob(emp, myWorker, Priority.Default) with GatherMineralsAtSinglePatch with Interruptable {
+        extends UnitWithJob(emp, myWorker, Priority.Default)
+                with GatherMineralsAtSinglePatch
+                with Interruptable
+                with FerrySupport[WorkerUnit] {
 
         listen_!(failed => {
           if (miningTarget.isInTeam(myWorker)) {
@@ -298,6 +301,10 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
         })
 
         import States._
+
+        override protected def targetPosition = {
+          targetPatch.tilePosition
+        }
 
         private var state: State = Idle
         override def onStealUnit(): Unit = {
@@ -474,7 +481,7 @@ class GatherGas(universe: Universe) extends OrderlessAIModule[WorkerUnit](univer
       private var state: State = Idle
       override def shortDebugString: String = state.getClass.className
       override def isFinished = false
-      override protected def ordersForTick: Seq[UnitOrder] = {
+      override def ordersForTick: Seq[UnitOrder] = {
         val (newState, order) = state match {
           case Idle =>
             Gathering -> Orders.Gather(worker, geysir)

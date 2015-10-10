@@ -98,11 +98,15 @@ object Terran {
       override def shortName: String = "T"
       override def toOrder(what: Objective): Seq[UnitOrder] = {
         ferryManager.planFor(t).map { plan =>
-          val loadThis = plan.toTransport
-                         .view
-                         .filterNot(_.loaded)
-                         .minBy(_.currentTile.distanceToSquared(t.currentTile))
-          Orders.LoadUnit(t, loadThis)
+          if (plan.unloadedLeft) {
+            val loadThis = plan.toTransport
+                           .view
+                           .filterNot(_.loaded)
+                           .minBy(_.currentTile.distanceToSquared(t.currentTile))
+            Orders.LoadUnit(t, loadThis)
+          } else {
+            Orders.UnloadAll(plan.ferry, plan.toWhere)
+          }
         }.toList
       }
     }

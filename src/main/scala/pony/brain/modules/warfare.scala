@@ -417,9 +417,7 @@ class ProvideSuggestedAndRequestedAddons(universe: Universe)
     val requested = unitManager.failedToProvideByType[Addon].collect {
       case attachIt: BuildUnitRequest[Addon]
         if attachIt.proofForFunding.isFunded &&
-           universe.resources.detailedLocks.exists { lock =>
-             lock.whatFor == attachIt.typeOfRequestedUnit && lock.reqs.sum == attachIt.funding.sum
-           } =>
+           universe.resources.hasStillLocked(attachIt.funding) =>
         attachIt
     }
 

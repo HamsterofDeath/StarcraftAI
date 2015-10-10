@@ -178,6 +178,19 @@ object Orders {
       renderer.indicateTarget(ferry.currentPosition, loadThis.currentPosition)
     }
   }
+
+  case class UnloadAll(ferry: TransporterUnit, at: MapTilePosition) extends UnitOrder {
+    override def myUnit: WrapsUnit = ferry
+
+    override def issueOrderToGame(): Unit = {
+      myUnit.nativeUnit.unloadAll(at.asMapPosition.toNative)
+    }
+
+    override def renderDebug(renderer: Renderer): Unit = {
+      renderer.indicateTarget(ferry.currentPosition, at)
+    }
+  }
+
   case class AttackMove(myUnit: Mobile, where: MapTilePosition) extends UnitOrder {
 
     override def issueOrderToGame(): Unit = {

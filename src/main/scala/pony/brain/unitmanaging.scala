@@ -550,6 +550,9 @@ abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: 
   def isIdle: Boolean = false
 
   private var lastOrder: Seq[UnitOrder] = Nil
+
+  def injectedOrder: Seq[UnitOrder] = Nil
+
   def ordersForThisTick = {
     if (hasFailed) {
       Nil
@@ -558,8 +561,13 @@ abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: 
         noCommandsForTicks -= 1
         Nil
       } else {
+
         noCommandsForTicks = everyNth
-        val nextOrder = ordersForTick
+        def injectedOrMine = {
+          val maybe = injectedOrder
+          if (maybe.isEmpty) ordersForTick else maybe
+        }
+        val nextOrder = injectedOrMine
         if (!nextOrder.exists(_.forceRepetition) &&
             omitRepeatedOrders &&
             nextOrder == lastOrder) {
@@ -777,15 +785,15 @@ class ResearchUpgrade[U <: Upgrader](employer: Employer[U],
 
 }
 
-trait HasMovementTarget[T <: GroundUnit] extends UnitWithJob[T] {
+trait FerrySupport[T <: GroundUnit] extends UnitWithJob[T] {
 
   protected def targetPosition: MapTilePosition
 
-  override protected def ordersForTick = {
+  override def injectedOrder: Seq[UnitOrder] = {
     val where = unit.currentTile
     val to = targetPosition
 
-    val needsFerry = universe.mapLayers.rawWalkableMap.areInSameArea(where, to)
+    val needsFerry = !universe.mapLayers.rawWalkableMap.areInSameArea(where, to)
     if (needsFerry) {
       ferryManager.requestFerry(unit, to) match {
         case Some(plan) =>
@@ -795,9 +803,8 @@ trait HasMovementTarget[T <: GroundUnit] extends UnitWithJob[T] {
           Orders.Move(unit, to).toList
       }
     } else {
-      super.ordersForThisTick
+      Nil
     }
-
   }
 }
 
@@ -807,8 +814,12 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, bu
                                                                    val buildWhere: MapTilePosition,
                                                                    funding: ResourceApprovalSuccess,
                                                                    val belongsTo: Option[ResourceArea] = None)
-  extends UnitWithJob[W](employer, worker, Priority.ConstructBuilding) with JobHasFunding[W] with CreatesUnit[W] with
-          IssueOrderNTimes[W] with CanAcceptUnitSwitch[W] {
+  extends UnitWithJob[W](employer, worker, Priority.ConstructBuilding)
+          with JobHasFunding[W]
+          with CreatesUnit[W]
+          with CanAcceptUnitSwitch[W]
+          with FerrySupport[W]
+          with IssueOrderNTimes[W] {
 
   val area = {
     val unitType = buildingType.toUnitType
@@ -820,12 +831,12 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, bu
     mapLayers.unblockBuilding_!(area)
   })
 
-
   assert(resources.detailedLocks.exists(e => e.whatFor == buildingType && e.reqs.sum == funding.sum),
     s"Something is wrong, check $this, it is supposed to have ${
       funding.sum
     } funding, but the resource manager only has\n ${resources.detailedLocks.mkString("\n")}\nlocked")
 
+  override protected def targetPosition = buildWhere
   private var startedMovingToSite       = false
   private var startedActualConstruction = false
   private var finishedConstruction      = false
@@ -940,7 +951,7 @@ class BusyDoingSomething[T <: Mobile](employer: Employer[T], behaviour: Seq[Sing
   private def active = behaviour.filter(_.preconditionOk)
   // never ends
   override def isFinished = false
-  override protected def ordersForTick = {
+  override def ordersForTick = {
     val options = active.map { rule =>
       rule -> rule.toOrder(objective).map(_.lockingFor_!(rule.blocksForTicks).forceRepeat_!(rule.forceRepeats))
     }.filter(_._2.nonEmpty)

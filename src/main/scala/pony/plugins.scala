@@ -164,16 +164,27 @@ class UnitDebugRenderer(override val universe: Universe) extends AIPlugIn with H
 class StatsRenderer(override val universe: Universe) extends AIPlugIn with HasUniverse {
   override val lazyWorld = universe.world
 
-  override protected def tickPlugIn(): Unit = {
+  private var lastTickNanos = System.nanoTime()
+  private val df            = new DecimalFormat("#0.00")
 
+  override protected def tickPlugIn(): Unit = {
     lazyWorld.debugger.debugRender { renderer =>
+      val current = System.nanoTime()
+      val diff = current - lastTickNanos
+      lastTickNanos = current
+
       val debugString = ArrayBuffer.empty[String]
+
+      val speedFactor = {
+        val secondsPerTick = diff.toDouble / 1000 / 1000 / 1000
+        1 / secondsPerTick / 24
+      }
 
       debugString += {
         val time = universe.time.formatted
         val category = universe.time.categoryName
 
-        s"$category: $time"
+        s"$category: $time (*${df.format(speedFactor)})"
       }
 
       debugString += {
@@ -208,8 +219,6 @@ class StatsRenderer(override val universe: Universe) extends AIPlugIn with HasUn
         val formatted = missingUnits.map { case (unitClass, howMany) => s"${unitClass.className}/$howMany" }
         s"Type/missing: ${formatted.toList.sorted.mkString(", ")}"
       }
-
-      val df = new DecimalFormat("#0.00")
 
       debugString ++= {
         universe.bases.bases.flatMap { base =>

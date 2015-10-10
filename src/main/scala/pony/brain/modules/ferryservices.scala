@@ -12,14 +12,16 @@ class FerryManager(override val universe: Universe) extends HasUniverse {
   private val employer = new Employer[TransporterUnit](universe)
 
   def planFor(ferry: TransporterUnit) = {
-    ferryPlans.find(_.ferry == ferry).filter(_.unloadedLeft)
+    ferryPlans.find(_.ferry == ferry).foreach(_.onTick())
   }
 
   def requestFerry(forWhat: GroundUnit, to: MapTilePosition, buildNewIfRequired: Boolean = false) = {
-    requestFerries(forWhat.toSet, to, buildNewIfRequired).headOption
+    ferryPlans.find(_.covers(forWhat, to))
+    .orElse(requestFerries(forWhat.toSet, to, buildNewIfRequired).headOption)
+
   }
 
-  def requestFerries(forWhat: Set[GroundUnit], to: MapTilePosition, buildNewIfRequired: Boolean = false) = {
+  private def requestFerries(forWhat: Set[GroundUnit], to: MapTilePosition, buildNewIfRequired: Boolean = false) = {
     val groups = ArrayBuffer.empty[FerryCargoBuilder]
     val remaining = forWhat.toBuffer
 
@@ -32,11 +34,13 @@ class FerryManager(override val universe: Universe) extends HasUniverse {
 
     val result = unitManager
                  .request(UnitJobRequests.idleOfType(employer, race.transporterClass, groups.size), buildNewIfRequired)
-    result.ifNotZero(seq => {
+    val newPlans = result.ifNotZero(seq => {
       seq.zip(groups).map {
         case (transporter, cargo) => FerryPlan(transporter, cargo.cargo.toSet, to)
       }
     }, Nil)
+    ferryPlans ++= newPlans
+    newPlans
   }
 
   def onTick(): Unit = {
@@ -60,6 +64,14 @@ class FerryCargoBuilder {
 }
 
 case class FerryPlan(ferry: TransporterUnit, toTransport: Set[GroundUnit], toWhere: MapTilePosition) {
+  def onTick(): Unit = {
+
+  }
+
+  def covers(forWhat: GroundUnit, to: MapTilePosition) = {
+    toTransport(forWhat) && toWhere == to
+  }
+
   def unloadedLeft = toTransport.exists(_.unLoaded)
   assert(toTransport.map(_.transportSize).sum <= 8, s"Too many units for single transport: $toTransport")
 
