@@ -206,7 +206,7 @@ trait ResourceApproval {
   def supply: Int
   def success: Boolean
   def failed = !success
-  def isFunded = success
+  def isSuccess = success
   def assumeSuccessful = {
     assert(success)
     this.asInstanceOf[ResourceApprovalSuccess]

@@ -239,9 +239,9 @@ class Bases(world: DefaultWorld) {
 
   private val myBases = ArrayBuffer.empty[Base]
   def rich = {
-    val singleValuable = myMineralFields.exists(_.value > 15000)
-    val multipleIncomes = myMineralFields.size >= 2 && myMineralFields.map(_.value).sum > 2000
-    val muchGas = myGeysirs.map(_.remaining).sum > 2000
+    def singleValuable = myMineralFields.exists(_.value > 15000) && myMineralFields.exists(_.patches.size >= 10)
+    def multipleIncomes = myMineralFields.size >= 2 && myMineralFields.map(_.value).sum > 5000
+    def muchGas = myGeysirs.map(_.remaining).sum > 3000
     (singleValuable || multipleIncomes) && muchGas
   }
   def myMineralFields = myBases.flatMap(_.myMineralGroup).toSeq

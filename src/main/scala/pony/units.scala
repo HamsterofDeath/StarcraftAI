@@ -2,10 +2,11 @@ package pony
 
 import bwapi.{Order, Race, TechType, Unit => APIUnit, UnitType, UpgradeType, WeaponType}
 import pony.Upgrades.{IsTech, SinglePointMagicSpell, SingleTargetMagicSpell}
-import pony.brain.{HasLazyVals, HasUniverse, PriorityChain, UnitWithJob, Universe}
+import pony.brain._
 
+import scala.collection.JavaConverters._
 import scala.collection.immutable.HashMap
-import scala.collection.mutable.{ArrayBuffer, ListBuffer}
+import scala.collection.mutable.ListBuffer
 
 trait NiceToString extends WrapsUnit {
   override def toString = s"[$unitIdText] ${getClass.className}"
@@ -43,12 +44,17 @@ trait OrderHistorySupport extends WrapsUnit {
   }
 }
 
-trait WrapsUnit extends HasUniverse with HasLazyVals {
+trait WrapsUnit extends HasUniverse with HasLazyVals with AfterTickListener {
 
   private var inGame = true
 
   def notifyRemoved_!(): Unit = {
     inGame = false
+    universe.unregister_!(this)
+  }
+
+  override def postTick(): Unit = {
+
   }
 
   def onMorph(getType: UnitType) = {
@@ -80,6 +86,7 @@ trait WrapsUnit extends HasUniverse with HasLazyVals {
     myUniverse = universe
     onUniverseSet(universe)
     creationTick = universe.currentTick
+    universe.register_!(this)
   }
 
   protected def onUniverseSet(universe: Universe): Unit = {
@@ -515,6 +522,20 @@ trait AutoPilot extends Mobile {
 }
 
 trait Mobile extends WrapsUnit with Controllable {
+
+  def currentArea = myCurrentArea.get
+
+  private val myCurrentArea = oncePerTick {
+    mapLayers.rawWalkableMap.areaWhichContainsAsFree(currentTile).orElse {
+      mapLayers.rawWalkableMap
+      .spiralAround(currentTile, 2)
+      .view
+      .map(mapLayers.rawWalkableMap.areaWhichContainsAsFree)
+      .find(_.isDefined)
+      .map(_.get)
+    }
+  }
+
   override def shouldReRegisterOnMorph = false
   def isAutoPilot = false
 
@@ -835,7 +856,12 @@ trait AirUnit extends Killable with Mobile {
 }
 
 trait GroundUnit extends Killable with Mobile {
-  def unLoaded = !loaded
+
+  private var inFerryLastTick = false
+
+  def gotUnloaded = inFerryLastTick && onGround
+
+  def onGround = !loaded
 
   private val inFerry = oncePerTick {
     val nu = nativeUnit
@@ -847,7 +873,10 @@ trait GroundUnit extends Killable with Mobile {
   def loaded = inFerry.get.isDefined
 
   lazy val transportSize = armorType.transportSize
-
+  override def postTick(): Unit = {
+    super.postTick()
+    inFerryLastTick = loaded
+  }
 }
 
 trait Floating
@@ -913,7 +942,13 @@ object WorkerUnit {
 }
 
 trait TransporterUnit extends AirUnit {
-  private val carrying = new ArrayBuffer[GroundUnit](4)
+  private val carrying = oncePerTick {
+    nativeUnit.getLoadedUnits.asScala.flatMap { u =>
+      ownUnits.byNative(u)
+    }.toSeq
+  }
+
+  def hasUnitsLoaded = carrying.get.nonEmpty
 }
 
 trait Ignored extends WrapsUnit

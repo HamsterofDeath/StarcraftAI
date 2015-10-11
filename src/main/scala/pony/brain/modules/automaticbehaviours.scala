@@ -97,17 +97,21 @@ object Terran {
         SingleUnitBehaviour[TransporterUnit](t, meta) {
       override def shortName: String = "T"
       override def toOrder(what: Objective): Seq[UnitOrder] = {
-        ferryManager.planFor(t).map { plan =>
+        ferryManager.planFor(t).toList.flatMap { plan =>
           if (plan.unloadedLeft) {
             val loadThis = plan.toTransport
                            .view
                            .filterNot(_.loaded)
                            .minBy(_.currentTile.distanceToSquared(t.currentTile))
-            Orders.LoadUnit(t, loadThis)
+            Orders.LoadUnit(t, loadThis).toList
+          } else if (plan.needsToReachTarget) {
+            Orders.Move(plan.ferry, plan.toWhere).toList
+          } else if (plan.loadedLeft) {
+            Orders.UnloadAll(plan.ferry, plan.toWhere).toList
           } else {
-            Orders.UnloadAll(plan.ferry, plan.toWhere)
+            List.empty[UnitOrder]
           }
-        }.toList
+        }
       }
     }
   }

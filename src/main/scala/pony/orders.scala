@@ -171,7 +171,7 @@ object Orders {
     override def myUnit: WrapsUnit = ferry
 
     override def issueOrderToGame(): Unit = {
-      myUnit.nativeUnit.rightClick(ferry.nativeUnit)
+      myUnit.nativeUnit.rightClick(loadThis.nativeUnit)
     }
 
     override def renderDebug(renderer: Renderer): Unit = {

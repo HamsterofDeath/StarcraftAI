@@ -416,7 +416,7 @@ class ProvideSuggestedAndRequestedAddons(universe: Universe)
 
     val requested = unitManager.failedToProvideByType[Addon].collect {
       case attachIt: BuildUnitRequest[Addon]
-        if attachIt.proofForFunding.isFunded &&
+        if attachIt.proofForFunding.isSuccess &&
            universe.resources.hasStillLocked(attachIt.funding) =>
         attachIt
     }
@@ -450,10 +450,12 @@ class ProvideUpgrades(universe: Universe) extends OrderlessAIModule[Upgrader](un
     .filterNot(e => researched.getOrElse(e.upgrade, 0) == maxLimitEnabled.ifElse(e.maxLevel, 1))
     .filter(_.isActive)
     .foreach { request =>
+
       val wantedUpgrade = request.upgrade
       val needs = race.techTree.upgraderFor(wantedUpgrade)
-      val patienceRequired = unitManager.existsOrPlanned(needs)
-      if (!patienceRequired) {
+      val waitForDependency = unitManager.existsOrPlanned(needs)
+      if (!waitForDependency) {
+        trace(s"Requesting ${needs.className} to be build in order for ${wantedUpgrade} to be researched")
         helper.requestBuilding(needs, takeCareOfDependencies = true)
       } else {
         val result = unitManager.request(UnitJobRequests.upgraderFor(wantedUpgrade, self))
@@ -524,7 +526,7 @@ class EnqueueArmy(universe: Universe) extends OrderlessAIModule[UnitFactory](uni
     val p = percentages
     val mostMissing = p.wanted.toVector.sortBy { case (t, idealRatio) =>
       val existingRatio = p.existing.getOrElse(t, 0.0)
-      existingRatio - idealRatio
+      existingRatio / idealRatio
     }
     val (canBuild, needsSomething) =
       mostMissing.partition { case (c, _) => universe.unitManager.allRequirementsFulfilled(c) }
@@ -627,7 +629,7 @@ object Strategy {
                        .filter { where =>
                          universe.myUnits.allByType[TransporterUnit].nonEmpty ||
                          mapLayers.rawWalkableMap
-                         .areInSameArea(where.center, bases.mainBase.get.mainBuilding.tilePosition)
+                         .areInSameWalkableArea(where.center, bases.mainBase.get.mainBuilding.tilePosition)
                        }
           if (others.nonEmpty) {
             val target = others.maxBy(
@@ -698,7 +700,8 @@ object Strategy {
       IdealUnitRatio(classOf[Tank], 5)(timingHelpers.phase.isSinceEarlyMid) ::
       IdealUnitRatio(classOf[Goliath], 3)(timingHelpers.phase.isSinceMid) ::
       IdealUnitRatio(classOf[ScienceVessel], 1)(timingHelpers.phase.isSinceLateMid) ::
-      IdealUnitRatio(classOf[Dropship], 1)(timingHelpers.phase.isSinceLateMid) ::
+      IdealUnitRatio(classOf[Dropship], 1)(timingHelpers.phase.isSincePostMid) ::
+      IdealUnitRatio(classOf[Wraith], 1)(timingHelpers.phase.isSinceLateMid) ::
       Nil
     }
     override def suggestUpgrades: Seq[UpgradeToResearch] =

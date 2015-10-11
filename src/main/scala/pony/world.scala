@@ -597,8 +597,13 @@ class Units(game: Game, hostile: Boolean) {
 class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitSet,
              protected val containsBlocked: Boolean = true) extends Serializable {
   self =>
-  def areInSameArea(a: MapTilePosition, b: MapTilePosition) =
-    areaWhichContains(a).exists(_.containsAsData(b))
+
+  def insideBounds(t: MapTilePosition) = {
+    t.y >= 0 && t.x < cols && t.y >= 0 && t.y < rows
+  }
+
+  def areInSameWalkableArea(a: MapTilePosition, b: MapTilePosition) =
+    areaWhichContainsAsFree(a).exists(_.free(b))
 
   def emptySameSize(blocked: Boolean) = new MutableGrid2D(cols, rows, mutable.BitSet.empty, blocked)
 
@@ -629,6 +634,7 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
   }
   def blocked(x: Int, y: Int): Boolean = !free(x, y)
   def areaWhichContains(tile: MapTilePosition) = areas.find(_.containsAsData(tile))
+  def areaWhichContainsAsFree(tile: MapTilePosition) = areas.find(_.free(tile))
   def containsAsData(p: MapTilePosition): Boolean = !free(p)
   def includes(area: Area): Boolean = area.outline.forall(includes)
   def includes(p: MapTilePosition): Boolean = includes(p.x, p.y)
@@ -873,7 +879,7 @@ case class MineralPatchGroup(patchId: Int) {
 
   def remainingPercentage = myValue.get / myInitialValue.get.toDouble
 
-  override def toString = s"Minerals($value)@$center"
+  override def toString = s"Minerals#$patchId($value)@$center"
   def center = myCenter.get
   def value = myValue.get
   def patches = myPatches.toSet

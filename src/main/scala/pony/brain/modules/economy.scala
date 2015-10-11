@@ -49,16 +49,24 @@ class ProvideNewBuildings(universe: Universe)
   override def calculationInput = {
     // we do them one by one, it's simpler
     val buildingRelated = unitManager.failedToProvideByType[Building]
-    val constructionRequests = buildingRelated.collect {
+    val constructionRequests = buildingRelated.iterator.collect {
       case buildIt: BuildUnitRequest[Building]
-        if buildIt.proofForFunding.isFunded &&
+        if buildIt.proofForFunding.isSuccess &&
            !buildIt.isAddon &&
-           universe.resources.detailedLocks.exists { lock =>
-             lock.whatFor == buildIt.typeOfRequestedUnit && lock.reqs.sum == buildIt.funding.sum
-           } =>
+           universe.resources.hasStillLocked(buildIt.funding) =>
         buildIt
     }
-    val anyOfThese = constructionRequests.headOption
+
+    val anyOfThese = constructionRequests.find { candidate =>
+      val passThrough = !candidate.isUpgrader
+      def isUpgradeEnablerOrRich = {
+        val count = ownUnits.allByClass(candidate.typeOfRequestedUnit).size
+        val isFirst = count == 0
+        isFirst || bases.rich && bases.bases.size > count
+      }
+      passThrough || isUpgradeEnablerOrRich
+    }
+
     anyOfThese.flatMap { req =>
       val request = UnitJobRequests.constructor(self)
       unitManager.request(request) match {
@@ -80,7 +88,7 @@ class ProvideExpansions(universe: Universe) extends OrderlessAIModule[WorkerUnit
   private var plannedExpansionPoint = Option.empty[ResourceArea]
   def forceExpand(patch: MineralPatchGroup) = {
     plannedExpansionPoint = {
-      val all = strategicMap.domains.flatMap(_._2.values.flatten)
+      val all = world.resourceAnalyzer.resourceAreas
       all.find(_.isPatchId(patch.patchId))
     }
   }
@@ -302,7 +310,7 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
 
         import States._
 
-        override protected def targetPosition = {
+        override protected def pointNearTarget = {
           targetPatch.tilePosition
         }
 
@@ -476,7 +484,12 @@ class GatherGas(universe: Universe) extends OrderlessAIModule[WorkerUnit](univer
     def covers(base: Base) = this.base.mainBuilding == base.mainBuilding
 
     class GatherGasAtRefinery(worker: WorkerUnit)
-      extends UnitWithJob[WorkerUnit](self, worker, Priority.ConstructBuilding) with Interruptable {
+      extends UnitWithJob[WorkerUnit](self, worker, Priority.ConstructBuilding) with Interruptable with
+              FerrySupport[WorkerUnit] {
+
+      override protected def pointNearTarget = {
+        geysir.tilePosition
+      }
 
       private var state: State = Idle
       override def shortDebugString: String = state.getClass.className

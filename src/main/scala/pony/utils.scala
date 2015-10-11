@@ -123,6 +123,7 @@ class LazyVal[T](gen: => T, onValueChange: Option[() => Unit] = None) extends Se
       value = null.asInstanceOf[T]
     }
   }
+  override def toString = s"LazyVal($get)"
 }
 
 object LazyVal {

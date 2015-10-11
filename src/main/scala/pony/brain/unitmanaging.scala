@@ -523,13 +523,18 @@ abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: 
 
   protected def omitRepeatedOrders = false
 
+  def resetTimer_!(): Unit = {
+    startTick = 0
+  }
+
   unit match {
     case cd: MaybeCanDie if cd.isDead => fail()
     case _ =>
   }
 
   override val universe           = employer.universe
-  private  val creationTick       = currentTick
+  private  var startTick          = currentTick
+  private  val realStartTick      = currentTick
   private  val listeners          = ArrayBuffer.empty[JobFinishedListener[T]]
   private  var noCommandsForTicks = 0
 
@@ -546,7 +551,8 @@ abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: 
   }
   def onStealUnit() = {}
   def shortDebugString: String
-  def age = currentTick - creationTick
+  def ageSinceLastReset = currentTick - startTick
+  def age = currentTick - realStartTick
   def isIdle: Boolean = false
 
   private var lastOrder: Seq[UnitOrder] = Nil
@@ -649,9 +655,9 @@ trait HasFunding {
 trait JobHasFunding[T <: WrapsUnit] extends UnitWithJob[T] with HasUniverse with HasFunding {
   self =>
 
-  assert(proofForFunding.isFunded, s"Problem, check $this")
+  assert(proofForFunding.isSuccess, s"Problem, check $this")
 
-  def canReleaseResources = age == 0 && stillLocksResources
+  def canReleaseResources = ageSinceLastReset == 0 && stillLocksResources
 
   override def notifyResourcesDisapproved_!(): Unit = {
     super.notifyResourcesDisapproved_!()
@@ -686,7 +692,7 @@ class TrainUnit[F <: UnitFactory, T <: Mobile](factory: F, trainType: Class[_ <:
   override def onTick(): Unit = {
     super.onTick()
 
-    if (!startedToProduce && age > 20 && factory.isProducing) {
+    if (!startedToProduce && ageSinceLastReset > 20 && factory.isProducing) {
       startedToProduce = true
       trace(s"Job $this starte to produce ${trainType.className}")
       unlockManually_!()
@@ -694,7 +700,7 @@ class TrainUnit[F <: UnitFactory, T <: Mobile](factory: F, trainType: Class[_ <:
   }
 
   override def jobHasFailedWithoutDeath: Boolean = {
-    age > 50 && !startedToProduce
+    ageSinceLastReset > 50 && !startedToProduce
   }
 
   override def isFinished = {
@@ -729,6 +735,7 @@ class ConstructAddon[W <: CanBuildAddons, A <: Addon](employer: Employer[W],
   }
   override def onTick(): Unit = {
     super.onTick()
+    assert(hasFailed || resources.hasStillLocked(proofForFunding), s"Someone stole $proofForFunding from $this")
     if (!startedConstruction) {
       startedConstruction = basis.isBuildingAddon
     }
@@ -744,7 +751,7 @@ class ConstructAddon[W <: CanBuildAddons, A <: Addon](employer: Employer[W],
     }
   }
   override def jobHasFailedWithoutDeath: Boolean = {
-    def myFail = age > 50 && !startedConstruction
+    def myFail = ageSinceLastReset > 50 && !startedConstruction
     super.jobHasFailedWithoutDeath || myFail
   }
   override def getOrder = Orders.ConstructAddon(basis, builtWhat).toSeq
@@ -765,7 +772,7 @@ class ResearchUpgrade[U <: Upgrader](employer: Employer[U],
   }
 
   override def jobHasFailedWithoutDeath: Boolean = {
-    super.jobHasFailedWithoutDeath || (age > 50 && !startedResearch)
+    super.jobHasFailedWithoutDeath || (ageSinceLastReset > 50 && !startedResearch)
   }
 
   override def onTick(): Unit = {
@@ -787,17 +794,20 @@ class ResearchUpgrade[U <: Upgrader](employer: Employer[U],
 
 trait FerrySupport[T <: GroundUnit] extends UnitWithJob[T] {
 
-  protected def targetPosition: MapTilePosition
+  protected def pointNearTarget: MapTilePosition
 
   override def injectedOrder: Seq[UnitOrder] = {
     val where = unit.currentTile
-    val to = targetPosition
+    val to = pointNearTarget
 
-    val needsFerry = !universe.mapLayers.rawWalkableMap.areInSameArea(where, to)
+    val needsFerry = !unit.currentArea.exists(_.free(to))
     if (needsFerry) {
       ferryManager.requestFerry(unit, to) match {
-        case Some(plan) =>
+        case Some(plan) if unit.onGround =>
           Orders.BoardFerry(unit, plan.ferry).toList
+        case _ if unit.loaded =>
+          // do nothing while in transporter
+          Orders.NoUpdate(unit).toList
         case None =>
           //go there while waiting for ferry
           Orders.Move(unit, to).toList
@@ -820,6 +830,10 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, bu
           with CanAcceptUnitSwitch[W]
           with FerrySupport[W]
           with IssueOrderNTimes[W] {
+  self =>
+
+  assert(universe.mapLayers.rawWalkableMap.insideBounds(buildWhere),
+    s"Target building spot is outside of map: $buildWhere, check $self")
 
   val area = {
     val unitType = buildingType.toUnitType
@@ -836,7 +850,7 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, bu
       funding.sum
     } funding, but the resource manager only has\n ${resources.detailedLocks.mkString("\n")}\nlocked")
 
-  override protected def targetPosition = buildWhere
+  override protected def pointNearTarget = buildWhere
   private var startedMovingToSite       = false
   private var startedActualConstruction = false
   private var finishedConstruction      = false
@@ -845,6 +859,7 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, bu
 
   override def onTick(): Unit = {
     super.onTick()
+    if (unit.gotUnloaded) resetTimer_!()
     if (startedActualConstruction && !resourcesUnlocked && constructs.isDefined) {
       trace(s"Construction job $this no longer needs to lock resources")
       unlockManually_!()
@@ -860,9 +875,13 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, bu
   override def canSwitchNow = !startedActualConstruction
   override def couldSwitchInTheFuture = !startedActualConstruction
   override def jobHasFailedWithoutDeath: Boolean = {
-    val fail = !worker.isInConstructionProcess && age > times + 10 && !isFinished
-    warn(s"Construction of ${typeOfBuilding.className} failed, worker $worker didn't manange", fail)
-    fail
+    if (unit.onGround) {
+      val fail = !worker.isInConstructionProcess && ageSinceLastReset > times + 10 && !isFinished
+      warn(s"Construction of ${typeOfBuilding.className} failed, worker $worker didn't manange", fail)
+      fail
+    } else {
+      false
+    }
   }
   def typeOfBuilding = buildingType
 
@@ -885,7 +904,7 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, bu
       finishedConstruction = !worker.isInConstructionProcess
       trace(s"Worker $worker finished to build $buildingType", finishedConstruction)
     }
-    age > times + 10 && startedMovingToSite && finishedConstruction
+    ageSinceLastReset > times + 10 && startedMovingToSite && finishedConstruction
   }
   override def times = 50
   def building = constructs
@@ -893,8 +912,7 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, bu
     val request = AnyUnitRequest[W](worker.getClass, 1)
     val anyUnitRequest = request.withCherryPicker_! { hijackFromThis =>
       val altUnit = hijackFromThis.unit
-      val sameArea = mapLayers.rawWalkableMap.areaWhichContains(altUnit.currentTile) ==
-                     mapLayers.rawWalkableMap.areaWhichContains(buildWhere)
+      val sameArea = mapLayers.rawWalkableMap.areInSameWalkableArea(altUnit.currentTile, buildWhere)
 
       val canSee = mapLayers.rawWalkableMap.connectedByLine(altUnit.currentTile, buildWhere)
 
@@ -1101,6 +1119,8 @@ case class BuildUnitRequest[T <: WrapsUnit](universe: Universe, typeOfRequestedU
   self =>
 
   lazy val isAddon = classOf[Addon].isAssignableFrom(typeOfRequestedUnit)
+
+  lazy val isUpgrader = classOf[Upgrader].isAssignableFrom(typeOfRequestedUnit)
 
   lazy val isBuilding = classOf[Building].isAssignableFrom(typeOfRequestedUnit)
 
