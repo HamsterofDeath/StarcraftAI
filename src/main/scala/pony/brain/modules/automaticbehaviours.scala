@@ -76,9 +76,9 @@ object Terran {
                       new SiegeUnsiegeSelf(universe) ::
                       new MigrateTowardsPosition(universe) ::
                       new FerryService(universe) ::
+                      new RepairDamagedUnit(universe) ::
                       /*
                                             new RepairDamagedBuilding ::
-                                            new RepairDamagedUnit ::
                                            new UseComsat ::
                                            new Scout ::
                                            new DoNotStray ::
@@ -141,9 +141,9 @@ object Terran {
             lazy val dancePartners = {
               val allEnemies = universe.unitGrid.allInRangeOf[Mobile](t.currentTile, t.weaponRangeRadius / 32,
               friendly = false)
-              allEnemies.collect
-              { case enemy: Weapon if enemy.initialNativeType.topSpeed <= t.initialNativeType.topSpeed &&
-                                      enemy.weaponRangeRadius <= t.weaponRangeRadius =>
+              allEnemies
+              .collect { case enemy: Weapon if enemy.initialNativeType.topSpeed <= t.initialNativeType.topSpeed &&
+                                               enemy.weaponRangeRadius <= t.weaponRangeRadius =>
                 enemy
               }
             }
@@ -187,7 +187,19 @@ object Terran {
   }
 
   class RepairDamagedUnit(universe: Universe) extends DefaultBehaviour[SCV](universe) {
-    override protected def lift(t: SCV): SingleUnitBehaviour[SCV] = ???
+
+    private val helper = new NonConflictingTargets[Mechanic, SCV](universe, m => {
+      PriorityChain(m.percentageHPOk)
+    }, _.isDamaged, true)
+
+    override protected def lift(t: SCV): SingleUnitBehaviour[SCV] = new SingleUnitBehaviour[SCV](t, meta) {
+      override def shortName: String = "R"
+      override def toOrder(what: Objective): Seq[UnitOrder] = {
+        helper.suggestTarget(t).map { what =>
+          Orders.Repair(t, what)
+        }.toList
+      }
+    }
   }
 
   class ContinueInterruptedConstruction(universe: Universe) extends DefaultBehaviour[SCV](universe) {
@@ -441,7 +453,7 @@ object Terran {
                                                                                             spell:
                                                                                             SingleTargetSpell[C, T])
     extends DefaultBehaviour[C](universe) {
-    private val helper = NonConflictingTargetPicks.forSpell(spell, universe)
+    private val helper = NonConflictingSpellTargets.forSpell(spell, universe)
 
     override def refuseCommandsForTicks = 10
 
@@ -645,22 +657,74 @@ class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
   }
 }
 
-object NonConflictingTargetPicks {
+object NonConflictingSpellTargets {
   def forSpell[T <: HasSingleTargetSpells, M <: Mobile : Manifest](spell: SingleTargetSpell[T, M],
                                                                    universe: Universe) = {
 
-    new NonConflictingTargetPicks(spell, {
+    new NonConflictingSpellTargets(spell, {
       case x: M if spell.canBeCastOn(x) & spell.shouldActivateOn(x) => x
     },
     spell.isAffected, universe)
   }
 }
 
-class NonConflictingTargetPicks[T <: HasSingleTargetSpells, M <: Mobile : Manifest](spell: SingleTargetSpell[T, M],
-                                                                                    targetConstraint:
-                                                                                    PartialFunction[Mobile, M],
-                                                                                    keepLocked: M => Boolean,
-                                                                                    override val universe: Universe)
+class NonConflictingTargets[T <: WrapsUnit : Manifest, M <: Mobile : Manifest](override val universe: Universe,
+                                                                               rateTarget: T => PriorityChain,
+                                                                               stillValidTarget: T => Boolean,
+                                                                               own: Boolean) extends HasUniverse {
+
+  def unlock_!(m: M, target: T) = {
+    assignments.remove(m)
+    locks -= target
+  }
+
+  def suggestTarget(m: M) = {
+    assignments.get(m) match {
+      case x@Some(target) =>
+        if (stillValidTarget(target))
+          x
+        else {
+          unlock_!(m, target)
+          None
+        }
+      case None =>
+        val newSuggestion = targets.get.iterator.filterNot(locked).toStream.headOption
+        newSuggestion.foreach { t =>
+          lock_!(t, m)
+        }
+        newSuggestion
+    }
+  }
+
+  private val locks       = mutable.HashSet.empty[T]
+  private val assignments = mutable.HashMap.empty[M, T]
+
+  private def locked(t: T) = locks(t)
+  private def targetOf(m: M) = assignments(m)
+  def lock_!(t: T, m: M): Unit = {
+    assert(!locked(t))
+    assert(!assignments.contains(m))
+
+    assignments.put(m, t)
+    locks += t
+  }
+
+  private val targets = universe.oncePerTick {
+    val on = if (own) ownUnits else enemies
+    on.allByType[T].iterator
+    .filter(stillValidTarget)
+    .map { e => e -> rateTarget(e) }
+    .toVector
+    .sortBy(_._2)
+    .map(_._1)
+  }
+}
+
+class NonConflictingSpellTargets[T <: HasSingleTargetSpells, M <: Mobile : Manifest](spell: SingleTargetSpell[T, M],
+                                                                                     targetConstraint:
+                                                                                     PartialFunction[Mobile, M],
+                                                                                     keepLocked: M => Boolean,
+                                                                                     override val universe: Universe)
   extends HasUniverse {
   def afterTick(): Unit = {
     prioritizedTargets.invalidate()

@@ -498,17 +498,17 @@ class Units(game: Game, hostile: Boolean) {
     knownUnits.values.exists(c.isInstance)
   }
   def geysirs = allByType[Geysir]
-  def allByType[T <: WrapsUnit : Manifest]: Iterator[T] = {
-    val lookFor = manifest[T].runtimeClass.asInstanceOf[Class[_ <: T]]
+  def allByType[T <: WrapsUnit : Manifest] = {
+    val lookFor = manifest[T].runtimeClass.asInstanceOf[Class[T]]
     allByClass(lookFor)
   }
-  def allByClass[T <: WrapsUnit](lookFor: Class[T]): Iterator[T] = {
+  def allByClass[T <: WrapsUnit](lookFor: Class[T]) = {
     def lazyCreate = {
       classIndexes += lookFor
       mutable.HashSet.empty ++= all.filter { e => lookFor.isAssignableFrom(e.getClass) }
     }
     val cached = preparedByClass.getOrElseUpdate(lookFor, lazyCreate)
-    cached.iterator.asInstanceOf[Iterator[T]]
+    cached.asInstanceOf[collection.Set[T]]
   }
 
   def all = knownUnits.valuesIterator

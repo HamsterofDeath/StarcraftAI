@@ -351,6 +351,7 @@ trait SpellcasterBuilding extends Building with Controllable {
 }
 
 case class HitPoints(hitpoints: Int, shield: Int) {
+
   def isDead = hitpoints == 0
 
   def sum = hitpoints + shield
@@ -457,6 +458,17 @@ case class Armor(armorType: ArmorType, hp: HitPoints, armor: Int, owner: MaybeCa
 
 trait MaybeCanDie extends WrapsUnit {
   self =>
+
+  private val maxHp      = nativeUnit.getType.maxHitPoints()
+  private val maxShields = nativeUnit.getType.maxShields()
+
+  def percentageHPOk = {
+    hitPoints.sum.toDouble / (maxHp + maxShields)
+  }
+
+  def isDamaged = isInGame && (hitPoints.shield < maxShields || hitPoints.hitpoints < maxHp)
+
+
   def isHarmlessNow = isIncapacitated || !canDoDamage
 
   private var lastFrameHp = HitPoints(-1, -1) // obviously wrong, but that doesn't matter
@@ -1218,7 +1230,12 @@ trait HasSinglePointMagicSpell extends Mobile {
 }
 
 trait Mechanic extends Mobile {
-  def isLocked = nativeUnit.getLockdownTimer > 0
+
+  private val myLocked = oncePerTick {
+    nativeUnit.getLockdownTimer > 0
+  }
+
+  def isLocked = myLocked.get
 }
 trait Organic extends Mobile {
   def isBlinded = nativeUnit.isBlind

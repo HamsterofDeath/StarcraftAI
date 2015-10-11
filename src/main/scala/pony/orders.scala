@@ -240,6 +240,16 @@ object Orders {
     }
   }
 
+  case class Repair(myUnit: SCV, fixWhat: Mechanic) extends UnitOrder {
+    override def issueOrderToGame(): Unit = {
+      myUnit.nativeUnit.repair(fixWhat.nativeUnit)
+    }
+
+    override def renderDebug(renderer: Renderer): Unit = {
+      renderer.indicateTarget(myUnit.currentPosition, fixWhat.currentPosition)
+    }
+  }
+
   case class NoUpdate(unit: WrapsUnit) extends UnitOrder {
 
     override def isNoop: Boolean = true

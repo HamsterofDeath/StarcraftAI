@@ -27,7 +27,7 @@ trait Universe {
   def ferryManager: FerryManager
   def worldDominationPlan: WorldDominationPlan
   def resourceFields = world.resourceAnalyzer
-  private def evalRace = (myUnits.allMobiles ++ myUnits.allBuildings).next.mySCRace
+  private def evalRace = (myUnits.allMobiles.iterator ++ myUnits.allBuildings.iterator).next.mySCRace
   private val race0 = LazyVal.from(evalRace)
   def myRace = race0.get
   def afterTick(): Unit = {

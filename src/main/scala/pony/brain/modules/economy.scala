@@ -299,7 +299,7 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
       class GatherMineralsAtPatch(myWorker: WorkerUnit, miningTarget: MinedPatch)
         extends UnitWithJob(emp, myWorker, Priority.Default)
                 with GatherMineralsAtSinglePatch
-                with Interruptable
+                with Interruptable[WorkerUnit]
                 with FerrySupport[WorkerUnit] {
 
         listen_!(failed => {
@@ -484,7 +484,7 @@ class GatherGas(universe: Universe) extends OrderlessAIModule[WorkerUnit](univer
     def covers(base: Base) = this.base.mainBuilding == base.mainBuilding
 
     class GatherGasAtRefinery(worker: WorkerUnit)
-      extends UnitWithJob[WorkerUnit](self, worker, Priority.ConstructBuilding) with Interruptable with
+      extends UnitWithJob[WorkerUnit](self, worker, Priority.ConstructBuilding) with Interruptable[WorkerUnit] with
               FerrySupport[WorkerUnit] {
 
       override protected def pointNearTarget = {

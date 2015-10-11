@@ -85,7 +85,7 @@ class UpgradeManager(override val universe: Universe) extends HasUniverse {
       u => {
         val actual = universe.world.nativeGame.self().getUpgradeLevel(u)
         val expected = upgradeLevelOf(u)
-        assert(actual == expected)
+        assert(actual == expected, s"Expected level $expected for $upgrade, but game said it was $actual")
       },
       t => assert(isTechResearchInNativeGame(t), s"Out of sync! $upgrade"))
 

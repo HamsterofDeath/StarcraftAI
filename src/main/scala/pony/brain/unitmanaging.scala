@@ -497,8 +497,11 @@ trait CanAcceptUnitSwitch[T <: WrapsUnit] extends UnitWithJob[T] {
   def hasToSwitchLater = !canSwitchNow && couldSwitchInTheFuture
 }
 
-trait Interruptable {
-  def interruptableNow = true
+trait Interruptable[T <: WrapsUnit] extends UnitWithJob[T] {
+  def interruptableNow = unit match {
+    case gu: GroundUnit => gu.onGround
+    case _ => true
+  }
 }
 
 object JobCounter {
@@ -955,7 +958,7 @@ abstract class SingleUnitBehaviour[T <: Mobile](val unit: T, meta: SingleUnitBeh
 
 class BusyDoingSomething[T <: Mobile](employer: Employer[T], behaviour: Seq[SingleUnitBehaviour[T]],
                                       private var objective: Objective)
-  extends UnitWithJob(employer, behaviour.head.unit, Priority.DefaultBehaviour) with Interruptable {
+  extends UnitWithJob(employer, behaviour.head.unit, Priority.DefaultBehaviour) with Interruptable[T] {
 
   assert(behaviour.map(_.unit).distinct.size == 1, s"Wrong grouping: $behaviour")
 
@@ -982,7 +985,7 @@ class BusyDoingSomething[T <: Mobile](employer: Employer[T], behaviour: Seq[Sing
 }
 
 class BusyDoingNothing[T <: WrapsUnit](unit: T, employer: Employer[T])
-  extends UnitWithJob(employer, unit, Priority.None) with IssueOrderNTimes[T] with Interruptable {
+  extends UnitWithJob(employer, unit, Priority.None) with IssueOrderNTimes[T] with Interruptable[T] {
   override def isIdle = true
 
   override def getOrder: Seq[UnitOrder] = {
@@ -1161,12 +1164,12 @@ case class UnitJobRequests[T <: WrapsUnit : Manifest](requests: Seq[UnitRequest[
                                                       makeSureDependenciesCleared: Set[Class[_ <: WrapsUnit]] = Set
                                                                                                                 .empty) {
   private val types = requests.map(_.typeOfRequestedUnit).toSet
-  def canInterrupt(unit: UnitWithJob[_ <: WrapsUnit]) = {
-    assert(priority > unit.priority, "Oops :(")
+  def canInterrupt(uwj: UnitWithJob[_ <: WrapsUnit]) = {
+    assert(priority > uwj.priority, "Oops :(")
     // perfect solution: match every type against every type and use heavy logic to determine the result
-    // reality: lazily add cases :D
-    unit match {
-      case i: Interruptable if i.interruptableNow => true
+    // reality: lazily add cases
+    uwj match {
+      case i: Interruptable[_] if i.interruptableNow => true
       case _ => false
     }
   }

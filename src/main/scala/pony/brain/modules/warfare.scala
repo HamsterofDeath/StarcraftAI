@@ -391,7 +391,7 @@ class ProvideSuggestedAndRequestedAddons(universe: Universe)
     if (existing.isEmpty) {
       true
     } else {
-      val any = existing.next()
+      val any = existing.head
       def noUpgrades = !any.isInstanceOf[Upgrader]
       def requiredForUnit = race.techTree
                             .requiredBy.get(any.getClass)
