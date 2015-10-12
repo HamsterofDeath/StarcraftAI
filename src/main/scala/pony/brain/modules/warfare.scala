@@ -241,8 +241,9 @@ trait AddonRequestHelper extends AIModule[CanBuildAddons] {
   def requestAddonIfResourcesProvided[T <: Addon](addonType: Class[_ <: T], handleDependencies: Boolean,
                                                   result: ResourceApproval): Unit = {
     result.ifSuccess { suc =>
+      assert(resources.hasStillLocked(suc), s"This should never be called if $suc is no longer locked")
       val unitReq = UnitJobRequests.addonConstructor(self, addonType)
-      trace(s"Financing possible for $addonType, requesting build")
+      trace(s"Financing possible for addon $addonType, requesting build")
       val result = unitManager.request(unitReq)
       if (handleDependencies && result.hasAnyMissingRequirements) {
         result.notExistingMissingRequiments.foreach { what =>
@@ -318,7 +319,7 @@ trait BuildingRequestHelper extends AIModule[WorkerUnit] {
       val unitReq = UnitJobRequests.newOfType(universe, buildingEmployer, buildingType, suc,
         customBuildingPosition = customBuildingPosition, belongsTo = belongsTo,
         priority = priority)
-      trace(s"Financing possible for $buildingType, requesting build")
+      trace(s"Financing possible for building $buildingType, requesting build")
       val result = unitManager.request(unitReq)
       if (result.hasAnyMissingRequirements) {
         resources.unlock_!(suc)
@@ -350,7 +351,7 @@ trait UnitRequestHelper extends AIModule[UnitFactory] {
     val result = resources.request(req, mobileEmployer)
     result.ifSuccess { suc =>
       val unitReq = UnitJobRequests.newOfType(universe, mobileEmployer, mobileType, suc)
-      trace(s"Financing possible for $mobileType, requesting training")
+      trace(s"Financing possible for mobile unit $mobileType, requesting training")
       val result = unitManager.request(unitReq)
       if (result.hasAnyMissingRequirements) {
         // do not forget to unlock the resources again
@@ -688,7 +689,7 @@ object Strategy {
       val myBases = bases.myMineralFields.count(_.remainingPercentage > 0.25)
 
       IdealProducerCount(classOf[Barracks], (myBases / 2) max 1)(timingHelpers.phase.isAnyTime) ::
-      IdealProducerCount(classOf[Factory], myBases * 3)(timingHelpers.phase.isAnyTime) ::
+      IdealProducerCount(classOf[Factory], 2 + myBases)(timingHelpers.phase.isAnyTime) ::
       IdealProducerCount(classOf[Starport], (myBases / 2) max 1)(timingHelpers.phase.isSincePostMid) ::
       Nil
     }

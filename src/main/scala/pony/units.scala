@@ -466,7 +466,7 @@ trait MaybeCanDie extends WrapsUnit {
     hitPoints.sum.toDouble / (maxHp + maxShields)
   }
 
-  def isDamaged = isInGame && (hitPoints.shield < maxShields || hitPoints.hitpoints < maxHp)
+  def isDamaged = isInGame && (hitPoints.shield < maxShields || hitPoints.hitpoints < maxHp) && !isBeingCreated
 
 
   def isHarmlessNow = isIncapacitated || !canDoDamage
@@ -520,7 +520,18 @@ trait MaybeCanDie extends WrapsUnit {
   def armor = myArmor.get
 }
 
+object Price {
+  val zero = Price(0, 0)
+  implicit val ord = Ordering.fromLessThan[Price](_ < _)
+}
+
 case class Price(minerals: Int, gas: Int) {
+  def -(other: Price) = Price(minerals - other.minerals, gas - other.gas)
+
+  def <(other: Price) = sum < other.sum
+
+  def +(price: Price) = Price(minerals + price.minerals, gas + price.gas)
+
   val sum = minerals + gas
 }
 
@@ -534,6 +545,7 @@ trait AutoPilot extends Mobile {
 }
 
 trait Mobile extends WrapsUnit with Controllable {
+  val buildPrice = Price(nativeUnit.getType.mineralPrice(), nativeUnit.getType.gasPrice())
 
   def currentArea = myCurrentArea.get
 
@@ -884,7 +896,10 @@ trait GroundUnit extends Killable with Mobile {
 
   def loaded = inFerry.get.isDefined
 
-  lazy val transportSize = armorType.transportSize
+  private val myTransportSize = LazyVal.from(armorType.transportSize)
+
+  def transportSize = myTransportSize.get
+
   override def postTick(): Unit = {
     super.postTick()
     inFerryLastTick = loaded

@@ -151,7 +151,7 @@ class ProvideNewUnits(universe: Universe) extends OrderlessAIModule[UnitFactory]
   self =>
 
   override def onTick(): Unit = {
-    unitManager.failedToProvideFlat.flatMap { req =>
+    unitManager.failedToProvideFlat.distinct.flatMap { req =>
       trace(s"Trying to satisfy $req somehow")
       val wantedType = req.typeOfRequestedUnit
       if (classOf[Mobile].isAssignableFrom(wantedType)) {

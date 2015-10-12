@@ -95,6 +95,7 @@ object Terran {
   class FerryService(universe: Universe) extends DefaultBehaviour[TransporterUnit](universe) {
     override protected def lift(t: TransporterUnit): SingleUnitBehaviour[TransporterUnit] = new
         SingleUnitBehaviour[TransporterUnit](t, meta) {
+
       override def shortName: String = "T"
       override def toOrder(what: Objective): Seq[UnitOrder] = {
         ferryManager.planFor(t).toList.flatMap { plan =>
@@ -107,7 +108,12 @@ object Terran {
           } else if (plan.needsToReachTarget) {
             Orders.Move(plan.ferry, plan.toWhere).toList
           } else if (plan.loadedLeft) {
-            Orders.UnloadAll(plan.ferry, plan.toWhere).toList
+            Orders.UnloadAll(plan.ferry, plan.toWhere).forceRepeat_!(true).toList
+          } else if (!plan.orphaned) {
+            val nearestFree = mapLayers.reallyFreeBuildingTiles.nearestFree(plan.toWhere)
+            nearestFree.map { where =>
+              Orders.UnloadAll(plan.ferry, where).forceRepeat_!(true)
+            }.toList
           } else {
             List.empty[UnitOrder]
           }
@@ -188,9 +194,12 @@ object Terran {
 
   class RepairDamagedUnit(universe: Universe) extends DefaultBehaviour[SCV](universe) {
 
-    private val helper = new NonConflictingTargets[Mechanic, SCV](universe, m => {
-      PriorityChain(m.percentageHPOk)
-    }, _.isDamaged, true)
+    private val helper = new NonConflictingTargets[Mechanic, SCV](universe = universe,
+      rateTarget = m => PriorityChain(m.percentageHPOk),
+      validTarget = _.isDamaged,
+      subAccept = (m, t) => m.currentArea == t.currentArea,
+      subRate = (m, t) => PriorityChain(-m.currentTile.distanceToSquared(t.currentTile)),
+      own = true)
 
     override protected def lift(t: SCV): SingleUnitBehaviour[SCV] = new SingleUnitBehaviour[SCV](t, meta) {
       override def shortName: String = "R"
@@ -391,18 +400,27 @@ object Terran {
           case Idle =>
             // TODO include test in tech trait
             if (t.spiderMineCount > 0 && t.canCastNow(SpiderMines)) {
-              val enemies = universe.unitGrid.allInRangeOf[GroundUnit](t.currentTile, 10, friendly = false)
+              val enemies = universe.unitGrid.allInRangeOf[GroundUnit](t.currentTile, 5, friendly = false)
               if (enemies.nonEmpty) {
                 inBattle = true
                 // drop mines on sight of enemy
                 val on = freeArea
-                val freeTarget = on.spiralAround(t.currentTile).find { where =>
-                  val free = on.free(where)
-                  def noOwnUnits = {
-                    !universe.unitGrid.allInRangeOf[Mobile](where, 3, friendly = true)
-                     .exists(e => !e.isInstanceOf[HasSpiderMines] && !e.isAutoPilot)
+                val freeTarget = on.spiralAround(t.currentTile).view.filter(on.free).maxByOpt { where =>
+                  def ownUnitsCost = {
+                    universe.unitGrid.allInRangeOf[GroundUnit](where, 5, friendly = true)
+                    .view
+                    .filter(e => !e.isInstanceOf[HasSpiderMines] && !e.isAutoPilot)
+                    .map(_.buildPrice)
+                    .fold(Price.zero)(_ + _)
                   }
-                  free && noOwnUnits
+                  def enemyUnitsCost = {
+                    universe.unitGrid.allInRangeOf[GroundUnit](where, 5, friendly = false)
+                    .view
+                    .filter(e => !e.isInstanceOf[HasSpiderMines] && !e.isAutoPilot)
+                    .map(_.buildPrice)
+                    .fold(Price.zero)(_ + _)
+                  }
+                  enemyUnitsCost - ownUnitsCost
                 }
                 freeTarget.map { where =>
                   on.block_!(where.asArea.extendedBy(1))
@@ -670,8 +688,15 @@ object NonConflictingSpellTargets {
 
 class NonConflictingTargets[T <: WrapsUnit : Manifest, M <: Mobile : Manifest](override val universe: Universe,
                                                                                rateTarget: T => PriorityChain,
-                                                                               stillValidTarget: T => Boolean,
+                                                                               validTarget: T => Boolean,
+                                                                               subAccept: (M, T) => Boolean,
+                                                                               subRate: (M, T) => PriorityChain,
                                                                                own: Boolean) extends HasUniverse {
+
+  universe.register_!(() => {
+    val remove2 = assignments.filterNot(_._1.isInGame)
+    remove2.foreach { case (k, v) => unlock_!(k, v) }
+  })
 
   def unlock_!(m: M, target: T) = {
     assignments.remove(m)
@@ -681,14 +706,18 @@ class NonConflictingTargets[T <: WrapsUnit : Manifest, M <: Mobile : Manifest](o
   def suggestTarget(m: M) = {
     assignments.get(m) match {
       case x@Some(target) =>
-        if (stillValidTarget(target))
+        if (validTarget(target))
           x
         else {
           unlock_!(m, target)
           None
         }
       case None =>
-        val newSuggestion = targets.get.iterator.filterNot(locked).toStream.headOption
+        val newSuggestion = targets.get
+                            .iterator
+                            .filterNot(locked)
+                            .filter(subAccept(m, _))
+                            .maxByOpt(subRate(m, _))
         newSuggestion.foreach { t =>
           lock_!(t, m)
         }
@@ -712,7 +741,7 @@ class NonConflictingTargets[T <: WrapsUnit : Manifest, M <: Mobile : Manifest](o
   private val targets = universe.oncePerTick {
     val on = if (own) ownUnits else enemies
     on.allByType[T].iterator
-    .filter(stillValidTarget)
+    .filter(validTarget)
     .map { e => e -> rateTarget(e) }
     .toVector
     .sortBy(_._2)

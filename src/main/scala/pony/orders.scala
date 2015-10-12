@@ -246,7 +246,7 @@ object Orders {
     }
 
     override def renderDebug(renderer: Renderer): Unit = {
-      renderer.indicateTarget(myUnit.currentPosition, fixWhat.currentPosition)
+      renderer.in_!(Color.Blue).indicateTarget(myUnit.currentPosition, fixWhat.currentPosition)
     }
   }
 
