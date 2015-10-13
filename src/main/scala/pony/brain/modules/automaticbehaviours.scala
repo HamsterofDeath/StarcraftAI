@@ -93,30 +93,50 @@ object Terran {
   }
 
   class FerryService(universe: Universe) extends DefaultBehaviour[TransporterUnit](universe) {
+
+    override def forceRepeatedCommands: Boolean = false
+
     override protected def lift(t: TransporterUnit): SingleUnitBehaviour[TransporterUnit] = new
         SingleUnitBehaviour[TransporterUnit](t, meta) {
 
+      override def forceRepeats: Boolean = true
+
+      override def blocksForTicks: Int = 24
+
       override def shortName: String = "T"
+
       override def toOrder(what: Objective): Seq[UnitOrder] = {
-        ferryManager.planFor(t).toList.flatMap { plan =>
-          if (plan.unloadedLeft) {
-            val loadThis = plan.toTransport
-                           .view
-                           .filterNot(_.loaded)
-                           .minBy(_.currentTile.distanceToSquared(t.currentTile))
-            Orders.LoadUnit(t, loadThis).toList
-          } else if (plan.needsToReachTarget) {
-            Orders.Move(plan.ferry, plan.toWhere).toList
-          } else if (plan.loadedLeft) {
-            Orders.UnloadAll(plan.ferry, plan.toWhere).forceRepeat_!(true).toList
-          } else if (!plan.orphaned) {
-            val nearestFree = mapLayers.reallyFreeBuildingTiles.nearestFree(plan.toWhere)
-            nearestFree.map { where =>
-              Orders.UnloadAll(plan.ferry, where).forceRepeat_!(true)
+        ferryManager.planFor(t) match {
+          case Some(plan) =>
+            plan.toDropNow.map { dropThis =>
+              Orders.UnloadUnit(t, dropThis)
+            }.orElse {
+              if (plan.unloadedLeft) {
+                val loadThis = plan.toTransport
+                               .view
+                               .filterNot(_.loaded)
+                               .minBy(_.currentTile.distanceToSquared(t.currentTile))
+                Orders.LoadUnit(t, loadThis).toSome
+              } else if (plan.needsToReachTarget) {
+                Orders.Move(plan.ferry, plan.toWhere).toSome
+              } else if (plan.loadedLeft) {
+                plan.nextToDropAtTarget.map { drop =>
+                  Orders.UnloadUnit(t, drop)
+                }
+              } else {
+                None
+              }
             }.toList
-          } else {
-            List.empty[UnitOrder]
-          }
+          case None =>
+            (if (t.hasUnitsLoaded) {
+              val nearestFree = mapLayers.reallyFreeBuildingTiles.nearestFree(t.currentTile)
+              nearestFree.map { where =>
+                Orders.UnloadAll(t, where).forceRepeat_!(true)
+              }
+            } else {
+              None
+            }).toList
+
         }
       }
     }
@@ -694,8 +714,10 @@ class NonConflictingTargets[T <: WrapsUnit : Manifest, M <: Mobile : Manifest](o
                                                                                own: Boolean) extends HasUniverse {
 
   universe.register_!(() => {
-    val remove2 = assignments.filterNot(_._1.isInGame)
-    remove2.foreach { case (k, v) => unlock_!(k, v) }
+    val noLongerValid = assignments.filter { case (m, t) =>
+      !m.isInGame || !validTarget(t)
+    }
+    noLongerValid.foreach { case (k, v) => unlock_!(k, v) }
   })
 
   def unlock_!(m: M, target: T) = {

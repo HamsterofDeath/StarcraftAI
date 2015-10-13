@@ -597,6 +597,11 @@ class Units(game: Game, hostile: Boolean) {
 class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitSet,
              protected val containsBlocked: Boolean = true) extends Serializable {
   self =>
+  def nearestFreeBlock(dropTarget: MapTilePosition, radius: Int) = {
+    spiralAround(dropTarget).find { center =>
+      free(Area(center.movedBy(-radius, -radius), center.movedBy(radius, radius)))
+    }
+  }
 
   def insideBounds(t: MapTilePosition) = {
     t.y >= 0 && t.x < cols && t.y >= 0 && t.y < rows

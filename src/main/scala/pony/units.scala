@@ -969,11 +969,15 @@ object WorkerUnit {
 }
 
 trait TransporterUnit extends AirUnit {
+  def loaded = carrying.get
+
   private val carrying = oncePerTick {
     nativeUnit.getLoadedUnits.asScala.flatMap { u =>
-      ownUnits.byNative(u)
-    }.toSeq
+      ownUnits.byNative(u).asInstanceOf[Option[GroundUnit]]
+    }.toSet
   }
+
+  def isCarrying(gu: GroundUnit) = carrying.get(gu)
 
   def hasUnitsLoaded = carrying.get.nonEmpty
 }

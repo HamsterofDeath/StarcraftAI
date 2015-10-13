@@ -15,7 +15,15 @@ class FerryManager(override val universe: Universe) extends HasUniverse {
     ferryPlans.find(_.ferry == ferry)
   }
 
-  def requestFerry(forWhat: GroundUnit, to: MapTilePosition, buildNewIfRequired: Boolean = false) = {
+  universe.register_!(() => {
+    ferryPlans.foreach(_.afterTick_!())
+  })
+
+  def requestFerry(forWhat: GroundUnit, dropTarget: MapTilePosition, buildNewIfRequired: Boolean = false) = {
+    val to = {
+      universe.mapLayers.reallyFreeBuildingTiles.nearestFreeBlock(dropTarget, 1)
+      .getOr(s"Could not find free spot of size 3*3 around $dropTarget. Anywhere. At all.")
+    }
     trace(s"Requested ferry for $forWhat to go to $to")
     val job = ferryPlans.find { plan =>
       def canAdd = {
@@ -31,7 +39,7 @@ class FerryManager(override val universe: Universe) extends HasUniverse {
         false
       }
     }.orElse(requestFerriesAddPlan_!(forWhat.toSet, to, buildNewIfRequired).headOption)
-    job.foreach(_.notifyRequested_!())
+    job.foreach(_.notifyRequested_!(forWhat))
     job
 
   }
@@ -102,32 +110,55 @@ object PlanIdCounter {
 
 class FerryPlan(val ferry: TransporterUnit, initial: Set[GroundUnit], val toWhere: MapTilePosition,
                 val targetArea: Option[Grid2D]) {
-  private val planId = PlanIdCounter.nextId()
+  private val currentPlannedCargo = collection.mutable.HashMap.empty ++= initial.map(e => e -> ferry.currentTick)
+  private val dropThese           = collection.mutable.HashSet.empty[GroundUnit]
+  private val planId              = PlanIdCounter.nextId()
+
+  def nextToDropAtTarget = {
+    ferry.loaded.minByOpt(_.unitId)
+  }
 
   def hasSpaceFor(forWhat: GroundUnit) = {
     takenSpace + forWhat.transportSize <= 8
   }
 
-  def takenSpace = currentToTransport.iterator.map(_.transportSize).sum
+  def takenSpace = currentPlannedCargo.keysIterator.map(_.transportSize).sum
 
-  private var lastRequest        = ferry.currentTick
-  private val currentToTransport = collection.mutable.HashSet.empty ++= initial
-
-  def notifyRequested_!(): Unit = {
-    lastRequest = ferry.currentTick
+  def notifyRequested_!(gu: GroundUnit): Unit = {
+    currentPlannedCargo.put(gu, ferry.currentTick)
   }
 
   def withMore_!(gu: GroundUnit) = {
     trace(s"Adding $gu to plan $planId")
-    currentToTransport += gu
+    notifyRequested_!(gu)
     this
   }
 
-  def orphaned = lastRequest + 48 < ferry.currentTick
+  def toTransport = currentPlannedCargo.keySet
 
-  def toTransport: collection.Set[GroundUnit] = currentToTransport
+  def afterTick_!(): Unit = {
+    val maxTick = currentPlannedCargo.valuesIterator.max
 
-  def unfinished = !orphaned || toTransport.exists { gu =>
+    val thoseChangedTheirMinds = currentPlannedCargo.iterator
+                                 .filter(_._2 < maxTick)
+                                 .map(_._1)
+
+
+    dropThese ++= thoseChangedTheirMinds
+
+    currentPlannedCargo --= dropThese
+
+    val loadedButNotPlanned = ferry.loaded.filterNot(currentPlannedCargo.keySet)
+    dropThese ++= loadedButNotPlanned
+
+    dropThese.retain(ferry.isCarrying)
+  }
+
+  def toDropNow = {
+    dropThese.headOption
+  }
+
+  def unfinished = toTransport.exists { gu =>
     gu.currentArea != targetArea || gu.loaded
   } || loadedLeft
 
@@ -138,7 +169,7 @@ class FerryPlan(val ferry: TransporterUnit, initial: Set[GroundUnit], val toWher
   def needsToReachTarget = ferry.currentArea != targetArea
 
   def covers(forWhat: GroundUnit) = {
-    currentToTransport(forWhat)
+    currentPlannedCargo.contains(forWhat)
   }
 
   def unloadedLeft = toTransport.exists { e =>

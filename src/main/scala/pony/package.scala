@@ -93,8 +93,14 @@ package object pony {
     }
   }
 
+  implicit class RichIterator[T](val i: Iterator[T]) extends AnyVal {
+    def nextOption() = {
+      if (i.hasNext) Some(i.next()) else None
+    }
+  }
+
   implicit class ToOneElemList[T](val t: T) extends AnyVal {
-    def toSome = Some(t)
+    def toSome: Option[T] = Some(t)
     def toSeq = Seq(t)
     def toSet = Set(t)
     def toGSet = collection.Set(t)

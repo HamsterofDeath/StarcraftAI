@@ -179,6 +179,12 @@ object Orders {
     }
   }
 
+  case class UnloadUnit(ferry: TransporterUnit, dropThis: GroundUnit) extends UnitOrder {
+    override def myUnit: WrapsUnit = ferry
+    override def issueOrderToGame(): Unit = ferry.nativeUnit.unload(dropThis.nativeUnit)
+    override def renderDebug(renderer: Renderer): Unit = {}
+  }
+
   case class UnloadAll(ferry: TransporterUnit, at: MapTilePosition) extends UnitOrder {
     override def myUnit: WrapsUnit = ferry
 
