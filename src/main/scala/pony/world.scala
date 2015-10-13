@@ -599,7 +599,7 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
   self =>
   def nearestFreeBlock(dropTarget: MapTilePosition, radius: Int) = {
     spiralAround(dropTarget).find { center =>
-      free(Area(center.movedBy(-radius, -radius), center.movedBy(radius, radius)))
+      containsAndFree(Area(center.movedBy(-radius, -radius), center.movedBy(radius, radius)))
     }
   }
 
@@ -626,6 +626,7 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
 
   private val lazyAreas = LazyVal.from {new AreaHelper(self).findFreeAreas}
   def free(a: Area): Boolean = a.tiles.forall(free)
+  def containsAndFree(a: Area): Boolean = a.tiles.forall(containsAndFree)
   def free(p: TilePosition): Boolean = free(p.getX, p.getY)
   def anyBlockedOnLine(center: MapTilePosition, from: HasXY, to: HasXY): Boolean = {
     val absoluteFrom = center.movedBy(from)

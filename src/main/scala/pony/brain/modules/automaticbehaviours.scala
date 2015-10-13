@@ -219,7 +219,7 @@ object Terran {
       validTarget = _.isDamaged,
       subAccept = (m, t) => m.currentArea == t.currentArea,
       subRate = (m, t) => PriorityChain(-m.currentTile.distanceToSquared(t.currentTile)),
-      own = true)
+      own = true, allowReplacements = true)
 
     override protected def lift(t: SCV): SingleUnitBehaviour[SCV] = new SingleUnitBehaviour[SCV](t, meta) {
       override def shortName: String = "R"
@@ -711,7 +711,9 @@ class NonConflictingTargets[T <: WrapsUnit : Manifest, M <: Mobile : Manifest](o
                                                                                validTarget: T => Boolean,
                                                                                subAccept: (M, T) => Boolean,
                                                                                subRate: (M, T) => PriorityChain,
-                                                                               own: Boolean) extends HasUniverse {
+                                                                               own: Boolean,
+                                                                               allowReplacements: Boolean)
+  extends HasUniverse {
 
   universe.register_!(() => {
     val noLongerValid = assignments.filter { case (m, t) =>
@@ -722,6 +724,7 @@ class NonConflictingTargets[T <: WrapsUnit : Manifest, M <: Mobile : Manifest](o
 
   def unlock_!(m: M, target: T) = {
     assignments.remove(m)
+    assignmentsReverse.remove(target)
     locks -= target
   }
 
@@ -740,15 +743,42 @@ class NonConflictingTargets[T <: WrapsUnit : Manifest, M <: Mobile : Manifest](o
                             .filterNot(locked)
                             .filter(subAccept(m, _))
                             .maxByOpt(subRate(m, _))
-        newSuggestion.foreach { t =>
-          lock_!(t, m)
+        newSuggestion match {
+          case Some(t) =>
+            lock_!(t, m)
+            newSuggestion
+          case None =>
+            if (allowReplacements) {
+              val bestToReplace =
+                locks
+                .iterator
+                .filter(subAccept(m, _))
+                .maxByOpt(subRate(m, _))
+
+              bestToReplace match {
+                case Some(maybeStealMe) =>
+                  val lockedOn = assignmentsReverse(maybeStealMe)
+                  val ord: Ordering[PriorityChain] = implicitly
+                  if (ord.lt(subRate(lockedOn, maybeStealMe), subRate(m, maybeStealMe))) {
+                    unlock_!(lockedOn, maybeStealMe)
+                    lock_!(maybeStealMe, m)
+                    Some(maybeStealMe)
+                  } else {
+                    None
+                  }
+                case None => None
+              }
+            } else {
+              None
+            }
+
         }
-        newSuggestion
     }
   }
 
-  private val locks       = mutable.HashSet.empty[T]
-  private val assignments = mutable.HashMap.empty[M, T]
+  private val locks              = mutable.HashSet.empty[T]
+  private val assignments        = mutable.HashMap.empty[M, T]
+  private val assignmentsReverse = mutable.HashMap.empty[T, M]
 
   private def locked(t: T) = locks(t)
   private def targetOf(m: M) = assignments(m)
@@ -757,6 +787,7 @@ class NonConflictingTargets[T <: WrapsUnit : Manifest, M <: Mobile : Manifest](o
     assert(!assignments.contains(m))
 
     assignments.put(m, t)
+    assignmentsReverse.put(t, m)
     locks += t
   }
 
