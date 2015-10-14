@@ -645,6 +645,7 @@ trait HasFunding {
       proofForFunding match {
         case suc: ResourceApprovalSuccess =>
           autoUnlocked = true
+          trace(s"Unlocking funds of $this")
           resources.unlock_!(suc)
           unlockedDebug = Thread.currentThread().getStackTrace
         case _ =>
@@ -853,7 +854,7 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, bu
       funding.sum
     } funding, but the resource manager only has\n ${resources.detailedLocks.mkString("\n")}\nlocked")
 
-  override protected def pointNearTarget = buildWhere
+  override protected def pointNearTarget = area.centerTile
   private var startedMovingToSite       = false
   private var startedActualConstruction = false
   private var finishedConstruction      = false
@@ -1041,8 +1042,16 @@ object PriorityChain {
   def apply(multiValues: Double*): PriorityChain = PriorityChain(multiValues.toVector)
 }
 
+object UnitRequest {
+  private var counter = 0
+  def nextId() = {
+    counter += 1
+  }
+}
+
 trait UnitRequest[T <: WrapsUnit] {
 
+  private val id                  = UnitRequest.nextId()
   private val onDisposeActions    = ArrayBuffer.empty[OnClearAction]
   private var picker              = Option.empty[UnitWithJob[T] => PriorityChain]
   private var filter              = Option.empty[T => Boolean]
@@ -1066,6 +1075,7 @@ trait UnitRequest[T <: WrapsUnit] {
   def acceptable(unit: T) = filter.map(_.apply(unit)).getOrElse(true)
   def clearable = autoCleanAfterTick
   def dispose(): Unit = {
+    trace(s"$debugString is being disposed of")
     onDisposeActions.foreach(_.onClear())
   }
   def doOnDispose_![X](u: => X) = {
@@ -1079,7 +1089,11 @@ trait UnitRequest[T <: WrapsUnit] {
   def persistant_!(): Unit = {
     autoCleanAfterTick = false
   }
+
+  def debugString = s"Req[$id]$this"
+
   def clearableInNextTick_!(): Unit = {
+    trace(s"$debugString will be cleared next tick")
     autoCleanAfterTick = true
   }
 

@@ -19,6 +19,10 @@ trait HasXY {
 
 }
 case class MapTilePosition(x: Int, y: Int) extends HasXY {
+  def middleBetween(center: MapTilePosition) = {
+    movedBy(center) / 2
+  }
+
   def isAtStorePosition = x >= 1000 && y >= 1000
 
   def diffTo(other: MapTilePosition) = {

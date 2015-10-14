@@ -21,8 +21,9 @@ class FerryManager(override val universe: Universe) extends HasUniverse {
 
   def requestFerry(forWhat: GroundUnit, dropTarget: MapTilePosition, buildNewIfRequired: Boolean = false) = {
     val to = {
-      universe.mapLayers.reallyFreeBuildingTiles.nearestFreeBlock(dropTarget, 1)
-      .getOr(s"Could not find free spot of size 3*3 around $dropTarget. Anywhere. At all.")
+      dropTarget
+      /*universe.mapLayers.reallyFreeBuildingTiles.nearestFreeBlock(dropTarget, 1)
+      .getOr(s"Could not find free spot of size 3*3 around $dropTarget. Anywhere. At all.")*/
     }
     trace(s"Requested ferry for $forWhat to go to $to")
     val job = ferryPlans.find { plan =>

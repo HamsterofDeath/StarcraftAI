@@ -15,14 +15,18 @@ class ProvideNewBuildings(universe: Universe)
     val helper = in.helper
     val job = {
       def newJob(where: MapTilePosition) =
-        new ConstructBuilding(in.worker, in.buildingType, self, where, in.jobRequest.proofForFunding.assumeSuccessful,
+        new ConstructBuilding(in.worker, in.buildingType, self, where,
+          in.jobRequest.proofForFunding.assumeSuccessful,
           in.jobRequest.belongsTo)
 
       val customPosition = in.jobRequest.customPosition.predefined
                            .orElse(in.jobRequest.customPosition.evaluateCostly)
                            .orElse(helper.findSpotFor(in.base.mainBuilding.tilePosition, in.buildingType))
+
+      customPosition.foreach(e => assert(mapLayers.rawWalkableMap.insideBounds(e)))
       customPosition.map(newJob)
     }
+
     job match {
       case None =>
         // TODO fix it if it ever happens
@@ -311,7 +315,7 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
         import States._
 
         override protected def pointNearTarget = {
-          targetPatch.tilePosition
+          targetPatch.tilePosition.middleBetween(base.mainBuilding.tilePosition)
         }
 
         private var state: State = Idle
@@ -487,8 +491,12 @@ class GatherGas(universe: Universe) extends OrderlessAIModule[WorkerUnit](univer
       extends UnitWithJob[WorkerUnit](self, worker, Priority.ConstructBuilding) with Interruptable[WorkerUnit] with
               FerrySupport[WorkerUnit] {
 
+      private val freeNearGeysir = {
+        mapLayers.rawWalkableMap.nearestFreeBlock(geysir.tilePosition, 1)
+      }
+
       override protected def pointNearTarget = {
-        geysir.tilePosition
+        freeNearGeysir.getOr(s"No free tile around $geysir")
       }
 
       private var state: State = Idle

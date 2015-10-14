@@ -233,6 +233,7 @@ trait AddonRequestHelper extends AIModule[CanBuildAddons] {
   private val helper = new HelperAIModule[WorkerUnit](universe) with BuildingRequestHelper
 
   def requestAddon[T <: Addon](addonType: Class[_ <: T], handleDependencies: Boolean = false): Unit = {
+    trace(s"Addon ${addonType.className} requested")
     val req = ResourceRequests.forUnit(universe.myRace, addonType, Priority.Addon)
     val result = resources.request(req, self)
     requestAddonIfResourcesProvided(addonType, handleDependencies, result)
@@ -241,6 +242,7 @@ trait AddonRequestHelper extends AIModule[CanBuildAddons] {
   def requestAddonIfResourcesProvided[T <: Addon](addonType: Class[_ <: T], handleDependencies: Boolean,
                                                   result: ResourceApproval): Unit = {
     result.ifSuccess { suc =>
+      trace(s"Addon ${addonType.className} requested using resources $suc")
       assert(resources.hasStillLocked(suc), s"This should never be called if $suc is no longer locked")
       val unitReq = UnitJobRequests.addonConstructor(self, addonType)
       trace(s"Financing possible for addon $addonType, requesting build")
@@ -249,8 +251,10 @@ trait AddonRequestHelper extends AIModule[CanBuildAddons] {
         result.notExistingMissingRequiments.foreach { what =>
           helper.requestBuilding(what, handleDependencies)
         }
+        trace(s"Requirement missing, unlocked resource for addon")
         resources.unlock_!(suc)
       } else if (!result.success) {
+        trace(s"Did not get builder for addon, unlocking resources")
         resources.unlock_!(suc)
       } else {
         result.ifOne { one =>
@@ -355,6 +359,7 @@ trait UnitRequestHelper extends AIModule[UnitFactory] {
       val result = unitManager.request(unitReq)
       if (result.hasAnyMissingRequirements) {
         // do not forget to unlock the resources again
+        trace(s"Requirement missing for $mobileType, unlocking resource")
         resources.unlock_!(suc)
       }
       if (takeCareOfDependencies) {
@@ -415,7 +420,7 @@ class ProvideSuggestedAndRequestedAddons(universe: Universe)
       requestAddon(what.addon, what.requestNewBuildings)
     }
 
-    val requested = unitManager.failedToProvideByType[Addon].collect {
+    val requested = unitManager.failedToProvideByType[Addon].iterator.collect {
       case attachIt: BuildUnitRequest[Addon]
         if attachIt.proofForFunding.isSuccess &&
            universe.resources.hasStillLocked(attachIt.funding) =>
@@ -432,6 +437,7 @@ class ProvideSuggestedAndRequestedAddons(universe: Universe)
 
       ok
     }.foreach { req =>
+      req.clearableInNextTick_!()
       requestAddonIfResourcesProvided(req.typeOfRequestedUnit, handleDependencies = false, req.proofForFunding)
     }
 
@@ -646,7 +652,7 @@ object Strategy {
     }
     protected def expandNow = {
       val (poor, rich) = bases.myMineralFields.partition(_.remainingPercentage < expansionThreshold)
-      poor.size > rich.size && rich.size <= 3
+      poor.size >= rich.size && rich.size <= 3
     }
     protected def expansionThreshold = 0.5
   }
