@@ -54,6 +54,7 @@ class StrategicMap(val resources: Seq[ResourceArea], walkable: Grid2D, game: Gam
       val blocked = walkable.mutableCopy
       val pf = PathFinder.on(walkable)
       val outsidePoints = walkable.spiralAround(chokePoint.center, 20)
+                          .filter(blocked.free)
                           .filter(valid)
                           .filter { e =>
                             val solution = pf.findPathNow(e, chokePoint.center)
