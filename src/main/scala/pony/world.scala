@@ -619,7 +619,7 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
   def blockedMutableCopy = new MutableGrid2D(cols, rows, mutable.BitSet.empty, false)
 
   def spiralAround(center: MapTilePosition, size: Int = 45) = new GeometryHelpers(cols, rows)
-                                                              .blockSpiralClockWise(center, size)
+                                                              .iterateBlockSpiralClockWise(center, size)
 
   def asReadOnlyCopyIfMutable = this
 

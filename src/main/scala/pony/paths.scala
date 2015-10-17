@@ -635,7 +635,7 @@ class ConstructionSiteFinder(universe: Universe) {
     new SubFinder {
       override def find: Option[MapTilePosition] = {
         // background
-        val possible = helper.blockSpiralClockWise(resources.center, 25)
+        val possible = helper.iterateBlockSpiralClockWise(resources.center, 25)
                        .filter { candidate =>
                          def correctArea = {
                            val area = Area(candidate, size)
@@ -682,7 +682,7 @@ class ConstructionSiteFinder(universe: Universe) {
         withStreets.block_!(Line(near.movedBy(-20, 20), near.movedBy(20, -20)))
     */
 
-    helper.blockSpiralClockWise(near).find { upperLeft =>
+    helper.iterateBlockSpiralClockWise(near).find { upperLeft =>
       val area = Area(upperLeft, necessarySize)
       val addonArea = necessarySizeAddon.map(Area(area.lowerRight.movedBy(1, -1), _))
       def containsArea = freeToBuildOn.includes(area) && addonArea.map(freeToBuildOn.includes).getOrElse(true)

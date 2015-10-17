@@ -555,7 +555,6 @@ trait Mobile extends WrapsUnit with Controllable {
     mapLayers.rawWalkableMap.areaWhichContainsAsFree(currentTile).orElse {
       mapLayers.rawWalkableMap
       .spiralAround(currentTile, 2)
-      .view
       .map(mapLayers.rawWalkableMap.areaWhichContainsAsFree)
       .find(_.isDefined)
       .map(_.get)

@@ -200,42 +200,44 @@ case class MapPosition(x: Int, y: Int) extends HasXY {
 
 class GeometryHelpers(maxX: Int, maxY: Int) {
 
+  def iterateBlockSpiralClockWise(origin: MapTilePosition, blockSize: Int = 45) = {
+    class MutableXY {
+      private var turns                       = 0
+      private var remainingInCurrentDirection = 1
+      private var myX                         = origin.x
+      private var myY                         = origin.y
+
+      def next_!(): MutableXY = {
+        if (remainingInCurrentDirection > 0) {
+          remainingInCurrentDirection -= 1
+          if (remainingInCurrentDirection == 0) {
+            turns += 1
+            remainingInCurrentDirection = if (turns % 2 == 0) turns / 2 else (turns + 1) / 2
+          }
+        }
+        (turns - 1) % 4 match {
+          case 0 => myX += 1
+          case 1 => myY += 1
+          case 2 => myX -= 1
+          case 3 => myY -= 1
+        }
+        this
+      }
+
+      def x = myX
+      def y = myY
+    }
+
+    Iterator.iterate(new MutableXY)(_.next_!())
+    .take(blockSize * blockSize)
+    .filter(e => e.x >= 0 && e.x < maxX && e.y >= 0 && e.y < maxY)
+    .map(mut => MapTilePosition.shared(mut.x, mut.y))
+  }
+
   def blockSpiralClockWise(origin: MapTilePosition, blockSize: Int = 45): Traversable[MapTilePosition] = new
       Traversable[MapTilePosition] {
     override def foreach[U](f: (MapTilePosition) => U): Unit = {
-      val directions = {
-        class MutableXY {
-          private var turns                       = 0
-          private var remainingInCurrentDirection = 1
-          private var myX                         = origin.x
-          private var myY                         = origin.y
-
-          def next_!(): MutableXY = {
-            if (remainingInCurrentDirection > 0) {
-              remainingInCurrentDirection -= 1
-              if (remainingInCurrentDirection == 0) {
-                turns += 1
-                remainingInCurrentDirection = if (turns % 2 == 0) turns / 2 else (turns + 1) / 2
-              }
-            }
-            (turns - 1) % 4 match {
-              case 0 => myX += 1
-              case 1 => myY += 1
-              case 2 => myX -= 1
-              case 3 => myY -= 1
-            }
-            this
-          }
-
-          def x = myX
-          def y = myY
-        }
-
-        Iterator.iterate(new MutableXY)(_.next_!())
-        .take(blockSize * blockSize)
-        .filter(e => e.x >= 0 && e.x < maxX && e.y >= 0 && e.y < maxY)
-        .foreach(e => f(MapTilePosition.shared(e.x, e.y)))
-      }
+      iterateBlockSpiralClockWise(origin, blockSize).foreach(e => f(MapTilePosition.shared(e.x, e.y)))
     }
   }
 }

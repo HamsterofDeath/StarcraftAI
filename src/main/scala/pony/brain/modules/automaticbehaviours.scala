@@ -13,7 +13,6 @@ abstract class DefaultBehaviour[T <: Mobile : Manifest](override val universe: U
   private val unit2behaviour  = mutable.HashMap.empty[T, SingleUnitBehaviour[T]]
   private val controlledUnits = mutable.HashSet.empty[T]
 
-
   override def onTick(): Unit = {
     super.onTick()
     val remove = controlledUnits.filterNot(_.isInGame)
@@ -21,7 +20,6 @@ abstract class DefaultBehaviour[T <: Mobile : Manifest](override val universe: U
     unit2behaviour --= remove
 
   }
-
 
   def forceRepeatedCommands = false
 
@@ -190,9 +188,21 @@ object Terran {
                 ySum += diff.y
               }
               val ref = t.currentTile.movedBy(MapTilePosition(xSum, ySum))
-              val whereToGo = on.spiralAround(t.currentTile, 8).drop(36).filter { c =>
-                c.distanceToSquared(ref) <= t.currentTile.distanceToSquared(ref)
-              }.find {on.free}
+              val whereToGo = {
+                on.spiralAround(t.currentTile, 8).slice(36, 186).filter { c =>
+                  c.distanceToSquared(ref) <= t.currentTile.distanceToSquared(ref)
+                }.find {on.free}
+                .orElse {
+                  // escape from dire situations by slipping through
+                  on.spiralAround(t.currentTile, 8).slice(36, 186)
+                  .filter(mapLayers.reallyFreeBuildingTiles.free)
+                  .filter(mapLayers.reallyFreeBuildingTiles.areInSameWalkableArea(_, t.currentTile))
+                  .maxByOpt { candidate => {
+                    dancePartners.map(_.currentTile.distanceToSquared(candidate)).sum
+                  }
+                  }
+                }
+              }
 
               whereToGo.map { where =>
                 Fallback(where, universe.currentTick) -> Orders.Move(t, where).toList
@@ -432,7 +442,7 @@ object Terran {
                 inBattle = true
                 // drop mines on sight of enemy
                 val on = freeArea
-                val freeTarget = on.spiralAround(t.currentTile).view.filter(on.free).maxByOpt { where =>
+                val freeTarget = on.spiralAround(t.currentTile).filter(on.free).maxByOpt { where =>
                   def ownUnitsCost = {
                     universe.unitGrid.allInRangeOf[GroundUnit](where, 5, friendly = true)
                     .view
