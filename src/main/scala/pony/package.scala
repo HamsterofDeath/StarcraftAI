@@ -8,6 +8,8 @@ import scala.collection.mutable
  * Created by HoD on 01.08.2015.
  */
 package object pony {
+  val memoryHog = false
+
   setTinyLogLevel_!(Level.TRACE)
 
   def setTinyLogLevel_!(newLevel: Level) = {

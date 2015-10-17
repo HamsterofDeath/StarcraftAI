@@ -412,7 +412,7 @@ abstract class OnKillListener[T <: WrapsUnit](val unit: T) {
 }
 
 class Units(game: Game, hostile: Boolean) {
-  def byNative(nativeUnit: bwapi.Unit) = byId(nativeUnit.getID)
+  def byNative(nativeUnit: bwapi.Unit) = if (nativeUnit == null) None else byId(nativeUnit.getID)
 
   def byId(id: Int) = knownUnits.get(id)
   def byIdExpectExisting(id: Int) = knownUnits(id)

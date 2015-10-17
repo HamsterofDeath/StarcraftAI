@@ -13,12 +13,15 @@ abstract class DefaultBehaviour[T <: Mobile : Manifest](override val universe: U
   private val unit2behaviour  = mutable.HashMap.empty[T, SingleUnitBehaviour[T]]
   private val controlledUnits = mutable.HashSet.empty[T]
 
+
   override def onTick(): Unit = {
     super.onTick()
     val remove = controlledUnits.filterNot(_.isInGame)
     controlledUnits --= remove
     unit2behaviour --= remove
+
   }
+
 
   def forceRepeatedCommands = false
 
@@ -133,7 +136,10 @@ object Terran {
               nearestFree.map { where =>
                 Orders.UnloadAll(t, where).forceRepeat_!(true)
               }
-            } else {
+            } else if (t.isPickingUp) {
+              Some(Orders.Stop(t))
+            }
+            else {
               None
             }).toList
 
@@ -166,10 +172,11 @@ object Terran {
             val coolingDown = !t.isReadyToFireWeapon
             lazy val dancePartners = {
               val allEnemies = universe.unitGrid.allInRangeOf[Mobile](t.currentTile, t.weaponRangeRadius / 32,
-              friendly = false)
+                friendly = false)
               allEnemies
               .collect { case enemy: Weapon if enemy.initialNativeType.topSpeed <= t.initialNativeType.topSpeed &&
-                                               enemy.weaponRangeRadius <= t.weaponRangeRadius =>
+                                               enemy.weaponRangeRadius <= t.weaponRangeRadius &&
+                                               t.canAttack(enemy) =>
                 enemy
               }
             }
@@ -702,7 +709,7 @@ object NonConflictingSpellTargets {
     new NonConflictingSpellTargets(spell, {
       case x: M if spell.canBeCastOn(x) & spell.shouldActivateOn(x) => x
     },
-    spell.isAffected, universe)
+      spell.isAffected, universe)
   }
 }
 

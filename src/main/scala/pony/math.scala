@@ -53,31 +53,46 @@ case class MapTilePosition(x: Int, y: Int) extends HasXY {
 }
 object MapTilePosition {
   val max          = 256 * 4
-  val points       = Array.tabulate(max * 2, max * 2)((x, y) => MapTilePosition(x - max, y - max))
-  val nativePoints = Array.tabulate(max * 2, max * 2)((x, y) => new Position(x - max, y - max))
+  val points       = if (memoryHog) {
+    Array.tabulate(max * 2, max * 2)((x, y) => MapTilePosition(x - max, y - max))
+  } else {Array.empty[Array[MapTilePosition]]}
+  val nativePoints = if (memoryHog) {
+    Array.tabulate(max * 2, max * 2)((x, y) => new Position(x - max, y - max))
+  } else {Array.empty[Array[Position]]}
   private val strange       = new ConcurrentHashMap[(Int, Int), MapTilePosition]
   private val nativeStrange = new ConcurrentHashMap[(Int, Int), Position]
 
   private val computer       = new Function[(Int, Int), MapTilePosition] {
     override def apply(t: (Int, Int)) = MapTilePosition(t._1, t._2)
   }
+
   private val nativeComputer = new Function[(Int, Int), Position] {
     override def apply(t: (Int, Int)) = new Position(t._1, t._2)
   }
   def shared(xy: (Int, Int)): MapTilePosition = shared(xy._1, xy._2)
+
   def shared(x: Int, y: Int): MapTilePosition =
-    if (inRange(x, y))
-      points(x + max)(y + max)
-    else {
-      strange.computeIfAbsent((x, y), computer)
+    if (memoryHog) {
+      if (inRange(x, y))
+        points(x + max)(y + max)
+      else {
+        strange.computeIfAbsent((x, y), computer)
+      }
+    } else {
+      MapTilePosition(x, y)
     }
+
   private def inRange(x: Int, y: Int) = x > -max && y > -max && x < max && y < max
   def nativeShared(xy: (Int, Int)): Position = nativeShared(xy._1, xy._2)
   def nativeShared(x: Int, y: Int): Position =
-    if (inRange(x, y))
-      nativePoints(x + max)(y + max)
-    else {
-      nativeStrange.computeIfAbsent((x, y), nativeComputer)
+    if (memoryHog) {
+      if (inRange(x, y))
+        nativePoints(x + max)(y + max)
+      else {
+        nativeStrange.computeIfAbsent((x, y), nativeComputer)
+      }
+    } else {
+      new Position(x, y)
     }
 
   val zero = MapTilePosition.shared(0, 0)
@@ -95,8 +110,8 @@ case class Size(x: Int, y: Int) extends HasXY {
 }
 
 object Size {
-  val sizes = Array.tabulate(20, 20)((x, y) => Size(x, y))
-  def shared(x: Int, y: Int) = sizes(x)(y)
+  val sizes = if (memoryHog) {Array.tabulate(20, 20)((x, y) => Size(x, y))} else {Array.empty[Array[Size]]}
+  def shared(x: Int, y: Int) = if (memoryHog) {sizes(x)(y)} else {Size(x, y)}
 }
 
 case class Line(a: MapTilePosition, b: MapTilePosition) {

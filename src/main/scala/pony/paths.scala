@@ -6,6 +6,7 @@ import pony.brain.{Base, HasUniverse, Universe}
 import scala.collection.JavaConverters._
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
+import scala.language.implicitConversions
 
 class MigrationPath(follow: Paths) {
   def allReachedDestination = remaining.nonEmpty && remaining.iterator.filter(_._1.isInGame).forall(_._2.isEmpty)

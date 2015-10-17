@@ -18,7 +18,7 @@ abstract class AnyUnit(val nativeUnit: APIUnit) extends WrapsUnit with NiceToStr
 
 trait OrderHistorySupport extends WrapsUnit {
   private val history    = ListBuffer.empty[HistoryElement]
-  private val maxHistory = 1000
+  private val maxHistory = if (memoryHog) 1000 else 2
   def trackOrder(order: UnitOrder): Unit = {
     history.lastOption.foreach(_.trackOrder_!(order))
   }
@@ -45,6 +45,8 @@ trait OrderHistorySupport extends WrapsUnit {
 }
 
 trait WrapsUnit extends HasUniverse with HasLazyVals with AfterTickListener {
+
+  def hasSpells = false
 
   private var inGame = true
 
@@ -468,8 +470,7 @@ trait MaybeCanDie extends WrapsUnit {
 
   def isDamaged = isInGame && (hitPoints.shield < maxShields || hitPoints.hitpoints < maxHp) && !isBeingCreated
 
-
-  def isHarmlessNow = isIncapacitated || !canDoDamage
+  def isHarmlessNow = isIncapacitated || (!canDoDamage && !hasSpells)
 
   private var lastFrameHp = HitPoints(-1, -1) // obviously wrong, but that doesn't matter
 
@@ -545,6 +546,7 @@ trait AutoPilot extends Mobile {
 }
 
 trait Mobile extends WrapsUnit with Controllable {
+
   val buildPrice = Price(nativeUnit.getType.mineralPrice(), nativeUnit.getType.gasPrice())
 
   def currentArea = myCurrentArea.get
@@ -969,6 +971,12 @@ object WorkerUnit {
 }
 
 trait TransporterUnit extends AirUnit {
+  def isPickingUp = myPickingUp.get
+
+  private val myPickingUp = oncePerTick {
+    nativeUnit.getOrderTarget != null
+  }
+
   def loaded = carrying.get
 
   private val carrying = oncePerTick {
@@ -1207,6 +1215,7 @@ trait HasMana extends WrapsUnit {
 }
 
 trait HasSingleTargetSpells extends Mobile with HasMana {
+  override def hasSpells = true
   type CasterType <: HasSingleTargetSpells
   val spells: Seq[SingleTargetSpell[CasterType, _]]
   private   var lastCast = -9999
@@ -1227,6 +1236,9 @@ trait HasSingleTargetSpells extends Mobile with HasMana {
 }
 
 trait HasSinglePointMagicSpell extends Mobile {
+
+  override def hasSpells = true
+
   type Caster <: HasSinglePointMagicSpell
 
   private   var lastCast = -9999
