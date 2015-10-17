@@ -38,6 +38,7 @@ class StrategicMap(val resources: Seq[ResourceArea], walkable: Grid2D, game: Gam
                        defended: Grid2D,
                        outerTerritory: Grid2D,
                        distanceBetweenTiles: Int) {
+    def center = chokePoint.center
 
     def isDefenseLine = outerTerritory.freeCount > defended.freeCount
 
@@ -51,8 +52,13 @@ class StrategicMap(val resources: Seq[ResourceArea], walkable: Grid2D, game: Gam
 
     private def evalScatteredPoints(valid: MapTilePosition => Boolean) = {
       val blocked = walkable.mutableCopy
+      val pf = PathFinder.on(walkable)
       val outsidePoints = walkable.spiralAround(chokePoint.center, 20)
                           .filter(valid)
+                          .filter { e =>
+                            val solution = pf.findPathNow(e, chokePoint.center)
+                            solution.isPerfectSolution && solution.length <= 20
+                          }
       val mineTiles = ArrayBuffer.empty[MapTilePosition]
       outsidePoints.foreach { p =>
         if (blocked.free(p)) {

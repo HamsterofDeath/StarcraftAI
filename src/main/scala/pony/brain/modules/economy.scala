@@ -72,7 +72,7 @@ class ProvideNewBuildings(universe: Universe)
     }
 
     anyOfThese.flatMap { req =>
-      val request = UnitJobRequests.constructor(self)
+      val request = UnitJobRequest.constructor(self)
       unitManager.request(request) match {
         case success: ExactlyOneSuccess[WorkerUnit] =>
           req.customPosition.init_!()
@@ -135,7 +135,7 @@ class ProvideNewSupply(universe: Universe) extends OrderlessAIModule[WorkerUnit]
       val result = resources.request(ResourceRequests.forUnit(race, classOf[SupplyProvider], Priority.Supply), this)
       result.ifSuccess { suc =>
         trace(s"More supply approved! $suc, requesting ${race.supplyClass.className}")
-        val ofType = UnitJobRequests
+        val ofType = UnitJobRequest
                      .newOfType(universe, supplyEmployer, classOf[SupplyProvider], suc, priority = Priority.Supply)
 
         // this will always be unfulfilled
@@ -162,7 +162,7 @@ class ProvideNewUnits(universe: Universe) extends OrderlessAIModule[UnitFactory]
         val typeFixed = wantedType.asInstanceOf[Class[Mobile]]
         val wantedAmount = req.amount
         1 to wantedAmount flatMap { _ =>
-          val builderOf = UnitJobRequests.builderOf(typeFixed, self)
+          val builderOf = UnitJobRequest.builderOf(typeFixed, self)
           unitManager.request(builderOf) match {
             case any: ExactlyOneSuccess[UnitFactory] =>
               val producer = any
@@ -171,8 +171,16 @@ class ProvideNewUnits(universe: Universe) extends OrderlessAIModule[UnitFactory]
                   req.clearableInNextTick_!()
                   Nil
                 case _ =>
-                  resources.request(ResourceRequests.forUnit(universe.myRace, typeFixed, req.priority), self) match {
+                  val res = req match {
+                    case hf: HasFunding if resources.hasStillLocked(hf.proofForFunding) => hf.proofForFunding
+                    case _ => resources
+                              .request(ResourceRequests.forUnit(universe.myRace, typeFixed, req.priority), self)
+                  }
+                  res match {
                     case suc: ResourceApprovalSuccess =>
+                      // job will take care of resource disposal
+                      req.keepResourcesLocked_!()
+                      req.clearableInNextTick_!()
                       val order = new TrainUnit(any.onlyOne, typeFixed, self, suc)
                       assignJob_!(order)
                       Nil
@@ -253,7 +261,7 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
       Micro.MiningOrganization.onTick()
       val missing = idealNumberOfWorkers - teamSize
       if (missing > 0) {
-        val result = universe.unitManager.request(UnitJobRequests.idleOfType(emp, classOf[WorkerUnit], missing))
+        val result = universe.unitManager.request(UnitJobRequest.idleOfType(emp, classOf[WorkerUnit], missing))
         val jobs = result.units.flatMap { worker =>
           Micro.MiningOrganization.findBestPatch(worker).map { patch =>
             info(s"Added $worker to mining team of $patch")
@@ -477,7 +485,7 @@ class GatherGas(universe: Universe) extends OrderlessAIModule[WorkerUnit](univer
           }
         case Some(ref) =>
           val missing = idealWorkerCount - teamSize
-          val ofType = UnitJobRequests.idleOfType(self, classOf[WorkerUnit], missing, Priority.CollectGas)
+          val ofType = UnitJobRequest.idleOfType(self, classOf[WorkerUnit], missing, Priority.CollectGas)
                        .acceptOnly_!(_.isCarryingNothing)
           val result = unitManager.request(ofType)
           result.units.foreach { freeWorker =>

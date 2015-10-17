@@ -9,6 +9,7 @@ import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, Future}
 
 trait HasUniverse {
+  def pathFinder = universe.pathFinder
   def ferryManager = universe.ferryManager
   def upgrades = universe.upgrades
   def time = universe.time

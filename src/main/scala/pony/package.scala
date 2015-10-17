@@ -28,6 +28,8 @@ package object pony {
     }
   }
 
+  type MultiMap[K, V] = mutable.HashMap[K, mutable.Set[V]]
+
   def multiMap[K, V] = new mutable.HashMap[K, mutable.Set[V]] with mutable.MultiMap[K, V] with MMToImmutable[K, V]
   type SCUnitType = Class[_ <: WrapsUnit]
   val tileSize  = 32

@@ -11,7 +11,7 @@ import scala.collection.mutable.{ArrayBuffer, ListBuffer}
 class UnitManager(override val universe: Universe) extends HasUniverse {
   def employerOf(unit: WrapsUnit) = {
     assignments.get(unit).flatMap { job =>
-      byEmployer.find { e =>
+      allJobs.allFlat.find { e =>
         val jobsOfEmployer = e._2
         jobsOfEmployer.contains(job)
       }
@@ -20,10 +20,92 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
 
   def hasJob(support: OrderHistorySupport) = assignments.contains(support)
 
+  case class JobIndex[T <: WrapsUnit](e: Employer[T], c: Class[_ <: T]) {
+    def fitsTo[X <: WrapsUnit](e: Employer[X], u: X) = this.e == e && c.isInstance(u)
+    def fitsTo[X <: WrapsUnit](j: UnitWithJob[X]) = e == j.employer && c.isInstance(j.unit)
+  }
+
+  class JobsInTree {
+    def allNotOfEmployer[T <: WrapsUnit](employer: Employer[T]) = {
+      allFlat.filter(_._1 != employer).flatMap(_._2)
+    }
+
+    def allOfEmployer[T <: WrapsUnit](e: Employer[T]) = {
+      allFlat.getOrElse(e, Set.empty).asInstanceOf[collection.Set[UnitWithJob[T]]]
+    }
+
+    def jobsOf[T <: WrapsUnit](employer: Employer[T], unitType: Class[_ <: T]) = {
+      val key = JobIndex(employer, unitType)
+
+      val node = getTyped[T](key)
+
+      if (!indexBy(key)) {
+        indexBy += key
+        allOfEmployer(employer)
+        .filter(e => unitType.isInstance(e.unit))
+        .foreach { j =>
+          node.add(j)
+        }
+      }
+
+      node.all
+    }
+
+    def addBinding[T <: WrapsUnit](employer: Employer[T], newJob: UnitWithJob[T]): Unit = {
+      flat.addBinding(employer, newJob)
+      indexBy.iterator.filter(_.fitsTo(employer, newJob.unit)).foreach { c =>
+        val node = getTyped[T](c)
+        node.add(newJob)
+      }
+    }
+
+    def findEmployerBy[T <: WrapsUnit](oldJob: UnitWithJob[T]) = {
+      flat.find(_._2(oldJob)).map(_._1.asInstanceOf[Employer[T]])
+    }
+
+    def removeBinding[T <: WrapsUnit](job: UnitWithJob[T]) = {
+      flat.removeBinding(job.employer, job)
+      indexBy.iterator.filter(_.fitsTo(job)).foreach { c =>
+        val node = getTyped[T](c)
+        node.remove(job)
+      }
+    }
+
+    def getTyped[T <: WrapsUnit](c: JobIndex[_ <: WrapsUnit]): JobsByClass[T] = {
+      byEmployer.getOrElseUpdate(c, new JobsByClass[T]).asInstanceOf[JobsByClass[T]]
+    }
+
+    def employers = flat.keySet
+
+    def allFlat = flat
+
+    private val flat = multiMap[Employer[_ <: WrapsUnit], UnitWithJob[_ <: WrapsUnit]]
+
+    private val indexBy = mutable.HashSet.empty[JobIndex[_ <: WrapsUnit]]
+
+    class JobsByClass[T <: WrapsUnit] {
+      def all = jobs
+
+      def add(newJob: UnitWithJob[T]) = {
+        assert(!jobs(newJob))
+        jobs += newJob
+      }
+
+      def remove(unit: UnitWithJob[T]) = {
+        assert(jobs(unit))
+        jobs -= unit
+      }
+
+      private val jobs = mutable.HashSet.empty[UnitWithJob[T]]
+    }
+
+    private val byEmployer = mutable.HashMap.empty[JobIndex[_ <: WrapsUnit], JobsByClass[_ <: WrapsUnit]]
+  }
+
   private val reorganizeJobQueue          = ListBuffer.empty[CanAcceptUnitSwitch[_ <: WrapsUnit]]
-  private val unfulfilledRequestsThisTick = ArrayBuffer.empty[UnitJobRequests[_ <: WrapsUnit]]
+  private val unfulfilledRequestsThisTick = ArrayBuffer.empty[UnitJobRequest[_ <: WrapsUnit]]
   private val assignments                 = mutable.HashMap.empty[WrapsUnit, UnitWithJob[_ <: WrapsUnit]]
-  private val byEmployer                  = multiMap[Employer[_ <: WrapsUnit], UnitWithJob[_ <: WrapsUnit]]
+  private val allJobs                     = new JobsInTree
   private var unfulfilledRequestsLastTick = unfulfilledRequestsThisTick.toVector
   def allIdleMobiles = allJobsByType[BusyDoingNothing[Mobile]].filter(_.unit.isInstanceOf[Mobile])
   def allJobsByType[T <: UnitWithJob[_] : Manifest] = {
@@ -38,7 +120,7 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
     plannedToBuild.exists(e => c.isAssignableFrom(e.typeOfRequestedUnit)) ||
     plannedToTrain.exists(e => c.isAssignableFrom(e.typeOfRequestedUnit))
   }
-  def plannedToTrain = allUnfulfilled.flatMap(_.requests)
+  def plannedToTrain = allUnfulfilled.iterator.map(_.request)
                        .collect { case t: BuildUnitRequest[_] if t.isMobile => t }
   def existsAndDone(c: Class[_ <: WrapsUnit]) = {
     ownUnits.existsComplete(c)
@@ -56,7 +138,7 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
   }
   def plannedToBuild(c: Class[_ <: Building]): Boolean = plannedToBuild
                                                          .exists(e => c.isAssignableFrom(e.typeOfRequestedUnit))
-  def plannedToBuild = allUnfulfilled.flatMap(_.requests)
+  def plannedToBuild = allUnfulfilled.map(_.request)
                        .collect { case b: BuildUnitRequest[_] if b.isBuilding => b }
   private def allUnfulfilled = unfulfilledRequestsLastTick.toSet ++ unfulfilledRequestsThisTick.toSet
   def plannedToBuildByType[T <: Building : Manifest]: Int = {
@@ -71,7 +153,7 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
     unfulfilledByTargetType(typeOfFactory)
   }
   private def unfulfilledByTargetType[T <: WrapsUnit](targetType: Class[_ <: T]) = {
-    allUnfulfilled.flatMap(_.requests).iterator.collect {
+    allUnfulfilled.iterator.map(_.request).collect {
       case b: BuildUnitRequest[_] if b.typeOfRequestedUnit == targetType => b
     }
   }
@@ -91,19 +173,19 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
   }
   def unitsByType[T <: WrapsUnit](typeOfFactory: Class[_ <: T]): collection.Set[T] = {
     assignments.keySet.collect {
-      case elem: WrapsUnit if typeOfFactory.isAssignableFrom(elem.getClass) => elem.asInstanceOf[T]
+      case elem: WrapsUnit if typeOfFactory.isInstance(elem) => elem.asInstanceOf[T]
     }
   }
   def jobsByType = assignments.values.toSeq.groupBy(_.getClass)
-  def jobsOf[T <: WrapsUnit](emp: Employer[T]) = byEmployer.getOrElse(emp, Set.empty)
+  def jobsOf[T <: WrapsUnit](emp: Employer[T]) = allJobs.allFlat.getOrElse(emp, Set.empty)
                                                  .asInstanceOf[collection.Set[UnitWithJob[T]]]
   def jobByUnitIdString(str: String) = assignments.find(_._1.unitIdText == str).map(_._2)
-  def employers = byEmployer.keySet
+  def employers = allJobs.employers
   def plannedSupplyAdditions = {
     val byJob = allJobsByType[ConstructBuilding[WorkerUnit, Building]].collect {
       case cr: ConstructBuilding[WorkerUnit, Building] => cr.typeOfBuilding.toUnitType.supplyProvided()
     }.sum
-    val byUnfulfilledRequest = allUnfulfilled.flatMap(_.requests).collect {
+    val byUnfulfilledRequest = allUnfulfilled.map(_.request).collect {
       case b: BuildUnitRequest[_] => b.typeOfRequestedUnit.toUnitType.supplyProvided()
     }.sum
     byJob + byUnfulfilledRequest
@@ -112,7 +194,7 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
   def selectJobs[U <: WrapsUnit : Manifest, T <: UnitWithJob[U] : Manifest](f: T => Boolean) = {
     val wanted = manifest[U].runtimeClass
     assignments.valuesIterator.filter { job =>
-      wanted.isAssignableFrom(job.unit.getClass) && f(job.asInstanceOf[T])
+      wanted.isInstance(job.unit) && f(job.asInstanceOf[T])
     }.map {_.asInstanceOf[T]}.toVector
   }
   def failedToProvideByType[T <: WrapsUnit : Manifest] = {
@@ -121,7 +203,7 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
       case req: UnitRequest[_] if c.isAssignableFrom(req.typeOfRequestedUnit) => req.asInstanceOf[UnitRequest[T]]
     }
   }
-  def failedToProvideFlat = failedToProvide.flatMap(_.requests)
+  def failedToProvideFlat = failedToProvide.map(_.request)
   def failedToProvide = unfulfilledRequestsLastTick.toSeq
   def jobOf[T <: WrapsUnit](unit: T) = assignments(unit).asInstanceOf[UnitWithJob[T]]
   def tick(): Unit = {
@@ -167,10 +249,10 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
           assignJob_!(newJob)
         case cd: MaybeCanDie if cd.isDead =>
           assignments.remove(cd)
-          byEmployer.removeBinding(job.employer, job)
+          allJobs.removeBinding(job)
         case res: MineralPatch =>
           assignments.remove(res)
-          byEmployer.removeBinding(job.employer, job)
+          allJobs.removeBinding(job)
         case _ =>
       }
       job.onFinishOrFail()
@@ -209,18 +291,19 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
     assignments.get(newUnit).foreach { oldJob =>
       assert(oldJob.unit eq newUnit, s"${oldJob.unit} is not $newUnit")
       oldJob.onStealUnit()
-      val oldAssignment = byEmployer.find(_._2(oldJob))
+      val oldAssignment = allJobs.findEmployerBy(oldJob)
       assert(oldAssignment.isDefined)
-      oldAssignment.foreach { case (oldEmployer, _) =>
+      oldAssignment.foreach { oldEmployer =>
         trace(s"Old job assignment was: $oldJob, employed by $oldEmployer")
-        byEmployer.removeBinding(oldEmployer, oldJob)
+        assert(oldEmployer == oldJob.employer)
+        allJobs.removeBinding(oldJob)
         val oldEmployerTyped = oldEmployer.asInstanceOf[Employer[T]]
         oldEmployerTyped.hiredBySomeoneMoreImportant_!(newUnit)
       }
     }
 
     assignments.put(newUnit, newJob)
-    byEmployer.addBinding(employer, newJob)
+    allJobs.addBinding(employer, newJob)
   }
 
   def allRequirementsFulfilled[T <: WrapsUnit](c: Class[_ <: T]) = {
@@ -253,8 +336,8 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
     (m.toSet, i.toSet)
   }
 
-  def request[T <: WrapsUnit : Manifest](req: UnitJobRequests[T], buildIfNoneAvailable: Boolean = true) = {
-    trace(s"${req.employer} requested ${req.requests.mkString(" and ")}")
+  def request[T <: WrapsUnit : Manifest](req: UnitJobRequest[T], buildIfNoneAvailable: Boolean = true) = {
+    trace(s"${req.employer} requested ${req.request.toString}")
     def hireResult: Option[UnitCollector[T]] = {
       new UnitCollector(req, universe).collect_!()
     }
@@ -270,15 +353,15 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
           trace(s"Partially successful hiring request: $team")
           if (buildIfNoneAvailable) unfulfilledRequestsThisTick += team.missingAsRequest
           if (team.hasOneMember)
-            new PartialPreHiringResult(team.teamAsMap) with ExactlyOneSuccess[T]
+            new PartialPreHiringResult(team.teamAsCanHireInfo) with ExactlyOneSuccess[T]
           else
-            new PartialPreHiringResult(team.teamAsMap)
+            new PartialPreHiringResult(team.teamAsCanHireInfo)
         case Some(team) =>
           trace(s"Successful hiring request: $team")
           if (team.hasOneMember) {
-            new SuccessfulPreHiringResult(team.teamAsMap) with ExactlyOneSuccess[T]
+            new SuccessfulPreHiringResult(team.teamAsCanHireInfo) with ExactlyOneSuccess[T]
           } else {
-            new SuccessfulPreHiringResult(team.teamAsMap)
+            new SuccessfulPreHiringResult(team.teamAsCanHireInfo)
           }
       }
     } else {
@@ -288,9 +371,21 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
     trace(s"Result of request: $result")
     result
   }
-  def allOfEmployer[T <: WrapsUnit](employer: Employer[T]) = byEmployer.getOrElse(employer, Set.empty)
-  def allNotOfEmployer[T <: WrapsUnit](employer: Employer[T]) = byEmployer.filter(_._1 != employer)
-                                                                .flatMap(_._2)
+
+  def allOfEmployerAndType[T <: WrapsUnit](employer: Employer[T], unitType: Class[_ <: T]) = {
+    allJobs.jobsOf(employer, unitType)
+  }
+  def allNotOfEmployerButType[T <: WrapsUnit](employer: Employer[T], unitType: Class[_ <: T]) = {
+    allJobs.employers.asInstanceOf[collection.Set[Employer[T]]]
+    .iterator
+    .filter(_ != employer)
+    .flatMap { e =>
+      allJobs.jobsOf(e, unitType)
+    }
+  }
+
+  def allOfEmployer[T <: WrapsUnit](employer: Employer[T]) = allJobs.allOfEmployer(employer)
+  def allNotOfEmployer[T <: WrapsUnit](employer: Employer[T]) = allJobs.allNotOfEmployer(employer)
   def nobody = Nobody
 
   case object Nobody extends Employer[WrapsUnit](universe)
@@ -304,8 +399,8 @@ trait PreHiringResult[T <: WrapsUnit] {
   def notExistingMissingRequiments: Set[Class[_ <: Building]] = Set.empty
   def inProgressMissingRequirements: Set[Class[_ <: Building]] = Set.empty
   def success: Boolean
-  def canHire: Map[UnitRequest[T], Set[T]]
-  def units = canHire.flatMap(_._2)
+  def canHire: CanHireInfo[T]
+  def units = canHire.details
 
   override def toString = s"HiringResult($success, $canHire)"
 
@@ -318,7 +413,7 @@ trait PreHiringResult[T <: WrapsUnit] {
 
   def ifNotZero[X](todo: Seq[T] => X, orElse: X) = this match {
     case many: AtLeastOneSuccess[T] =>
-      val canHireThese = many.canHire.valuesIterator.flatten.toVector
+      val canHireThese = many.canHire.details.toList
       todo(canHireThese)
     case _ => orElse
   }
@@ -326,64 +421,78 @@ trait PreHiringResult[T <: WrapsUnit] {
 
 class FailedPreHiringResult[T <: WrapsUnit] extends PreHiringResult[T] {
   def success = false
-  def canHire = Map.empty
+  def canHire = CanHireInfo.empty
 }
 
 class MissingRequirementResult[T <: WrapsUnit](needs: Set[Class[_ <: Building]], incomplete: Set[Class[_ <: Building]])
   extends PreHiringResult[T] {
   def success = false
-  def canHire = Map.empty
+  def canHire = CanHireInfo.empty
   override def notExistingMissingRequiments = needs
   override def inProgressMissingRequirements = incomplete
 }
 
 trait AtLeastOneSuccess[T <: WrapsUnit] extends PreHiringResult[T] {
-  def one = canHire.valuesIterator.next().head
+  def one = canHire.details.head
 }
 
 trait ExactlyOneSuccess[T <: WrapsUnit] extends AtLeastOneSuccess[T] {
   def onlyOne = {
-    assert(canHire.size == 1)
-    val set = canHire.valuesIterator.next()
-    assert(set.size == 1)
-    set.head
+    assert(canHire.details.size == 1)
+    canHire.details.head
   }
 }
 
-class SuccessfulPreHiringResult[T <: WrapsUnit](override val canHire: Map[UnitRequest[T], Set[T]])
+case class CanHireInfo[T <: WrapsUnit](request: Option[UnitJobRequest[T]], details: Set[T])
+
+object CanHireInfo {
+  def empty[T <: WrapsUnit] = CanHireInfo[T](None, Set.empty)
+}
+
+class SuccessfulPreHiringResult[T <: WrapsUnit](override val canHire: CanHireInfo[T])
   extends PreHiringResult[T] with AtLeastOneSuccess[T] {
   def success = true
 }
 
-class PartialPreHiringResult[T <: WrapsUnit](override val canHire: Map[UnitRequest[T], Set[T]])
+class PartialPreHiringResult[T <: WrapsUnit](override val canHire: CanHireInfo[T])
   extends PreHiringResult[T] with AtLeastOneSuccess[T] {
   def success = false
 }
 
-class UnitCollector[T <: WrapsUnit : Manifest](req: UnitJobRequests[T], override val universe: Universe)
+class UnitCollector[T <: WrapsUnit : Manifest](req: UnitJobRequest[T], override val universe: Universe)
   extends HasUniverse {
 
-  private val hired                      = multiMap[UnitRequest[T], T]
-  private val remainingAmountsPerRequest = mutable.HashMap.empty ++=
-                                           req.requests.map { e => e -> e.amount }.toMap
+  private val hired              = mutable.HashSet.empty[T]
+  private var remainingOpenSpots = req.request.amount
   def onlyMember = {
     assert(hasOneMember)
-    hired.values.head.head
+    hired.head
   }
-  def hasOneMember = hired.valuesIterator.map(_.size).sum == 1
+  def hasOneMember = hired.size == 1
   def collect_!(includeCandidates: Seq[UnitWithJob[T]] = Nil): Option[UnitCollector[T]] = {
     val um = unitManager
     val available = {
       val potential = {
-        val all = um.allOfEmployer(um.Nobody).iterator ++ um.allNotOfEmployer(um.Nobody).iterator
-        val defaultSuggestions = all.filter(_.unit.isInGame)
+        val targetType = req.requestedUnitType
+
+        def allWithType = um.allOfEmployerAndType(um.Nobody, req.requestedUnitType).iterator ++
+                          um.allNotOfEmployerButType(um.Nobody, req.requestedUnitType)
+
+        /*
+                def all = um.allOfEmployer(um.Nobody).iterator ++
+                          um.allNotOfEmployer(um.Nobody).iterator
+
+                assert(allWithType.toList.filter(requests).toSet == all.toList.filter(requests).toSet,
+                s"${allWithType.toList.filter(requests)} \n!=\n ${all.toList.filter(requests)}")
+        */
+        val defaultSuggestions = allWithType.filter(_.unit.isInGame)
                                  .filter {
                                    _.unit match {
                                      case a: AutoPilot => a.isManuallyControlled
                                      case _ => true
                                    }
                                  }
-                                .filter(_.priority < req.priority)
+                                 .filter(_.priority < req.priority)
                                  .filter(interrupts)
                                  .filter(requests)
         val withExplicitCandidates = defaultSuggestions ++ includeCandidates
@@ -411,16 +520,13 @@ class UnitCollector[T <: WrapsUnit : Manifest](req: UnitJobRequests[T], override
   def typed(any: UnitWithJob[_ <: WrapsUnit]) = any.asInstanceOf[UnitWithJob[T]]
   def hasAny = hired.nonEmpty
   def collect(unit: WrapsUnit) = {
-    remainingAmountsPerRequest.find {
-      case (request, remaining) if remaining > 0 && request.includesByType(unit) => true
-      case _ => false
-    }.foreach { case (request, missing) =>
-      remainingAmountsPerRequest.put(request, missing - 1)
+    if (remainingOpenSpots > 0 && req.request.includesByType(unit)) {
+      remainingOpenSpots -= 1
       // we know the type because we asked req before
-      hired.addBinding(request, unit.asInstanceOf[T])
+      hired += unit.asInstanceOf[T]
     }
   }
-  def complete = remainingAmountsPerRequest.valuesIterator.sum == 0
+  def complete = remainingOpenSpots == 0
   def requests(unit: UnitWithJob[_ <: WrapsUnit]) = {
     req.wantsUnit(unit.unit)
   }
@@ -429,16 +535,17 @@ class UnitCollector[T <: WrapsUnit : Manifest](req: UnitJobRequests[T], override
   }
   def hasPriorityRule = priorityRule.isDefined
   def priorityRule = req.priorityRule
-  def missingAsRequest: UnitJobRequests[T] = {
-    val typesAndAmounts = remainingAmountsPerRequest.filter(_._2 > 0).map { case (req, amount) =>
-      BuildUnitRequest[T](universe, req.typeOfRequestedUnit, amount, ResourceApprovalFail, Priority.Default,
-      AlternativeBuildingSpot.useDefault)
-    }
-    UnitJobRequests[T](typesAndAmounts.toSeq, req.employer, req.priority)
-  }
-  override def toString: String = s"Collected: $teamAsMap"
+  def missingAsRequest: UnitJobRequest[T] = {
+    val typesAndAmounts =
+      BuildUnitRequest[T](universe, req.request.typeOfRequestedUnit, remainingOpenSpots, ResourceApprovalFail,
+        Priority.Default,
+        AlternativeBuildingSpot.useDefault)
 
-  def teamAsMap = hired.toSeq.map { case (k, v) => k -> v.toSet }.toMap
+    UnitJobRequest[T](typesAndAmounts, req.employer, req.priority)
+  }
+  override def toString: String = s"Collected: $teamAsCanHireInfo"
+
+  def teamAsCanHireInfo = CanHireInfo(Some(req), hired.toSet)
 }
 
 // TODO check if this class really has a purpose
@@ -491,7 +598,7 @@ class Employer[T <: WrapsUnit : Manifest](override val universe: Universe) exten
 trait CanAcceptUnitSwitch[T <: WrapsUnit] extends UnitWithJob[T] {
   def newFor(replacement: T): UnitWithJob[T]
 
-  def asRequest: UnitJobRequests[T]
+  def asRequest: UnitJobRequest[T]
   def canSwitchNow: Boolean
   def couldSwitchInTheFuture: Boolean
   def hasToSwitchLater = !canSwitchNow && couldSwitchInTheFuture
@@ -645,7 +752,7 @@ trait HasFunding {
       proofForFunding match {
         case suc: ResourceApprovalSuccess =>
           autoUnlocked = true
-          trace(s"Unlocking funds of $this")
+          trace(s"Unlocking funds of $this : $proofForFunding")
           resources.unlock_!(suc)
           unlockedDebug = Thread.currentThread().getStackTrace
         case _ =>
@@ -698,7 +805,7 @@ class TrainUnit[F <: UnitFactory, T <: Mobile](factory: F, trainType: Class[_ <:
 
     if (!startedToProduce && ageSinceLastReset > 20 && factory.isProducing) {
       startedToProduce = true
-      trace(s"Job $this starte to produce ${trainType.className}")
+      trace(s"Job $this started to produce ${trainType.className}")
       unlockManually_!()
     }
   }
@@ -822,7 +929,6 @@ trait FerrySupport[T <: GroundUnit] extends UnitWithJob[T] {
   }
 }
 
-
 class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, buildingType: Class[_ <: B],
                                                                    employer: Employer[W],
                                                                    val buildWhere: MapTilePosition,
@@ -912,7 +1018,7 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, bu
   }
   override def times = 50
   def building = constructs
-  override def asRequest: UnitJobRequests[W] = {
+  override def asRequest: UnitJobRequest[W] = {
     val request = AnyUnitRequest[W](worker.getClass, 1)
     val anyUnitRequest = request.withCherryPicker_! { hijackFromThis =>
       val altUnit = hijackFromThis.unit
@@ -926,7 +1032,7 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, bu
 
       PriorityChain(sameArea.ifElse(0, 1), canSee.ifElse(0, 1), weightedDistance)
     }
-    UnitJobRequests(anyUnitRequest.toSeq, employer, priority)
+    UnitJobRequest(anyUnitRequest, employer, priority)
   }
 
   override def newFor(replacement: W) = new
@@ -1046,6 +1152,7 @@ object UnitRequest {
   private var counter = 0
   def nextId() = {
     counter += 1
+    counter
   }
 }
 
@@ -1067,10 +1174,10 @@ trait UnitRequest[T <: WrapsUnit] {
   }
   def ratingFuntion = picker
   def priority: Priority
-  def includesByType(unit: WrapsUnit): Boolean = typeOfRequestedUnit.isAssignableFrom(unit.getClass)
+  def includesByType(unit: WrapsUnit): Boolean = typeOfRequestedUnit.isInstance(unit)
   def typeOfRequestedUnit: Class[_ <: T]
   def amount: Int
-  def acceptableUntyped(unit: WrapsUnit) = typeOfRequestedUnit.isAssignableFrom(unit.getClass) &&
+  def acceptableUntyped(unit: WrapsUnit) = includesByType(unit) &&
                                            acceptable(unit.asInstanceOf[T])
   def acceptable(unit: T) = filter.map(_.apply(unit)).getOrElse(true)
   def clearable = autoCleanAfterTick
@@ -1155,8 +1262,9 @@ case class BuildUnitRequest[T <: WrapsUnit](universe: Universe, typeOfRequestedU
 
   override def dispose(): Unit = {
     super.dispose()
-    // for buildings, the resources need to be locked until the building process has begun
+    // if this is a unit build request, dispose resources if the job itself has not already done so
     if (unlocksResourcesOnDispose) {
+      assert(stillLocksResources)
       trace(s"Unlock during dispose: $self")
       unlock_!()
     }
@@ -1173,11 +1281,15 @@ trait RateCandidate[T <: WrapsUnit] {
   def giveRating(forThatOne: UnitWithJob[T]): PriorityChain
 }
 
-case class UnitJobRequests[T <: WrapsUnit : Manifest](requests: Seq[UnitRequest[T]], employer: Employer[T],
-                                                      priority: Priority,
-                                                      makeSureDependenciesCleared: Set[Class[_ <: WrapsUnit]] = Set
-                                                                                                                .empty) {
-  private val types = requests.map(_.typeOfRequestedUnit).toSet
+case class UnitJobRequest[T <: WrapsUnit : Manifest](request: UnitRequest[T], employer: Employer[T],
+                                                     priority: Priority,
+                                                     makeSureDependenciesCleared: Set[Class[_ <: WrapsUnit]] = Set
+                                                                                                               .empty) {
+
+  assert(requestedUnitType.isAssignableFrom(moreSpecificType), s"$moreSpecificType > $requestedUnitType")
+
+  def moreSpecificType = request.typeOfRequestedUnit
+
   def canInterrupt(uwj: UnitWithJob[_ <: WrapsUnit]) = {
     assert(priority > uwj.priority, "Oops :(")
     // perfect solution: match every type against every type and use heavy logic to determine the result
@@ -1188,10 +1300,10 @@ case class UnitJobRequests[T <: WrapsUnit : Manifest](requests: Seq[UnitRequest[
     }
   }
 
-  assert(requests.forall(_.clearable) || requests.forall(!_.clearable))
-  def allRequiredTypes = requests.map(_.typeOfRequestedUnit).toSet ++ makeSureDependenciesCleared
+  def allRequiredTypes = request.typeOfRequestedUnit.toSet ++ makeSureDependenciesCleared
+
   def priorityRule: Option[RateCandidate[T]] = {
-    val picker = if (requests.size == 1) requests.head.ratingFuntion else None
+    val picker = request.ratingFuntion
     picker.map { nat => new RateCandidate[T] {
       def giveRating(forThatOne: UnitWithJob[T]): PriorityChain = nat(forThatOne)
     }
@@ -1199,45 +1311,45 @@ case class UnitJobRequests[T <: WrapsUnit : Manifest](requests: Seq[UnitRequest[
   }
 
   def acceptOnly_!(only: T => Boolean) = {
-    requests.foreach {_.withFilter_!(only)}
+    request.withFilter_!(only)
     this
   }
 
-  def clearable = requests.forall(_.clearable)
+  def clearable = request.clearable
 
-  def wantsUnit(existingUnit: WrapsUnit) = types.exists(_.isAssignableFrom(existingUnit.getClass)) &&
-                                           requests.exists(_.acceptableUntyped(existingUnit))
+  def wantsUnit(existingUnit: WrapsUnit) = moreSpecificType.isInstance(existingUnit) &&
+                                           request.acceptableUntyped(existingUnit)
 
-  def commonUnitType = manifest[T].runtimeClass.asInstanceOf[Class[_ <: T]]
+  def requestedUnitType = manifest[T].runtimeClass.asInstanceOf[Class[_ <: T]]
 
-  def onClear(): Unit = requests.foreach(_.dispose())
+  def onClear(): Unit = request.dispose()
 }
 
-object UnitJobRequests {
+object UnitJobRequest {
   def upgraderFor(upgrade: Upgrade, employer: Employer[Upgrader], priority: Priority = Priority.Upgrades) = {
     val actualClass = employer.race.techTree.upgraderFor(upgrade).asInstanceOf[Class[Upgrader]]
     val req = AnyUnitRequest(actualClass, 1)
-    UnitJobRequests(req.toSeq, employer, priority).acceptOnly_!(!_.isDoingResearch)
+    UnitJobRequest(req, employer, priority).acceptOnly_!(!_.isDoingResearch)
   }
 
   def builderOf[T <: Mobile, F <: UnitFactory : Manifest](wantedType: Class[_ <: T],
                                                           employer: Employer[F],
                                                           priority: Priority = Priority
-                                                                               .Default): UnitJobRequests[F] = {
+                                                                               .Default): UnitJobRequest[F] = {
 
     val actualClass = employer.universe.myRace.specialize(manifest[F].runtimeClass.asInstanceOf[Class[F]])
     val req = AnyFactoryRequest[F, T](actualClass, 1, wantedType)
 
-    UnitJobRequests(req.toSeq, employer, priority)
+    UnitJobRequest(req, employer, priority)
   }
 
   def constructor[T <: WorkerUnit : Manifest](employer: Employer[T],
-                                              priority: Priority = Priority.ConstructBuilding): UnitJobRequests[T] = {
+                                              priority: Priority = Priority.ConstructBuilding): UnitJobRequest[T] = {
 
     val actualClass = employer.universe.myRace.specialize(manifest[T].runtimeClass).asInstanceOf[Class[T]]
     val req = AnyUnitRequest(actualClass, 1).withCherryPicker_!(WorkerUnit.currentPriority)
 
-    UnitJobRequests(req.toSeq, employer, priority)
+    UnitJobRequest(req, employer, priority)
   }
 
   def addonConstructor[T <: CanBuildAddons : Manifest](employer: Employer[T],
@@ -1250,7 +1362,7 @@ object UnitJobRequests {
     val req = AnyUnitRequest(mainType, 1)
               .withFilter_!(e => !e.isBeingCreated && !e.hasAddonAttached && !e.isBuildingAddon)
 
-    UnitJobRequests(req.toSeq, employer, priority, Set(what))
+    UnitJobRequest(req, employer, priority, Set(what))
   }
 
   def idleOfType[T <: WrapsUnit : Manifest](employer: Employer[T], ofType: Class[_ <: T], amount: Int = 1,
@@ -1258,7 +1370,7 @@ object UnitJobRequests {
     val realType = employer.universe.myRace.specialize(ofType)
     val req: AnyUnitRequest[T] = AnyUnitRequest(realType, amount)
 
-    UnitJobRequests[T](req.toSeq, employer, priority)
+    UnitJobRequest[T](req, employer, priority)
   }
 
   def newOfType[T <: WrapsUnit : Manifest](universe: Universe, employer: Employer[T], ofType: Class[_ <: T],
@@ -1272,7 +1384,7 @@ object UnitJobRequests {
       customBuildingPosition, belongsTo)
     // this one needs to survive across ticks
     req.persistant_!()
-    UnitJobRequests[T](req.toSeq, employer, priority)
+    UnitJobRequest[T](req, employer, priority)
   }
 }
 

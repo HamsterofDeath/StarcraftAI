@@ -48,7 +48,7 @@ abstract class DefaultBehaviour[T <: Mobile : Manifest](override val universe: U
   }
   def assumeSafe(unit: Mobile): T = unit.asInstanceOf[T]
   def canControl(u: WrapsUnit) = {
-    manifest[T].runtimeClass.isAssignableFrom(u.getClass)
+    manifest[T].runtimeClass.isInstance(u)
   }
   def add_!(u: WrapsUnit, objective: Objective) = {
     assert(canControl(u))

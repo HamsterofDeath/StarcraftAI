@@ -424,7 +424,7 @@ class UnitGrid(override val universe: Universe) extends HasUniverse {
              if dstSqr(x, y) <= radSqr) {
           val mobiles = on(x)(y)
           if (mobiles != null) {
-            val byType = mobiles.iterator.filter(e => filter.isAssignableFrom(e.getClass))
+            val byType = mobiles.iterator.filter(filter.isInstance)
             byType.foreach { e =>
               f(e.asInstanceOf[T])
             }

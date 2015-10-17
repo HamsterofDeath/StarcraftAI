@@ -69,7 +69,7 @@ object Orders {
                                                       tech: SingleTargetMagicSpell)
     extends UnitOrder {
 
-    assert(tech.canCastOn.isAssignableFrom(target.getClass))
+    assert(tech.canCastOn.isInstance(target))
 
     override def myUnit = caster
 

@@ -1,7 +1,7 @@
 package pony
 package brain.modules
 
-import pony.brain.{Employer, HasUniverse, UnitJobRequests, Universe}
+import pony.brain._
 
 import scala.collection.mutable.ArrayBuffer
 
@@ -60,7 +60,7 @@ class FerryManager(override val universe: Universe) extends HasUniverse {
     }
     trace(s"Calculating new ferry job for $forWhat to $to")
 
-    val selector = UnitJobRequests.idleOfType(employer, race.transporterClass, groups.size)
+    val selector = UnitJobRequest.idleOfType(employer, race.transporterClass, groups.size)
                    .acceptOnly_! { tu =>
                      !ferryPlans.exists(_.ferry == tu)
                    }

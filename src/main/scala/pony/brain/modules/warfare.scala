@@ -8,7 +8,12 @@ import scala.collection.mutable.ArrayBuffer
 class FormationHelper(override val universe: Universe, distance: Int = 0) extends HasUniverse {
   def allOutsideNonBlacklisted = {
     val map = mapLayers.freeWalkableTiles
-    defenseLines.iterator.flatMap(_.pointsOutside).filterNot(blacklisted).filter(map.free)
+    defenseLines.iterator
+    .flatMap { e =>
+      e.pointsOutside
+      .filterNot(blacklisted)
+      .filter(map.free)
+    }
   }
 
   def allInsideNonBlacklisted = {
@@ -150,7 +155,7 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse w
     }
 
     val employer = new Employer[Mobile](universe)
-    val req = UnitJobRequests.idleOfType(employer, classOf[Mobile], 9999)
+    val req = UnitJobRequest.idleOfType(employer, classOf[Mobile], 9999)
     val result = unitManager.request(req, buildIfNoneAvailable = false)
     result.ifNotZero { seq =>
       val independent = seq.map { u => u.nativeUnitId -> u.currentTile }
@@ -244,7 +249,7 @@ trait AddonRequestHelper extends AIModule[CanBuildAddons] {
     result.ifSuccess { suc =>
       trace(s"Addon ${addonType.className} requested using resources $suc")
       assert(resources.hasStillLocked(suc), s"This should never be called if $suc is no longer locked")
-      val unitReq = UnitJobRequests.addonConstructor(self, addonType)
+      val unitReq = UnitJobRequest.addonConstructor(self, addonType)
       trace(s"Financing possible for addon $addonType, requesting build")
       val result = unitManager.request(unitReq)
       if (handleDependencies && result.hasAnyMissingRequirements) {
@@ -320,7 +325,7 @@ trait BuildingRequestHelper extends AIModule[WorkerUnit] {
     val req = ResourceRequests.forUnit(universe.myRace, buildingType, priority)
     val result = resources.request(req, buildingEmployer)
     result.ifSuccess { suc =>
-      val unitReq = UnitJobRequests.newOfType(universe, buildingEmployer, buildingType, suc,
+      val unitReq = UnitJobRequest.newOfType(universe, buildingEmployer, buildingType, suc,
         customBuildingPosition = customBuildingPosition, belongsTo = belongsTo,
         priority = priority)
       trace(s"Financing possible for building $buildingType, requesting build")
@@ -354,7 +359,7 @@ trait UnitRequestHelper extends AIModule[UnitFactory] {
     val req = ResourceRequests.forUnit(universe.myRace, mobileType)
     val result = resources.request(req, mobileEmployer)
     result.ifSuccess { suc =>
-      val unitReq = UnitJobRequests.newOfType(universe, mobileEmployer, mobileType, suc)
+      val unitReq = UnitJobRequest.newOfType(universe, mobileEmployer, mobileType, suc)
       trace(s"Financing possible for mobile unit $mobileType, requesting training")
       val result = unitManager.request(unitReq)
       if (result.hasAnyMissingRequirements) {
@@ -364,6 +369,7 @@ trait UnitRequestHelper extends AIModule[UnitFactory] {
       }
       if (takeCareOfDependencies) {
         result.notExistingMissingRequiments.foreach { requirement =>
+          trace(s"Checking dependency: $requirement")
           if (!unitManager.existsOrPlanned(requirement)) {
             def isAddon = classOf[Addon].isAssignableFrom(requirement)
             trace(s"Planning to build $requirement because it is required for $mobileType")
@@ -465,7 +471,7 @@ class ProvideUpgrades(universe: Universe) extends OrderlessAIModule[Upgrader](un
         trace(s"Requesting ${needs.className} to be build in order for ${wantedUpgrade} to be researched")
         helper.requestBuilding(needs, takeCareOfDependencies = true)
       } else {
-        val result = unitManager.request(UnitJobRequests.upgraderFor(wantedUpgrade, self))
+        val result = unitManager.request(UnitJobRequest.upgraderFor(wantedUpgrade, self))
         result.units.foreach { up =>
           val price = new UpgradePrice {
             private val current = researched.getOrElse(wantedUpgrade, 0)
@@ -540,14 +546,15 @@ class EnqueueArmy(universe: Universe) extends OrderlessAIModule[UnitFactory](uni
 
     val canBuildNow = mostMissing.filterNot { case (c, _) => universe.unitManager.requirementsQueuedToBuild(c) }
     val highestPriority = canBuildNow
-    highestPriority.view.takeWhile { e =>
+    val buildThese = highestPriority.view.takeWhile { e =>
       val rich = resources.couldAffordNow(e._1)
       def mineralsOverflow = resources.unlockedResources.moreMineralsThanGas &&
                              resources.unlockedResources.minerals > 400
       def gasOverflow = resources.unlockedResources.moreGasThanMinerals &&
                         resources.unlockedResources.gas > 400
       rich || mineralsOverflow || gasOverflow
-    }.foreach { case (thisOne, _) =>
+    }
+    buildThese.foreach { case (thisOne, _) =>
       requestUnit(thisOne, takeCareOfDependencies = false)
     }
 

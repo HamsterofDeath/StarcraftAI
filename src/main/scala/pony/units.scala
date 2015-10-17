@@ -1146,7 +1146,7 @@ abstract class SingleTargetSpell[C <: HasSingleTargetSpells, M <: Mobile : Manif
 
   def shouldActivateOn(validated: M) = true
 
-  def canBeCastOn(m: Mobile) = targetClass.isAssignableFrom(m.getClass)
+  def canBeCastOn(m: Mobile) = targetClass.isInstance(m)
   def casted(m: Mobile) = {
     assert(canBeCastOn(m))
     m.asInstanceOf[M]

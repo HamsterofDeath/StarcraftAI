@@ -476,7 +476,7 @@ class Units(game: Game, hostile: Boolean) {
   def registerUnit(u: bwapi.Unit, lifted: WrapsUnit) = {
     knownUnits.put(u.getID, lifted)
     classIndexes.foreach { c =>
-      if (c.isAssignableFrom(lifted.getClass)) {
+      if (c.isInstance(lifted)) {
         preparedByClass.addBinding(c, lifted)
       }
     }
@@ -505,7 +505,7 @@ class Units(game: Game, hostile: Boolean) {
   def allByClass[T <: WrapsUnit](lookFor: Class[T]) = {
     def lazyCreate = {
       classIndexes += lookFor
-      mutable.HashSet.empty ++= all.filter { e => lookFor.isAssignableFrom(e.getClass) }
+      mutable.HashSet.empty ++= all.filter { e => lookFor.isInstance(e) }
     }
     val cached = preparedByClass.getOrElseUpdate(lookFor, lazyCreate)
     cached.asInstanceOf[collection.Set[T]]

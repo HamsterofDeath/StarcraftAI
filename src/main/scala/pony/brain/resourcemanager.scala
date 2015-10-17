@@ -62,6 +62,7 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
   }
   def unlock_!(proofForFunding: ResourceApprovalSuccess): Unit = {
     // forced locks first
+    trace(s"Unlocking $proofForFunding")
     val isForced = lockedWithoutFunds.exists(_.reqs.sum.equalValue(proofForFunding))
     if (isForced) {
       lockedWithoutFunds.removeFirstMatch(_.reqs.sum.equalValue(proofForFunding))
@@ -225,7 +226,7 @@ case class Supplies(used: Int, total: Int) {
 case class ResourceApprovalSuccess(minerals: Int, gas: Int, supply: Int, uniqueId: ResourceApprovalId)
   extends ResourceApproval {
   def success = true
-  override def ifSuccess[T](then: (ResourceApprovalSuccess) => T): T = then(this)
+  override def ifSuccess[T](thenDo: (ResourceApprovalSuccess) => T): T = thenDo(this)
 }
 
 case class ResourceApprovalId(i: Int)
