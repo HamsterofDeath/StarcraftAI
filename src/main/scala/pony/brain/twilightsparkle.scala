@@ -11,12 +11,13 @@ import scala.concurrent.{Await, Future}
 trait HasUniverse {
   def pathFinder = universe.pathFinder
   def ferryManager = universe.ferryManager
+  def unitGrid = universe.unitGrid
   def upgrades = universe.upgrades
   def time = universe.time
   def race = universe.myRace
   def universe: Universe
   def unitManager = universe.unitManager
-  def ownUnits = universe.myUnits
+  def ownUnits = universe.ownUnits
   def enemies = universe.enemyUnits
   def resources = universe.resources
   def bases = universe.bases
@@ -27,8 +28,8 @@ trait HasUniverse {
   def strategicMap = universe.strategicMap
   def strategy = universe.strategy
   def worldDominationPlan = universe.worldDominationPlan
-  def ifNth(nth: Int)(u: => Unit) = {
-    if (universe.currentTick % nth == 0) {
+  def ifNth(prime: PrimeNumber)(u: => Unit) = {
+    if (universe.currentTick % prime.i == 0) {
       u
     }
   }
@@ -168,7 +169,7 @@ class TwilightSparkle(world: DefaultWorld) {
     override def unitManager = self.unitManager
     override def currentTick = world.tickCount
     override def mapLayers = self.maps
-    override def myUnits = world.myUnits
+    override def ownUnits = world.ownUnits
     override def enemyUnits = world.enemyUnits
     override def strategicMap = world.strategicMap
     override def pathFinder = self.pathFinder
@@ -193,6 +194,7 @@ class TwilightSparkle(world: DefaultWorld) {
     new ProvideExpansions(universe),
     new ProvideNewBuildings(universe),
     new ProvideSuggestedAndRequestedAddons(universe),
+    new HandleDefenses(universe),
     new EnqueueFactories(universe),
     new EnqueueArmy(universe),
     new ProvideUpgrades(universe),
@@ -213,7 +215,7 @@ class TwilightSparkle(world: DefaultWorld) {
   }
   def queueOrdersForTick(): Unit = {
 
-    world.myUnits.consumeFresh_! {_.init_!(universe)}
+    world.ownUnits.consumeFresh_! {_.init_!(universe)}
     world.enemyUnits.consumeFresh_! {_.init_!(universe)}
 
     maps.tick()
@@ -254,7 +256,7 @@ class Bases(world: DefaultWorld) {
   def known(mb:MainBuilding) = myBases.exists(_.mainBuilding == mb)
 
   def tick():Unit = {
-    val all = world.myUnits.allByType[MainBuilding]
+    val all = world.ownUnits.allByType[MainBuilding]
     all.filterNot(known).foreach { main =>
       val newBase = new Base(main)(world)
       myBases += newBase

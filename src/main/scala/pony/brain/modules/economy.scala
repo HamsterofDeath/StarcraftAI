@@ -97,7 +97,7 @@ class ProvideExpansions(universe: Universe) extends OrderlessAIModule[WorkerUnit
     }
   }
   override def onTick(): Unit = {
-    ifNth(127) {
+    ifNth(Primes.prime241) {
       plannedExpansionPoint = plannedExpansionPoint.orElse(strategy.current.suggestNextExpansion)
       info(s"AI wants to expand to ${plannedExpansionPoint.get}", plannedExpansionPoint.isDefined)
     }
@@ -285,8 +285,10 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
       class MinedPatch(val patch: MineralPatch) {
 
         private val miningTeam            = ArrayBuffer.empty[GatherMineralsAtPatch]
-        private val workerCountByDistance = LazyVal
-                                            .from(math.round(patch.area.distanceTo(base.mainBuilding.area) / 2.0).toInt)
+        private val workerCountByDistance = LazyVal.from {
+          val distance = patch.area.distanceTo(base.mainBuilding.area)
+          (1 max math.round(distance / 2.5).toInt)
+        }
         override def toString: String = s"(Mined) $patch"
         def hasOpenSpot: Boolean = miningTeam.size < estimateRequiredWorkers
         def estimateRequiredWorkers = {

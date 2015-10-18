@@ -125,8 +125,15 @@ case class Line(a: MapTilePosition, b: MapTilePosition) {
 
 
 case class Area(upperLeft: MapTilePosition, sizeOfArea: Size) {
+  def growBy(tiles: Int) = {
+    tiles match {
+      case 0 => this
+      case n => Area(upperLeft.movedBy(-n, -n), lowerRight.movedBy(n, n))
+    }
+  }
+
   def extendedBy(tiles: Int) = {
-    Area(upperLeft.movedBy(-tiles, -tiles), lowerRight.movedBy(tiles, tiles))
+    growBy(tiles)
   }
 
   val lowerRight = upperLeft.movedBy(sizeOfArea).movedBy(-1, -1)

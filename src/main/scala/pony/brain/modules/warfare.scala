@@ -146,6 +146,22 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse w
 
   def attackOf(m: Mobile) = attacks.find(_.force(m))
 
+  def initiateAttack(where: MapTilePosition, units: Seq[Mobile]): Unit = {
+    debug(s"Attacking $where with $units")
+    val helper = new GroupingHelper(universe, units)
+    planInProgress = BWFuture.some {
+      val on = universe.mapLayers.rawWalkableMap
+      val grouped = helper.evaluateUnitGroups
+      val newAttacks = grouped.map { group =>
+        val asUnits = group.memberIds.map(e => ownUnits.byId(e).getOr(s"Id $e missing").asInstanceOf[Mobile])
+        new Attack(asUnits.toSet, TargetPosition(where, 10))
+      }
+      debug(s"Attack calculation finished, results: $newAttacks")
+      Attacks(newAttacks)
+    }
+    thinking = true
+  }
+
   def initiateAttack(where: MapTilePosition, complete: Boolean = true): Unit = {
     majorInfo(s"Initiating attack of $where")
     assert(!thinking, s"Cannot multitask, sorry")
@@ -158,40 +174,39 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse w
     val req = UnitJobRequest.idleOfType(employer, classOf[Mobile], 9999)
     val result = unitManager.request(req, buildIfNoneAvailable = false)
     result.ifNotZero { seq =>
-      val independent = seq.map { u => u.nativeUnitId -> u.currentTile }
-      val helper = new GroupingHelper(universe)
-      planInProgress = BWFuture.some {
-        val on = universe.mapLayers.rawWalkableMap
-        assert(independent.forall(e => on.includes(e._2)),
-          s"""Unit alive but outside map?
-              |${
-            val ids = independent.filterNot(e => on.includes(e._2)).map(_._1)
-            val problem = ids.map(universe.myUnits.byIdExpectExisting)
-            problem.mkString("\n")
-          }
-              |""".stripMargin)
-
-        val grouped = helper.groupUnits(independent)
-        val newAttacks = grouped.map { group =>
-          val asUnits = group.memberIds.map(e => ownUnits.byId(e).getOr(s"Id $e missing").asInstanceOf[Mobile])
-          new Attack(asUnits.toSet, TargetPosition(where, 10))
-        }
-        Attacks(newAttacks)
-      }
-      thinking = true
+      initiateAttack(where, seq)
     }
   }
 
   case class Attacks(parts: Seq[Attack])
 }
 
-class GroupingHelper(override val universe: Universe) extends HasUniverse {
+case class UnitGroup[T <: WrapsUnit](members: Seq[T], center: MapTilePosition)
+
+object GroupingHelper {
+  def typedGroup(universe: Universe, group: GroupingHelper#Group) = {
+    val members = group.memberIds.flatMap { e =>
+      universe.enemyUnits.byId(e).orElse(universe.ownUnits.byId(e)).asInstanceOf[Option[Mobile]]
+    }.toVector
+    UnitGroup(members, group.center)
+  }
+
+  def groupThese(seq: TraversableOnce[Mobile], universe: Universe) = {
+    val helper = new GroupingHelper(universe, seq)
+    BWFuture(Option(helper.evaluateUnitGroups))
+  }
+}
+
+class GroupingHelper(override val universe: Universe, seq: TraversableOnce[Mobile]) extends HasUniverse {
+  private val immutable = seq.map { u => u.nativeUnitId -> u.currentTile }
+
   private val maxDst = 10 * 10
   class Group {
 
     def memberIds = members.iterator.map(_._1)
+    def center = myCenter
 
-    def evalCenter = {
+    private def evalCenter = {
       var x = 0
       var y = 0
       members.foreach { case (_, p) =>
@@ -205,19 +220,23 @@ class GroupingHelper(override val universe: Universe) extends HasUniverse {
 
     def add_!(elem: (Int, MapTilePosition)): Unit = {
       members += elem
-      center = evalCenter
+      myCenter = evalCenter
     }
 
-    private val members = ArrayBuffer.empty[((Int, MapTilePosition))]
-    private var center  = MapTilePosition.zero
+    private val members  = ArrayBuffer.empty[((Int, MapTilePosition))]
+    private var myCenter = MapTilePosition.zero
     def canJoin(e: (Int, MapTilePosition)) = {
-      e._2.distanceToSquared(center) < maxDst && map.connectedByLine(center, e._2)
+      e._2.distanceToSquared(myCenter) < maxDst && map.connectedByLine(myCenter, e._2)
     }
   }
 
-  def groupUnits(independent: Seq[(Int, MapTilePosition)]) = {
+  /**
+    * can/should be run asynchronously
+    * @return
+    */
+  def evaluateUnitGroups = {
     val groups = ArrayBuffer.empty[Group]
-    independent.foreach { elem =>
+    immutable.foreach { elem =>
       groups.find(_.canJoin(elem)) match {
         case Some(joinMe) => joinMe.add_!(elem)
         case None =>
@@ -450,12 +469,48 @@ class ProvideSuggestedAndRequestedAddons(universe: Universe)
   }
 }
 
+class HandleDefenses(universe: Universe) extends OrderlessAIModule[Mobile](universe) {
+
+  private var backgroundOp = BWFuture.none[Seq[GroupingHelper#Group]]
+
+  private def resetBackgroundOp(): Unit = {
+    backgroundOp = BWFuture.none[Seq[GroupingHelper#Group]]
+  }
+
+  override def onTick(): Unit = {
+    if (backgroundOp.result.isEmpty) {
+      ifNth(Primes.prime43) {
+        val allEnemies = mapLayers.defendedTiles.allBlocked.flatMap { tile =>
+          unitGrid.enemy.onTile(tile)
+        }.filterNot(_.isHarmlessNow)
+
+        if (allEnemies.nonEmpty) {
+          debug(s"Enemy detected! Calculating counterattack")
+          val newBackgroundOp = GroupingHelper.groupThese(allEnemies, universe)
+          backgroundOp = newBackgroundOp
+        }
+      }
+    } else {
+      backgroundOp.matchOnOptSelf(groups => {
+        debug(s"Attackers grouped")
+        val typedGroups = groups.map(GroupingHelper.typedGroup(universe, _))
+        //prototype: just attack the biggest group with everything
+
+        val biggest = typedGroups.maxBy(_.members.iterator.map(_.armorType.transportSize).sum)
+        worldDominationPlan.initiateAttack(biggest.center, complete = true)
+
+        resetBackgroundOp()
+      }, {})
+    }
+  }
+}
+
 class ProvideUpgrades(universe: Universe) extends OrderlessAIModule[Upgrader](universe) {
   self =>
   private val helper     = new HelperAIModule[WorkerUnit](universe) with BuildingRequestHelper
   private val researched = collection.mutable.Map.empty[Upgrade, Int]
 
-  private def hasLimitDisabler = universe.myUnits.allByType[UpgradeLimitLifter].nonEmpty
+  private def hasLimitDisabler = universe.ownUnits.allByType[UpgradeLimitLifter].nonEmpty
 
   override def onTick(): Unit = {
     val maxLimitEnabled = hasLimitDisabler
@@ -634,14 +689,14 @@ object Strategy {
       if (shouldExpand) {
         val covered = bases.bases.map(_.resourceArea).toSet
         val dangerous = strategicMap.resources.filter { res =>
-          universe.unitGrid.allInRangeOf[Mobile](res.center, 10, friendly = false).nonEmpty
+          universe.unitGrid.enemy.allInRange[Mobile](res.center, 10).nonEmpty
         }.toSet
         bases.mainBase.map(_.mainBuilding.tilePosition).flatMap { where =>
           val others = strategicMap.resources
                        .filterNot(covered)
                        .filterNot(dangerous)
                        .filter { where =>
-                         universe.myUnits.allByType[TransporterUnit].nonEmpty ||
+                         universe.ownUnits.allByType[TransporterUnit].nonEmpty ||
                          mapLayers.rawWalkableMap
                          .areInSameWalkableArea(where.center, bases.mainBase.get.mainBuilding.tilePosition)
                        }
@@ -682,7 +737,7 @@ object Strategy {
     private var best: LongTermStrategy = new IdleAround(universe)
     def current = best
     def tick(): Unit = {
-      ifNth(121) {
+      ifNth(Primes.prime251) {
         best = available.maxBy(_.determineScore)
       }
     }

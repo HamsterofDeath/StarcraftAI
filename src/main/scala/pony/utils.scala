@@ -206,7 +206,9 @@ object FileStorageLazyVal {
   }
 }
 
-class BWFuture[T](val future: Future[T], incomplete: T) {
+class BWFuture[+T](val future: Future[T], incomplete: T) {
+  def idle = future.isCompleted
+
   def result = future.value match {
     case Some(Success(x)) => x
     case Some(Failure(e)) => throw e
@@ -215,9 +217,26 @@ class BWFuture[T](val future: Future[T], incomplete: T) {
 
   def map[X](f: T => X) = new BWFuture(future.map(f), f(incomplete))
 
+  def matchOnSelf[X](ifDone: T => X, ifRunning: => X) = {
+    if (future.isCompleted) {
+      ifDone(result)
+    } else {
+      ifRunning
+    }
+  }
+
 }
 
 object BWFuture {
+  implicit class Result[T](val fut: BWFuture[Option[T]]) extends AnyVal {
+    def matchOnOptSelf[X](ifDone: T => X, ifRunning: => X) = {
+      fut.matchOnSelf({
+        case Some(t) => ifDone(t)
+        case _ => ifRunning
+      }, ifRunning)
+    }
+  }
+
   def none[T] = apply(Option.empty[T])
 
   def apply[T](produce: => T, ifIncomplete: T) = {

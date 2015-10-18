@@ -296,11 +296,11 @@ case class Resources(minerals: Int, gas: Int, supply: Supplies) {
 class DefaultWorld(game: Game) extends WorldListener with WorldEventDispatcher {
 
   // these must be initialized after the first tick. making them lazy solves this
-  lazy val resourceAnalyzer = new ResourceAnalyzer(map, myUnits)
+  lazy val resourceAnalyzer = new ResourceAnalyzer(map, ownUnits)
   lazy val strategicMap     = new StrategicMap(resourceAnalyzer.resourceAreas, map.walkableGrid, game)
 
   val map        = new AnalyzedMap(game)
-  val myUnits    = new Units(game, false)
+  val ownUnits   = new Units(game, false)
   val enemyUnits = new Units(game, true)
   val debugger   = new Debugger(game)
   val orderQueue = new OrderQueue(game, debugger)
@@ -331,11 +331,11 @@ class DefaultWorld(game: Game) extends WorldListener with WorldEventDispatcher {
 
   def tick(): Unit = {
     debugger.tick()
-    myUnits.dead_!(removeQueueOwn.toSeq)
+    ownUnits.dead_!(removeQueueOwn.toSeq)
     enemyUnits.dead_!(removeQueueEnemy.toSeq)
     removeQueueOwn.clear()
     removeQueueEnemy.clear()
-    myUnits.tick()
+    ownUnits.tick()
     enemyUnits.tick()
   }
 
@@ -672,7 +672,7 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
     tooSmall.foreach { area =>
       area.allFree.foreach(mut.block_!)
     }
-    mut.asReadOnly
+    mut.asReadOnlyView
   }
   def mutableCopy = new
       MutableGrid2D(cols, rows, mutable.BitSet.fromBitMaskNoCopy(areaDataBitSet.toBitMask), containsBlocked)
@@ -755,7 +755,7 @@ class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet, bitSetContains
   def block_!(line: Line): Unit = {
     AreaHelper.traverseTilesOfLine(line.a, line.b, block_!)
   }
-  def asReadOnly: Grid2D = this
+  def asReadOnlyView: Grid2D = this
 
   override def asReadOnlyCopyIfMutable = new Grid2D(cols, rows, bitSet, containsBlocked)
 

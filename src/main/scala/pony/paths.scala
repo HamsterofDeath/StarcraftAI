@@ -356,7 +356,23 @@ object AreaHelper {
 
 }
 
+class ViewOnGrid(ug: UnitGrid, hostile: Boolean) {
+  def onTile(tile: MapTilePosition) = ug.onTile(tile, hostile)
+  def allInRange[T <: Mobile : Manifest](tile: MapTilePosition, radius: Int) = ug.allInRangeOf[T](tile, radius,
+    !hostile)
+}
+
 class UnitGrid(override val universe: Universe) extends HasUniverse {
+  private def on(hostile: Boolean) = if (hostile) enemyUnits else myUnits
+
+  def onTile(tile: MapTilePosition, hostile: Boolean) = {
+    val set = on(hostile)(tile.x)(tile.y)
+    if (set != null) set else Set.empty[Mobile]
+  }
+
+  val own   = new ViewOnGrid(this, false)
+  val enemy = new ViewOnGrid(this, true)
+
   private val map        = universe.world.map
   private val myUnits    = Array.ofDim[mutable.HashSet[Mobile]](map.tileSizeX, map.tileSizeY)
   private val enemyUnits = Array.ofDim[mutable.HashSet[Mobile]](map.tileSizeX, map.tileSizeY)
@@ -369,7 +385,7 @@ class UnitGrid(override val universe: Universe) extends HasUniverse {
     }
     touched.clear()
     // update
-    universe.myUnits.allCompletedMobiles.foreach { m =>
+    universe.ownUnits.allCompletedMobiles.foreach { m =>
       val units = {
         val pos = m.currentTile
         val existing = myUnits(pos.x)(pos.y)
@@ -404,6 +420,8 @@ class UnitGrid(override val universe: Universe) extends HasUniverse {
 
   def allInRangeOf[T <: Mobile : Manifest](position: MapTilePosition, radius: Int,
                                            friendly: Boolean): Traversable[T] = {
+    val onWhat = on(!friendly)
+
     val fromX = 0 max position.x - radius
     val toX = map.tileSizeX min position.x + radius
     val fromY = 0 max position.y - radius
@@ -420,10 +438,9 @@ class UnitGrid(override val universe: Universe) extends HasUniverse {
     new Traversable[T] {
       override def foreach[U](f: (T) => U): Unit = {
         val filter = manifest[T].runtimeClass
-        val on = if (friendly) myUnits else enemyUnits
         for (x <- fromX until toX; y <- fromY until toY
              if dstSqr(x, y) <= radSqr) {
-          val mobiles = on(x)(y)
+          val mobiles = onWhat(x)(y)
           if (mobiles != null) {
             val byType = mobiles.iterator.filter(filter.isInstance)
             byType.foreach { e =>
@@ -443,6 +460,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   private val rawMapBuild                = world.map.buildableGrid.mutableCopy
   private val plannedBuildings           = world.map.empty.zoomedOut.mutableCopy
   private var justBuildings              = evalOnlyBuildings
+  private var justAreasToDefend          = evalOnlyAreasToDefend
   private var justMines                  = evalOnlyMines
   private var justBlockedForMainBuilding = evalOnlyBlockedForMainBuildings
   private var justMineralsAndGas         = evalOnlyResources
@@ -469,46 +487,50 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
 
   }
   def rawWalkableMap = rawMapWalk
+  def defendedTiles = {
+    update()
+    justAreasToDefend.asReadOnlyView
+  }
   def blockedByPotentialAddons = {
     update()
-    justAddonLocations.asReadOnly
+    justAddonLocations.asReadOnlyView
   }
-  def blockedByPlannedBuildings = plannedBuildings.asReadOnly
+  def blockedByPlannedBuildings = plannedBuildings.asReadOnlyView
   def freeBuildingTiles = {
     update()
-    withEverythingStaticBuildable.asReadOnly
+    withEverythingStaticBuildable.asReadOnlyView
   }
   def reallyFreeBuildingTiles = {
     update()
-    withEverythingBlockingBuildable.asReadOnly
+    withEverythingBlockingBuildable.asReadOnlyView
   }
   def freeWalkableTiles = {
     update()
-    withEverythingBlockingWalkable.asReadOnly
+    withEverythingBlockingWalkable.asReadOnlyView
   }
   def blockedByBuildingTiles = {
     update()
-    justBuildings.asReadOnly
+    justBuildings.asReadOnlyView
   }
   def blockedByResources = {
     update()
-    justMineralsAndGas.asReadOnly
+    justMineralsAndGas.asReadOnlyView
   }
   def blockedbyMines = {
     update()
-    justMines.asReadOnly
+    justMines.asReadOnlyView
   }
   def blockedForResourceDeposit = {
     update()
-    justBlockedForMainBuilding.asReadOnly
+    justBlockedForMainBuilding.asReadOnlyView
   }
   def blockedByWorkerPaths = {
     update()
-    justWorkerPaths.asReadOnly
+    justWorkerPaths.asReadOnlyView
   }
   def blockedByMobileUnits = {
     update()
-    justBlockingMobiles.asReadOnly
+    justBlockingMobiles.asReadOnlyView
   }
   def blockBuilding_!(where: Area): Unit = {
     plannedBuildings.block_!(where)
@@ -551,8 +573,11 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
       lastUpdatePerformedInTick = universe.currentTick
 
       justBuildings = evalOnlyBuildings
+      ifNth(Primes.prime71) {
+        justAreasToDefend = evalOnlyAreasToDefend
+        justBlockedForMainBuilding = evalOnlyBlockedForMainBuildings
+      }
       justMines = evalOnlyMines
-      justBlockedForMainBuilding = evalOnlyBlockedForMainBuildings
       justMineralsAndGas = evalOnlyResources
       justBlockingMobiles = evalOnlyMobileBlockingUnits
       justAddonLocations = evalPotentialAddonLocations
@@ -568,6 +593,9 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   private def evalWithBuildings = rawMapBuild.mutableCopy.or_!(justBuildings)
   private def evalWithBuildingsAndResources = justBuildings.mutableCopy.or_!(justMineralsAndGas)
   private def evalOnlyBuildings = evalOnlyUnits(ownUnits.allByType[Building])
+  private def evalOnlyAreasToDefend = {
+    evalOnlyUnits(ownUnits.allByType[Building], 8)
+  }
   private def evalOnlyBlockedForMainBuildings = evalOnlyBlockedResourceAreas(ownUnits.allByType[Resource])
   private def evalPotentialAddonLocations = evalOnlyAddonAreas(ownUnits.allByType[CanBuildAddons])
   private def evalOnlyAddonAreas(units: TraversableOnce[CanBuildAddons]) = {
@@ -588,10 +616,11 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   }
   private def evalOnlyResources = evalOnlyUnits(ownUnits.allByType[MineralPatch].filter(_.remaining > 0))
                                   .or_!(evalOnlyUnits(ownUnits.allByType[Geysir]))
-  private def evalOnlyUnits(units: TraversableOnce[StaticallyPositioned]) = {
+
+  private def evalOnlyUnits(units: TraversableOnce[StaticallyPositioned], increaseSizeBy: Int = 0) = {
     val ret = emptyGrid
     units.foreach { b =>
-      ret.block_!(b.area)
+      ret.block_!(b.area.growBy(increaseSizeBy))
     }
     ret
   }

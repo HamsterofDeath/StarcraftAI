@@ -79,7 +79,7 @@ class UnitIdRenderer extends AIPlugIn {
     lazyWorld.debugger.debugRender { renderer =>
       renderer.in_!(Color.Green)
 
-      lazyWorld.myUnits.mineByType[Mobile].foreach { u =>
+      lazyWorld.ownUnits.mineByType[Mobile].foreach { u =>
         renderer.drawTextAtMobileUnit(u, u.unitIdText)
       }
     }
@@ -138,7 +138,7 @@ class PathDebugRenderer(override val universe: Universe) extends AIPlugIn with H
 class UnitDebugRenderer(override val universe: Universe) extends AIPlugIn with HasUniverse {
   override protected def tickPlugIn(): Unit = {
     lazyWorld.debugger.debugRender { renderer =>
-      universe.myUnits.allCompletedMobiles.filter(_.isSelected).foreach { m =>
+      universe.ownUnits.allCompletedMobiles.filter(_.isSelected).foreach { m =>
         val center = m.currentPosition
         m match {
           case a: AirWeapon =>

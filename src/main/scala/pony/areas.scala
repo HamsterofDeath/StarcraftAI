@@ -47,7 +47,7 @@ class StrategicMap(val resources: Seq[ResourceArea], walkable: Grid2D, game: Gam
     lazy val mergedArea = {
       val mut = walkable.blockedMutableCopy
       mut.or_!(defended.mutableCopy)
-      mut.asReadOnly
+      mut.asReadOnlyView
     }
 
     private def evalScatteredPoints(valid: MapTilePosition => Boolean) = {

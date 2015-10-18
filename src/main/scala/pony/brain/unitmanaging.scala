@@ -272,13 +272,13 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
       }
     }
 
-    val myOwn = universe.world.myUnits.mine.filterNot(assignments.contains).map(initialJobOf).toSeq
+    val myOwn = universe.world.ownUnits.mine.filterNot(assignments.contains).map(initialJobOf).toSeq
     info(s"Found ${myOwn.size} new units of player", myOwn.nonEmpty)
 
     myOwn.foreach(assignJob_!)
     assignments ++= myOwn.map(e => e.unit -> e)
 
-    val registerUs = universe.world.myUnits.all.filterNot(assignments.contains).map(initialJobOf).toSeq
+    val registerUs = universe.world.ownUnits.all.filterNot(assignments.contains).map(initialJobOf).toSeq
     info(s"Found ${registerUs.size} new units (not of player)", registerUs.nonEmpty)
     assignments ++= registerUs.map(e => e.unit -> e)
 
@@ -857,7 +857,7 @@ class ConstructAddon[W <: CanBuildAddons, A <: Addon](employer: Employer[W],
   }
   override def onFinishOrFail(): Unit = {
     super.onFinishOrFail()
-    universe.myUnits.allAddons.find(e => basis.positionedNextTo(e)).foreach { e =>
+    universe.ownUnits.allAddons.find(e => basis.positionedNextTo(e)).foreach { e =>
       basis.notifyAttach_!(e)
     }
   }

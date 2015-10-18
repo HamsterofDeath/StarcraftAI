@@ -159,9 +159,12 @@ object Terran {
       case object Idle extends State
       case class Fallback(to: MapTilePosition, startedAtTick: Int) extends State
 
-      private var state: State    = Idle
-      private var runningCommands = List.empty[UnitOrder]
-      private val beLazy          = (Idle, List.empty[UnitOrder])
+      private var state: State      = Idle
+      private var runningCommands   = List.empty[UnitOrder]
+      private val beLazy            = (Idle, List.empty[UnitOrder])
+      private val immutableMapLayer = oncePerTick {
+        mapLayers.reallyFreeBuildingTiles.asReadOnlyCopyIfMutable
+      }
 
       override def shortName: String = "D"
       override def toOrder(what: Objective) = {
@@ -169,8 +172,7 @@ object Terran {
           case Idle =>
             val coolingDown = !t.isReadyToFireWeapon
             lazy val dancePartners = {
-              val allEnemies = universe.unitGrid.allInRangeOf[Mobile](t.currentTile, t.weaponRangeRadius / 32,
-                friendly = false)
+              val allEnemies = universe.unitGrid.enemy.allInRange[Mobile](t.currentTile, t.weaponRangeRadius / 32)
               allEnemies
               .collect { case enemy: Weapon if enemy.initialNativeType.topSpeed <= t.initialNativeType.topSpeed &&
                                                enemy.weaponRangeRadius <= t.weaponRangeRadius &&
@@ -179,27 +181,35 @@ object Terran {
               }
             }
             if (coolingDown && dancePartners.nonEmpty) {
-              val on = universe.mapLayers.freeWalkableTiles
+              val on = immutableMapLayer.get
               var xSum = 0
               var ySum = 0
+              var xSumCenter = 0
+              var ySumCenter = 0
               for (dp <- dancePartners) {
                 val diff = dp.currentTile.diffTo(t.currentTile)
                 xSum += diff.x
                 ySum += diff.y
+                xSumCenter += dp.currentTile.x
+                ySumCenter += dp.currentTile.y
               }
               val ref = t.currentTile.movedBy(MapTilePosition(xSum, ySum))
+              val dpSize = dancePartners.size
               val whereToGo = {
+                // first try: just escape antigravity style
                 on.spiralAround(t.currentTile, 8).slice(36, 186).filter { c =>
                   c.distanceToSquared(ref) <= t.currentTile.distanceToSquared(ref)
                 }.find {on.free}
                 .orElse {
-                  // escape from dire situations by slipping through
-                  on.spiralAround(t.currentTile, 8).slice(36, 186)
-                  .filter(mapLayers.reallyFreeBuildingTiles.free)
-                  .filter(mapLayers.reallyFreeBuildingTiles.areInSameWalkableArea(_, t.currentTile))
-                  .maxByOpt { candidate => {
-                    dancePartners.map(_.currentTile.distanceToSquared(candidate)).sum
-                  }
+                  // second try: consider slipping through enemy lines
+                  val center = MapTilePosition(xSumCenter / dpSize, ySumCenter / dpSize)
+                  val map = on
+                  val myArea = map.areaWhichContainsAsFree(t.currentTile)
+                  myArea.flatMap { a =>
+                    on.spiralAround(t.currentTile, 8).slice(36, 186)
+                    .filter(map.free)
+                    .filter(a.free)
+                    .maxByOpt(center.distanceToSquared)
                   }
                 }
               }
@@ -296,7 +306,7 @@ object Terran {
       override def preconditionOk = upgrades.hasResearched(TankSiegeMode)
 
       override def toOrder(what: Objective) = {
-        val trav = universe.unitGrid.allInRangeOf[GroundUnit](t.currentTile, 12, friendly = false)
+        val trav = universe.unitGrid.enemy.allInRange[GroundUnit](t.currentTile, 12)
         def enemiesNear = {
           trav.view.filter(!_.isHarmlessNow).take(4).size >= 3
         }
@@ -392,7 +402,7 @@ object Terran {
     private val mined = oncePerTick {
       plannedDrops.retain(_._2 + 120 > universe.currentTick)
       val area = universe.mapLayers.freeWalkableTiles.mutableCopy
-      universe.myUnits.allByType[SpiderMine].foreach { mine =>
+      universe.ownUnits.allByType[SpiderMine].foreach { mine =>
         area.block_!(mine.blockedArea.extendedBy(1))
         plannedDrops.foreach(e => area.block_!(e._1))
       }
@@ -415,7 +425,7 @@ object Terran {
 
     override def onTick(): Unit = {
       super.onTick()
-      ifNth(137) {
+      ifNth(Primes.prime137) {
         helper.cleanBlacklist((_, reason) => reason.when + 240 < universe.currentTick)
       }
     }
@@ -437,21 +447,21 @@ object Terran {
           case Idle =>
             // TODO include test in tech trait
             if (t.spiderMineCount > 0 && t.canCastNow(SpiderMines)) {
-              val enemies = universe.unitGrid.allInRangeOf[GroundUnit](t.currentTile, 5, friendly = false)
+              val enemies = universe.unitGrid.enemy.allInRange[GroundUnit](t.currentTile, 5)
               if (enemies.nonEmpty) {
                 inBattle = true
                 // drop mines on sight of enemy
                 val on = freeArea
                 val freeTarget = on.spiralAround(t.currentTile).filter(on.free).maxByOpt { where =>
                   def ownUnitsCost = {
-                    universe.unitGrid.allInRangeOf[GroundUnit](where, 5, friendly = true)
+                    universe.unitGrid.own.allInRange[GroundUnit](where, 5)
                     .view
                     .filter(e => !e.isInstanceOf[HasSpiderMines] && !e.isAutoPilot)
                     .map(_.buildPrice)
                     .fold(Price.zero)(_ + _)
                   }
                   def enemyUnitsCost = {
-                    universe.unitGrid.allInRangeOf[GroundUnit](where, 5, friendly = false)
+                    universe.unitGrid.enemy.allInRange[GroundUnit](where, 5)
                     .view
                     .filter(e => !e.isInstanceOf[HasSpiderMines] && !e.isAutoPilot)
                     .map(_.buildPrice)
@@ -861,7 +871,7 @@ class NonConflictingSpellTargets[T <: HasSingleTargetSpells, M <: Mobile : Manif
         if (spell.castOn == EnemyUnits) {
           universe.enemyUnits.allByType[M]
         } else {
-          universe.myUnits.allByType[M]
+          universe.ownUnits.allByType[M]
         }
       }
       targets.collect(targetConstraint)

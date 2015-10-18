@@ -18,7 +18,7 @@ class ArmorWeaponLevels(override val universe: Universe) extends HasUniverse {
   }
 
   universe.register_!(() => {
-    ifNth(23) {
+    ifNth(Primes.prime23) {
       cache.clear()
     }
   })
