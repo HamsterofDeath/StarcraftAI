@@ -287,7 +287,7 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
         private val miningTeam            = ArrayBuffer.empty[GatherMineralsAtPatch]
         private val workerCountByDistance = LazyVal.from {
           val distance = patch.area.distanceTo(base.mainBuilding.area)
-          (1 max math.round(distance / 2.5).toInt)
+          1 max math.round(distance / 2.5).toInt
         }
         override def toString: String = s"(Mined) $patch"
         def hasOpenSpot: Boolean = miningTeam.size < estimateRequiredWorkers

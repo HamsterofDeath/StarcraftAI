@@ -572,7 +572,7 @@ class EnqueueFactories(universe: Universe) extends OrderlessAIModule[WorkerUnit]
     .groupBy(_.typeOfFactory)
     .values.map { elems =>
       val sum = elems.map(_.maximumSustainable).sum
-      val copy = IdealProducerCount(elems.head.typeOfFactory, sum)(true)
+      val copy = IdealProducerCount(elems.head.typeOfFactory, sum)(active = true)
       copy
     }
   }
@@ -714,7 +714,7 @@ object Strategy {
     }
     protected def expandNow = {
       val (poor, rich) = bases.myMineralFields.partition(_.remainingPercentage < expansionThreshold)
-      poor.size >= rich.size && rich.size <= 3
+      poor.size > rich.size && rich.size <= 3
     }
     protected def expansionThreshold = 0.5
   }

@@ -8,6 +8,19 @@ import scala.collection.mutable
  * Created by HoD on 01.08.2015.
  */
 package object pony {
+
+  // TODO make support units accompany armies
+  // TODO use comsat to detect cloaked attackers if no detector is around
+  // TODO add meeting points to attacks, attack in sync
+  // TODO send only necessary units for defenses
+  // TODO add air defenses
+  // TODO optimize worker paths
+  // TODO move units out of planned building spots
+  // TODO move units that block paths
+  // TODO send units via shuttle to attack/defend islands
+  // TODO make units use safe paths while not trying to attack
+  // TODO fix tank siege behaviour
+
   class PrimeNumber(val i: Int) extends AnyVal
 
   object Primes {
