@@ -53,13 +53,13 @@ abstract class DefaultBehaviour[T <: Mobile : Manifest](override val universe: U
   }
   def add_!(u: WrapsUnit, objective: Objective) = {
     assert(canControl(u))
-    val behaviour = lift(u.asInstanceOf[T])
+    val behaviour = wrapBase(u.asInstanceOf[T])
     controlledUnits += behaviour.unit
     unit2behaviour.put(behaviour.unit, behaviour)
   }
   def cast = this.asInstanceOf[DefaultBehaviour[Mobile]]
 
-  protected def lift(t: T): SingleUnitBehaviour[T]
+  protected def wrapBase(unit: T): SingleUnitBehaviour[T]
 
 }
 
@@ -78,6 +78,7 @@ object Terran {
                       new MigrateTowardsPosition(universe) ::
                       new FerryService(universe) ::
                       new RepairDamagedUnit(universe) ::
+                      new MoveAwayFromConstructionSite(universe) ::
                       /*
                                             new RepairDamagedBuilding ::
                                            new UseComsat ::
@@ -97,8 +98,7 @@ object Terran {
 
     override def forceRepeatedCommands: Boolean = false
 
-    override protected def lift(t: TransporterUnit): SingleUnitBehaviour[TransporterUnit] = new
-        SingleUnitBehaviour[TransporterUnit](t, meta) {
+    override protected def wrapBase(unit: TransporterUnit) = new SingleUnitBehaviour[TransporterUnit](unit, meta) {
 
       override def forceRepeats: Boolean = true
 
@@ -107,35 +107,35 @@ object Terran {
       override def shortName: String = "T"
 
       override def toOrder(what: Objective): Seq[UnitOrder] = {
-        ferryManager.planFor(t) match {
+        ferryManager.planFor(unit) match {
           case Some(plan) =>
             plan.toDropNow.map { dropThis =>
-              Orders.UnloadUnit(t, dropThis)
+              Orders.UnloadUnit(unit, dropThis)
             }.orElse {
               if (plan.unloadedLeft) {
                 val loadThis = plan.toTransport
                                .view
                                .filterNot(_.loaded)
-                               .minBy(_.currentTile.distanceToSquared(t.currentTile))
-                Orders.LoadUnit(t, loadThis).toSome
+                               .minBy(_.currentTile.distanceToSquared(unit.currentTile))
+                Orders.LoadUnit(unit, loadThis).toSome
               } else if (plan.needsToReachTarget) {
-                Orders.Move(plan.ferry, plan.toWhere).toSome
+                Orders.MoveToTile(plan.ferry, plan.toWhere).toSome
               } else if (plan.loadedLeft) {
                 plan.nextToDropAtTarget.map { drop =>
-                  Orders.UnloadUnit(t, drop)
+                  Orders.UnloadUnit(unit, drop)
                 }
               } else {
                 None
               }
             }.toList
           case None =>
-            (if (t.hasUnitsLoaded) {
-              val nearestFree = mapLayers.reallyFreeBuildingTiles.nearestFree(t.currentTile)
+            (if (unit.hasUnitsLoaded) {
+              val nearestFree = mapLayers.reallyFreeBuildingTiles.nearestFree(unit.currentTile)
               nearestFree.map { where =>
-                Orders.UnloadAll(t, where).forceRepeat_!(true)
+                Orders.UnloadAll(unit, where).forceRepeat_!(true)
               }
-            } else if (t.isPickingUp) {
-              Some(Orders.Stop(t))
+            } else if (unit.isPickingUp) {
+              Some(Orders.Stop(unit))
             }
             else {
               None
@@ -152,8 +152,8 @@ object Terran {
 
     override def canControl(u: WrapsUnit): Boolean = super.canControl(u) && u.isInstanceOf[Weapon]
 
-    override protected def lift(t: Mobile with Weapon): SingleUnitBehaviour[Mobile with Weapon] = new
-        SingleUnitBehaviour[Mobile with Weapon](t, meta) {
+    override protected def wrapBase(unit: Mobile with Weapon): SingleUnitBehaviour[Mobile with Weapon] = new
+        SingleUnitBehaviour[Mobile with Weapon](unit, meta) {
 
       trait State
       case object Idle extends State
@@ -170,13 +170,13 @@ object Terran {
       override def toOrder(what: Objective) = {
         val (newState, newOrder) = state match {
           case Idle =>
-            val coolingDown = !t.isReadyToFireWeapon
+            val coolingDown = !unit.isReadyToFireWeapon
             lazy val dancePartners = {
-              val allEnemies = universe.unitGrid.enemy.allInRange[Mobile](t.currentTile, t.weaponRangeRadius / 32)
+              val allEnemies = universe.unitGrid.enemy.allInRange[Mobile](unit.currentTile, unit.weaponRangeRadius / 32)
               allEnemies
-              .collect { case enemy: Weapon if enemy.initialNativeType.topSpeed <= t.initialNativeType.topSpeed &&
-                                               enemy.weaponRangeRadius <= t.weaponRangeRadius &&
-                                               t.canAttack(enemy) =>
+              .collect { case enemy: Weapon if enemy.initialNativeType.topSpeed <= unit.initialNativeType.topSpeed &&
+                                               enemy.weaponRangeRadius <= unit.weaponRangeRadius &&
+                                               unit.canAttack(enemy) =>
                 enemy
               }
             }
@@ -187,26 +187,26 @@ object Terran {
               var xSumCenter = 0
               var ySumCenter = 0
               for (dp <- dancePartners) {
-                val diff = dp.currentTile.diffTo(t.currentTile)
+                val diff = dp.currentTile.diffTo(unit.currentTile)
                 xSum += diff.x
                 ySum += diff.y
                 xSumCenter += dp.currentTile.x
                 ySumCenter += dp.currentTile.y
               }
-              val ref = t.currentTile.movedBy(MapTilePosition(xSum, ySum))
+              val ref = unit.currentTile.movedBy(MapTilePosition(xSum, ySum))
               val dpSize = dancePartners.size
               val whereToGo = {
                 // first try: just escape antigravity style
-                on.spiralAround(t.currentTile, 8).slice(36, 186).filter { c =>
-                  c.distanceToSquared(ref) <= t.currentTile.distanceToSquared(ref)
+                on.spiralAround(unit.currentTile, 8).slice(36, 186).filter { c =>
+                  c.distanceToSquared(ref) <= unit.currentTile.distanceToSquared(ref)
                 }.find {on.free}
                 .orElse {
                   // second try: consider slipping through enemy lines
                   val center = MapTilePosition(xSumCenter / dpSize, ySumCenter / dpSize)
                   val map = on
-                  val myArea = map.areaWhichContainsAsFree(t.currentTile)
+                  val myArea = map.areaWhichContainsAsFree(unit.currentTile)
                   myArea.flatMap { a =>
-                    on.spiralAround(t.currentTile, 8).slice(36, 186)
+                    on.spiralAround(unit.currentTile, 8).slice(36, 186)
                     .filter(map.free)
                     .filter(a.free)
                     .maxByOpt(center.distanceToSquared)
@@ -215,13 +215,13 @@ object Terran {
               }
 
               whereToGo.map { where =>
-                Fallback(where, universe.currentTick) -> Orders.Move(t, where).toList
+                Fallback(where, universe.currentTick) -> Orders.MoveToTile(unit, where).toList
               }.getOrElse(beLazy)
             } else {
               beLazy
             }
           case current@Fallback(where, startedWhen) =>
-            if (t.isReadyToFireWeapon || startedWhen + 24 < universe.currentTick || t.currentTile == where) {
+            if (unit.isReadyToFireWeapon || startedWhen + 24 < universe.currentTick || unit.currentTile == where) {
               beLazy
             } else {
               (current, runningCommands)
@@ -236,7 +236,26 @@ object Terran {
   }
 
   class RepairDamagedBuilding(universe: Universe) extends DefaultBehaviour[SCV](universe) {
-    override protected def lift(t: SCV): SingleUnitBehaviour[SCV] = ???
+    override protected def wrapBase(t: SCV) = ???
+  }
+
+  class MoveAwayFromConstructionSite(universe: Universe) extends DefaultBehaviour[Mobile](universe) {
+    override protected def wrapBase(unit: Mobile) = new SingleUnitBehaviour[Mobile](unit, meta) {
+      override def shortName: String = "<>"
+      override def toOrder(what: Objective): Seq[UnitOrder] = {
+        val layer = mapLayers.blockedByPlannedBuildings
+        val needsToMove = layer.anyBlocked(unit.blockedArea.growBy(1))
+        if (needsToMove) {
+          layer.spiralAround(unit.currentTile).find { tile =>
+            layer.free(tile, unit.unitTileSize)
+          }.map { target =>
+            Orders.MoveToTile(unit, target)
+          }.toList
+        } else {
+          Nil
+        }
+      }
+    }
   }
 
   class RepairDamagedUnit(universe: Universe) extends DefaultBehaviour[SCV](universe) {
@@ -248,18 +267,18 @@ object Terran {
       subRate = (m, t) => PriorityChain(-m.currentTile.distanceToSquared(t.currentTile)),
       own = true, allowReplacements = true)
 
-    override protected def lift(t: SCV): SingleUnitBehaviour[SCV] = new SingleUnitBehaviour[SCV](t, meta) {
+    override protected def wrapBase(unit: SCV) = new SingleUnitBehaviour[SCV](unit, meta) {
       override def shortName: String = "R"
       override def toOrder(what: Objective): Seq[UnitOrder] = {
-        helper.suggestTarget(t).map { what =>
-          Orders.Repair(t, what)
+        helper.suggestTarget(unit).map { what =>
+          Orders.Repair(unit, what)
         }.toList
       }
     }
   }
 
   class ContinueInterruptedConstruction(universe: Universe) extends DefaultBehaviour[SCV](universe) {
-    override protected def lift(t: SCV): SingleUnitBehaviour[SCV] = ???
+    override protected def wrapBase(unit: SCV) = ???
   }
 
   class MigrateTowardsPosition(universe: Universe) extends DefaultBehaviour[Mobile](universe) {
@@ -271,24 +290,25 @@ object Terran {
       super.onTick()
     }
 
-    override protected def lift(t: Mobile): SingleUnitBehaviour[Mobile] = new SingleUnitBehaviour[Mobile](t, meta) {
+    override protected def wrapBase(unit: Mobile) = new SingleUnitBehaviour[Mobile](unit,
+      meta) {
       override def shortName: String = "A"
       override def toOrder(what: Objective) = {
-        worldDominationPlan.attackOf(t).map { attack =>
-          attack.suggestActionFor(t).asOrder.toList
+        worldDominationPlan.attackOf(unit).map { attack =>
+          attack.suggestActionFor(unit).asOrder.toList
         }.getOrElse(Nil)
       }
     }
   }
 
   class StimSelf(universe: Universe) extends DefaultBehaviour[CanUseStimpack](universe) {
-    override protected def lift(t: CanUseStimpack) = new SingleUnitBehaviour[CanUseStimpack](t, meta) {
+    override protected def wrapBase(unit: CanUseStimpack) = new SingleUnitBehaviour[CanUseStimpack](unit, meta) {
 
       override def preconditionOk = upgrades.hasResearched(InfantryCooldown)
 
       override def toOrder(what: Objective) = {
-        if (t.isAttacking && !t.isStimmed) {
-          List(Orders.TechOnSelf(t, InfantryCooldown))
+        if (unit.isAttacking && !unit.isStimmed) {
+          List(Orders.TechOnSelf(unit, InfantryCooldown))
         } else {
           Nil
         }
@@ -301,12 +321,12 @@ object Terran {
 
     override def forceRepeatedCommands = true
 
-    override protected def lift(t: Tank) = new SingleUnitBehaviour[Tank](t, meta) {
+    override protected def wrapBase(unit: Tank) = new SingleUnitBehaviour[Tank](unit, meta) {
 
       override def preconditionOk = upgrades.hasResearched(TankSiegeMode)
 
       override def toOrder(what: Objective) = {
-        val trav = universe.unitGrid.enemy.allInRange[GroundUnit](t.currentTile, 12)
+        val trav = universe.unitGrid.enemy.allInRange[GroundUnit](unit.currentTile, 12)
         def enemiesNear = {
           trav.view.filter(!_.isHarmlessNow).take(4).size >= 3
         }
@@ -314,15 +334,15 @@ object Terran {
           trav.exists(!_.isHarmlessNow)
         }
 
-        if (t.isSieged) {
+        if (unit.isSieged) {
           if (anyNear) {
             Nil
           } else {
-            Orders.TechOnSelf(t, TankSiegeMode).toList
+            Orders.TechOnSelf(unit, TankSiegeMode).toList
           }
         } else {
           if (enemiesNear) {
-            Orders.TechOnSelf(t, TankSiegeMode).toList
+            Orders.TechOnSelf(unit, TankSiegeMode).toList
           } else {
             Nil
           }
@@ -333,13 +353,13 @@ object Terran {
   }
 
   class CloakSelfWraith(universe: Universe) extends DefaultBehaviour[Wraith](universe) {
-    override protected def lift(t: Wraith) = new SingleUnitBehaviour[Wraith](t, meta) {
+    override protected def wrapBase(unit: Wraith) = new SingleUnitBehaviour[Wraith](unit, meta) {
 
       override def preconditionOk = upgrades.hasResearched(WraithCloak)
 
       override def toOrder(what: Objective) = {
-        if (t.isBeingAttacked && !t.isCloaked) {
-          List(Orders.TechOnSelf(t, WraithCloak))
+        if (unit.isBeingAttacked && !unit.isCloaked) {
+          List(Orders.TechOnSelf(unit, WraithCloak))
         } else {
           Nil
         }
@@ -349,13 +369,13 @@ object Terran {
   }
 
   class CloakSelfGhost(universe: Universe) extends DefaultBehaviour[Ghost](universe) {
-    override protected def lift(t: Ghost) = new SingleUnitBehaviour[Ghost](t, meta) {
+    override protected def wrapBase(unit: Ghost) = new SingleUnitBehaviour[Ghost](unit, meta) {
 
       override def preconditionOk = upgrades.hasResearched(GhostCloak)
 
       override def toOrder(what: Objective) = {
-        if (t.isBeingAttacked && !t.isCloaked) {
-          List(Orders.TechOnSelf(t, GhostCloak))
+        if (unit.isBeingAttacked && !unit.isCloaked) {
+          List(Orders.TechOnSelf(unit, GhostCloak))
         } else {
           Nil
         }
@@ -369,16 +389,17 @@ object Terran {
 
     private val ignore = mutable.HashSet.empty[Mobile]
 
-    override protected def lift(t: Mobile): SingleUnitBehaviour[Mobile] = new SingleUnitBehaviour[Mobile](t, meta) {
+    override protected def wrapBase(unit: Mobile) = new SingleUnitBehaviour[Mobile](unit,
+      meta) {
       override def shortName: String = "IP"
       override def toOrder(what: Objective) = {
-        if (universe.time.minutes <= 5 || ignore(t) || t.isBeingCreated) {
+        if (universe.time.minutes <= 5 || ignore(unit) || unit.isBeingCreated) {
           Nil
         } else {
           helper.allInsideNonBlacklisted.toStream.headOption.map { where =>
-            ignore += t
+            ignore += unit
             helper.blacklisted(where)
-            Orders.AttackMove(t, where)
+            Orders.AttackMove(unit, where)
           }.toList
         }
       }
@@ -386,7 +407,7 @@ object Terran {
   }
 
   class UseComsat(universe: Universe) extends DefaultBehaviour[MobileDetector](universe) {
-    override protected def lift(t: MobileDetector): SingleUnitBehaviour[MobileDetector] = ???
+    override protected def wrapBase(t: MobileDetector) = ???
   }
 
   class SetupMineField(universe: Universe) extends DefaultBehaviour[Vulture](universe) {
@@ -432,10 +453,11 @@ object Terran {
 
     override def priority = SecondPriority.EvenLess
 
-    override protected def lift(t: Vulture): SingleUnitBehaviour[Vulture] = new SingleUnitBehaviour[Vulture](t, meta) {
+    override protected def wrapBase(unit: Vulture) = new SingleUnitBehaviour[Vulture](
+      unit, meta) {
 
       private var state: State            = Idle
-      private var originalSpiderMineCount = t.spiderMineCount
+      private var originalSpiderMineCount = unit.spiderMineCount
 
       def freeArea = mined.get
       private var inBattle = false
@@ -446,13 +468,13 @@ object Terran {
         val (newState, orders) = state match {
           case Idle =>
             // TODO include test in tech trait
-            if (t.spiderMineCount > 0 && t.canCastNow(SpiderMines)) {
-              val enemies = universe.unitGrid.enemy.allInRange[GroundUnit](t.currentTile, 5)
+            if (unit.spiderMineCount > 0 && unit.canCastNow(SpiderMines)) {
+              val enemies = universe.unitGrid.enemy.allInRange[GroundUnit](unit.currentTile, 5)
               if (enemies.nonEmpty) {
                 inBattle = true
                 // drop mines on sight of enemy
                 val on = freeArea
-                val freeTarget = on.spiralAround(t.currentTile).filter(on.free).maxByOpt { where =>
+                val freeTarget = on.spiralAround(unit.currentTile).filter(on.free).maxByOpt { where =>
                   def ownUnitsCost = {
                     universe.unitGrid.own.allInRange[GroundUnit](where, 5)
                     .view
@@ -472,16 +494,16 @@ object Terran {
                 freeTarget.map { where =>
                   on.block_!(where.asArea.extendedBy(1))
                   plannedDrops += where.asArea.extendedBy(1) -> universe.currentTick
-                  DroppingMine(where) -> t.toOrder(SpiderMines, where).toList
+                  DroppingMine(where) -> unit.toOrder(SpiderMines, where).toList
                 }.getOrElse(beLazy)
               } else {
                 inBattle = false
                 // place mines on strategic positions
                 val candiates = suggestMinePositions
-                val dropMineHere = candiates.minByOpt(_.distanceToSquared(t.currentTile))
+                val dropMineHere = candiates.minByOpt(_.distanceToSquared(unit.currentTile))
                 dropMineHere.foreach(helper.blackList_!)
                 dropMineHere.map { where =>
-                  DroppingMine(where) -> t.toOrder(SpiderMines, where).toList
+                  DroppingMine(where) -> unit.toOrder(SpiderMines, where).toList
                 }.getOrElse(beLazy)
               }
             } else {
@@ -489,11 +511,11 @@ object Terran {
               beLazy
             }
 
-          case myState@DroppingMine(where) if t.canCastNow(SpiderMines) =>
-            myState -> t.toOrder(SpiderMines, where).toList
-          case DroppingMine(_) if t.spiderMineCount < originalSpiderMineCount =>
+          case myState@DroppingMine(where) if unit.canCastNow(SpiderMines) =>
+            myState -> unit.toOrder(SpiderMines, where).toList
+          case DroppingMine(_) if unit.spiderMineCount < originalSpiderMineCount =>
             inBattle = false
-            originalSpiderMineCount = t.spiderMineCount
+            originalSpiderMineCount = unit.spiderMineCount
             Idle -> Nil
           case myState@DroppingMine(_) =>
             inBattle = false
@@ -507,11 +529,11 @@ object Terran {
   }
 
   class Scout(universe: Universe) extends DefaultBehaviour[Mobile](universe) {
-    override protected def lift(t: Mobile): SingleUnitBehaviour[Mobile] = ???
+    override protected def wrapBase(t: Mobile) = ???
   }
 
   class DoNotStray(universe: Universe) extends DefaultBehaviour[SupportUnit](universe) {
-    override protected def lift(t: SupportUnit): SingleUnitBehaviour[SupportUnit] = ???
+    override protected def wrapBase(t: SupportUnit) = ???
   }
 
   class OneTimeUnitSpellCast[C <: HasSingleTargetSpells : Manifest, T <: Mobile : Manifest](universe: Universe,
@@ -524,14 +546,14 @@ object Terran {
 
     override def priority: SecondPriority = SecondPriority.Max
 
-    override protected def lift(t: C): SingleUnitBehaviour[C] = new SingleUnitBehaviour[C](t, meta) {
+    override protected def wrapBase(unit: C): SingleUnitBehaviour[C] = new SingleUnitBehaviour[C](unit, meta) {
       override def shortName: String = s"Cast ${spell.getClass.className}"
       override def toOrder(what: Objective): Seq[UnitOrder] = {
-        if (t.canCastNow(spell.tech)) {
+        if (unit.canCastNow(spell.tech)) {
           val h = helper
-          h.suggestTargetFor(t).map { target =>
-            h.notifyLock_!(t, target)
-            t.toOrder(spell.tech, target)
+          h.suggestTargetFor(unit).map { target =>
+            h.notifyLock_!(unit, target)
+            unit.toOrder(spell.tech, target)
           }.toList
         } else {
           Nil
@@ -546,27 +568,24 @@ object Terran {
   class CloakWraith(universe: Universe) extends OneTimeUnitSpellCast(universe, Spells.Irradiate)
 
   class HealDamagedUnit(universe: Universe) extends DefaultBehaviour[Medic](universe) {
-    override protected def lift(t: Medic): SingleUnitBehaviour[Medic] = ???
+    override protected def wrapBase(t: Medic) = ???
   }
   class FixMedicalProblem(universe: Universe) extends DefaultBehaviour[Medic](universe) {
-    override protected def lift(t: Medic): SingleUnitBehaviour[Medic] = ???
+    override protected def wrapBase(t: Medic) = ???
   }
   class BlindDetector(universe: Universe) extends DefaultBehaviour[Medic](universe) {
-    override protected def lift(t: Medic): SingleUnitBehaviour[Medic] = ???
-  }
-  class Evade(universe: Universe) extends DefaultBehaviour[Mobile](universe) {
-    override protected def lift(t: Mobile): SingleUnitBehaviour[Mobile] = ???
+    override protected def wrapBase(t: Medic) = ???
   }
   class FocusFire(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon](universe) {
 
     private val helper = new FocusFireOrganizer(universe)
 
-    override protected def lift(t: MobileRangeWeapon): SingleUnitBehaviour[MobileRangeWeapon] = new
-        SingleUnitBehaviour(t, meta) {
+    override protected def wrapBase(unit: MobileRangeWeapon) = new
+        SingleUnitBehaviour(unit, meta) {
       override def shortName = "FF"
       override def toOrder(what: Objective) = {
-        helper.suggestTarget(t).map { target =>
-          Orders.AttackUnit(t, target)
+        helper.suggestTarget(unit).map { target =>
+          Orders.AttackUnit(unit, target)
         }.toList
       }
     }

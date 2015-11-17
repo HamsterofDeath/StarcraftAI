@@ -403,6 +403,8 @@ object DamageTypes {
 sealed trait ArmorType {
   def transportSize: Int
 
+  val tileSize: Size
+
   def damageFactorIfHitBy(damageType: DamageType): DamageFactor
 }
 
@@ -416,6 +418,8 @@ case object Small extends ArmorType {
     }
   }
   override def transportSize = 1
+
+  override val tileSize = Size(1, 1)
 }
 case object Medium extends ArmorType {
   override def damageFactorIfHitBy(damageType: DamageType) = {
@@ -426,11 +430,16 @@ case object Medium extends ArmorType {
       case _ => !!!(s"Check $damageType")
     }
   }
+
+  override val tileSize = Size(1, 1)
+
   override def transportSize = 2
 }
 case object Indestructible extends ArmorType {
   override def damageFactorIfHitBy(damageType: DamageType) = Zero
   override def transportSize = !!!("This should never happen")
+
+  override val tileSize = Size(1, 1)
 }
 case object Large extends ArmorType {
   override def damageFactorIfHitBy(damageType: DamageType) = {
@@ -442,6 +451,8 @@ case object Large extends ArmorType {
     }
   }
   override def transportSize = 4
+
+  override val tileSize = Size(2, 2)
 }
 case object Building extends ArmorType {
   override def damageFactorIfHitBy(damageType: DamageType) = {
@@ -454,6 +465,8 @@ case object Building extends ArmorType {
   }
 
   override def transportSize = !!!("This should never happen")
+
+  override val tileSize = Size(4, 3)
 }
 
 case class Armor(armorType: ArmorType, hp: HitPoints, armor: Int, owner: MaybeCanDie)
@@ -606,6 +619,8 @@ trait Mobile extends WrapsUnit with Controllable {
   def currentTile = myTile.get
 
   def blockedArea = myArea.get
+
+  def unitTileSize = armor.armorType.tileSize
 
   def currentPositionNative = currentPosition.toNative
 

@@ -921,7 +921,7 @@ trait FerrySupport[T <: GroundUnit] extends UnitWithJob[T] {
           Orders.NoUpdate(unit).toList
         case None =>
           //go there while waiting for ferry
-          Orders.Move(unit, to).toList
+          Orders.MoveToTile(unit, to).toList
       }
     } else {
       Nil

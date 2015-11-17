@@ -148,7 +148,7 @@ object Orders {
     }
   }
 
-  case class Move(myUnit: Mobile, to: MapTilePosition) extends UnitOrder {
+  case class MoveToTile(myUnit: Mobile, to: MapTilePosition) extends UnitOrder {
     override def issueOrderToGame(): Unit = {
       myUnit.nativeUnit.move(to.asMapPosition.toNative)
     }

@@ -100,6 +100,8 @@ object MapTilePosition {
 }
 
 case class Size(x: Int, y: Int) extends HasXY {
+  def growBy(i: Int) = Size.shared(x + i, y + i)
+
   def points: Traversable[MapTilePosition] = new Traversable[MapTilePosition] {
     override def foreach[U](f: (MapTilePosition) => U): Unit = {
       for (x <- 0 until x; y <- 0 until y) {

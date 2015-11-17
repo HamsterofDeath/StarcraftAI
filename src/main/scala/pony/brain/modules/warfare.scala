@@ -65,7 +65,7 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse w
   }
 
   case class MoveToPosition(who: Mobile, where: MapTilePosition) extends Action {
-    override def asOrder = Orders.Move(who, where)
+    override def asOrder = Orders.MoveToTile(who, where)
   }
 
   case class AttackToPosition(who: Mobile, where: MapTilePosition) extends Action {
