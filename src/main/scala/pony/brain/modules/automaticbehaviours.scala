@@ -269,6 +269,8 @@ object Terran {
 
   class UntrapOwnUnits(universe: Universe) extends DefaultBehaviour[Mobile](universe) {
 
+    private def tolerance = 2
+
     private val newBlockingUnits = oncePer(Primes.prime73, {
       val baseArea = mapLayers.blockedByAnythingTiles.asReadOnlyCopyIfMutable
       val unitsToPositions = ownUnits.allCompletedMobiles
@@ -278,7 +280,7 @@ object Terran {
                              .toMap
       BWFuture.some {
         val badlyPositioned = unitsToPositions.flatMap { case (id, where) =>
-          val withOutline = where.growBy(1)
+          val withOutline = where.growBy(tolerance)
 
           import scala.collection.breakOut
           val touched: Set[Grid2D] = withOutline.tiles.flatMap { tile =>
@@ -326,7 +328,7 @@ object Terran {
         if (blockingUnitsQueue(unit)) {
           val layer = relevantLayer.get
           val command = lastFreeGoTo.filter(layer.free).map(Orders.MoveToTile(unit, _)).orElse {
-            val safeArea = unit.blockedArea.growBy(1)
+            val safeArea = unit.blockedArea.growBy(tolerance)
             val moveTo = layer.spiralAround(unit.currentTile).find(e => layer.free(safeArea.moveTo(e)))
             moveTo.map { whereTo =>
               lastFreeGoTo = Some(whereTo)
