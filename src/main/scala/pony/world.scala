@@ -414,8 +414,8 @@ abstract class OnKillListener[T <: WrapsUnit](val unit: T) {
 class Units(game: Game, hostile: Boolean) {
   def byNative(nativeUnit: bwapi.Unit) = if (nativeUnit == null) None else byId(nativeUnit.getID)
 
-  def byId(id: Int) = knownUnits.get(id)
-  def byIdExpectExisting(id: Int) = knownUnits(id)
+  def byId(nativeId: Int) = nativeIdToUnit.get(nativeId)
+  def byIdExpectExisting(nativeId: Int) = nativeIdToUnit(nativeId)
 
   private def ownAndNeutral = !hostile
 
@@ -437,7 +437,7 @@ class Units(game: Game, hostile: Boolean) {
 
   def dead_!(dead: Seq[bwapi.Unit]) = {
     dead.foreach { u =>
-      knownUnits.get(u.getID).foreach { died =>
+      nativeIdToUnit.get(u.getID).foreach { died =>
         died match {
           case cd: MaybeCanDie =>
             cd.notifyDead_!()
@@ -463,7 +463,7 @@ class Units(game: Game, hostile: Boolean) {
   private val preparedByClass = multiMap[Class[_], WrapsUnit]
 
   private def removeUnit(u: bwapi.Unit) = {
-    val removed = knownUnits.remove(u.getID)
+    val removed = nativeIdToUnit.remove(u.getID)
     removed.foreach { what =>
       classIndexes.foreach { c =>
         preparedByClass.removeBinding(c, what)
@@ -474,7 +474,7 @@ class Units(game: Game, hostile: Boolean) {
   }
 
   def registerUnit(u: bwapi.Unit, lifted: WrapsUnit) = {
-    knownUnits.put(u.getID, lifted)
+    nativeIdToUnit.put(u.getID, lifted)
     classIndexes.foreach { c =>
       if (c.isInstance(lifted)) {
         preparedByClass.addBinding(c, lifted)
@@ -482,8 +482,8 @@ class Units(game: Game, hostile: Boolean) {
     }
   }
 
-  private val knownUnits = mutable.HashMap.empty[Int, WrapsUnit]
-  private var initial    = true
+  private val nativeIdToUnit = mutable.HashMap.empty[Int, WrapsUnit]
+  private var initial        = true
   def buildingAt(upperLeft: MapTilePosition) = {
     allBuildings.find(_.area.upperLeft == upperLeft)
   }
@@ -495,7 +495,7 @@ class Units(game: Game, hostile: Boolean) {
   def existsIncomplete(c: Class[_ <: WrapsUnit]) = allByClass(c).exists(_.isBeingCreated)
   def existsComplete(c: Class[_ <: WrapsUnit]) = allByClass(c).exists(!_.isBeingCreated)
   def ownsByType(c: Class[_ <: WrapsUnit]) = {
-    knownUnits.values.exists(c.isInstance)
+    nativeIdToUnit.values.exists(c.isInstance)
   }
   def geysirs = allByType[Geysir]
   def allByType[T <: WrapsUnit : Manifest] = {
@@ -511,7 +511,7 @@ class Units(game: Game, hostile: Boolean) {
     cached.asInstanceOf[collection.Set[T]]
   }
 
-  def all = knownUnits.valuesIterator
+  def all = nativeIdToUnit.valuesIterator
   def allCanDie = allByType[MaybeCanDie]
 
   import scala.collection.JavaConverters._
@@ -573,7 +573,7 @@ class Units(game: Game, hostile: Boolean) {
     }
     if (record) {
       if (!graveyard.contains(u.getID)) {
-        knownUnits.get(u.getID) match {
+        nativeIdToUnit.get(u.getID) match {
           case None =>
             val lifted = UnitWrapper.lift(u)
             fresh += lifted
@@ -627,7 +627,8 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
 
   private val lazyAreas = LazyVal.from {new AreaHelper(self).findFreeAreas}
   def free(a: Area): Boolean = a.tiles.forall(free)
-  def anyBlocked(a: Area): Boolean = !includes(a) || !free(a)
+  def freeAndInBounds(a: Area): Boolean = a.tiles.forall(e => inBounds(e) && free(e))
+  def anyBlocked(a: Area): Boolean = !inBounds(a) || !free(a)
   def containsAndFree(a: Area): Boolean = a.tiles.forall(containsAndFree)
   def free(p: TilePosition): Boolean = free(p.getX, p.getY)
   def anyBlockedOnLine(center: MapTilePosition, from: HasXY, to: HasXY): Boolean = {
@@ -637,16 +638,14 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
   }
   def anyBlockedOnLine(line: Line): Boolean = {
     AreaHelper.traverseTilesOfLine(line.a, line.b, (x, y) => {
-      if (includes(x, y) && blocked(x, y)) Some(true) else None
+      if (inBounds(x, y) && blocked(x, y)) Some(true) else None
     }, false)
   }
   def blocked(x: Int, y: Int): Boolean = !free(x, y)
-  def areaWhichContains(tile: MapTilePosition) = areas.find(_.containsAsData(tile))
   def areaWhichContainsAsFree(tile: MapTilePosition) = areas.find(_.free(tile))
-  def containsAsData(p: MapTilePosition): Boolean = !free(p)
-  def includes(area: Area): Boolean = area.outline.forall(includes)
-  def includes(p: MapTilePosition): Boolean = includes(p.x, p.y)
-  def includes(x: Int, y: Int): Boolean = x >= 0 && x < cols && y >= 0 && y < rows
+  def inBounds(area: Area): Boolean = area.outline.forall(inBounds)
+  def inBounds(p: MapTilePosition): Boolean = inBounds(p.x, p.y)
+  def inBounds(x: Int, y: Int): Boolean = x >= 0 && x < cols && y >= 0 && y < rows
   def connectedByLine(a: MapTilePosition, b: MapTilePosition) = AreaHelper.directLineOfSight(a, b, this)
   def blockedCount = size - freeCount
   def freeCount = if (containsBlocked) size - areaDataBitSet.size else areaDataBitSet.size
@@ -691,6 +690,10 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
       free(p.movedBy(position))
     }
   }
+  def freeAndInBounds(position: MapTilePosition, size: Size): Boolean = {
+    val area = Area(position, size)
+    inBounds(area) && free(area)
+  }
   def zoomedOut = {
     val bits = mutable.BitSet.empty
     val subCols = cols / 4
@@ -704,16 +707,16 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
     new Grid2D(subCols, subRows, bits)
   }
   def free(x: Int, y: Int): Boolean = {
-    assert(includes(x, y), s"$x / $y is not inside $cols, $rows")
+    assert(inBounds(x, y), s"$x / $y is not inside $cols, $rows")
     val coord = x + y * cols
     if (containsBlocked) !areaDataBitSet(coord) else areaDataBitSet(coord)
   }
   def blocked = size - walkable
   def walkable = areaDataBitSet.size
   def blocked(p: MapTilePosition): Boolean = !free(p)
-  def includesAndBlocked(p: MapTilePosition): Boolean = includes(p) && blocked(p)
+  def includesAndBlocked(p: MapTilePosition): Boolean = inBounds(p) && blocked(p)
   def free(p: MapTilePosition): Boolean = free(p.x, p.y)
-  def containsAndFree(p: MapTilePosition): Boolean = includes(p) && free(p)
+  def containsAndFree(p: MapTilePosition): Boolean = inBounds(p) && free(p)
   def containsAsData(x: Int, y: Int): Boolean = !free(x, y)
   def allFree = if (containsBlocked) allIndexes.filterNot(areaDataBitSet).map(indexToTile) else bitSetToTiles
   def all: Iterator[MapTilePosition] = new Iterator[MapTilePosition] {

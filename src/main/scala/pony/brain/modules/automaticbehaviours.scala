@@ -79,6 +79,7 @@ object Terran {
                       new FerryService(universe) ::
                       new RepairDamagedUnit(universe) ::
                       new MoveAwayFromConstructionSite(universe) ::
+                      new UntrapOwnUnits(universe) ::
                       /*
                                             new RepairDamagedBuilding ::
                                            new UseComsat ::
@@ -130,7 +131,7 @@ object Terran {
             }.toList
           case None =>
             (if (unit.hasUnitsLoaded) {
-              val nearestFree = mapLayers.reallyFreeBuildingTiles.nearestFree(unit.currentTile)
+              val nearestFree = mapLayers.blockedByAnythingTiles.nearestFree(unit.currentTile)
               nearestFree.map { where =>
                 Orders.UnloadAll(unit, where).forceRepeat_!(true)
               }
@@ -152,6 +153,12 @@ object Terran {
 
     override def canControl(u: WrapsUnit): Boolean = super.canControl(u) && u.isInstanceOf[Weapon]
 
+    override def refuseCommandsForTicks = 12 // to avoid wasting cpu time
+
+    private val immutableMapLayer = oncePerTick {
+      mapLayers.blockedByAnythingTiles.asReadOnlyCopyIfMutable
+    }
+
     override protected def wrapBase(unit: Mobile with Weapon): SingleUnitBehaviour[Mobile with Weapon] = new
         SingleUnitBehaviour[Mobile with Weapon](unit, meta) {
 
@@ -159,73 +166,73 @@ object Terran {
       case object Idle extends State
       case class Fallback(to: MapTilePosition, startedAtTick: Int) extends State
 
-      private var state: State      = Idle
-      private var runningCommands   = List.empty[UnitOrder]
-      private val beLazy            = (Idle, List.empty[UnitOrder])
-      private val immutableMapLayer = oncePerTick {
-        mapLayers.reallyFreeBuildingTiles.asReadOnlyCopyIfMutable
-      }
+      private var state: State    = Idle
+      private var runningCommands = List.empty[UnitOrder]
+      private val beLazy          = (Idle, List.empty[UnitOrder])
 
       override def shortName: String = "D"
       override def toOrder(what: Objective) = {
-        val (newState, newOrder) = state match {
-          case Idle =>
-            val coolingDown = !unit.isReadyToFireWeapon
-            lazy val dancePartners = {
-              val allEnemies = universe.unitGrid.enemy.allInRange[Mobile](unit.currentTile, unit.weaponRangeRadius / 32)
-              allEnemies
-              .collect { case enemy: Weapon if enemy.initialNativeType.topSpeed <= unit.initialNativeType.topSpeed &&
-                                               enemy.weaponRangeRadius <= unit.weaponRangeRadius &&
-                                               unit.canAttack(enemy) =>
-                enemy
-              }
-            }
-            if (coolingDown && dancePartners.nonEmpty) {
-              val on = immutableMapLayer.get
-              var xSum = 0
-              var ySum = 0
-              var xSumCenter = 0
-              var ySumCenter = 0
-              for (dp <- dancePartners) {
-                val diff = dp.currentTile.diffTo(unit.currentTile)
-                xSum += diff.x
-                ySum += diff.y
-                xSumCenter += dp.currentTile.x
-                ySumCenter += dp.currentTile.y
-              }
-              val ref = unit.currentTile.movedBy(MapTilePosition(xSum, ySum))
-              val dpSize = dancePartners.size
-              val whereToGo = {
-                // first try: just escape antigravity style
-                on.spiralAround(unit.currentTile, 8).slice(36, 186).filter { c =>
-                  c.distanceToSquared(ref) <= unit.currentTile.distanceToSquared(ref)
-                }.find {on.free}
-                .orElse {
-                  // second try: consider slipping through enemy lines
-                  val center = MapTilePosition(xSumCenter / dpSize, ySumCenter / dpSize)
-                  val map = on
-                  val myArea = map.areaWhichContainsAsFree(unit.currentTile)
-                  myArea.flatMap { a =>
-                    on.spiralAround(unit.currentTile, 8).slice(36, 186)
-                    .filter(map.free)
-                    .filter(a.free)
-                    .maxByOpt(center.distanceToSquared)
-                  }
+        val (newState, newOrder) = {
+          state match {
+            case Idle =>
+              val coolingDown = !unit.isReadyToFireWeapon
+              lazy val dancePartners = {
+                val allEnemies = universe.unitGrid.enemy.allInRange[Mobile](unit.currentTile,
+                  unit.weaponRangeRadius / 32)
+                allEnemies
+                .collect { case enemy: Weapon if enemy.initialNativeType.topSpeed <= unit.initialNativeType.topSpeed &&
+                                                 enemy.weaponRangeRadius <= unit.weaponRangeRadius &&
+                                                 unit.canAttack(enemy) =>
+                  enemy
                 }
               }
+              if (coolingDown && dancePartners.nonEmpty) {
+                val on = immutableMapLayer.get
+                var xSum = 0
+                var ySum = 0
+                var xSumCenter = 0
+                var ySumCenter = 0
+                for (dp <- dancePartners) {
+                  val diff = dp.currentTile.diffTo(unit.currentTile)
+                  xSum += diff.x
+                  ySum += diff.y
+                  xSumCenter += dp.currentTile.x
+                  ySumCenter += dp.currentTile.y
+                }
+                val ref = unit.currentTile.movedBy(MapTilePosition(xSum, ySum))
+                val dpSize = dancePartners.size
+                val whereToGo = {
+                  // first try: just escape antigravity style
+                  on.spiralAround(unit.currentTile, 8).slice(36, 186).filter { c =>
+                    c.distanceToSquared(ref) <= unit.currentTile.distanceToSquared(ref)
+                  }.find {on.free}
+                  .orElse {
+                    // second try: consider slipping through enemy lines
+                    val center = MapTilePosition(xSumCenter / dpSize, ySumCenter / dpSize)
+                    val map = on
+                    val myArea = map.areaWhichContainsAsFree(unit.currentTile)
+                    myArea.flatMap { a =>
+                      on.spiralAround(unit.currentTile, 8).slice(36, 186)
+                      .filter(map.free)
+                      .filter(a.free)
+                      .maxByOpt(center.distanceToSquared)
+                    }
+                  }
+                }
 
-              whereToGo.map { where =>
-                Fallback(where, universe.currentTick) -> Orders.MoveToTile(unit, where).toList
-              }.getOrElse(beLazy)
-            } else {
-              beLazy
-            }
-          case current@Fallback(where, startedWhen) =>
-            if (unit.isReadyToFireWeapon || startedWhen + 24 < universe.currentTick || unit.currentTile == where) {
-              beLazy
-            } else {
-              (current, runningCommands)
-            }
+                whereToGo.map { where =>
+                  Fallback(where, universe.currentTick) -> Orders.MoveToTile(unit, where).toList
+                }.getOrElse(beLazy)
+              } else {
+                beLazy
+              }
+            case current@Fallback(where, startedWhen) =>
+              if (unit.isReadyToFireWeapon || startedWhen + 24 < universe.currentTick || unit.currentTile == where) {
+                beLazy
+              } else {
+                (current, runningCommands)
+              }
+          }
         }
         state = newState
         runningCommands = newOrder
@@ -244,12 +251,76 @@ object Terran {
       override def shortName: String = "<>"
       override def toOrder(what: Objective): Seq[UnitOrder] = {
         val layer = mapLayers.blockedByPlannedBuildings
+        val secondLayer = mapLayers.blockedByAnythingTiles
         val needsToMove = layer.anyBlocked(unit.blockedArea.growBy(1))
         if (needsToMove) {
           layer.spiralAround(unit.currentTile).find { tile =>
-            layer.free(tile, unit.unitTileSize)
+            val extendedSizeToBeSafe = unit.unitTileSize.growBy(1)
+            layer.free(tile, extendedSizeToBeSafe) && secondLayer.free(tile, extendedSizeToBeSafe)
           }.map { target =>
             Orders.MoveToTile(unit, target)
+          }.toList
+        } else {
+          Nil
+        }
+      }
+    }
+  }
+
+  class UntrapOwnUnits(universe: Universe) extends DefaultBehaviour[Mobile](universe) {
+
+    private val newBlockingUnits = oncePer(Primes.prime73, {
+      val baseArea = mapLayers.blockedByAnythingTiles.asReadOnlyCopyIfMutable
+      val unitsToPositions = ownUnits.allCompletedMobiles.map { e => e.nativeUnitId -> e.blockedArea }.toMap
+      BWFuture.some {
+        val badlyPositioned = unitsToPositions.flatMap { case (id, where) =>
+          val withOutline = where.growBy(1)
+
+          import scala.collection.breakOut
+          val touched: Set[Grid2D] = withOutline.tiles.flatMap { tile =>
+            if (baseArea.inBounds(tile)) baseArea.areaWhichContainsAsFree(tile) else None
+          }(breakOut)
+
+          if (touched.size > 1) {
+            baseArea.spiralAround(where.upperLeft).find { e =>
+              baseArea.freeAndInBounds(withOutline.moveTo(e))
+            }.map(_ -> id)
+          } else {
+            None
+          }
+        }
+        mutable.HashMap.empty ++= badlyPositioned
+      }
+    })
+
+    private val blockingUnitsQueue = mutable.HashSet.empty[Mobile]
+
+    universe.register_! { () =>
+      newBlockingUnits.get.ifDoneOpt { locking =>
+        val problems = locking.flatMap { case (_, id) =>
+          ownUnits.byId(id).asInstanceOf[Option[Mobile]]
+        }
+        blockingUnitsQueue ++= problems
+        if (problems.nonEmpty) {
+          info(s"${problems.size} new units identified as area splitting")
+        }
+        debug(s"${blockingUnitsQueue.size} units identified as area splitting right now")
+        locking.clear()
+      }
+    }
+
+    override def refuseCommandsForTicks: Int = 48
+
+    override protected def wrapBase(unit: Mobile) = new SingleUnitBehaviour[Mobile](unit, meta) {
+      override def shortName: String = "<->"
+      override def toOrder(what: Objective): Seq[UnitOrder] = {
+        if (blockingUnitsQueue(unit)) {
+          blockingUnitsQueue -= unit
+          val layer = mapLayers.blockedByAnythingTiles
+          val safeArea = unit.blockedArea.growBy(1)
+          val moveTo = layer.spiralAround(unit.currentTile).find(e => layer.free(safeArea.moveTo(e)))
+          moveTo.map { whereTo =>
+            Orders.MoveToTile(unit, whereTo)
           }.toList
         } else {
           Nil
@@ -542,7 +613,7 @@ object Terran {
     extends DefaultBehaviour[C](universe) {
     private val helper = NonConflictingSpellTargets.forSpell(spell, universe)
 
-    override def refuseCommandsForTicks = 10
+    override def refuseCommandsForTicks = 12
 
     override def priority: SecondPriority = SecondPriority.Max
 

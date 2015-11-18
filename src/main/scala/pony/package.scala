@@ -3,7 +3,6 @@ import org.pmw.tinylog
 import org.pmw.tinylog.{Configurator, Level}
 
 import scala.collection.mutable
-
 /**
  * Created by HoD on 01.08.2015.
  */

@@ -36,7 +36,18 @@ trait HasUniverse {
 }
 
 trait HasLazyVals {
-  private val lazyVals = ArrayBuffer.empty[LazyVal[_]]
+  private var tick: Int = 0
+  private val lazyVals  = ArrayBuffer.empty[LazyVal[_]]
+
+  def oncePer[T <: AnyRef](prime: PrimeNumber, t: => T) = {
+    var store: T = null.asInstanceOf[T]
+    oncePerTick {
+      if (store == null || tick % prime.i == 0) {
+        store = t
+      }
+      store
+    }
+  }
 
   def oncePerTick[T](t: => T) = {
     val l = LazyVal.from(t)
@@ -46,6 +57,7 @@ trait HasLazyVals {
 
   def onTick(): Unit = {
     lazyVals.foreach(_.invalidate())
+    tick += 1
   }
 }
 

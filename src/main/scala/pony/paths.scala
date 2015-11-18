@@ -500,7 +500,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
     update()
     withEverythingStaticBuildable.asReadOnlyView
   }
-  def reallyFreeBuildingTiles = {
+  def blockedByAnythingTiles = {
     update()
     withEverythingBlockingBuildable.asReadOnlyView
   }
@@ -650,7 +650,7 @@ trait SubFinder {
 class ConstructionSiteFinder(universe: Universe) {
 
   // initialisation happens in the main thread
-  private val freeToBuildOn            = universe.mapLayers.reallyFreeBuildingTiles.mutableCopy
+  private val freeToBuildOn            = universe.mapLayers.blockedByAnythingTiles.mutableCopy
                                          .or_!(universe.mapLayers.blockedByPotentialAddons.mutableCopy)
   private val freeToBuildOnIgnoreUnits = universe.mapLayers.freeBuildingTiles.mutableCopy
                                          .or_!(universe.mapLayers.blockedByPotentialAddons.mutableCopy)
@@ -668,7 +668,7 @@ class ConstructionSiteFinder(universe: Universe) {
                        .filter { candidate =>
                          def correctArea = {
                            val area = Area(candidate, size)
-                           grid.includes(area) && grid.free(area)
+                           grid.inBounds(area) && grid.free(area)
                          }
                          def lineOfSight = {
                            resources.patches.exists { mpg =>
@@ -714,7 +714,7 @@ class ConstructionSiteFinder(universe: Universe) {
     helper.iterateBlockSpiralClockWise(near).find { upperLeft =>
       val area = Area(upperLeft, necessarySize)
       val addonArea = necessarySizeAddon.map(Area(area.lowerRight.movedBy(1, -1), _))
-      def containsArea = freeToBuildOn.includes(area) && addonArea.map(freeToBuildOn.includes).getOrElse(true)
+      def containsArea = freeToBuildOn.inBounds(area) && addonArea.map(freeToBuildOn.inBounds).getOrElse(true)
       def free = {
         val checkIfBlocksSelf = freeToBuildOnIgnoreUnits.mutableCopy
         checkIfBlocksSelf.block_!(area)

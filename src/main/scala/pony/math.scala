@@ -127,6 +127,8 @@ case class Line(a: MapTilePosition, b: MapTilePosition) {
 
 
 case class Area(upperLeft: MapTilePosition, sizeOfArea: Size) {
+  def moveTo(e: MapTilePosition) = copy(upperLeft = e)
+
   def growBy(tiles: Int) = {
     tiles match {
       case 0 => this

@@ -217,6 +217,12 @@ class BWFuture[+T](val future: Future[T], incomplete: T) {
 
   def map[X](f: T => X) = new BWFuture(future.map(f), f(incomplete))
 
+  def ifDone[X](ifDone: T => X): Unit = {
+    if (future.isCompleted) {
+      ifDone(result)
+    }
+  }
+
   def matchOnSelf[X](ifDone: T => X, ifRunning: => X) = {
     if (future.isCompleted) {
       ifDone(result)
@@ -229,6 +235,10 @@ class BWFuture[+T](val future: Future[T], incomplete: T) {
 
 object BWFuture {
   implicit class Result[T](val fut: BWFuture[Option[T]]) extends AnyVal {
+    def ifDoneOpt[X](ifDone: T => X): Unit = {
+      fut.ifDone(op => ifDone(op.get))
+    }
+
     def matchOnOptSelf[X](ifDone: T => X, ifRunning: => X) = {
       fut.matchOnSelf({
         case Some(t) => ifDone(t)
@@ -245,6 +255,10 @@ object BWFuture {
   }
 
   def apply[T](produce: => Option[T]): BWFuture[Option[T]] = BWFuture(produce, None)
+
+  def from[T](produce: => T): BWFuture[Option[T]] = {
+    BWFuture(Some(produce), None)
+  }
 
   def some[T](produce: => T) = BWFuture(Some(produce))
 }

@@ -613,7 +613,7 @@ trait Mobile extends WrapsUnit with Controllable {
   }
 
   private val myArea = oncePerTick {
-    Area(myTile.get, Size.shared(1, 1))
+    Area(myTile.get, armorType.tileSize)
   }
 
   def currentTile = myTile.get
