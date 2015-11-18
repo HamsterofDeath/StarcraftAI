@@ -560,6 +560,8 @@ trait AutoPilot extends Mobile {
 
 trait Mobile extends WrapsUnit with Controllable {
 
+  def canMove = true
+
   val buildPrice = Price(nativeUnit.getType.mineralPrice(), nativeUnit.getType.gasPrice())
 
   def currentArea = myCurrentArea.get
@@ -1362,7 +1364,9 @@ class Scarab(unit: APIUnit)
   extends AnyUnit(unit) with SimplePosition with Mobile with AutoPilot with IsSmall with GroundUnit with
           IndestructibleUnit
 class SpiderMine(unit: APIUnit)
-  extends AnyUnit(unit) with IndestructibleUnit with SimplePosition with GroundUnit with IsSmall with AutoPilot
+  extends AnyUnit(unit) with SimplePosition with GroundUnit with IsSmall with AutoPilot {
+  override def canMove = false
+}
 
 class Marine(unit: APIUnit)
   extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with CanUseStimpack with MobileRangeWeapon with

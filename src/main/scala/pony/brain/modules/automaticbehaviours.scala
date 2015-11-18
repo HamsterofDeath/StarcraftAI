@@ -271,7 +271,11 @@ object Terran {
 
     private val newBlockingUnits = oncePer(Primes.prime73, {
       val baseArea = mapLayers.blockedByAnythingTiles.asReadOnlyCopyIfMutable
-      val unitsToPositions = ownUnits.allCompletedMobiles.map { e => e.nativeUnitId -> e.blockedArea }.toMap
+      val unitsToPositions = ownUnits.allCompletedMobiles
+                             .filter(_.canMove)
+                             .filterNot(_.isInstanceOf[WorkerUnit])
+                             .map { e => e.nativeUnitId -> e.blockedArea }
+                             .toMap
       BWFuture.some {
         val badlyPositioned = unitsToPositions.flatMap { case (id, where) =>
           val withOutline = where.growBy(1)
@@ -309,19 +313,36 @@ object Terran {
       }
     }
 
-    override def refuseCommandsForTicks: Int = 48
+    private val relevantLayer = oncePerTick {
+      mapLayers.blockedByAnythingTiles.asReadOnlyCopyIfMutable
+    }
 
     override protected def wrapBase(unit: Mobile) = new SingleUnitBehaviour[Mobile](unit, meta) {
       override def shortName: String = "<->"
+      private var lastFreeGoTo = Option.empty[MapTilePosition]
+
+
       override def toOrder(what: Objective): Seq[UnitOrder] = {
         if (blockingUnitsQueue(unit)) {
-          blockingUnitsQueue -= unit
-          val layer = mapLayers.blockedByAnythingTiles
-          val safeArea = unit.blockedArea.growBy(1)
-          val moveTo = layer.spiralAround(unit.currentTile).find(e => layer.free(safeArea.moveTo(e)))
-          moveTo.map { whereTo =>
-            Orders.MoveToTile(unit, whereTo)
+          val layer = relevantLayer.get
+          val command = lastFreeGoTo.filter(layer.free).map(Orders.MoveToTile(unit, _)).orElse {
+            val safeArea = unit.blockedArea.growBy(1)
+            val moveTo = layer.spiralAround(unit.currentTile).find(e => layer.free(safeArea.moveTo(e)))
+            moveTo.map { whereTo =>
+              lastFreeGoTo = Some(whereTo)
+              Orders.MoveToTile(unit, whereTo)
+            }
           }.toList
+
+          import scala.collection.breakOut
+          val touched: Set[Grid2D] = unit.blockedArea.tiles.flatMap { tile =>
+            if (layer.inBounds(tile)) layer.areaWhichContainsAsFree(tile) else None
+          }(breakOut)
+
+          if (touched.size <= 1) {
+            blockingUnitsQueue -= unit
+          }
+          command
         } else {
           Nil
         }
