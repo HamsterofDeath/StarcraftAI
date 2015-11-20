@@ -627,6 +627,8 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
 
   private val lazyAreas = LazyVal.from {new AreaHelper(self).findFreeAreas}
   def free(a: Area): Boolean = a.tiles.forall(free)
+  def outlineFree(a: Area): Boolean = a.outline.forall(free)
+  def outlineFreeAndInBounds(a: Area): Boolean = inBounds(a) && a.outline.forall(free)
   def freeAndInBounds(a: Area): Boolean = a.tiles.forall(e => inBounds(e) && free(e))
   def anyBlocked(a: Area): Boolean = !inBounds(a) || !free(a)
   def containsAndFree(a: Area): Boolean = a.tiles.forall(containsAndFree)

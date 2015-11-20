@@ -246,17 +246,21 @@ object Terran {
     override protected def wrapBase(t: SCV) = ???
   }
 
+
   class MoveAwayFromConstructionSite(universe: Universe) extends DefaultBehaviour[Mobile](universe) {
+    private def tolerance = 2
+
     override protected def wrapBase(unit: Mobile) = new SingleUnitBehaviour[Mobile](unit, meta) {
       override def shortName: String = "<>"
       override def toOrder(what: Objective): Seq[UnitOrder] = {
         val layer = mapLayers.blockedByPlannedBuildings
         val secondLayer = mapLayers.blockedByAnythingTiles
-        val needsToMove = layer.anyBlocked(unit.blockedArea.growBy(1))
+        val needsToMove = layer.anyBlocked(unit.blockedArea.growBy(tolerance))
         if (needsToMove) {
           layer.spiralAround(unit.currentTile).find { tile =>
-            val extendedSizeToBeSafe = unit.unitTileSize.growBy(1)
-            layer.free(tile, extendedSizeToBeSafe) && secondLayer.free(tile, extendedSizeToBeSafe)
+            val extendedSizeToBeSafe = unit.unitTileSize.growBy(tolerance)
+            layer.freeAndInBounds(tile, extendedSizeToBeSafe) &&
+            secondLayer.freeAndInBounds(tile, extendedSizeToBeSafe)
           }.map { target =>
             Orders.MoveToTile(unit, target)
           }.toList
@@ -269,9 +273,11 @@ object Terran {
 
   class UntrapOwnUnits(universe: Universe) extends DefaultBehaviour[Mobile](universe) {
 
-    private def tolerance = 2
+    private def tolerance = 1
 
-    private val newBlockingUnits = oncePer(Primes.prime73, {
+    override def forceRepeatedCommands: Boolean = true
+
+    private val newBlockingUnits = oncePer(Primes.prime37, {
       val baseArea = mapLayers.blockedByAnythingTiles.asReadOnlyCopyIfMutable
       val unitsToPositions = ownUnits.allCompletedMobiles
                              .filter(_.canMove)
@@ -288,9 +294,7 @@ object Terran {
           }(breakOut)
 
           if (touched.size > 1) {
-            baseArea.spiralAround(where.upperLeft).find { e =>
-              baseArea.freeAndInBounds(withOutline.moveTo(e))
-            }.map(_ -> id)
+            Some(where.upperLeft -> id)
           } else {
             None
           }
@@ -328,20 +332,16 @@ object Terran {
         if (blockingUnitsQueue(unit)) {
           val layer = relevantLayer.get
           val command = lastFreeGoTo.filter(layer.free).map(Orders.MoveToTile(unit, _)).orElse {
-            val safeArea = unit.blockedArea.growBy(tolerance)
-            val moveTo = layer.spiralAround(unit.currentTile).find(e => layer.free(safeArea.moveTo(e)))
+            val safeArea = unit.blockedArea.growBy(tolerance+2)
+            val moveTo = layer.spiralAround(unit.currentTile).find { e =>
+              layer.outlineFreeAndInBounds(safeArea.moveTo(e))
+            }
             moveTo.map { whereTo =>
               lastFreeGoTo = Some(whereTo)
               Orders.MoveToTile(unit, whereTo)
             }
           }.toList
-
-          import scala.collection.breakOut
-          val touched: Set[Grid2D] = unit.blockedArea.tiles.flatMap { tile =>
-            if (layer.inBounds(tile)) layer.areaWhichContainsAsFree(tile) else None
-          }(breakOut)
-
-          if (touched.size <= 1) {
+          if (command.isEmpty || lastFreeGoTo.map(_.distanceTo(unit.currentTile)).getOrElse(0.0) < 1.5) {
             blockingUnitsQueue -= unit
           }
           command
