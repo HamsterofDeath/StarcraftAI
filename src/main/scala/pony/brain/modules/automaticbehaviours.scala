@@ -284,6 +284,8 @@ object Terran {
                              .filterNot(_.isInstanceOf[WorkerUnit])
                              .map { e => e.nativeUnitId -> e.blockedArea }
                              .toMap
+
+      val buildingLayer = mapLayers.blockedByBuildingTiles.asReadOnlyCopyIfMutable
       BWFuture.some {
         val badlyPositioned = unitsToPositions.flatMap { case (id, where) =>
           val withOutline = where.growBy(tolerance)
@@ -292,8 +294,10 @@ object Terran {
           val touched: Set[Grid2D] = withOutline.tiles.flatMap { tile =>
             if (baseArea.inBounds(tile)) baseArea.areaWhichContainsAsFree(tile) else None
           }(breakOut)
-
-          if (touched.size > 1) {
+          def nearBuilding = {
+            buildingLayer.anyBlocked(where.growBy(5))
+          }
+          if (touched.size > 1 && nearBuilding) {
             Some(where.upperLeft -> id)
           } else {
             None
