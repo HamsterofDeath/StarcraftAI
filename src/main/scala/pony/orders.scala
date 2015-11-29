@@ -1,31 +1,26 @@
 package pony
 
-import bwapi.{Color, Game}
-import pony.Upgrades.{SinglePointMagicSpell, SingleTargetMagicSpell}
-
 import scala.collection.mutable.ArrayBuffer
 import scala.util.Try
 
-abstract class UnitOrder {
-  def forceRepetition = forceAllowRepeats
+import bwapi.{Color, Game}
+import pony.Upgrades.{SinglePointMagicSpell, SingleTargetMagicSpell}
 
+abstract class UnitOrder {
+  private var myGame:Game = _
+  private var locks             = 0
+  private var forceAllowRepeats = false
+  def forceRepetition = forceAllowRepeats
   def forceRepeat_!(forceRepeats: Boolean) = {
     forceAllowRepeats = forceRepeats
     this
   }
-
   def lockTicks = locks
-
   def obsolete = !myUnit.isInGame
-
-  private var myGame:Game = _
-
   def setGame_!(game: Game):Unit = {
     myGame = game
   }
-
   def game = myGame
-
   def isNoop = false
   def myUnit: WrapsUnit
   def record(): Unit = {
@@ -37,10 +32,6 @@ abstract class UnitOrder {
   }
   def issueOrderToGame(): Unit
   def renderDebug(renderer: Renderer): Unit
-
-  private var locks             = 0
-  private var forceAllowRepeats = false
-
   def lockingFor_!(ticks: Int) = {
     locks = ticks
     this
@@ -121,13 +112,11 @@ object Orders {
 
   case class ConstructBuilding(myUnit: WorkerUnit, buildingType: Class[_ <: Building], where: MapTilePosition)
     extends UnitOrder {
-    private val buildingUnitType = buildingType.toUnitType
-
     val area = {
       val size = Size.shared(buildingUnitType.tileWidth(), buildingUnitType.tileHeight())
       Area(where, size)
     }
-
+    private val buildingUnitType = buildingType.toUnitType
     override def issueOrderToGame(): Unit = {
       myUnit.nativeUnit.build(buildingUnitType, where.asTilePosition)
     }
@@ -168,12 +157,10 @@ object Orders {
     }
   }
   case class LoadUnit(ferry: TransporterUnit, loadThis: GroundUnit) extends UnitOrder {
-    override def myUnit: WrapsUnit = ferry
-
     override def issueOrderToGame(): Unit = {
       myUnit.nativeUnit.rightClick(loadThis.nativeUnit)
     }
-
+    override def myUnit: WrapsUnit = ferry
     override def renderDebug(renderer: Renderer): Unit = {
       renderer.indicateTarget(ferry.currentPosition, loadThis.currentPosition)
     }
@@ -186,12 +173,10 @@ object Orders {
   }
 
   case class UnloadAll(ferry: TransporterUnit, at: MapTilePosition) extends UnitOrder {
-    override def myUnit: WrapsUnit = ferry
-
     override def issueOrderToGame(): Unit = {
       myUnit.nativeUnit.unloadAll(at.asMapPosition.toNative)
     }
-
+    override def myUnit: WrapsUnit = ferry
     override def renderDebug(renderer: Renderer): Unit = {
       renderer.indicateTarget(ferry.currentPosition, at)
     }
@@ -278,12 +263,6 @@ class OrderQueue(game: Game, debugger: Debugger) {
 
   def debugAll():Unit = {
     if (debugger.isDebugging) {
-      delegatedToBasicAI.filter(_._2.obsolete).foreach { dead =>
-        delegatedToBasicAI.remove(dead._1)
-      }
-      queue.foreach { order =>
-        delegatedToBasicAI.put(order.myUnit, order)
-      }
       debugger.debugRender { renderer =>
         delegatedToBasicAI.foreach(_._2.renderDebug(renderer))
       }
@@ -294,7 +273,9 @@ class OrderQueue(game: Game, debugger: Debugger) {
     val tickOrders = queue.filterNot(_.isNoop)
     trace(s"Orders: ${tickOrders.mkString(", ")}", queue.nonEmpty)
     tickOrders.foreach(_.record())
+    delegatedToBasicAI.clear()
     tickOrders.foreach { order =>
+      delegatedToBasicAI.put(order.myUnit, order)
       val isLocked = locked.get(order.myUnit).exists(_ > 0)
       if (isLocked) {
         locked.put(order.myUnit, locked(order.myUnit) - 1)
@@ -302,7 +283,6 @@ class OrderQueue(game: Game, debugger: Debugger) {
         order.issueOrderToGame()
         locked.put(order.myUnit, order.lockTicks)
       }
-
     }
     queue.clear()
   }
