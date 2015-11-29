@@ -38,14 +38,14 @@ abstract class DefaultBehaviour[T <: Mobile : Manifest](override val universe: U
     canControl(unit) && controlledUnits.contains(assumeSafe(unit))
   }
   def assumeSafe(unit: Mobile): T = unit.asInstanceOf[T]
-  def canControl(u: WrapsUnit) = {
-    manifest[T].runtimeClass.isInstance(u)
-  }
   def add_!(u: WrapsUnit, objective: Objective) = {
     assert(canControl(u))
     val behaviour = wrapBase(u.asInstanceOf[T])
     controlledUnits += behaviour.unit
     unit2behaviour.put(behaviour.unit, behaviour)
+  }
+  def canControl(u: WrapsUnit) = {
+    manifest[T].runtimeClass.isInstance(u)
   }
   def cast = this.asInstanceOf[DefaultBehaviour[Mobile]]
   protected def meta = SingleUnitBehaviourMeta(priority, refuseCommandsForTicks, forceRepeatedCommands)
@@ -71,8 +71,8 @@ object Terran {
                       new MigrateTowardsPosition(universe) ::
                       new FerryService(universe) ::
                       new RepairDamagedUnit(universe) ::
-//                      new MoveAwayFromConstructionSite(universe) ::
-//                      new UntrapOwnUnits(universe) ::
+                      new MoveAwayFromConstructionSite(universe) ::
+                      new UntrapOwnUnits(universe) ::
                       /*
                                             new RepairDamagedBuilding ::
                                            new UseComsat ::
@@ -245,7 +245,7 @@ object Terran {
         val needsToMove = layer.anyBlocked(unit.blockedArea.growBy(tolerance))
         if (needsToMove) {
           layer.spiralAround(unit.currentTile).find { tile =>
-            val extendedSizeToBeSafe = unit.unitTileSize.growBy(tolerance)
+            val extendedSizeToBeSafe = unit.unitTileSize.growBy(tolerance+2)
             layer.freeAndInBounds(tile, extendedSizeToBeSafe) &&
             secondLayer.freeAndInBounds(tile, extendedSizeToBeSafe)
           }.map { target =>
@@ -300,6 +300,8 @@ object Terran {
       newBlockingUnits.get.ifDoneOpt { locking =>
         val problems = locking.flatMap { case (_, id) =>
           ownUnits.byId(id).asInstanceOf[Option[Mobile]]
+        }.filter { unit =>
+          universe.unitGrid.enemy.allInRange[Mobile](unit.currentTile, 5).isEmpty
         }
         blockingUnitsQueue ++= problems
         if (problems.nonEmpty) {
@@ -310,24 +312,28 @@ object Terran {
       }
     }
     override protected def wrapBase(unit: Mobile) = new SingleUnitBehaviour[Mobile](unit, meta) {
+
       override def describeShort: String = "<->"
       private var lastFreeGoTo = Option.empty[MapTilePosition]
-
 
       override def toOrder(what: Objective): Seq[UnitOrder] = {
         if (blockingUnitsQueue(unit)) {
           val layer = relevantLayer.get
-          val command = lastFreeGoTo.filter(layer.free).map(Orders.MoveToTile(unit, _)).orElse {
-            val safeArea = unit.blockedArea.growBy(tolerance+2)
+          val safeArea = unit.blockedArea.growBy(tolerance)
+          val command = lastFreeGoTo.filter { check =>
+            layer.freeAndInBounds(safeArea)
+          }.map(Orders.MoveToTile(unit, _)).orElse {
             val moveTo = layer.spiralAround(unit.currentTile).find { e =>
-              layer.freeAndInBounds(safeArea.moveTo(e))
+              layer.freeAndInBounds(safeArea.growBy(1).moveTo(e))
             }
             moveTo.map { whereTo =>
               lastFreeGoTo = Some(whereTo)
               Orders.MoveToTile(unit, whereTo)
             }
           }.toList
-          if (command.isEmpty || lastFreeGoTo.map(_.distanceTo(unit.currentTile)).getOrElse(0.0) < 1.5) {
+          if (command.isEmpty ||
+              lastFreeGoTo.map(_.distanceTo(unit.currentTile)).getOrElse(0.0) < 1.5 ||
+              !layer.cuttingAreas(safeArea)) {
             blockingUnitsQueue -= unit
           }
           command
@@ -336,7 +342,7 @@ object Terran {
         }
       }
     }
-    private def tolerance = 1
+    private def tolerance = 2
   }
 
   class RepairDamagedUnit(universe: Universe) extends DefaultBehaviour[SCV](universe) {
@@ -757,7 +763,6 @@ class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
       }
       plannedDamageMerged = damage
     }
-    private def actualHP = target.hitPoints
     def canSpare(attacker: MobileRangeWeapon) = {
       assert(isAttacker(attacker))
       // this is not entirely correct because of shields & zerg regeneration, but should be close enough
@@ -765,6 +770,7 @@ class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
 
       actualHP <(plannedDamageMerged.hp - damage.onHp, plannedDamageMerged.shields - damage.onShields)
     }
+    private def actualHP = target.hitPoints
     def isAttacker(t: MobileRangeWeapon) = attackers(t)
     def allAttackers = attackers.iterator
     def addAttacker_!(t: MobileRangeWeapon): Unit = {
@@ -894,7 +900,6 @@ class NonConflictingTargets[T <: WrapsUnit : Manifest, M <: Mobile : Manifest](o
     assignmentsReverse.remove(target)
     locks -= target
   }
-  private def locked(t: T) = locks(t)
   def lock_!(t: T, m: M): Unit = {
     assert(!locked(t))
     assert(!assignments.contains(m))
@@ -903,6 +908,7 @@ class NonConflictingTargets[T <: WrapsUnit : Manifest, M <: Mobile : Manifest](o
     assignmentsReverse.put(t, m)
     locks += t
   }
+  private def locked(t: T) = locks(t)
   private def targetOf(m: M) = assignments(m)
 }
 

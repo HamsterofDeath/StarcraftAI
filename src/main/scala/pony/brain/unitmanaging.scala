@@ -308,6 +308,7 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
     def allNotOfEmployer[T <: WrapsUnit](employer: Employer[T]) = {
       allFlat.filter(_._1 != employer).flatMap(_._2)
     }
+    def allFlat = flat
     def jobsOf[T <: WrapsUnit](employer: Employer[T], unitType: Class[_ <: T]) = {
       val key = JobIndex(employer, unitType)
 
@@ -327,7 +328,6 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
     def allOfEmployer[T <: WrapsUnit](e: Employer[T]) = {
       allFlat.getOrElse(e, Set.empty).asInstanceOf[collection.Set[UnitWithJob[T]]]
     }
-    def allFlat = flat
     def getTyped[T <: WrapsUnit](c: JobIndex[_ <: WrapsUnit]): JobsByClass[T] = {
       byEmployer.getOrElseUpdate(c, new JobsByClass[T]).asInstanceOf[JobsByClass[T]]
     }
@@ -659,6 +659,8 @@ abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: 
   protected def omitRepeatedOrders = false
   def injectedOrder: Seq[UnitOrder] = Nil
   def everyNth = 0
+  def hasFailed = dead || forceFail || jobHasFailedWithoutDeath
+  def jobHasFailedWithoutDeath: Boolean = false
   def noCommandsForTicks_!(n: Int): Unit = {
     noCommandsForTicks = n
   }
@@ -667,8 +669,6 @@ abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: 
   def onFinishOrFail(): Unit = {
     listeners.foreach(_.onFinishOrFail(hasFailed))
   }
-  def hasFailed = dead || forceFail || jobHasFailedWithoutDeath
-  def jobHasFailedWithoutDeath: Boolean = false
   def listen_!(listener: JobFinishedListener[T]): Unit = listeners += listener
   protected def fail() = {
     forceFail = true
@@ -804,6 +804,7 @@ class ConstructAddon[W <: CanBuildAddons, A <: Addon](employer: Employer[W],
   override def times: Int = 10
 
   override def shortDebugString: String = s"Construct ${builtWhat.className}"
+  private def builtWhat = what
   override def isFinished: Boolean = {
     startedConstruction && stoppedConstruction
   }
@@ -830,7 +831,6 @@ class ConstructAddon[W <: CanBuildAddons, A <: Addon](employer: Employer[W],
     super.jobHasFailedWithoutDeath || myFail
   }
   override def getOrder = Orders.ConstructAddon(basis, builtWhat).toSeq
-  private def builtWhat = what
 }
 
 class ResearchUpgrade[U <: Upgrader](employer: Employer[U],
@@ -871,7 +871,7 @@ trait FerrySupport[T <: GroundUnit] extends UnitWithJob[T] {
 
   override def injectedOrder: Seq[UnitOrder] = {
     val where = unit.currentTile
-    val to = pointNearTarget
+    val to = suggestFerryDropPosition
 
     val needsFerry = !unit.currentArea.exists(_.free(to))
     if (needsFerry) {
@@ -889,7 +889,7 @@ trait FerrySupport[T <: GroundUnit] extends UnitWithJob[T] {
       Nil
     }
   }
-  protected def pointNearTarget: MapTilePosition
+  protected def suggestFerryDropPosition: MapTilePosition
 }
 
 class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, buildingType: Class[_ <: B],
@@ -994,7 +994,7 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, bu
   }
   override def newFor(replacement: W) = new
       ConstructBuilding(replacement, buildingType, employer, buildWhere, funding, belongsTo)
-  override protected def pointNearTarget = area.centerTile
+  override protected def suggestFerryDropPosition = area.centerTile
 }
 
 sealed trait Behaviour
@@ -1027,18 +1027,27 @@ class BusyDoingSomething[T <: Mobile](employer: Employer[T], behaviour: Seq[Sing
 
   assert(behaviour.map(_.unit).distinct.size == 1, s"Wrong grouping: $behaviour")
 
+  private var lastTickOrderIssuedBy = Option.empty[SingleUnitBehaviour[T]]
   private var lastOrderIssuedBy = Option.empty[SingleUnitBehaviour[T]]
   def newObjective_!(objective: Objective): Unit = {
     this.objective = objective
   }
-  override def shortDebugString = s"=> ${lastOrderIssuedBy.map(_.describeShort).getOrElse("???")}"
+  override def shortDebugString = {
+    val realOrder = lastTickOrderIssuedBy.map(_.describeShort).getOrElse("???")
+    val lastOrder = lastOrderIssuedBy.map(_.describeShort).getOrElse("???")
+    s"[BG] $realOrder ($lastOrder)"
+  }
   // never ends
   override def isFinished = false
   override def ordersForTick = {
     val tmp = highestPriorityOrdersForTick
-    lastOrderIssuedBy = tmp._1
+    // keep track of it for debugging purposes
+    lastTickOrderIssuedBy = tmp._1
+    lastOrderIssuedBy = lastTickOrderIssuedBy.orElse(lastOrderIssuedBy)
+
     tmp._2
   }
+
   private def highestPriorityOrdersForTick = {
     val options = active.map { rule =>
       rule -> rule.toOrder(objective).map(_.lockingFor_!(rule.blocksForTicks).forceRepeat_!(rule.forceRepeats))
@@ -1148,13 +1157,12 @@ trait UnitRequest[T <: WrapsUnit] {
     trace(s"$debugString is being disposed of")
     onDisposeActions.foreach(_.onClear())
   }
-  def debugString = s"Req[$id]$this"
+  def doOnDispose_![X](u: => X) = {
+    onDisposeActions += (() => u)
+  }
 
   if (classOf[Building].isAssignableFrom(typeOfRequestedUnit)) {
     keepResourcesLocked_!()
-  }
-  def doOnDispose_![X](u: => X) = {
-    onDisposeActions += (() => u)
   }
   def persistant_!(): Unit = {
     autoCleanAfterTick = false
@@ -1163,7 +1171,7 @@ trait UnitRequest[T <: WrapsUnit] {
     trace(s"$debugString will be cleared next tick")
     autoCleanAfterTick = true
   }
-
+  def debugString = s"Req[$id]$this"
   def forceUnlockOnDispose_!(): Unit = {
     keepResourcesLocked = false
   }
@@ -1368,7 +1376,7 @@ class JobReAssignments(universe: Universe) extends OrderlessAIModule[Controllabl
               //someone else might have already done this somewhere else
               val nobody = unitManager.Nobody
               if (unitManager.employerOf(optimizeMe.unit).contains(nobody)) {
-                warn(s"Unit ${optimizeMe.unit} was already asigned to ${nobody}")
+                warn(s"Unit ${optimizeMe.unit} was already asigned to $nobody")
               } else {
                 unitManager.assignJob_!(new BusyDoingNothing(optimizeMe.unit, nobody))
               }

@@ -1,19 +1,17 @@
 package pony
 
-import pony.astar.{AStarSearch, GridNode2DInt, Heuristics}
-import pony.brain.{Base, HasUniverse, Universe}
-
 import scala.collection.JavaConverters._
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.language.implicitConversions
 
-class MigrationPath(follow: Paths) {
-  def allReachedDestination = remaining.nonEmpty && remaining.iterator.filter(_._1.isInGame).forall(_._2.isEmpty)
+import pony.astar.{AStarSearch, GridNode2DInt, Heuristics}
+import pony.brain.{Base, HasUniverse, Universe}
 
+class MigrationPath(follow: Paths) {
   private val remaining = mutable.HashMap.empty[Mobile, ArrayBuffer[MapTilePosition]]
   private val counter   = mutable.HashMap.empty[Mobile, Int]
-
+  def allReachedDestination = remaining.nonEmpty && remaining.iterator.filter(_._1.isInGame).forall(_._2.isEmpty)
   def nextFor(t: Mobile) = {
     val index = counter.getOrElseUpdate(t, counter.size) % follow.pathCount
     val initialFullPath = follow.paths(index)
@@ -30,13 +28,13 @@ class MigrationPath(follow: Paths) {
 }
 
 case class Path(waypoints: Seq[MapTilePosition], solved: Boolean, solvable: Boolean, bestEffort: MapTilePosition) {
-  def isPerfectSolution = solved
   lazy val length = {
     if (waypoints.size <= 1)
       0
     else
       waypoints.sliding(2, 1).map { case Seq(a, b) => a.distanceTo(b) }.sum
   }
+  def isPerfectSolution = solved
 }
 
 case class Paths(paths: Seq[Path]) {
@@ -131,14 +129,8 @@ class PathFinder(on: Grid2D) {
   def findPathNow(from: MapTilePosition, to: MapTilePosition) = {
     spawn.findPathNow(from, to)
   }
-
+  def spawn = new AstarPathFinder(to2DArray(on))
   class AstarPathFinder(grid: Array[Array[GridNode2DInt]]) {
-    private implicit def conv(mtp: MapTilePosition): GridNode2DInt = {
-      val ret = grid(mtp.x)(mtp.y)
-      assert(ret != null, s"Map tile $mtp is not free!")
-      ret
-    }
-
     def findPathNow(from: MapTilePosition, to: MapTilePosition) = {
       val a = new AStarSearch[GridNode2DInt](from, to).performSearch()
       Path(a.getSolution.asScala
@@ -146,7 +138,6 @@ class PathFinder(on: Grid2D) {
            .toVector,
         a.isSolved, !a.isUnsolvable, a.getTargetOrNearestReachable)
     }
-
     def findPath(from: MapTilePosition, to: MapTilePosition, width: Int) = {
       info(s"Searching path from $from to $to")
       val finder = new AStarSearch[GridNode2DInt](from, to)
@@ -170,9 +161,12 @@ class PathFinder(on: Grid2D) {
       }.toVector
       Paths(paths.map(pathFrom))
     }
+    private implicit def conv(mtp: MapTilePosition): GridNode2DInt = {
+      val ret = grid(mtp.x)(mtp.y)
+      assert(ret != null, s"Map tile $mtp is not free!")
+      ret
+    }
   }
-
-  def spawn = new AstarPathFinder(to2DArray(on))
 }
 
 class AreaHelper(source: Grid2D) {
@@ -215,7 +209,7 @@ class AreaHelper(source: Grid2D) {
          |${merged.zoomedOut.mkString}
          """.stripMargin
     })
-    ret
+    ret.sortBy(_.freeCount).reverse
   }
 
   private def floodFill(start: MapTilePosition) = {
@@ -223,15 +217,12 @@ class AreaHelper(source: Grid2D) {
     AreaHelper.traverseTilesOfArea(start, (x, y) => ret += x + y * baseOn.cols, baseOn)
     ret.immutableWrapper
   }
-
-  def directLineOfSight(a: Area, b: MapTilePosition): Boolean = {
-    a.outline.exists(p => directLineOfSight(p, b))
-  }
-
   def directLineOfSight(a: Area, b: Area): Boolean = {
     b.outline.exists(p => directLineOfSight(a, p))
   }
-
+  def directLineOfSight(a: Area, b: MapTilePosition): Boolean = {
+    a.outline.exists(p => directLineOfSight(p, b))
+  }
   def directLineOfSight(a: MapTilePosition, b: MapTilePosition): Boolean = {
     AreaHelper.directLineOfSight(a, b, baseOn)
   }
@@ -363,21 +354,16 @@ class ViewOnGrid(ug: UnitGrid, hostile: Boolean) {
 }
 
 class UnitGrid(override val universe: Universe) extends HasUniverse {
-  private def on(hostile: Boolean) = if (hostile) enemyUnits else myUnits
-
-  def onTile(tile: MapTilePosition, hostile: Boolean) = {
-    val set = on(hostile)(tile.x)(tile.y)
-    if (set != null) set else Set.empty[Mobile]
-  }
-
   val own   = new ViewOnGrid(this, false)
   val enemy = new ViewOnGrid(this, true)
-
   private val map        = universe.world.map
   private val myUnits    = Array.ofDim[mutable.HashSet[Mobile]](map.tileSizeX, map.tileSizeY)
   private val enemyUnits = Array.ofDim[mutable.HashSet[Mobile]](map.tileSizeX, map.tileSizeY)
   private val touched    = mutable.HashSet.empty[mutable.HashSet[Mobile]]
-
+  def onTile(tile: MapTilePosition, hostile: Boolean) = {
+    val set = on(hostile)(tile.x)(tile.y)
+    if (set != null) set else Set.empty[Mobile]
+  }
   def onTick(): Unit = {
     //reset
     touched.foreach { modified =>
@@ -417,7 +403,6 @@ class UnitGrid(override val universe: Universe) extends HasUniverse {
     }
 
   }
-
   def allInRangeOf[T <: Mobile : Manifest](position: MapTilePosition, radius: Int,
                                            friendly: Boolean): Traversable[T] = {
     val onWhat = on(!friendly)
@@ -451,6 +436,7 @@ class UnitGrid(override val universe: Universe) extends HasUniverse {
       }
     }
   }
+  private def on(hostile: Boolean) = if (hostile) enemyUnits else myUnits
 }
 
 class MapLayers(override val universe: Universe) extends HasUniverse {
@@ -639,8 +625,10 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
                                              .or_!(plannedBuildings)
                                              .or_!(justWorkerPaths)
                                              .or_!(rawMapWalk2)
-  private def evalEverythingBlockingBuildable = withEverythingStaticBuildable.mutableCopy.or_!(justBlockingMobiles)
-  private def evalEverythingBlockingWalkable = withEverythingStaticWalkable.mutableCopy.or_!(justBlockingMobiles)
+  private def evalEverythingBlockingBuildable = withEverythingStaticBuildable.mutableCopy
+                                                .or_!(justBlockingMobiles)
+  private def evalEverythingBlockingWalkable = withEverythingStaticWalkable.mutableCopy
+                                               .or_!(justBlockingMobiles)
 }
 
 trait SubFinder {

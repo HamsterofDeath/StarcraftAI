@@ -286,15 +286,20 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
 
         private val miningTeam            = ArrayBuffer.empty[GatherMineralsAtPatch]
         private val workerCountByDistance = LazyVal.from {
-          val distance = patch.area.distanceTo(base.mainBuilding.area)
-          1 max math.round(distance / 2.5).toInt
+          val distance = math.round(patch.area.distanceTo(base.mainBuilding.area)).toInt
+          distance match {
+            case 0  => 1
+            case 1|2|3|4  => 2
+            case 5|6|7  => 3
+            case x => (x / 2.5).toInt
+          }
         }
         override def toString: String = s"(Mined) $patch"
         def hasOpenSpot: Boolean = miningTeam.size < estimateRequiredWorkers
+        def openSpotCount = estimateRequiredWorkers - miningTeam.size
         def estimateRequiredWorkers = {
           if (patch.remainingMinerals > 0) workerCountByDistance.get else 0
         }
-        def openSpotCount = estimateRequiredWorkers - miningTeam.size
         def lockToPatch_!(job: GatherMineralsAtPatch): Unit = {
           info(s"Added ${job.unit} to mining team of $patch")
           miningTeam += job
@@ -324,17 +329,12 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
 
         import States._
 
-        override protected def pointNearTarget = {
-          targetPatch.tilePosition.middleBetween(base.mainBuilding.tilePosition)
-        }
-
         private var state: State = Idle
         override def onStealUnit(): Unit = {
           super.onStealUnit()
           miningTarget.removeFromPatch_!(myWorker)
         }
         override def worker = myWorker
-        override def targetPatch = miningTarget.patch
         override def requiredWorkers: Int = miningTarget.estimateRequiredWorkers
         override def shortDebugString: String = state match {
           case States.Idle => s"Idle/${unit.nativeUnit.getOrder}"
@@ -343,7 +343,6 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
           case States.ReturningMinerals => "Delivering"
           case States.ReturningMineralsAfterInterruption => "Delivering (really)"
         }
-
         override def ordersForTick: Seq[UnitOrder] = {
           def sendWorkerToPatch = ApproachingMinerals -> Orders.Gather(myWorker, miningTarget.patch)
           def returnDelivery = Orders.ReturnMinerals(myWorker, base.mainBuilding)
@@ -398,8 +397,11 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
           order.toList.filterNot(_.isNoop)
         }
         override def isFinished = !miningTarget.patch.isInGame
-
         override def hasFailed: Boolean = super.hasFailed || base.mainBuilding.isDead
+        override protected def suggestFerryDropPosition = {
+          targetPatch.tilePosition.middleBetween(base.mainBuilding.tilePosition)
+        }
+        override def targetPatch = miningTarget.patch
       }
 
       object MiningOrganization {
@@ -504,11 +506,6 @@ class GatherGas(universe: Universe) extends OrderlessAIModule[WorkerUnit](univer
       private val freeNearGeysir = {
         mapLayers.rawWalkableMap.nearestFreeBlock(geysir.tilePosition, 1)
       }
-
-      override protected def pointNearTarget = {
-        freeNearGeysir.getOr(s"No free tile around $geysir")
-      }
-
       private var state: State = Idle
       override def shortDebugString: String = state.getClass.className
       override def isFinished = false
@@ -523,6 +520,9 @@ class GatherGas(universe: Universe) extends OrderlessAIModule[WorkerUnit](univer
         }
         state = newState
         order.toSeq
+      }
+      override protected def suggestFerryDropPosition = {
+        freeNearGeysir.getOr(s"No free tile around $geysir")
       }
       trait State
       case object Idle extends State

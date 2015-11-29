@@ -1,21 +1,18 @@
 package pony
 
-import bwapi.{Color, Game, Player, PlayerType, Position, TilePosition}
-import pony.brain.{ResourceRequestSum, Supplies}
-
 import scala.collection.immutable.BitSet
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.language.postfixOps
+
+import bwapi.{Color, Game, Player, PlayerType, Position, TilePosition}
+import pony.brain.{ResourceRequestSum, Supplies}
 
 class UnitData(in: bwapi.Unit) {
   // todo use this
 }
 
 trait TechTree {
-  protected val builtBy  : Map[Class[_ <: WrapsUnit], Class[_ <: WrapsUnit]]
-  protected val dependsOn: Map[Class[_ <: WrapsUnit], Set[_ <: Class[_ <: Building]]]
-  protected val upgrades : Map[Upgrade, Class[_ <: Upgrader]]
   lazy    val requiredBy        = {
     val result = multiMap[Class[_ <: WrapsUnit], Class[_ <: WrapsUnit]]
     dependsOn.foreach { case (target, needs) =>
@@ -25,6 +22,9 @@ trait TechTree {
     }
     result.toImmutable
   }
+  protected val builtBy  : Map[Class[_ <: WrapsUnit], Class[_ <: WrapsUnit]]
+  protected val dependsOn: Map[Class[_ <: WrapsUnit], Set[_ <: Class[_ <: Building]]]
+  protected val upgrades : Map[Upgrade, Class[_ <: Upgrader]]
   private val requirementsCache = mutable.HashMap.empty[Class[_ <: WrapsUnit], Set[Class[_ <: Building]]]
   def mainBuildingOf(addon: Class[_ <: Addon]) = {
     builtBy(addon).asInstanceOf[Class[_ <: CanBuildAddons]]
@@ -273,18 +273,14 @@ trait WorldEventDispatcher extends WorldListener {
 }
 
 case class Resources(minerals: Int, gas: Int, supply: Supplies) {
+  val asSum = ResourceRequestSum(minerals, gas, supply.available)
   def moreGasThanMinerals = minerals < gas
-
   def >(min: Int, gas: Int, supply: Int) = {
     minerals >= min && this.gas >= gas && this.supplyRemaining >= supply
   }
-
-  def moreMineralsThanGas = minerals > gas * 1.5
-
-  val asSum = ResourceRequestSum(minerals, gas, supply.available)
-
-  def supplyTotal = supply.total
   def supplyRemaining = supply.available
+  def moreMineralsThanGas = minerals > gas * 1.5
+  def supplyTotal = supply.total
   def -(sums: ResourceRequestSum) = {
     val supplyUpdated = supply.copy(supplyUsed + sums.supply)
     copy(minerals - sums.minerals, gas - sums.gas, supply = supplyUpdated)
@@ -304,6 +300,8 @@ class DefaultWorld(game: Game) extends WorldListener with WorldEventDispatcher {
   val enemyUnits = new Units(game, true)
   val debugger   = new Debugger(game)
   val orderQueue = new OrderQueue(game, debugger)
+  private val removeQueueOwn   = ArrayBuffer.empty[bwapi.Unit]
+  private val removeQueueEnemy = ArrayBuffer.empty[bwapi.Unit]
   private var ticks = 0
   def nativeGame = game
   def currentResources = {
@@ -312,14 +310,8 @@ class DefaultWorld(game: Game) extends WorldListener with WorldEventDispatcher {
     val used = self.supplyUsed()
     Resources(self.minerals(), self.gas(), Supplies(used, total))
   }
-
   def isFirstTick = ticks == 0
-
   def tickCount = ticks
-
-  private val removeQueueOwn   = ArrayBuffer.empty[bwapi.Unit]
-  private val removeQueueEnemy = ArrayBuffer.empty[bwapi.Unit]
-
   override def onUnitDestroy(unit: bwapi.Unit): Unit = {
     super.onUnitDestroy(unit)
     if (unit.getPlayer.isEnemy(game.self())) {
@@ -347,21 +339,20 @@ class DefaultWorld(game: Game) extends WorldListener with WorldEventDispatcher {
 }
 
 class Debugger(game: Game) {
-  def isFullDebug = fullDebugMode
-
   val renderer = new Renderer(game, Color.Green)
   private var debugging     = true
   private var fullDebugMode = false
   private var countTicks    = 0
-  def on(): Unit = {
-    debugging = true
-  }
+  def isFullDebug = fullDebugMode
   def off(): Unit = {
     debugging = false
   }
   def fullOn(): Unit = {
     on()
     fullDebugMode = true
+  }
+  def on(): Unit = {
+    debugging = true
   }
   def fullOff(): Unit = {
     fullDebugMode = false
@@ -412,29 +403,29 @@ abstract class OnKillListener[T <: WrapsUnit](val unit: T) {
 }
 
 class Units(game: Game, hostile: Boolean) {
+  private val killListeners = mutable.HashMap.empty[Int, OnKillListener[_]]
+  private val fresh = ArrayBuffer.empty[WrapsUnit]
+  private val graveyard = mutable.HashMap.empty[Int, WrapsUnit]
+  private val classIndexes    = mutable.HashSet.empty[Class[_]]
+  private val preparedByClass = multiMap[Class[_], WrapsUnit]
+  private val nativeIdToUnit = mutable.HashMap.empty[Int, WrapsUnit]
+  private val forces = LazyVal.from {
+    val me = game.self
+    val friends = game.allies()
+    Forces(me, friends.asScala.toSet)
+  }
+  private var initial        = true
   def byNative(nativeUnit: bwapi.Unit) = if (nativeUnit == null) None else byId(nativeUnit.getID)
-
   def byId(nativeId: Int) = nativeIdToUnit.get(nativeId)
   def byIdExpectExisting(nativeId: Int) = nativeIdToUnit(nativeId)
-
-  private def ownAndNeutral = !hostile
-
-  private val killListeners = mutable.HashMap.empty[Int, OnKillListener[_]]
-
-  private val fresh = ArrayBuffer.empty[WrapsUnit]
-
   def consumeFresh_![X](f: WrapsUnit => X) = {
     fresh.foreach(f)
     fresh.clear()
   }
-
   def registerKill_![T <: WrapsUnit](listener: OnKillListener[T]): Unit = {
     // this will always replace the latest listener
     killListeners += ((listener.nativeUnitId, listener))
   }
-
-  private val graveyard = mutable.HashMap.empty[Int, WrapsUnit]
-
   def dead_!(dead: Seq[bwapi.Unit]) = {
     dead.foreach { u =>
       nativeIdToUnit.get(u.getID).foreach { died =>
@@ -458,10 +449,6 @@ class Units(game: Game, hostile: Boolean) {
       }
     }
   }
-
-  private val classIndexes    = mutable.HashSet.empty[Class[_]]
-  private val preparedByClass = multiMap[Class[_], WrapsUnit]
-
   private def removeUnit(u: bwapi.Unit) = {
     val removed = nativeIdToUnit.remove(u.getID)
     removed.foreach { what =>
@@ -472,24 +459,12 @@ class Units(game: Game, hostile: Boolean) {
     removed.foreach(_.notifyRemoved_!())
     removed
   }
-
-  def registerUnit(u: bwapi.Unit, lifted: WrapsUnit) = {
-    nativeIdToUnit.put(u.getID, lifted)
-    classIndexes.foreach { c =>
-      if (c.isInstance(lifted)) {
-        preparedByClass.addBinding(c, lifted)
-      }
-    }
-  }
-
-  private val nativeIdToUnit = mutable.HashMap.empty[Int, WrapsUnit]
-  private var initial        = true
   def buildingAt(upperLeft: MapTilePosition) = {
     allBuildings.find(_.area.upperLeft == upperLeft)
   }
   def allBuildings = allByType[Building]
-  def allMobiles = allByType[Mobile]
   def allCompletedMobiles = allMobiles.filterNot(_.isBeingCreated)
+  def allMobiles = allByType[Mobile]
   def allAddonBuilders = allByType[CanBuildAddons]
   def allAddons = allByType[Addon]
   def existsIncomplete(c: Class[_ <: WrapsUnit]) = allByClass(c).exists(_.isBeingCreated)
@@ -498,6 +473,7 @@ class Units(game: Game, hostile: Boolean) {
     nativeIdToUnit.values.exists(c.isInstance)
   }
   def geysirs = allByType[Geysir]
+  def allCanDie = allByType[MaybeCanDie]
   def allByType[T <: WrapsUnit : Manifest] = {
     val lookFor = manifest[T].runtimeClass.asInstanceOf[Class[T]]
     allByClass(lookFor)
@@ -512,27 +488,18 @@ class Units(game: Game, hostile: Boolean) {
   }
 
   def all = nativeIdToUnit.valuesIterator
-  def allCanDie = allByType[MaybeCanDie]
-
-  import scala.collection.JavaConverters._
-
   def firstByType[T: Manifest]: Option[T] = {
     val lookFor = manifest[T].runtimeClass
     mine.find(lookFor.isInstance).map(_.asInstanceOf[T])
   }
+
+  import scala.collection.JavaConverters._
+  def mine = all.filter(_.nativeUnit.getPlayer == game.self())
   def mineByType[T: Manifest]: Iterator[T] = {
     val lookFor = manifest[T].runtimeClass
     mine.filter(lookFor.isInstance).map(_.asInstanceOf[T])
   }
-  def mine = all.filter(_.nativeUnit.getPlayer == game.self())
   def minerals = allByType[MineralPatch]
-
-  private val forces = LazyVal.from {
-    val me = game.self
-    val friends = game.allies()
-    Forces(me, friends.asScala.toSet)
-  }
-
   def tick(): Unit = {
     if (initial) {
       initial = false
@@ -546,23 +513,12 @@ class Units(game: Game, hostile: Boolean) {
     }
     addThese.foreach {addUnit}
   }
-
   private def init(): Unit = {
     if (ownAndNeutral) {
       game.getMinerals.asScala.foreach {addUnit}
       game.getGeysers.asScala.foreach {addUnit}
     }
   }
-
-  case class Forces(me: Player, allies: Set[Player]) {
-    def isNotEnemy(u: bwapi.Unit) = !isEnemy(u)
-    def isFriend(u: bwapi.Unit) = {
-      u.getPlayer == me || allies(u.getPlayer)
-    }
-    def isNeutral(u: bwapi.Unit) = u.getPlayer.getType == PlayerType.None
-    def isEnemy(u: bwapi.Unit) = !isNeutral(u) && !isFriend(u)
-  }
-
   private def addUnit(u: bwapi.Unit): Unit = {
     val record = {
       if (ownAndNeutral) {
@@ -592,46 +548,75 @@ class Units(game: Game, hostile: Boolean) {
       }
     }
   }
+  private def ownAndNeutral = !hostile
+  def registerUnit(u: bwapi.Unit, lifted: WrapsUnit) = {
+    nativeIdToUnit.put(u.getID, lifted)
+    classIndexes.foreach { c =>
+      if (c.isInstance(lifted)) {
+        preparedByClass.addBinding(c, lifted)
+      }
+    }
+  }
+  case class Forces(me: Player, allies: Set[Player]) {
+    def isNotEnemy(u: bwapi.Unit) = !isEnemy(u)
+    def isEnemy(u: bwapi.Unit) = !isNeutral(u) && !isFriend(u)
+    def isFriend(u: bwapi.Unit) = {
+      u.getPlayer == me || allies(u.getPlayer)
+    }
+    def isNeutral(u: bwapi.Unit) = u.getPlayer.getType == PlayerType.None
+  }
 }
 
 class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitSet,
              protected val containsBlocked: Boolean = true) extends Serializable {
   self =>
-
+  private val lazyAreas = LazyVal.from {new AreaHelper(self).findFreeAreas}
+  def areasIntersecting(area: Area):Set[Grid2D] = {
+    import scala.collection.breakOut
+    area.tiles.flatMap(areaWhichContainsAsFree)(breakOut)
+  }
+  def cuttingAreas(area:Area) = {
+    var found = Option.empty[Grid2D]
+    area.tiles.forall { where =>
+      val check = areaWhichContainsAsFree(where)
+      check.isEmpty || check == found
+    }
+  }
+  def areaWhichContainsAsFree(tile: MapTilePosition) = areas.find(e => e.inBounds(tile) && e.free(tile))
+  def areas = lazyAreas.get
   def nearestFreeBlock(center: MapTilePosition, radius: Int) = {
     spiralAround(center).find { center =>
       containsAndFree(Area(center.movedBy(-radius, -radius), center.movedBy(radius, radius)))
     }
   }
-
+  def containsAndFree(a: Area): Boolean = a.tiles.forall(containsAndFree)
+  def containsAndFree(p: MapTilePosition): Boolean = inBounds(p) && free(p)
   def insideBounds(t: MapTilePosition) = {
     t.y >= 0 && t.x < cols && t.y >= 0 && t.y < rows
   }
-
   def areInSameWalkableArea(a: MapTilePosition, b: MapTilePosition) =
     areaWhichContainsAsFree(a).exists(_.free(b))
-
   def emptySameSize(blocked: Boolean) = new MutableGrid2D(cols, rows, mutable.BitSet.empty, blocked)
-
   def nearestFree(p: MapTilePosition) = {
     spiralAround(p).find(free)
   }
-  def blockedMutableCopy = new MutableGrid2D(cols, rows, mutable.BitSet.empty, false)
-
   def spiralAround(center: MapTilePosition, size: Int = 45) = new GeometryHelpers(cols, rows)
                                                               .iterateBlockSpiralClockWise(center, size)
-
+  def blockedMutableCopy = new MutableGrid2D(cols, rows, mutable.BitSet.empty, false)
   def asReadOnlyCopyIfMutable = this
-
   override def toString = s"$cols*$rows, $freeCount free"
-
-  private val lazyAreas = LazyVal.from {new AreaHelper(self).findFreeAreas}
-  def free(a: Area): Boolean = a.tiles.forall(free)
   def outlineFree(a: Area): Boolean = a.outline.forall(free)
   def outlineFreeAndInBounds(a: Area): Boolean = inBounds(a) && a.outline.forall(free)
   def freeAndInBounds(a: Area): Boolean = a.tiles.forall(e => inBounds(e) && free(e))
+  def inBounds(p: MapTilePosition): Boolean = inBounds(p.x, p.y)
+  def free(p: MapTilePosition): Boolean = free(p.x, p.y)
+  def free(x: Int, y: Int): Boolean = {
+    assert(inBounds(x, y), s"$x / $y is not inside $cols, $rows")
+    val coord = x + y * cols
+    if (containsBlocked) !areaDataBitSet(coord) else areaDataBitSet(coord)
+  }
+  def inBounds(x: Int, y: Int): Boolean = x >= 0 && x < cols && y >= 0 && y < rows
   def anyBlocked(a: Area): Boolean = !inBounds(a) || !free(a)
-  def containsAndFree(a: Area): Boolean = a.tiles.forall(containsAndFree)
   def free(p: TilePosition): Boolean = free(p.getX, p.getY)
   def anyBlockedOnLine(center: MapTilePosition, from: HasXY, to: HasXY): Boolean = {
     val absoluteFrom = center.movedBy(from)
@@ -644,13 +629,10 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
     }, false)
   }
   def blocked(x: Int, y: Int): Boolean = !free(x, y)
-  def areaWhichContainsAsFree(tile: MapTilePosition) = areas.find(_.free(tile))
-  def inBounds(area: Area): Boolean = area.outline.forall(inBounds)
-  def inBounds(p: MapTilePosition): Boolean = inBounds(p.x, p.y)
-  def inBounds(x: Int, y: Int): Boolean = x >= 0 && x < cols && y >= 0 && y < rows
   def connectedByLine(a: MapTilePosition, b: MapTilePosition) = AreaHelper.directLineOfSight(a, b, this)
   def blockedCount = size - freeCount
   def freeCount = if (containsBlocked) size - areaDataBitSet.size else areaDataBitSet.size
+  def size = cols * rows
   def mkString: String = mkString('x')
   def mkString(blockedDisplay: Char) = {
     0 until rows map { y =>
@@ -666,6 +648,8 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
     val allBlockedIndexes = new mutable.BitSet ++= allBlocked.map(tileToIndex)
     new Grid2D(cols, rows, allBlockedIndexes.toImmutable)
   }
+  def allBlocked = if (containsBlocked) bitSetToTiles else allIndexes.filterNot(areaDataBitSet).map(indexToTile)
+  private def tileToIndex(mp: MapTilePosition) = mp.x + mp.y * cols
   def blocked(index: Int) = !free(index)
   def free(index: Int) = if (containsBlocked) !areaDataBitSet(index) else areaDataBitSet(index)
   def minAreaSize(i: Int) = {
@@ -678,15 +662,12 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
   }
   def mutableCopy = new
       MutableGrid2D(cols, rows, mutable.BitSet.fromBitMaskNoCopy(areaDataBitSet.toBitMask), containsBlocked)
-  def allBlocked = if (containsBlocked) bitSetToTiles else allIndexes.filterNot(areaDataBitSet).map(indexToTile)
+  def allFree = if (containsBlocked) allIndexes.filterNot(areaDataBitSet).map(indexToTile) else bitSetToTiles
   private def allIndexes = Iterator.range(0, size)
-  def size = cols * rows
   private def indexToTile(index: Int) = MapTilePosition.shared(index % cols, index / cols)
-  private def tileToIndex(mp: MapTilePosition) = mp.x + mp.y * cols
   private def bitSetToTiles = areaDataBitSet.iterator.map { index =>
     MapTilePosition.shared(index % cols, index / cols)
   }
-  def areas = lazyAreas.get
   def free(position: MapTilePosition, area: Size): Boolean = {
     area.points.forall { p =>
       free(p.movedBy(position))
@@ -696,6 +677,8 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
     val area = Area(position, size)
     inBounds(area) && free(area)
   }
+  def free(a: Area): Boolean = a.tiles.forall(free)
+  def inBounds(area: Area): Boolean = area.outline.forall(inBounds)
   def zoomedOut = {
     val bits = mutable.BitSet.empty
     val subCols = cols / 4
@@ -708,19 +691,11 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
     }
     new Grid2D(subCols, subRows, bits)
   }
-  def free(x: Int, y: Int): Boolean = {
-    assert(inBounds(x, y), s"$x / $y is not inside $cols, $rows")
-    val coord = x + y * cols
-    if (containsBlocked) !areaDataBitSet(coord) else areaDataBitSet(coord)
-  }
   def blocked = size - walkable
   def walkable = areaDataBitSet.size
-  def blocked(p: MapTilePosition): Boolean = !free(p)
   def includesAndBlocked(p: MapTilePosition): Boolean = inBounds(p) && blocked(p)
-  def free(p: MapTilePosition): Boolean = free(p.x, p.y)
-  def containsAndFree(p: MapTilePosition): Boolean = inBounds(p) && free(p)
+  def blocked(p: MapTilePosition): Boolean = !free(p)
   def containsAsData(x: Int, y: Int): Boolean = !free(x, y)
-  def allFree = if (containsBlocked) allIndexes.filterNot(areaDataBitSet).map(indexToTile) else bitSetToTiles
   def all: Iterator[MapTilePosition] = new Iterator[MapTilePosition] {
     private var index = 0
     private val max   = self.size
@@ -777,6 +752,18 @@ class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet, bitSetContains
   def block_!(area: Area): Unit = {
     area.tiles.foreach { p => block_!(p.x, p.y) }
   }
+  def block_!(x: Int, y: Int): Unit = {
+    if (inArea(x, y)) {
+      val where = xyToIndex(x, y)
+      if (containsBlocked) {
+        bitSet += where
+      } else {
+        bitSet -= where
+      }
+    }
+  }
+  private def xyToIndex(x: Int, y: Int) = x + y * cols
+  def inArea(x: Int, y: Int) = x >= 0 && y >= 0 && x < cols && y < rows
   def free_!(area: Area): Unit = {
     area.tiles.foreach { p => free_!(p.x, p.y) }
   }
@@ -796,19 +783,6 @@ class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet, bitSetContains
   def free_!(tile: MapTilePosition): Unit = {
     free_!(tile.x, tile.y)
   }
-  def block_!(x: Int, y: Int): Unit = {
-    if (inArea(x, y)) {
-      val where = xyToIndex(x, y)
-      if (containsBlocked) {
-        bitSet += where
-      } else {
-        bitSet -= where
-      }
-    }
-  }
-  private def xyToIndex(x: Int, y: Int) = x + y * cols
-
-  def inArea(x: Int, y: Int) = x >= 0 && y >= 0 && x < cols && y < rows
 }
 
 case class SerializablePatchGroup(areas: Seq[Area])
@@ -823,7 +797,15 @@ class ResourceAnalyzer(map: AnalyzedMap, myUnits: Units) {
     }
     pg
   }
+  lazy val resourceAreas = {
+    groups.map { patchGroup =>
+      val geysirs = myUnits.geysirs
+                    .filter(_.area.distanceTo(patchGroup.center) < 20)
+                    .toSet
 
+      ResourceArea(Some(patchGroup), geysirs)
+    }
+  }
   private val myGroups = FileStorageLazyVal.fromFunction({
     info(s"Calculating mineral groups...")
     val patchGroups = ArrayBuffer.empty[MineralPatchGroup]
@@ -850,17 +832,6 @@ class ResourceAnalyzer(map: AnalyzedMap, myUnits: Units) {
 
     patchGroups.toSeq.map(e => SerializablePatchGroup(e.patches.map(_.area).toSeq))
   }, s"mineralgroups_${map.game.suggestFileName}")
-
-  lazy val resourceAreas = {
-    groups.map { patchGroup =>
-      val geysirs = myUnits.geysirs
-                    .filter(_.area.distanceTo(patchGroup.center) < 20)
-                    .toSet
-
-      ResourceArea(Some(patchGroup), geysirs)
-    }
-  }
-
   def nearestTo(position: MapTilePosition) = {
     if (groups.nonEmpty)
       Some(groups.minBy(_.center.distanceTo(position)))
@@ -875,12 +846,11 @@ class ResourceAnalyzer(map: AnalyzedMap, myUnits: Units) {
 }
 
 case class MineralPatchGroup(patchId: Int) {
-  def allTiles = myPatches.iterator.flatMap(_.area.tiles)
-
   private val myPatches      = mutable.HashSet.empty[MineralPatch]
   private val myCenter       = new LazyVal[MapTilePosition](calcCenter)
   private val myValue        = new LazyVal[Int](myPatches.foldLeft(0)((acc, mp) => acc + mp.remaining))
   private val myInitialValue = LazyVal.from(myPatches.foldLeft(0)((acc, mp) => acc + mp.remaining))
+  def allTiles = myPatches.iterator.flatMap(_.area.tiles)
   def tick() = {
     myValue.invalidate()
   }
