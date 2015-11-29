@@ -116,11 +116,10 @@ object Orders {
       val size = Size.shared(buildingUnitType.tileWidth(), buildingUnitType.tileHeight())
       Area(where, size)
     }
-    private val buildingUnitType = buildingType.toUnitType
     override def issueOrderToGame(): Unit = {
       myUnit.nativeUnit.build(buildingUnitType, where.asTilePosition)
     }
-
+    private def buildingUnitType = buildingType.toUnitType
     override def renderDebug(renderer: Renderer): Unit = {
       renderer.in_!(Color.White).drawOutline(area)
       renderer.in_!(Color.White).drawLine(myUnit.currentPosition, area.center)

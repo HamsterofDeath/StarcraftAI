@@ -1,5 +1,6 @@
 package pony
 
+import scala.collection.JavaConverters._
 import scala.collection.immutable.BitSet
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
@@ -403,18 +404,20 @@ abstract class OnKillListener[T <: WrapsUnit](val unit: T) {
 }
 
 class Units(game: Game, hostile: Boolean) {
-  private val killListeners = mutable.HashMap.empty[Int, OnKillListener[_]]
-  private val fresh = ArrayBuffer.empty[WrapsUnit]
-  private val graveyard = mutable.HashMap.empty[Int, WrapsUnit]
-  private val classIndexes    = mutable.HashSet.empty[Class[_]]
-  private val preparedByClass = multiMap[Class[_], WrapsUnit]
-  private val nativeIdToUnit = mutable.HashMap.empty[Int, WrapsUnit]
-  private val forces = LazyVal.from {
+  private val killListeners      = mutable.HashMap.empty[Int, OnKillListener[_]]
+  private val killListenersOnAll = mutable.ArrayBuffer.empty[WrapsUnit => Unit]
+  private val newUnitListeners   = mutable.ArrayBuffer.empty[WrapsUnit => Unit]
+  private val fresh              = ArrayBuffer.empty[WrapsUnit]
+  private val graveyard          = mutable.HashMap.empty[Int, WrapsUnit]
+  private val classIndexes       = mutable.HashSet.empty[Class[_]]
+  private val preparedByClass    = multiMap[Class[_], WrapsUnit]
+  private val nativeIdToUnit     = mutable.HashMap.empty[Int, WrapsUnit]
+  private val forces             = LazyVal.from {
     val me = game.self
     val friends = game.allies()
     Forces(me, friends.asScala.toSet)
   }
-  private var initial        = true
+  private var initial            = true
   def byNative(nativeUnit: bwapi.Unit) = if (nativeUnit == null) None else byId(nativeUnit.getID)
   def byId(nativeId: Int) = nativeIdToUnit.get(nativeId)
   def byIdExpectExisting(nativeId: Int) = nativeIdToUnit(nativeId)
@@ -425,6 +428,12 @@ class Units(game: Game, hostile: Boolean) {
   def registerKill_![T <: WrapsUnit](listener: OnKillListener[T]): Unit = {
     // this will always replace the latest listener
     killListeners += ((listener.nativeUnitId, listener))
+  }
+  def registerKill_!(listener: WrapsUnit => Unit): Unit = {
+    killListenersOnAll += listener
+  }
+  def registerAdd_!(listener: WrapsUnit => Unit): Unit = {
+    newUnitListeners += listener
   }
   def dead_!(dead: Seq[bwapi.Unit]) = {
     dead.foreach { u =>
@@ -438,6 +447,7 @@ class Units(game: Game, hostile: Boolean) {
           e.onKillUnTyped(died)
           killListeners.remove(u.getID)
         }
+        killListenersOnAll.foreach {_.apply(died)}
         val nowDead = removeUnit(u)
         nowDead.foreach {
           case cd: MaybeCanDie => cd.notifyDead_!()
@@ -474,6 +484,19 @@ class Units(game: Game, hostile: Boolean) {
   }
   def geysirs = allByType[Geysir]
   def allCanDie = allByType[MaybeCanDie]
+  def firstByType[T: Manifest]: Option[T] = {
+    val lookFor = manifest[T].runtimeClass
+    mine.find(lookFor.isInstance).map(_.asInstanceOf[T])
+  }
+  def mineByType[T: Manifest]: Iterator[T] = {
+    val lookFor = manifest[T].runtimeClass
+    mine.filter(lookFor.isInstance).map(_.asInstanceOf[T])
+  }
+  def mine = all.filter(_.nativeUnit.getPlayer == game.self())
+  def minerals = allByType[MineralPatch]
+
+  import scala.collection.JavaConverters._
+
   def allByType[T <: WrapsUnit : Manifest] = {
     val lookFor = manifest[T].runtimeClass.asInstanceOf[Class[T]]
     allByClass(lookFor)
@@ -486,20 +509,7 @@ class Units(game: Game, hostile: Boolean) {
     val cached = preparedByClass.getOrElseUpdate(lookFor, lazyCreate)
     cached.asInstanceOf[collection.Set[T]]
   }
-
   def all = nativeIdToUnit.valuesIterator
-  def firstByType[T: Manifest]: Option[T] = {
-    val lookFor = manifest[T].runtimeClass
-    mine.find(lookFor.isInstance).map(_.asInstanceOf[T])
-  }
-
-  import scala.collection.JavaConverters._
-  def mine = all.filter(_.nativeUnit.getPlayer == game.self())
-  def mineByType[T: Manifest]: Iterator[T] = {
-    val lookFor = manifest[T].runtimeClass
-    mine.filter(lookFor.isInstance).map(_.asInstanceOf[T])
-  }
-  def minerals = allByType[MineralPatch]
   def tick(): Unit = {
     if (initial) {
       initial = false
@@ -512,6 +522,15 @@ class Units(game: Game, hostile: Boolean) {
         game.enemies().asScala.flatMap(_.getUnits.asScala)
     }
     addThese.foreach {addUnit}
+  }
+  def registerUnit(u: bwapi.Unit, lifted: WrapsUnit) = {
+    newUnitListeners.foreach {_.apply(lifted)}
+    nativeIdToUnit.put(u.getID, lifted)
+    classIndexes.foreach { c =>
+      if (c.isInstance(lifted)) {
+        preparedByClass.addBinding(c, lifted)
+      }
+    }
   }
   private def init(): Unit = {
     if (ownAndNeutral) {
@@ -549,14 +568,6 @@ class Units(game: Game, hostile: Boolean) {
     }
   }
   private def ownAndNeutral = !hostile
-  def registerUnit(u: bwapi.Unit, lifted: WrapsUnit) = {
-    nativeIdToUnit.put(u.getID, lifted)
-    classIndexes.foreach { c =>
-      if (c.isInstance(lifted)) {
-        preparedByClass.addBinding(c, lifted)
-      }
-    }
-  }
   case class Forces(me: Player, allies: Set[Player]) {
     def isNotEnemy(u: bwapi.Unit) = !isEnemy(u)
     def isEnemy(u: bwapi.Unit) = !isNeutral(u) && !isFriend(u)
@@ -575,6 +586,9 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
     import scala.collection.breakOut
     area.tiles.flatMap(areaWhichContainsAsFree)(breakOut)
   }
+  def areaWhichContainsAsFree(tile: MapTilePosition) = areas
+                                                       .find(e => e.inBounds(tile) && e.free(tile))
+  def areas = lazyAreas.get
   def cuttingAreas(area:Area) = {
     var found = Option.empty[Grid2D]
     area.tiles.forall { where =>
@@ -582,8 +596,6 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
       check.isEmpty || check == found
     }
   }
-  def areaWhichContainsAsFree(tile: MapTilePosition) = areas.find(e => e.inBounds(tile) && e.free(tile))
-  def areas = lazyAreas.get
   def nearestFreeBlock(center: MapTilePosition, radius: Int) = {
     spiralAround(center).find { center =>
       containsAndFree(Area(center.movedBy(-radius, -radius), center.movedBy(radius, radius)))
@@ -591,6 +603,9 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
   }
   def containsAndFree(a: Area): Boolean = a.tiles.forall(containsAndFree)
   def containsAndFree(p: MapTilePosition): Boolean = inBounds(p) && free(p)
+  def spiralAround(center: MapTilePosition, size: Int = 45) = new GeometryHelpers(cols, rows)
+                                                              .iterateBlockSpiralClockWise(center,
+                                                                size)
   def insideBounds(t: MapTilePosition) = {
     t.y >= 0 && t.x < cols && t.y >= 0 && t.y < rows
   }
@@ -600,23 +615,19 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
   def nearestFree(p: MapTilePosition) = {
     spiralAround(p).find(free)
   }
-  def spiralAround(center: MapTilePosition, size: Int = 45) = new GeometryHelpers(cols, rows)
-                                                              .iterateBlockSpiralClockWise(center, size)
   def blockedMutableCopy = new MutableGrid2D(cols, rows, mutable.BitSet.empty, false)
   def asReadOnlyCopyIfMutable = this
   override def toString = s"$cols*$rows, $freeCount free"
+  def freeCount = if (containsBlocked) size - areaDataBitSet.size else areaDataBitSet.size
+  def size = cols * rows
   def outlineFree(a: Area): Boolean = a.outline.forall(free)
   def outlineFreeAndInBounds(a: Area): Boolean = inBounds(a) && a.outline.forall(free)
   def freeAndInBounds(a: Area): Boolean = a.tiles.forall(e => inBounds(e) && free(e))
   def inBounds(p: MapTilePosition): Boolean = inBounds(p.x, p.y)
   def free(p: MapTilePosition): Boolean = free(p.x, p.y)
-  def free(x: Int, y: Int): Boolean = {
-    assert(inBounds(x, y), s"$x / $y is not inside $cols, $rows")
-    val coord = x + y * cols
-    if (containsBlocked) !areaDataBitSet(coord) else areaDataBitSet(coord)
-  }
-  def inBounds(x: Int, y: Int): Boolean = x >= 0 && x < cols && y >= 0 && y < rows
   def anyBlocked(a: Area): Boolean = !inBounds(a) || !free(a)
+  def free(a: Area): Boolean = a.tiles.forall(free)
+  def inBounds(area: Area): Boolean = area.outline.forall(inBounds)
   def free(p: TilePosition): Boolean = free(p.getX, p.getY)
   def anyBlockedOnLine(center: MapTilePosition, from: HasXY, to: HasXY): Boolean = {
     val absoluteFrom = center.movedBy(from)
@@ -631,8 +642,6 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
   def blocked(x: Int, y: Int): Boolean = !free(x, y)
   def connectedByLine(a: MapTilePosition, b: MapTilePosition) = AreaHelper.directLineOfSight(a, b, this)
   def blockedCount = size - freeCount
-  def freeCount = if (containsBlocked) size - areaDataBitSet.size else areaDataBitSet.size
-  def size = cols * rows
   def mkString: String = mkString('x')
   def mkString(blockedDisplay: Char) = {
     0 until rows map { y =>
@@ -642,6 +651,12 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
     } mkString "\n"
 
   }
+  def free(x: Int, y: Int): Boolean = {
+    assert(inBounds(x, y), s"$x / $y is not inside $cols, $rows")
+    val coord = x + y * cols
+    if (containsBlocked) !areaDataBitSet(coord) else areaDataBitSet(coord)
+  }
+  def inBounds(x: Int, y: Int): Boolean = x >= 0 && x < cols && y >= 0 && y < rows
   def ensureContainsBlocked = if (containsBlocked)
     this
   else {
@@ -677,8 +692,9 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
     val area = Area(position, size)
     inBounds(area) && free(area)
   }
-  def free(a: Area): Boolean = a.tiles.forall(free)
-  def inBounds(area: Area): Boolean = area.outline.forall(inBounds)
+  def freeAndInBounds(position: MapTilePosition): Boolean = {
+    inBounds(position) && free(position)
+  }
   def zoomedOut = {
     val bits = mutable.BitSet.empty
     val subCols = cols / 4
@@ -767,6 +783,12 @@ class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet, bitSetContains
   def free_!(area: Area): Unit = {
     area.tiles.foreach { p => free_!(p.x, p.y) }
   }
+  def block_!(tile: MapTilePosition): Unit = {
+    block_!(tile.x, tile.y)
+  }
+  def free_!(tile: MapTilePosition): Unit = {
+    free_!(tile.x, tile.y)
+  }
   def free_!(x: Int, y: Int): Unit = {
     if (inArea(x, y)) {
       val where = xyToIndex(x, y)
@@ -776,12 +798,6 @@ class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet, bitSetContains
         bitSet += where
       }
     }
-  }
-  def block_!(tile: MapTilePosition): Unit = {
-    block_!(tile.x, tile.y)
-  }
-  def free_!(tile: MapTilePosition): Unit = {
-    free_!(tile.x, tile.y)
   }
 }
 

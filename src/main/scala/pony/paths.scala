@@ -6,28 +6,52 @@ import scala.collection.mutable.ArrayBuffer
 import scala.language.implicitConversions
 
 import pony.astar.{AStarSearch, GridNode2DInt, Heuristics}
+import pony.brain.modules._
 import pony.brain.{Base, HasUniverse, Universe}
 
-class MigrationPath(follow: Paths) {
-  private val remaining = mutable.HashMap.empty[Mobile, ArrayBuffer[MapTilePosition]]
-  private val counter   = mutable.HashMap.empty[Mobile, Int]
-  def allReachedDestination = remaining.nonEmpty && remaining.iterator.filter(_._1.isInGame).forall(_._2.isEmpty)
+class MigrationPath(follow: Paths, override val universe: Universe) extends HasUniverse {
+  private val remaining       = mutable.HashMap.empty[Mobile, ArrayBuffer[MapTilePosition]]
+  private val counter         = mutable.HashMap.empty[Mobile, Int]
+  private val helper          = new FormationHelper(universe, follow, 2)
+  private val atFormationStep = mutable.HashSet.empty[Mobile]
+
+  def targetFormationTiles = helper.formationTiles
+
+  def allReachedDestination = remaining.nonEmpty &&
+                              remaining.iterator
+                              .filter(_._1.isInGame)
+                              .forall(_._2.isEmpty)
+
   def nextFor(t: Mobile) = {
     val index = counter.getOrElseUpdate(t, counter.size) % follow.pathCount
     val initialFullPath = follow.paths(index)
     val todo = remaining.getOrElseUpdate(t, ArrayBuffer.empty ++= initialFullPath.waypoints)
     val closest = todo.minByOpt(_.distanceToSquared(t.currentTile))
-    closest.map { c =>
-      if (c.distanceToSquared(t.currentTile) <= 25) {
-        todo.removeUntilInclusive(_ == c)
+    val formationPoint = helper.assignedPosition(t)
+    val canSeeFormationPoint = formationPoint.exists(
+      target => mapLayers.rawWalkableMap.connectedByLine(target, t.currentTile))
+    def isOver30Percent = todo.size / initialFullPath.waypoints.size.toDouble <= 0.7
+    def manyArrived = atFormationStep.size.toDouble / counter.size >= 0.8
+
+    if (manyArrived) {
+      Some(follow.idealTarget -> true)
+    } else if (canSeeFormationPoint) {
+      todo.clear()
+      atFormationStep += t
+      formationPoint.map(e => e -> isOver30Percent)
+    } else {
+      closest.map { c =>
+        if (c.distanceToSquared(t.currentTile) <= 25) {
+          todo.removeUntilInclusive(_ == c)
+        }
+        c -> isOver30Percent
       }
-      val isOver30Percent = todo.size / initialFullPath.waypoints.size.toDouble <= 0.7
-      c -> isOver30Percent
     }
   }
 }
 
-case class Path(waypoints: Seq[MapTilePosition], solved: Boolean, solvable: Boolean, bestEffort: MapTilePosition) {
+case class Path(waypoints: Seq[MapTilePosition], solved: Boolean, solvable: Boolean,
+                bestEffort: MapTilePosition, requestedTarget: MapTilePosition) {
   lazy val length = {
     if (waypoints.size <= 1)
       0
@@ -38,7 +62,8 @@ case class Path(waypoints: Seq[MapTilePosition], solved: Boolean, solvable: Bool
 }
 
 case class Paths(paths: Seq[Path]) {
-  val pathCount = paths.size
+  val pathCount   = paths.size
+  val idealTarget = paths.headOption.map(_.requestedTarget).get
 }
 
 object PathFinder {
@@ -117,39 +142,47 @@ class PathFinder(on: Grid2D) {
   import PathFinder._
 
   def this(mapLayers: MapLayers) {
-    this(mapLayers.freeWalkableTiles)
+    this(mapLayers.freeWalkableIgnoringMobiles.asReadOnlyCopyIfMutable)
   }
 
   def findPath(from: MapTilePosition, to: MapTilePosition) = BWFuture {
     val fromFixed = on.nearestFree(from)
     val toFixed = on.nearestFree(to)
-    for (a <- fromFixed; b <- toFixed) yield spawn.findPath(a, b, 10)
+    for (a <- fromFixed; b <- toFixed) yield spawn.findPaths(a, b, 10)
   }
 
   def findPathNow(from: MapTilePosition, to: MapTilePosition) = {
-    spawn.findPathNow(from, to)
+    spawn.findPath(from, to)
   }
   def spawn = new AstarPathFinder(to2DArray(on))
   class AstarPathFinder(grid: Array[Array[GridNode2DInt]]) {
-    def findPathNow(from: MapTilePosition, to: MapTilePosition) = {
+
+    def basedOn = on
+
+    def findPath(from: MapTilePosition, to: MapTilePosition) = {
       val a = new AStarSearch[GridNode2DInt](from, to).performSearch()
       Path(a.getSolution.asScala
            .map(e => MapTilePosition.shared(e.getX, e.getY))
            .toVector,
-        a.isSolved, !a.isUnsolvable, a.getTargetOrNearestReachable)
+        a.isSolved, !a.isUnsolvable, a.getTargetOrNearestReachable, to)
     }
-    def findPath(from: MapTilePosition, to: MapTilePosition, width: Int) = {
+    def findPaths(from: MapTilePosition, to: MapTilePosition, width: Int) = {
       info(s"Searching path from $from to $to")
       val finder = new AStarSearch[GridNode2DInt](from, to)
       var first = Option.empty[Path]
       def pathFrom(seq: Seq[MapTilePosition]) = {
-        Path(seq, finder.isSolved, !finder.isUnsolvable, finder.getTargetOrNearestReachable)
+        Path(seq, finder.isSolved, !finder.isUnsolvable, finder.getTargetOrNearestReachable, to)
       }
       val paths = (0 to width).iterator.map { _ =>
         finder.performSearch()
-        val waypoints = finder.getSolution.asScala.map(e => e: MapTilePosition).toVector
+        val waypoints = finder.getFullSolution
+                        .asScala
+                        .map(e => e: MapTilePosition)
+                        .sliding(1, 4)
+                        .flatten
+                        .toVector
         //block the path, then search again to get streets
-        finder.getFullSolution.asScala.toVector.drop(15).dropRight(10).foreach(_.remove())
+        finder.getFullSolution.asScala.drop(15).dropRight(10).foreach(_.remove())
         if (first.isEmpty) first = Some(pathFrom(waypoints))
         waypoints
       }.takeWhile { candidate =>
@@ -364,6 +397,7 @@ class UnitGrid(override val universe: Universe) extends HasUniverse {
     val set = on(hostile)(tile.x)(tile.y)
     if (set != null) set else Set.empty[Mobile]
   }
+  private def on(hostile: Boolean) = if (hostile) enemyUnits else myUnits
   def onTick(): Unit = {
     //reset
     touched.foreach { modified =>
@@ -436,7 +470,6 @@ class UnitGrid(override val universe: Universe) extends HasUniverse {
       }
     }
   }
-  private def on(hostile: Boolean) = if (hostile) enemyUnits else myUnits
 }
 
 class MapLayers(override val universe: Universe) extends HasUniverse {
@@ -473,6 +506,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
 
   }
   def rawWalkableMap = rawMapWalk
+
   def defendedTiles = {
     update()
     justAreasToDefend.asReadOnlyView
@@ -482,17 +516,22 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
     justAddonLocations.asReadOnlyView
   }
   def blockedByPlannedBuildings = plannedBuildings.asReadOnlyView
-  def freeBuildingTiles = {
+
+  def freeTilesForConstruction = {
     update()
     withEverythingStaticBuildable.asReadOnlyView
   }
-  def blockedByAnythingTiles = {
+  def buildableBlockedByNothingTiles = {
     update()
     withEverythingBlockingBuildable.asReadOnlyView
   }
   def freeWalkableTiles = {
     update()
     withEverythingBlockingWalkable.asReadOnlyView
+  }
+  def freeWalkableIgnoringMobiles = {
+    update()
+    withEverythingStaticWalkable.asReadOnlyView
   }
   def blockedByBuildingTiles = {
     update()
@@ -526,7 +565,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   }
   universe.bases.register((base: Base) => {
     justWorkerPaths = evalWorkerPaths
-  }, true)
+  }, notifyForExisting = true)
 
   def tick(): Unit = {
   }
@@ -638,9 +677,11 @@ trait SubFinder {
 class ConstructionSiteFinder(universe: Universe) {
 
   // initialisation happens in the main thread
-  private val freeToBuildOn            = universe.mapLayers.blockedByAnythingTiles.mutableCopy
-                                         .or_!(universe.mapLayers.blockedByPotentialAddons.mutableCopy)
-  private val freeToBuildOnIgnoreUnits = universe.mapLayers.freeBuildingTiles.mutableCopy
+  private val freeToBuildOn            = universe.mapLayers.buildableBlockedByNothingTiles
+                                         .mutableCopy
+                                         .or_!(universe.mapLayers.blockedByPotentialAddons
+                                               .mutableCopy)
+  private val freeToBuildOnIgnoreUnits = universe.mapLayers.freeTilesForConstruction.mutableCopy
                                          .or_!(universe.mapLayers.blockedByPotentialAddons.mutableCopy)
                                          .asReadOnlyCopyIfMutable
   private val helper                   = new GeometryHelpers(universe.world.map.sizeX, universe.world.map.sizeY)

@@ -1,12 +1,12 @@
 package pony
 package brain
 
-import pony.brain.modules.Strategy.Strategies
-import pony.brain.modules._
-
 import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, Future}
+
+import pony.brain.modules.Strategy.Strategies
+import pony.brain.modules._
 
 trait HasUniverse {
   def pathFinder = universe.pathFinder
@@ -36,9 +36,8 @@ trait HasUniverse {
 }
 
 trait HasLazyVals {
-  private var tick: Int = 0
   private val lazyVals  = ArrayBuffer.empty[LazyVal[_]]
-
+  private var tick: Int = 0
   def oncePer[T <: AnyRef](prime: PrimeNumber, t: => T) = {
     var store: T = null.asInstanceOf[T]
     oncePerTick {
@@ -194,9 +193,6 @@ class TwilightSparkle(world: DefaultWorld) {
   private val resources       = new ResourceManager(universe)
   private val strategy        = new Strategies(universe)
   private val worldDomination = new WorldDominationPlan(universe)
-
-  def plugins = aiModules
-
   private val aiModules      = List(
     new DefaultBehaviours(universe),
     new GatherMinerals(universe),
@@ -217,10 +213,17 @@ class TwilightSparkle(world: DefaultWorld) {
   private val unitManager    = new UnitManager(universe)
   private val upgradeManager = new UpgradeManager(universe)
   private val maps           = new MapLayers(universe)
-  private val pathFinder     = new PathFinder(maps)
+  private val myPathFinder   = LazyVal.from {
+    new PathFinder(maps)
+  }
   private val unitGrid       = new UnitGrid(universe)
   private val ferryManager   = new FerryManager(universe)
 
+  world.enemyUnits.registerKill_!(onKillOrCreate)
+  world.ownUnits.registerKill_!(onKillOrCreate)
+  world.enemyUnits.registerAdd_!(onKillOrCreate)
+  world.ownUnits.registerAdd_!(onKillOrCreate)
+  def plugins = aiModules
   def pluginByType[T <: AIModule[_]:Manifest] = {
     val c = manifest[T].runtimeClass
     aiModules.find(e => c.isAssignableFrom(e.getClass)).get.asInstanceOf[T]
@@ -247,12 +250,19 @@ class TwilightSparkle(world: DefaultWorld) {
     universe.afterTick()
 
   }
+  private def onKillOrCreate = (unit: WrapsUnit) =>
+    unit match {
+      case _: StaticallyPositioned =>
+        myPathFinder.invalidate()
+      case _ =>
+    }
+  private def pathFinder = myPathFinder.get
 }
 
 class Bases(world: DefaultWorld) {
+  private val myBases          = ArrayBuffer.empty[Base]
+  private val newBaseListeners = ArrayBuffer.empty[NewBaseListener]
   def isCovered(field: ResourceArea) = myBases.exists(_.resourceArea == field)
-
-  private val myBases = ArrayBuffer.empty[Base]
   def rich = {
     def singleValuable = myMineralFields.exists(_.value > 15000) && myMineralFields.exists(_.patches.size >= 10)
     def multipleIncomes = myMineralFields.size >= 2 && myMineralFields.map(_.value).sum > 5000
@@ -262,11 +272,7 @@ class Bases(world: DefaultWorld) {
   def myMineralFields = myBases.flatMap(_.myMineralGroup).toSeq
   def myGeysirs = myBases.flatMap(_.myGeysirs).toSeq
   def mainBase = myBases.headOption
-
   def bases = myBases.toSeq
-
-  def known(mb:MainBuilding) = myBases.exists(_.mainBuilding == mb)
-
   def tick():Unit = {
     val all = world.ownUnits.allByType[MainBuilding]
     all.filterNot(known).foreach { main =>
@@ -277,9 +283,7 @@ class Bases(world: DefaultWorld) {
 
     myBases.retain(!_.mainBuilding.isDead)
   }
-
-  private val newBaseListeners = ArrayBuffer.empty[NewBaseListener]
-
+  def known(mb: MainBuilding) = myBases.exists(_.mainBuilding == mb)
   def register(newBaseListener: NewBaseListener, notifyForExisting: Boolean): Unit = {
     newBaseListeners += newBaseListener
     if (notifyForExisting) {

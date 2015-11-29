@@ -1,14 +1,13 @@
 package pony
 
-import java.io.{BufferedInputStream, ByteArrayInputStream, ByteArrayOutputStream, File, ObjectInputStream,
-ObjectOutputStream}
+import java.io.{BufferedInputStream, ByteArrayInputStream, ByteArrayOutputStream, File,
+ObjectInputStream, ObjectOutputStream}
 import java.util.zip.{Deflater, ZipEntry, ZipInputStream, ZipOutputStream}
+import scala.concurrent.Future
+import scala.util.{Failure, Success, Try}
 
 import bwapi.Game
 import org.apache.commons.io.FileUtils
-
-import scala.concurrent.Future
-import scala.util.{Failure, Success, Try}
 
 class Renderer(game: Game, private var color: bwapi.Color) {
   def drawLine(from: MapTilePosition, to: MapTilePosition): Unit = {
@@ -55,16 +54,18 @@ class Renderer(game: Game, private var color: bwapi.Color) {
     game.drawLineMap(currentPosition.x, currentPosition.y, to.mapX + tileSize / 2, to.mapY + tileSize / 2, color)
     drawCircleAroundTile(to)
   }
+  def drawCircleAroundTile(around: MapTilePosition): Unit = {
+    game.drawCircleMap(around.mapX + tileSize / 2, around.mapY + tileSize / 2, tileSize / 2, color)
+  }
   def indicateTarget(currentPosition: MapPosition, to: MapPosition): Unit = {
     game.drawLineMap(currentPosition.x, currentPosition.y, to.x, to.y, color)
     drawCircleAround(to)
   }
-
-  def drawCircleAroundTile(around: MapTilePosition): Unit = {
-    game.drawCircleMap(around.mapX + tileSize / 2, around.mapY + tileSize / 2, tileSize / 2, color)
-  }
   def drawCircleAround(around: MapPosition): Unit = {
     drawCircleAround(around, tileSize / 2)
+  }
+  def drawCircleAround(around: MapTilePosition): Unit = {
+    drawCircleAround(around.asMapPosition, tileSize / 2)
   }
   def drawCircleAround(around: MapPosition, radiusPixels: Int): Unit = {
     game.drawCircleMap(around.x, around.y, radiusPixels, color)
@@ -101,6 +102,13 @@ class Renderer(game: Game, private var color: bwapi.Color) {
 class LazyVal[T](gen: => T, onValueChange: Option[() => Unit] = None) extends Serializable {
   private var evaluated = false
   private var value: T  = _
+  def invalidate(): Unit = {
+    evaluated = false
+    if (onValueChange.isEmpty) {
+      value = null.asInstanceOf[T]
+    }
+  }
+  override def toString = s"LazyVal($get)"
   def get = {
     if (!evaluated)
       if (onValueChange.isDefined) {
@@ -116,14 +124,6 @@ class LazyVal[T](gen: => T, onValueChange: Option[() => Unit] = None) extends Se
     evaluated = true
     value
   }
-
-  def invalidate(): Unit = {
-    evaluated = false
-    if (onValueChange.isEmpty) {
-      value = null.asInstanceOf[T]
-    }
-  }
-  override def toString = s"LazyVal($get)"
 }
 
 object LazyVal {
@@ -208,21 +208,17 @@ object FileStorageLazyVal {
 
 class BWFuture[+T](val future: Future[T], incomplete: T) {
   def idle = future.isCompleted
-
-  def result = future.value match {
-    case Some(Success(x)) => x
-    case Some(Failure(e)) => throw e
-    case _ => incomplete
-  }
-
   def map[X](f: T => X) = new BWFuture(future.map(f), f(incomplete))
-
   def ifDone[X](ifDone: T => X): Unit = {
     if (future.isCompleted) {
       ifDone(result)
     }
   }
-
+  def result = future.value match {
+    case Some(Success(x)) => x
+    case Some(Failure(e)) => throw e
+    case _ => incomplete
+  }
   def matchOnSelf[X](ifDone: T => X, ifRunning: => X) = {
     if (future.isCompleted) {
       ifDone(result)
@@ -234,6 +230,16 @@ class BWFuture[+T](val future: Future[T], incomplete: T) {
 }
 
 object BWFuture {
+  def none[T] = apply(Option.empty[T])
+  def apply[T](produce: => Option[T]): BWFuture[Option[T]] = BWFuture(produce, None)
+  def apply[T](produce: => T, ifIncomplete: T) = {
+    val fut = Future {produce}
+    new BWFuture(fut, ifIncomplete)
+  }
+  def from[T](produce: => T): BWFuture[Option[T]] = {
+    BWFuture(Some(produce), None)
+  }
+  def some[T](produce: => T) = BWFuture(Some(produce))
   implicit class Result[T](val fut: BWFuture[Option[T]]) extends AnyVal {
     def ifDoneOpt[X](ifDone: T => X): Unit = {
       fut.ifDone(op => ifDone(op.get))
@@ -246,19 +252,4 @@ object BWFuture {
       }, ifRunning)
     }
   }
-
-  def none[T] = apply(Option.empty[T])
-
-  def apply[T](produce: => T, ifIncomplete: T) = {
-    val fut = Future {produce}
-    new BWFuture(fut, ifIncomplete)
-  }
-
-  def apply[T](produce: => Option[T]): BWFuture[Option[T]] = BWFuture(produce, None)
-
-  def from[T](produce: => T): BWFuture[Option[T]] = {
-    BWFuture(Some(produce), None)
-  }
-
-  def some[T](produce: => T) = BWFuture(Some(produce))
 }

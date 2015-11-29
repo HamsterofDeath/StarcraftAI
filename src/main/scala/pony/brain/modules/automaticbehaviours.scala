@@ -37,15 +37,15 @@ abstract class DefaultBehaviour[T <: Mobile : Manifest](override val universe: U
   def controls(unit: Mobile) = {
     canControl(unit) && controlledUnits.contains(assumeSafe(unit))
   }
+  def canControl(u: WrapsUnit) = {
+    manifest[T].runtimeClass.isInstance(u)
+  }
   def assumeSafe(unit: Mobile): T = unit.asInstanceOf[T]
   def add_!(u: WrapsUnit, objective: Objective) = {
     assert(canControl(u))
     val behaviour = wrapBase(u.asInstanceOf[T])
     controlledUnits += behaviour.unit
     unit2behaviour.put(behaviour.unit, behaviour)
-  }
-  def canControl(u: WrapsUnit) = {
-    manifest[T].runtimeClass.isInstance(u)
   }
   def cast = this.asInstanceOf[DefaultBehaviour[Mobile]]
   protected def meta = SingleUnitBehaviourMeta(priority, refuseCommandsForTicks, forceRepeatedCommands)
@@ -124,7 +124,7 @@ object Terran {
             }.toList
           case None =>
             (if (unit.hasUnitsLoaded) {
-              val nearestFree = mapLayers.blockedByAnythingTiles.nearestFree(unit.currentTile)
+              val nearestFree = mapLayers.freeWalkableTiles.nearestFree(unit.currentTile)
               nearestFree.map { where =>
                 Orders.UnloadAll(unit, where).forceRepeat_!(true)
               }
@@ -143,7 +143,7 @@ object Terran {
   class Dance(universe: Universe) extends DefaultBehaviour[Mobile with Weapon](universe) {
 
     private val immutableMapLayer = oncePerTick {
-      mapLayers.blockedByAnythingTiles.asReadOnlyCopyIfMutable
+      mapLayers.freeWalkableTiles.asReadOnlyCopyIfMutable
     }
     override def priority: SecondPriority = SecondPriority.More
     override def canControl(u: WrapsUnit): Boolean = super.canControl(u) && u.isInstanceOf[Weapon]
@@ -241,8 +241,11 @@ object Terran {
       override def describeShort: String = "<>"
       override def toOrder(what: Objective): Seq[UnitOrder] = {
         val layer = mapLayers.blockedByPlannedBuildings
-        val secondLayer = mapLayers.blockedByAnythingTiles
-        val needsToMove = layer.anyBlocked(unit.blockedArea.growBy(tolerance))
+        val secondLayer = mapLayers.freeWalkableTiles
+        def shouldAttempt = {
+          universe.unitGrid.own.allInRange[Mobile](unit.currentTile, 4).size < 10
+        }
+        val needsToMove = layer.anyBlocked(unit.blockedArea.growBy(tolerance)) && shouldAttempt
         if (needsToMove) {
           layer.spiralAround(unit.currentTile).find { tile =>
             val extendedSizeToBeSafe = unit.unitTileSize.growBy(tolerance+2)
@@ -262,14 +265,14 @@ object Terran {
   class UntrapOwnUnits(universe: Universe) extends DefaultBehaviour[Mobile](universe) {
 
     private val newBlockingUnits = oncePer(Primes.prime37, {
-      val baseArea = mapLayers.blockedByAnythingTiles.asReadOnlyCopyIfMutable
+      val baseArea = mapLayers.freeWalkableTiles.asReadOnlyCopyIfMutable
       val unitsToPositions = ownUnits.allCompletedMobiles
                              .filter(_.canMove)
                              .filterNot(_.isInstanceOf[WorkerUnit])
                              .map { e => e.nativeUnitId -> e.blockedArea }
                              .toMap
 
-      val buildingLayer = mapLayers.blockedByBuildingTiles.asReadOnlyCopyIfMutable
+      val buildingLayer = mapLayers.freeWalkableTiles.asReadOnlyCopyIfMutable
       BWFuture.some {
         val badlyPositioned = unitsToPositions.flatMap { case (id, where) =>
           val withOutline = where.growBy(tolerance)
@@ -292,7 +295,7 @@ object Terran {
     })
     private val blockingUnitsQueue = mutable.HashSet.empty[Mobile]
     private val relevantLayer = oncePerTick {
-      mapLayers.blockedByAnythingTiles.asReadOnlyCopyIfMutable
+      mapLayers.freeWalkableTiles.asReadOnlyCopyIfMutable
     }
     override def forceRepeatedCommands: Boolean = false
 
@@ -371,14 +374,25 @@ object Terran {
   class MigrateTowardsPosition(universe: Universe) extends DefaultBehaviour[Mobile](universe) {
     override def priority = SecondPriority.Less
 
-    override def canControl(u: WrapsUnit): Boolean = super.canControl(u) && !u.isInstanceOf[WorkerUnit]
+    override def canControl(u: WrapsUnit): Boolean = super.canControl(u) &&
+                                                     !u.isInstanceOf[WorkerUnit] &&
+                                                     !u.isInstanceOf[AutoPilot]
 
     override def onTick(): Unit = {
       super.onTick()
     }
-
-    override protected def wrapBase(unit: Mobile) = new SingleUnitBehaviour[Mobile](unit,
-      meta) {
+    override def renderDebug(renderer: Renderer) = {
+      super.renderDebug(renderer)
+      worldDominationPlan.allAttacks.foreach { plan =>
+        plan.migrationPlan.foreach { p =>
+          p.targetFormationTiles.foreach { tile =>
+            renderer.in_!(Color.Cyan).drawCircleAround(tile)
+          }
+        }
+      }
+    }
+    override protected def wrapBase(unit: Mobile) =
+      new SingleUnitBehaviour[Mobile](unit, meta) {
       override def describeShort: String = "Migrate"
       override def toOrder(what: Objective) = {
         worldDominationPlan.attackOf(unit).map { attack =>
@@ -472,7 +486,7 @@ object Terran {
   }
 
   class GoToInitialPosition(universe: Universe) extends DefaultBehaviour[Mobile](universe) {
-    private val helper = new FormationHelper(universe)
+    private val helper = new FormationAtFrontLineHelper(universe)
 
     private val ignore = mutable.HashSet.empty[Mobile]
 
@@ -499,9 +513,9 @@ object Terran {
 
   class SetupMineField(universe: Universe) extends DefaultBehaviour[Vulture](universe) {
     val beLazy = Idle -> Nil
-    private val helper = new FormationHelper(universe, 2)
+    private val helper       = new FormationAtFrontLineHelper(universe, 2)
     private val plannedDrops = ArrayBuffer.empty[(Area, Int)]
-    private val mined = oncePerTick {
+    private val mined        = oncePerTick {
       plannedDrops.retain(_._2 + 120 > universe.currentTick)
       val area = universe.mapLayers.freeWalkableTiles.mutableCopy
       universe.ownUnits.allByType[SpiderMine].foreach { mine =>
@@ -514,13 +528,6 @@ object Terran {
       suggestMinePositions.foreach { tile =>
         renderer.in_!(Color.White).drawCircleAroundTile(tile)
       }
-    }
-    private def suggestMinePositions = {
-      val defense = helper.allOutsideNonBlacklisted
-      val neutralResourceFields = universe.resourceFields.resourceAreas.filterNot { field =>
-        universe.bases.isCovered(field)
-      }.map {_.mostAnnoyingMinePosition}
-      defense //++ neutralResourceFields
     }
     override def onTick(): Unit = {
       super.onTick()
@@ -601,6 +608,13 @@ object Terran {
         orders
       }
       override def preconditionOk: Boolean = universe.upgrades.hasResearched(Upgrades.Terran.SpiderMines)
+    }
+    private def suggestMinePositions = {
+      val defense = helper.allOutsideNonBlacklisted
+      val neutralResourceFields = universe.resourceFields.resourceAreas.filterNot { field =>
+        universe.bases.isCovered(field)
+      }.map {_.mostAnnoyingMinePosition}
+      defense //++ neutralResourceFields
     }
     trait State
     case class DroppingMine(tile: MapTilePosition) extends State
@@ -750,19 +764,6 @@ class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
       recalculatePlannedDamage_!()
       invalidateQueue()
     }
-    def recalculatePlannedDamage_!(): Unit = {
-      val attackersSorted = plannedDamage.keys.toArray.sortBy(_.cooldownTimer)
-      val damage = new MutableHP(0, 0)
-      val currentHp = actualHP
-      val assumeHp = new MutableHP(currentHp.hitpoints, currentHp.shield)
-      attackersSorted.foreach { attacker =>
-        val shotCount = 1 + attacker.assumeShotDelayOn(target)
-        val moreDamage = attacker.calculateDamageOn(target, assumeHp.hp, assumeHp.shields, shotCount)
-        damage +! moreDamage
-        assumeHp -! moreDamage
-      }
-      plannedDamageMerged = damage
-    }
     def canSpare(attacker: MobileRangeWeapon) = {
       assert(isAttacker(attacker))
       // this is not entirely correct because of shields & zerg regeneration, but should be close enough
@@ -770,7 +771,6 @@ class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
 
       actualHP <(plannedDamageMerged.hp - damage.onHp, plannedDamageMerged.shields - damage.onShields)
     }
-    private def actualHP = target.hitPoints
     def isAttacker(t: MobileRangeWeapon) = attackers(t)
     def allAttackers = attackers.iterator
     def addAttacker_!(t: MobileRangeWeapon): Unit = {
@@ -787,6 +787,21 @@ class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
       recalculatePlannedDamage_!()
       hpAfterNextAttacks -! expectedDamage
     }
+    def recalculatePlannedDamage_!(): Unit = {
+      val attackersSorted = plannedDamage.keys.toArray.sortBy(_.cooldownTimer)
+      val damage = new MutableHP(0, 0)
+      val currentHp = actualHP
+      val assumeHp = new MutableHP(currentHp.hitpoints, currentHp.shield)
+      attackersSorted.foreach { attacker =>
+        val shotCount = 1 + attacker.assumeShotDelayOn(target)
+        val moreDamage = attacker
+                         .calculateDamageOn(target, assumeHp.hp, assumeHp.shields, shotCount)
+        damage +! moreDamage
+        assumeHp -! moreDamage
+      }
+      plannedDamageMerged = damage
+    }
+    private def actualHP = target.hitPoints
     def isOverkill = actualHP <(plannedDamageMerged.hp, plannedDamageMerged.shields)
     def canTakeMore = hpAfterNextAttacks.alive
     class MutableHP(var hp: Int, var shields: Int) {

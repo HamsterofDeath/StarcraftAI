@@ -1,13 +1,12 @@
 package pony
 
 import java.text.DecimalFormat
+import scala.collection.mutable.ArrayBuffer
+import scala.util.{Failure, Success, Try}
 
 import bwapi.Color
 import pony.brain.modules.{GatherMineralsAtSinglePatch, ProvideExpansions}
 import pony.brain.{HasUniverse, TwilightSparkle, UnitWithJob, Universe}
-
-import scala.collection.mutable.ArrayBuffer
-import scala.util.{Failure, Success, Try}
 
 class MapReveal extends AIPluginRunOnce {
   override def runOnce(): Unit = {
@@ -121,14 +120,16 @@ class PathDebugRenderer(override val universe: Universe) extends AIPlugIn with H
         val count = attack.force.size
         renderer.drawCircleAround(center.asMapPosition, math.round(math.sqrt(count)).toInt)
         attack.completePath.result.foreach { path =>
-          var prev = Option.empty[MapTilePosition]
-          path.paths.foreach(_.waypoints.zipWithIndex.foreach { case (tile, index) =>
-            renderer.drawTextAtTile(s"P$index", tile)
-            prev.foreach { p =>
-              renderer.drawLine(p, tile)
+          path.paths.foreach { singlePath =>
+            var prev = Option.empty[MapTilePosition]
+            singlePath.waypoints.zipWithIndex.foreach { case (tile, index) =>
+              renderer.drawTextAtTile(s"P$index", tile)
+              prev.foreach { p =>
+                renderer.drawLine(p, tile)
+              }
+              prev = Some(tile)
             }
-            prev = Some(tile)
-          })
+          }
         }
       }
     }
@@ -162,11 +163,9 @@ class UnitDebugRenderer(override val universe: Universe) extends AIPlugIn with H
 }
 
 class StatsRenderer(override val universe: Universe) extends AIPlugIn with HasUniverse {
-  override val lazyWorld = universe.world
-
-  private var lastTickNanos = System.nanoTime()
-  private val df            = new DecimalFormat("#0.00")
-
+  override val lazyWorld     = universe.world
+  private  val df            = new DecimalFormat("#0.00")
+  private  var lastTickNanos = System.nanoTime()
   override protected def tickPlugIn(): Unit = {
     lazyWorld.debugger.debugRender { renderer =>
       val current = System.nanoTime()
@@ -413,15 +412,12 @@ class DebugHelper(main: MainAI) extends AIPlugIn with HasUniverse {
 
 class MainAI extends AIPlugIn with HasUniverse with AIAPIEventDispatcher {
   lazy val brain = new TwilightSparkle(lazyWorld)
-
-  override def debugger = world.debugger
-
   override def universe = brain.universe
-
   override protected def tickPlugIn(): Unit = {
     brain.queueOrdersForTick()
     if (debugger.isDebugging) {
       brain.plugins.foreach(_.renderDebug(debugger.renderer))
     }
   }
+  override def debugger = world.debugger
 }
