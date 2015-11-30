@@ -163,7 +163,7 @@ trait Building extends BlockingTiles with MaybeCanDie {
   }
   def isFloating = myFlying.get
 
-  def incomplete = currentNativeOrder == Order.IncompleteBuilding
+  def incomplete = currentNativeOrder == Order.IncompleteBuilding || remainingBuildTime > 0
 
   private val myAbandoned = oncePerTick {
     isBeingCreated && incomplete && {

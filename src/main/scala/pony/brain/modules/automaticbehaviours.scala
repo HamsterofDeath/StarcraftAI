@@ -85,6 +85,7 @@ object Terran {
                       */
                       new Dance(universe) ::
                       new FocusFire(universe) ::
+                      new ReallyReallyLazy(universe) ::
                       Nil).map(_.cast)
     allOfThem
   }
@@ -378,16 +379,26 @@ object Terran {
     private val helper = new NonConflictingTargets[Building, SCV](
       universe = universe,
       rateTarget = b => PriorityChain(-b.remainingBuildTime),
-      validTarget = e => e.isIncompleteAbandoned,
+      validTarget = e => e.isIncompleteAbandoned && !e.isInstanceOf[Addon],
       subRate = (w, b) => PriorityChain(-w.currentTile.distanceToSquared(b.tilePosition)),
       own = true,
       allowReplacements = true,
       subAccept = (w, b) => true)
 
     override protected def wrapBase(unit: SCV) = new SingleUnitBehaviour[SCV](unit, meta) {
+
+      private var target = Option.empty[Building]
+
+      override def canInterrupt = {
+        super.canInterrupt && !unit.isInConstructionProcess &&
+        (target.isEmpty || !target.exists(_.incomplete))
+      }
+
       override def describeShort: String = "Finish construction"
       override def toOrder(what: Objective): Seq[UnitOrder] = {
-        helper.suggestTarget(unit).map { building =>
+        def eval = helper.suggestTarget(unit)
+        target.filter(_.incomplete).orElse(eval).map { building =>
+          target = Some(building)
           val sameArea = area.get.areInSameWalkableArea(unit.currentTile, building.centerTile)
           if (sameArea) {
             Orders.ContinueConstruction(unit, building)
@@ -426,6 +437,18 @@ object Terran {
         worldDominationPlan.attackOf(unit).map { attack =>
           attack.suggestActionFor(unit).asOrder.toList
         }.getOrElse(Nil)
+      }
+    }
+  }
+
+  class ReallyReallyLazy(universe: Universe) extends DefaultBehaviour[Mobile](universe) {
+
+    override def priority = SecondPriority.None
+
+    override protected def wrapBase(unit: Mobile) = new SingleUnitBehaviour[Mobile](unit, meta) {
+      override def describeShort = "Bored"
+      override def toOrder(what: Objective) = {
+        Orders.NoUpdate(unit).toList
       }
     }
   }

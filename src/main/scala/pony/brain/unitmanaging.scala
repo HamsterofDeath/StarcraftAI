@@ -1025,6 +1025,7 @@ abstract class SingleUnitBehaviour[T <: Mobile](val unit: T, meta: SingleUnitBeh
   def priority = meta.priority
   def blocksForTicks = meta.refuseCommandsForTicks
   def forceRepeats = meta.forceRepeats
+  def canInterrupt = true
 }
 
 class BusyDoingSomething[T <: Mobile](employer: Employer[T], behaviour: Seq[SingleUnitBehaviour[T]],
@@ -1032,6 +1033,9 @@ class BusyDoingSomething[T <: Mobile](employer: Employer[T], behaviour: Seq[Sing
   extends UnitWithJob(employer, behaviour.head.unit, Priority.DefaultBehaviour) with Interruptable[T] {
 
   assert(behaviour.map(_.unit).distinct.size == 1, s"Wrong grouping: $behaviour")
+
+  override def interruptableNow = super.interruptableNow &&
+                                  lastTickOrderIssuedBy.exists(_.canInterrupt)
 
   private var lastTickOrderIssuedBy = Option.empty[SingleUnitBehaviour[T]]
   private var lastOrderIssuedBy = Option.empty[SingleUnitBehaviour[T]]
@@ -1067,6 +1071,7 @@ class BusyDoingSomething[T <: Mobile](employer: Employer[T], behaviour: Seq[Sing
   }
   private def active = behaviour.filter(_.preconditionOk)
   override protected def omitRepeatedOrders = true
+
 }
 
 class BusyDoingNothing[T <: WrapsUnit](unit: T, employer: Employer[T])
