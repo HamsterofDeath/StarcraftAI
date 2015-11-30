@@ -38,7 +38,7 @@ abstract class DefaultBehaviour[T <: Mobile : Manifest](override val universe: U
     canControl(unit) && controlledUnits.contains(assumeSafe(unit))
   }
   def canControl(u: WrapsUnit) = {
-    manifest[T].runtimeClass.isInstance(u)
+    manifest[T].runtimeClass.isInstance(u) && !u.isInstanceOf[AutoPilot]
   }
   def assumeSafe(unit: Mobile): T = unit.asInstanceOf[T]
   def add_!(u: WrapsUnit, objective: Objective) = {
@@ -73,6 +73,7 @@ object Terran {
                       new RepairDamagedUnit(universe) ::
                       new MoveAwayFromConstructionSite(universe) ::
                       new UntrapOwnUnits(universe) ::
+                      new ContinueInterruptedConstruction(universe) ::
                       /*
                                             new RepairDamagedBuilding ::
                                            new UseComsat ::
@@ -147,7 +148,8 @@ object Terran {
     }
     override def priority: SecondPriority = SecondPriority.More
     override def canControl(u: WrapsUnit): Boolean = super.canControl(u) && u.isInstanceOf[Weapon]
-    override def refuseCommandsForTicks = 12 // to avoid wasting cpu time
+    override def refuseCommandsForTicks = 6
+    // to avoid wasting cpu time
     override protected def wrapBase(unit: Mobile with Weapon): SingleUnitBehaviour[Mobile with Weapon] = new
         SingleUnitBehaviour[Mobile with Weapon](unit, meta) {
 
@@ -368,7 +370,33 @@ object Terran {
   }
 
   class ContinueInterruptedConstruction(universe: Universe) extends DefaultBehaviour[SCV](universe) {
-    override protected def wrapBase(unit: SCV) = ???
+
+    private val area = oncePerTick {
+      mapLayers.rawWalkableMap.asReadOnlyCopyIfMutable
+    }
+
+    private val helper = new NonConflictingTargets[Building, SCV](
+      universe = universe,
+      rateTarget = b => PriorityChain(-b.remainingBuildTime),
+      validTarget = e => e.isIncompleteAbandoned,
+      subRate = (w, b) => PriorityChain(-w.currentTile.distanceToSquared(b.tilePosition)),
+      own = true,
+      allowReplacements = true,
+      subAccept = (w, b) => true)
+
+    override protected def wrapBase(unit: SCV) = new SingleUnitBehaviour[SCV](unit, meta) {
+      override def describeShort: String = "Finish construction"
+      override def toOrder(what: Objective): Seq[UnitOrder] = {
+        helper.suggestTarget(unit).map { building =>
+          val sameArea = area.get.areInSameWalkableArea(unit.currentTile, building.centerTile)
+          if (sameArea) {
+            Orders.ContinueConstruction(unit, building)
+          } else {
+            Orders.MoveToTile(unit, building.centerTile)
+          }
+        }.toList
+      }
+    }
   }
 
   class MigrateTowardsPosition(universe: Universe) extends DefaultBehaviour[Mobile](universe) {

@@ -192,6 +192,18 @@ object Orders {
     }
   }
 
+  case class ContinueConstruction(myUnit: SCV, what: Building) extends UnitOrder {
+
+    override def issueOrderToGame(): Unit = {
+      myUnit.nativeUnit.rightClick(what.nativeUnit)
+    }
+
+    override def renderDebug(renderer: Renderer): Unit = {
+      renderer.in_!(Color.White).drawOutline(what.area)
+      renderer.in_!(Color.White).indicateTarget(myUnit.currentTile.asMapPosition, what.area)
+    }
+  }
+
   case class Gather(myUnit: WorkerUnit, minsOrGas: Resource) extends UnitOrder {
     override def issueOrderToGame(): Unit = {
       myUnit.nativeUnit.gather(minsOrGas.nativeUnit)

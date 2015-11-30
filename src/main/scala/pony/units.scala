@@ -52,6 +52,8 @@ trait WrapsUnit extends HasUniverse with HasLazyVals with AfterTickListener {
   private val nativeOrder          = oncePerTick {
     nativeUnit.getOrder
   }
+
+  def currentNativeOrder = nativeOrder.get
   private val curOrder             = oncePerTick {nativeUnit.getOrder}
   private val unfinished           = oncePerTick(
     nativeUnit.getRemainingBuildTime > 0 || !nativeUnit.isCompleted)
@@ -67,7 +69,10 @@ trait WrapsUnit extends HasUniverse with HasLazyVals with AfterTickListener {
     assert(myUniverse != null)
     myUniverse
   }
-  def isDoingNothing = nativeOrder.get == Order.PlayerGuard
+  def isDoingNothing = {
+    val order = nativeOrder.get
+    order == Order.PlayerGuard || order == Order.Nothing
+  }
   override def postTick(): Unit = {
 
   }
@@ -127,13 +132,14 @@ trait StaticallyPositioned extends WrapsUnit {
     MapTilePosition.shared(x, y)
   }
   val size           = Size.shared(nativeUnit.getType.tileWidth(), nativeUnit.getType.tileHeight())
-  val area           = myArea.get
   private val myArea = oncePerTick {
     Area(tilePosition, size)
   }
+  def area = myArea.get
   override def shouldReRegisterOnMorph = true
   def nativeMapPosition = tilePosition.asMapPosition.toNative
   def tilePosition = myTilePosition.get
+  def centerTile = area.centerTile
   override def center = area.center
 
   override def toString: String = {
@@ -150,9 +156,33 @@ trait IsVehicle extends WrapsUnit
 trait IsShip extends WrapsUnit
 
 trait Building extends BlockingTiles with MaybeCanDie {
+  self =>
   override val armorType = Building
-  def isFloating = nativeUnit.isFlying
+  private  val myFlying  = oncePerTick {
+    nativeUnit.isFlying
+  }
+  def isFloating = myFlying.get
 
+  def incomplete = currentNativeOrder == Order.IncompleteBuilding
+
+  private val myAbandoned = oncePerTick {
+    isBeingCreated && incomplete && {
+      val myClass = getClass
+      val takenCareOf = unitManager.constructionsInProgress(myClass).exists { job =>
+        job.building.contains(self)
+      }
+      !takenCareOf
+    }
+
+  }
+
+  def isIncompleteAbandoned = myAbandoned.get
+
+  private val myRemainingBuildTime = oncePerTick {
+    nativeUnit.getRemainingBuildTime
+  }
+
+  def remainingBuildTime = myRemainingBuildTime.get
 }
 
 class Upgrade(val nativeType: Either[UpgradeType, TechType]) {
@@ -598,12 +628,13 @@ trait HasSpiderMines extends WrapsUnit {
 }
 
 trait GroundWeapon extends Weapon {
+  private val groundWeapon = initialNativeType.groundWeapon()
+
   val groundRange            = groundWeapon.maxRange()
   val groundCanAttackAir     = groundWeapon.targetsAir()
   val groundCanAttackGround  = groundWeapon.targetsGround()
   val groundDamageMultiplier = groundWeapon.damageFactor()
   val groundDamageType: DamageType
-  private val groundWeapon = initialNativeType.groundWeapon()
   private val damage       = LazyVal.from(
     evalDamage(groundWeapon, groundDamageType, groundDamageMultiplier, targetsAir = false))
   def damageDelayFactorGround: Int
@@ -706,12 +737,13 @@ case class Damage(baseAmount: Int, bonus: Int, cooldown: Int, damageType: Damage
 case class DamageSingleAttack(onHp: Int, onShields: Int, airHit: Boolean)
 
 trait AirWeapon extends Weapon {
+  private val airWeapon = initialNativeType.airWeapon()
+
   val airRange            = airWeapon.maxRange()
   val airCanAttackAir     = airWeapon.targetsAir()
   val airCanAttackGround  = airWeapon.targetsGround()
   val airDamageMultiplier = airWeapon.damageFactor()
   val airDamageType: DamageType
-  private val airWeapon = initialNativeType.airWeapon()
   private val damage    = LazyVal.from(
     evalDamage(airWeapon, airDamageType, airDamageMultiplier, targetsAir = true))
   def damageDelayFactorAir: Int
@@ -1067,9 +1099,11 @@ abstract class SingleTargetSpell[C <: HasSingleTargetSpells, M <: Mobile : Manif
   val castRange = 300
   val castRangeSquare = castRange * castRange
 
+  private val targetClass = tech.canCastOn
+
   assert(targetClass.isAssignableFrom(manifest[M].runtimeClass),
     s"$targetClass vs ${manifest[M].runtimeClass}")
-  private val targetClass = tech.canCastOn
+
   def castOn: CastOn = EnemyUnits
   def shouldActivateOn(validated: M) = true
   def casted(m: Mobile) = {
