@@ -1,8 +1,8 @@
+import scala.collection.mutable
+
 import bwapi.Game
 import org.pmw.tinylog
 import org.pmw.tinylog.{Configurator, Level}
-
-import scala.collection.mutable
 /**
  * Created by HoD on 01.08.2015.
  */
@@ -11,18 +11,16 @@ package object pony {
   // milestone 2:
 
   // next:
-  // TODO move units out of planned building spots
-  // TODO add meeting points to attacks, attack in sync
+  // TODO move units out of planned building spots -> solve exteme cases
+  // TODO add meeting points to attacks, attack in sync -> choose better mettings points
   // TODO make support units accompany armies
-  // TODO move units that block paths
-  // TODO formations at attack & defense points
   // TODO no longer ignore enemy buildings
   // TODO use comsat to detect cloaked attackers if no detector is around
 
   // later:
   // TODO send only necessary units for defenses
   // TODO add air defenses
-  // TODO optimize worker paths
+  // TODO optimize worker paths -> might be impossible
   // TODO send units via shuttle to attack/defend islands
   // TODO make units use safe paths while not trying to attack
   // TODO fix tank siege behaviour
@@ -32,6 +30,9 @@ package object pony {
 
   // milestone 4:
   //  ...
+
+  // milestone 5:
+  // create technologial singularity
 
   class PrimeNumber(val i: Int) extends AnyVal
 
