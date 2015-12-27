@@ -9,9 +9,9 @@ trait HasXY {
   def x: Int
   def y: Int
 
-  def distanceTo(other: HasXY) = math.sqrt(distanceToSquared(other))
+  def distanceTo(other: HasXY) = math.sqrt(distanceSquaredTo(other))
 
-  def distanceToSquared(other: HasXY) = {
+  def distanceSquaredTo(other: HasXY) = {
     val xDiff = x - other.x
     val yDiff = y - other.y
     xDiff * xDiff + yDiff * yDiff
@@ -138,7 +138,7 @@ case class Area(upperLeft: MapTilePosition, sizeOfArea: Size) {
   }
   def distanceTo(tilePosition: MapTilePosition) = {
     // TODO optimize
-    outline.minBy(_.distanceToSquared(tilePosition)).distanceTo(tilePosition)
+    outline.minBy(_.distanceSquaredTo(tilePosition)).distanceTo(tilePosition)
   }
   def distanceTo(area: Area) = {
     closestDirectConnection(area).length
@@ -146,11 +146,11 @@ case class Area(upperLeft: MapTilePosition, sizeOfArea: Size) {
   def closestDirectConnection(area: Area): Line = {
     // TODO optimize
     val from = outline.minBy { p =>
-      area.outline.minBy(_.distanceToSquared(p)).distanceTo(p)
+      area.outline.minBy(_.distanceSquaredTo(p)).distanceTo(p)
     }
 
     val to = area.outline.minBy { p =>
-      outline.minBy(_.distanceToSquared(p)).distanceTo(p)
+      outline.minBy(_.distanceSquaredTo(p)).distanceTo(p)
     }
     Line(from, to)
 

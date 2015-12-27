@@ -2,11 +2,11 @@ package pony
 package brain
 package modules
 
-import scala.collection.mutable
-import scala.collection.mutable.ArrayBuffer
-
 import bwapi.Color
 import pony.Upgrades.Terran.{GhostCloak, InfantryCooldown, SpiderMines, TankSiegeMode, WraithCloak}
+
+import scala.collection.mutable
+import scala.collection.mutable.ArrayBuffer
 
 abstract class DefaultBehaviour[T <: Mobile : Manifest](override val universe: Universe)
   extends HasUniverse with HasLazyVals {
@@ -112,7 +112,7 @@ object Terran {
                 val loadThis = plan.toTransport
                                .view
                                .filterNot(_.loaded)
-                               .minBy(_.currentTile.distanceToSquared(unit.currentTile))
+                               .minBy(_.currentTile.distanceSquaredTo(unit.currentTile))
                 Orders.LoadUnit(unit, loadThis).toSome
               } else if (plan.needsToReachTarget) {
                 Orders.MoveToTile(plan.ferry, plan.toWhere).toSome
@@ -196,7 +196,7 @@ object Terran {
                 val whereToGo = {
                   // first try: just escape antigravity style
                   on.spiralAround(unit.currentTile, 8).slice(36, 186).filter { c =>
-                    c.distanceToSquared(ref) <= unit.currentTile.distanceToSquared(ref)
+                    c.distanceSquaredTo(ref) <= unit.currentTile.distanceSquaredTo(ref)
                   }.find {on.free}
                   .orElse {
                     // second try: consider slipping through enemy lines
@@ -207,7 +207,7 @@ object Terran {
                       on.spiralAround(unit.currentTile, 8).slice(36, 186)
                       .filter(map.free)
                       .filter(a.free)
-                      .maxByOpt(center.distanceToSquared)
+                      .maxByOpt(center.distanceSquaredTo)
                     }
                   }
                 }
@@ -276,7 +276,7 @@ object Terran {
                              .toMap
 
       val buildingLayer = mapLayers.freeWalkableTiles.asReadOnlyCopyIfMutable
-      BWFuture.some {
+      BWFuture.produceFrom {
         val badlyPositioned = unitsToPositions.flatMap { case (id, where) =>
           val withOutline = where.growBy(tolerance)
 
@@ -325,16 +325,24 @@ object Terran {
       override def toOrder(what: Objective): Seq[UnitOrder] = {
         if (blockingUnitsQueue(unit)) {
           val layer = relevantLayer.get
+          val myBuildings = mapLayers.blockedByBuildingTiles
           val safeArea = unit.blockedArea.growBy(tolerance)
           val command = lastFreeGoTo.filter { check =>
             layer.freeAndInBounds(safeArea)
           }.map(Orders.MoveToTile(unit, _)).orElse {
-            val moveTo = layer.spiralAround(unit.currentTile).find { e =>
-              layer.freeAndInBounds(safeArea.growBy(1).moveTo(e))
-            }
-            moveTo.map { whereTo =>
-              lastFreeGoTo = Some(whereTo)
-              Orders.MoveToTile(unit, whereTo)
+            val isNearBuilding = layer.spiralAround(unit.currentTile, 15)
+                                 .exists(myBuildings.includesAndBlocked)
+
+            if (isNearBuilding) {
+              val moveTo = layer.spiralAround(unit.currentTile).find { e =>
+                layer.freeAndInBounds(safeArea.growBy(1).moveTo(e))
+              }
+              moveTo.map { whereTo =>
+                lastFreeGoTo = Some(whereTo)
+                Orders.MoveToTile(unit, whereTo)
+              }
+            } else {
+              None
             }
           }.toList
           if (command.isEmpty ||
@@ -357,7 +365,7 @@ object Terran {
       rateTarget = m => PriorityChain(m.percentageHPOk),
       validTarget = _.isDamaged,
       subAccept = (m, t) => m.currentArea == t.currentArea,
-      subRate = (m, t) => PriorityChain(-m.currentTile.distanceToSquared(t.currentTile)),
+      subRate = (m, t) => PriorityChain(-m.currentTile.distanceSquaredTo(t.currentTile)),
       own = true, allowReplacements = true)
 
     override protected def wrapBase(unit: SCV) = new SingleUnitBehaviour[SCV](unit, meta) {
@@ -380,7 +388,7 @@ object Terran {
       universe = universe,
       rateTarget = b => PriorityChain(-b.remainingBuildTime),
       validTarget = e => e.isIncompleteAbandoned && !e.isInstanceOf[Addon],
-      subRate = (w, b) => PriorityChain(-w.currentTile.distanceToSquared(b.tilePosition)),
+      subRate = (w, b) => PriorityChain(-w.currentTile.distanceSquaredTo(b.tilePosition)),
       own = true,
       allowReplacements = true,
       subAccept = (w, b) => true)
@@ -634,7 +642,7 @@ object Terran {
                 inBattle = false
                 // place mines on strategic positions
                 val candiates = suggestMinePositions
-                val dropMineHere = candiates.minByOpt(_.distanceToSquared(unit.currentTile))
+                val dropMineHere = candiates.minByOpt(_.distanceSquaredTo(unit.currentTile))
                 dropMineHere.foreach(helper.blackList_!)
                 dropMineHere.map { where =>
                   DroppingMine(where) -> unit.toOrder(SpiderMines, where).toList
@@ -1031,7 +1039,7 @@ class NonConflictingSpellTargets[T <: HasSingleTargetSpells, M <: Mobile : Manif
     val range = spell.castRangeSquare
 
     val filtered = prioritizedTargets.get.filterNot(locked)
-    filtered.find {_.currentPosition.distanceToSquared(caster.currentPosition) < range}
+    filtered.find {_.currentPosition.distanceSquaredTo(caster.currentPosition) < range}
   }
 }
 

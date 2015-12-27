@@ -1,13 +1,13 @@
 package pony
 
+import pony.astar.{AStarSearch, GridNode2DInt, Heuristics}
+import pony.brain.modules._
+import pony.brain.{Base, HasUniverse, Universe}
+
 import scala.collection.JavaConverters._
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.language.implicitConversions
-
-import pony.astar.{AStarSearch, GridNode2DInt, Heuristics}
-import pony.brain.modules._
-import pony.brain.{Base, HasUniverse, Universe}
 
 class MigrationPath(follow: Paths, override val universe: Universe) extends HasUniverse {
   private val remaining       = mutable.HashMap.empty[Mobile, ArrayBuffer[MapTilePosition]]
@@ -26,7 +26,7 @@ class MigrationPath(follow: Paths, override val universe: Universe) extends HasU
     val index = counter.getOrElseUpdate(t, counter.size) % follow.pathCount
     val initialFullPath = follow.paths(index)
     val todo = remaining.getOrElseUpdate(t, ArrayBuffer.empty ++= initialFullPath.waypoints)
-    val closest = todo.minByOpt(_.distanceToSquared(t.currentTile))
+    val closest = todo.minByOpt(_.distanceSquaredTo(t.currentTile))
     val formationPoint = helper.assignedPosition(t)
     val canSeeFormationPoint = formationPoint.exists(
       target => mapLayers.rawWalkableMap.connectedByLine(target, t.currentTile))
@@ -41,7 +41,7 @@ class MigrationPath(follow: Paths, override val universe: Universe) extends HasU
       formationPoint.map(e => e -> isOver30Percent)
     } else {
       closest.map { c =>
-        if (c.distanceToSquared(t.currentTile) <= 25) {
+        if (c.distanceSquaredTo(t.currentTile) <= 25) {
           todo.removeUntilInclusive(_ == c)
         }
         c -> isOver30Percent

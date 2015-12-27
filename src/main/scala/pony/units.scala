@@ -94,6 +94,13 @@ trait WrapsUnit extends HasUniverse with HasLazyVals with AfterTickListener {
 
   }
   def center: MapPosition
+
+  private val myCenterTile = oncePerTick {
+    val c = center
+    MapTilePosition(c.x / 32, c.y / 32)
+  }
+
+  def centerTile = myCenterTile.get
   def isSelected = nativeUnit.isSelected
   def nativeUnit: APIUnit
   def unitIdText = Integer.toString(unitId, 36)
@@ -139,7 +146,6 @@ trait StaticallyPositioned extends WrapsUnit {
   override def shouldReRegisterOnMorph = true
   def nativeMapPosition = tilePosition.asMapPosition.toNative
   def tilePosition = myTilePosition.get
-  def centerTile = area.centerTile
   override def center = area.center
 
   override def toString: String = {
@@ -1472,6 +1478,7 @@ object UnitWrapper {
       UnitType.Protoss_Nexus -> ((new Nexus(_), classOf[Nexus])),
       UnitType.Protoss_Arbiter_Tribunal -> ((new ArbiterTribunal(_), classOf[ArbiterTribunal])),
       UnitType.Protoss_Assimilator -> ((new Assimilator(_), classOf[Assimilator])),
+      UnitType.Protoss_Gateway -> ((new Gateway(_), classOf[Gateway])),
       UnitType.Protoss_Pylon -> ((new Pylon(_), classOf[Pylon])),
       UnitType.Protoss_Citadel_of_Adun -> ((new Citadel(_), classOf[Citadel])),
       UnitType.Protoss_Templar_Archives -> ((new TemplarArchive(_), classOf[TemplarArchive])),

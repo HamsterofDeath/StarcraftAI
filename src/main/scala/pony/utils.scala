@@ -3,11 +3,12 @@ package pony
 import java.io.{BufferedInputStream, ByteArrayInputStream, ByteArrayOutputStream, File,
 ObjectInputStream, ObjectOutputStream}
 import java.util.zip.{Deflater, ZipEntry, ZipInputStream, ZipOutputStream}
-import scala.concurrent.Future
-import scala.util.{Failure, Success, Try}
 
 import bwapi.Game
 import org.apache.commons.io.FileUtils
+
+import scala.concurrent.Future
+import scala.util.{Failure, Success, Try}
 
 class Renderer(game: Game, private var color: bwapi.Color) {
   def drawLine(from: MapTilePosition, to: MapTilePosition): Unit = {
@@ -239,7 +240,7 @@ object BWFuture {
   def from[T](produce: => T): BWFuture[Option[T]] = {
     BWFuture(Some(produce), None)
   }
-  def some[T](produce: => T) = BWFuture(Some(produce))
+  def produceFrom[T](produce: => T) = BWFuture(Some(produce))
   implicit class Result[T](val fut: BWFuture[Option[T]]) extends AnyVal {
     def ifDoneOpt[X](ifDone: T => X): Unit = {
       fut.ifDone(op => ifDone(op.get))

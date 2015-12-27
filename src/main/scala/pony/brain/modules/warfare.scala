@@ -16,22 +16,28 @@ class FormationHelper(override val universe: Universe,
     val walkable = mapLayers.rawWalkableMap.asReadOnlyCopyIfMutable
     val pf = pathFinder.spawn
 
+    val avoid = universe.enemyUnits.all.filter(e => e.canDoDamage || e.isInstanceOf[Building])
+                .map(_.centerTile).toList
+
     BWFuture.from {
+      val minDst = 12
       val availableArea = {
-        area.spiralAround(target, 8).foreach(area.block_!)
+        area.spiralAround(target, minDst).foreach(area.block_!)
+        avoid.foreach { where =>
+          area.spiralAround(where, minDst).foreach(area.block_!)
+        }
         area
       }
 
-      val validTiles = availableArea.spiralAround(target, 20)
+
+      val validTiles = availableArea.spiralAround(target)
                        .filter(availableArea.freeAndInBounds)
                        .toVector
 
       val unsorted = validTiles.headOption.map { head =>
         validTiles.filter { where =>
           val path = pf.findPath(where, head)
-          path.isPerfectSolution && path.length <= 20
-        }.sortBy { tile =>
-
+          path.isPerfectSolution && path.length <= 50
         }
       }.getOrElse(Vector.empty)
 
@@ -49,7 +55,7 @@ class FormationHelper(override val universe: Universe,
       }
 
       if (referencePointForAttackDirection != MapTilePosition.zero) {
-        unsorted.sortBy(_.distanceToSquared(referencePointForAttackDirection))
+        unsorted.sortBy(_.distanceSquaredTo(referencePointForAttackDirection))
       } else {
         warn(s"Problem calculating reference point!")
         Vector.empty
@@ -163,7 +169,7 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse w
   def initiateAttack(where: MapTilePosition, units: Seq[Mobile]): Unit = {
     debug(s"Attacking $where with $units")
     val helper = new GroupingHelper(universe, units)
-    planInProgress = BWFuture.some {
+    planInProgress = BWFuture.produceFrom {
       val on = universe.mapLayers.rawWalkableMap
       val grouped = helper.evaluateUnitGroups
       val newAttacks = grouped.map { group =>
@@ -291,7 +297,7 @@ class GroupingHelper(override val universe: Universe, seq: TraversableOnce[Mobil
       MapTilePosition.shared(x, y)
     }
     def canJoin(e: (Int, MapTilePosition)) = {
-      e._2.distanceToSquared(myCenter) < maxDst && map.connectedByLine(myCenter, e._2)
+      e._2.distanceSquaredTo(myCenter) < maxDst && map.connectedByLine(myCenter, e._2)
     }
   }
 }
@@ -760,7 +766,7 @@ object Strategy {
                        }
           if (others.nonEmpty) {
             val target = others.maxBy(
-              e => (e.mineralsAndGas, -e.patches.map(_.center.distanceToSquared(where))
+              e => (e.mineralsAndGas, -e.patches.map(_.center.distanceSquaredTo(where))
                                        .getOrElse(999999)))
             Some(target)
           } else {

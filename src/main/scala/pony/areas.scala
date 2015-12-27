@@ -67,7 +67,7 @@ class StrategicMap(val resources: Seq[ResourceArea], walkable: Grid2D, game: Gam
           mineTiles += p
         }
       }
-      mineTiles.sortBy(_.distanceToSquared(chokePoint.center)).toVector
+      mineTiles.sortBy(_.distanceSquaredTo(chokePoint.center)).toVector
     }
 
     private lazy val scatteredPointsOutside = BWFuture(evalScatteredPoints(mergedArea.blocked), Vector.empty)
@@ -234,7 +234,7 @@ class StrategicMap(val resources: Seq[ResourceArea], walkable: Grid2D, game: Gam
         }.reduce((a, b) => (a._1 + b._1, a._2 + b._2))
         MapTilePosition.shared(tup._1 / manyWithSameValue.size, tup._2 / manyWithSameValue.size)
       }
-      manyWithSameValue.minBy(_._1.center.distanceToSquared(center))
+      manyWithSameValue.minBy(_._1.center.distanceSquaredTo(center))
     }.toVector
     val complete = reduced.zipWithIndex.map { case ((choke, value), index) => choke.copy(index = index) -> value }
     val ret = complete.map { case (choke, map) =>
