@@ -1,12 +1,12 @@
 package pony
 
-import scala.collection.JavaConverters._
-import scala.collection.immutable.HashMap
-import scala.collection.mutable.ListBuffer
-
 import bwapi.{Order, Race, TechType, Unit => APIUnit, UnitType, UpgradeType, WeaponType}
 import pony.Upgrades.{IsTech, SinglePointMagicSpell, SingleTargetMagicSpell}
 import pony.brain._
+
+import scala.collection.JavaConverters._
+import scala.collection.immutable.HashMap
+import scala.collection.mutable.ListBuffer
 
 trait NiceToString extends WrapsUnit {
   override def toString = s"[$unitIdText] ${getClass.className}"
@@ -414,6 +414,7 @@ object DamageTypes {
     else if (dt == bwapi.DamageType.Independent) Independent
     else if (dt == bwapi.DamageType.None) NoDamage
     else if (dt == bwapi.DamageType.Unknown) Unknown
+    else if (dt eq null) !!!("Null?")
     else !!!(s"Unknown damage type :(")
   }
 }
@@ -628,7 +629,7 @@ trait HasSpiderMines extends WrapsUnit {
 }
 
 trait GroundWeapon extends Weapon {
-  private val groundWeapon = initialNativeType.groundWeapon()
+  protected val groundWeapon = initialNativeType.groundWeapon()
 
   val groundRange            = groundWeapon.maxRange()
   val groundCanAttackAir     = groundWeapon.targetsAir()
@@ -736,8 +737,17 @@ case class Damage(baseAmount: Int, bonus: Int, cooldown: Int, damageType: Damage
 
 case class DamageSingleAttack(onHp: Int, onShields: Int, airHit: Boolean)
 
+trait AutoAirWeaponType extends AirWeapon {
+  override val airDamageType = DamageTypes.fromNative(airWeapon.damageType)
+}
+
+trait AutoGroundWeaponType extends GroundWeapon {
+  override val groundDamageType = DamageTypes.fromNative(groundWeapon.damageType)
+}
+
+
 trait AirWeapon extends Weapon {
-  private val airWeapon = initialNativeType.airWeapon()
+  protected val airWeapon = initialNativeType.airWeapon()
 
   val airRange            = airWeapon.maxRange()
   val airCanAttackAir     = airWeapon.targetsAir()
@@ -963,6 +973,8 @@ trait MobileSupplyProvider extends SupplyProvider with Mobile
 
 trait GasProvider extends Resource with Building
 
+trait ShieldCharger extends AnyUnit
+
 class MineralPatch(unit: APIUnit) extends AnyUnit(unit) with Resource {
   def isBeingMined = nativeUnit.isBeingGathered
   def remainingMinerals = remaining
@@ -994,8 +1006,11 @@ trait UpgradeLimitLifter extends Building
 
 trait SupportUnit extends Mobile
 
+trait PsiArea extends AnyUnit
+
 class SupplyDepot(unit: APIUnit) extends AnyUnit(unit) with ImmobileSupplyProvider
-class Pylon(unit: APIUnit) extends AnyUnit(unit) with ImmobileSupplyProvider
+class Pylon(unit: APIUnit)
+  extends AnyUnit(unit) with Building with PsiArea with ImmobileSupplyProvider
 class Overlord(unit: APIUnit)
   extends AnyUnit(unit) with MobileSupplyProvider with TransporterUnit with CanDetectHidden with IsBig
 
@@ -1012,6 +1027,26 @@ class Dropship(unit: APIUnit) extends AnyUnit(unit) with TransporterUnit with Su
 class CommandCenter(unit: APIUnit) extends AnyUnit(unit) with MainBuilding with CanBuildAddons
 class Nexus(unit: APIUnit) extends AnyUnit(unit) with MainBuilding
 class Hive(unit: APIUnit) extends AnyUnit(unit) with MainBuilding
+
+class Assimilator(unit: APIUnit) extends AnyUnit(unit) with Building with GasProvider
+class Gateway(unit: APIUnit) extends AnyUnit(unit) with UnitFactory
+class PhotonCannon(unit: APIUnit)
+  extends AnyUnit(unit) with Building with GroundAndAirWeapon with NormalAirDamage with
+          NormalGroundDamage {
+  override def damageDelayFactorAir = 1
+  override def damageDelayFactorGround = 1
+}
+class ShieldBattery(unit: APIUnit) extends AnyUnit(unit) with Building with ShieldCharger
+class CyberneticsCore(unit: APIUnit) extends AnyUnit(unit) with Building with Upgrader
+class RoboticsSupportBay(unit: APIUnit) extends AnyUnit(unit) with Building with Upgrader
+class Observatory(unit: APIUnit) extends AnyUnit(unit) with Building with Upgrader
+class TemplarArchive(unit: APIUnit) extends AnyUnit(unit) with Building with Upgrader
+class FleetBeacon(unit: APIUnit) extends AnyUnit(unit) with Building with Upgrader
+class RoboticsFacility(unit: APIUnit) extends AnyUnit(unit) with UnitFactory with Upgrader
+class ArbiterTribunal(unit: APIUnit) extends AnyUnit(unit) with Building with Upgrader
+class Forge(unit: APIUnit) extends AnyUnit(unit) with Building with Upgrader
+class Citadel(unit: APIUnit) extends AnyUnit(unit) with Building with Upgrader
+class Stargate(unit: APIUnit) extends AnyUnit(unit) with UnitFactory
 
 class Comsat(unit: APIUnit) extends AnyUnit(unit) with SpellcasterBuilding with Addon
 class NuclearSilo(unit: APIUnit) extends AnyUnit(unit) with SpellcasterBuilding with Addon
@@ -1093,10 +1128,9 @@ trait CastOn
 case object OwnUnits extends CastOn
 case object EnemyUnits extends CastOn
 
-abstract class SingleTargetSpell[C <: HasSingleTargetSpells, M <: Mobile : Manifest](val tech:
-                                                                                     Upgrade with
-  SingleTargetMagicSpell) {
-  val castRange = 300
+abstract class SingleTargetSpell[C <: HasSingleTargetSpells, M <: Mobile : Manifest]
+(val tech: Upgrade with SingleTargetMagicSpell) {
+  val castRange       = 300
   val castRangeSquare = castRange * castRange
 
   private val targetClass = tech.canCastOn
@@ -1385,7 +1419,6 @@ object UnitWrapper {
   private val mappingRules: Map[UnitType, (APIUnit => WrapsUnit, Class[_ <: WrapsUnit])] =
     HashMap(
       UnitType.Resource_Vespene_Geyser -> ((new VespeneGeysir(_), classOf[VespeneGeysir])),
-      UnitType.Terran_SCV -> ((new SCV(_), classOf[SCV])),
       UnitType.Terran_Supply_Depot -> ((new SupplyDepot(_), classOf[SupplyDepot])),
       UnitType.Terran_Command_Center -> ((new CommandCenter(_), classOf[CommandCenter])),
       UnitType.Terran_Barracks -> ((new Barracks(_), classOf[Barracks])),
@@ -1393,7 +1426,6 @@ object UnitWrapper {
       UnitType.Terran_Armory -> ((new Armory(_), classOf[Armory])),
       UnitType.Terran_Science_Facility -> ((new ScienceFacility(_), classOf[ScienceFacility])),
       UnitType.Terran_Bunker -> ((new Bunker(_), classOf[Bunker])),
-      UnitType.Terran_Firebat -> ((new Firebat(_), classOf[Firebat])),
       UnitType.Terran_Comsat_Station -> ((new Comsat(_), classOf[Comsat])),
       UnitType.Terran_Covert_Ops -> ((new CovertOps(_), classOf[CovertOps])),
       UnitType.Terran_Control_Tower -> ((new ControlTower(_), classOf[ControlTower])),
@@ -1405,6 +1437,9 @@ object UnitWrapper {
       UnitType.Terran_Physics_Lab -> ((new PhysicsLab(_), classOf[PhysicsLab])),
       UnitType.Terran_Refinery -> ((new Refinery(_), classOf[Refinery])),
       UnitType.Terran_Starport -> ((new Starport(_), classOf[Starport])),
+
+      UnitType.Terran_SCV -> ((new SCV(_), classOf[SCV])),
+      UnitType.Terran_Firebat -> ((new Firebat(_), classOf[Firebat])),
       UnitType.Terran_Marine -> ((new Marine(_), classOf[Marine])),
       UnitType.Terran_Medic -> ((new Medic(_), classOf[Medic])),
       UnitType.Terran_Valkyrie -> ((new Valkery(_), classOf[Valkery])),
@@ -1432,6 +1467,22 @@ object UnitWrapper {
       UnitType.Protoss_Observer -> ((new Observer(_), classOf[Observer])),
       UnitType.Protoss_Scarab -> ((new Scarab(_), classOf[Scarab])),
       UnitType.Protoss_Scout -> ((new Scout(_), classOf[Scout])),
+      UnitType.Protoss_Arbiter -> ((new Arbiter(_), classOf[Arbiter])),
+
+      UnitType.Protoss_Nexus -> ((new Nexus(_), classOf[Nexus])),
+      UnitType.Protoss_Arbiter_Tribunal -> ((new ArbiterTribunal(_), classOf[ArbiterTribunal])),
+      UnitType.Protoss_Assimilator -> ((new Assimilator(_), classOf[Assimilator])),
+      UnitType.Protoss_Pylon -> ((new Pylon(_), classOf[Pylon])),
+      UnitType.Protoss_Citadel_of_Adun -> ((new Citadel(_), classOf[Citadel])),
+      UnitType.Protoss_Templar_Archives -> ((new TemplarArchive(_), classOf[TemplarArchive])),
+      UnitType.Protoss_Cybernetics_Core -> ((new CyberneticsCore(_), classOf[CyberneticsCore])),
+      UnitType.Protoss_Fleet_Beacon -> ((new FleetBeacon(_), classOf[FleetBeacon])),
+      UnitType.Protoss_Forge -> ((new Forge(_), classOf[Forge])),
+      UnitType.Protoss_Photon_Cannon -> ((new PhotonCannon(_), classOf[PhotonCannon])),
+      UnitType.Protoss_Robotics_Facility -> ((new RoboticsFacility(_), classOf[RoboticsFacility])),
+      UnitType.Protoss_Robotics_Support_Bay ->
+      ((new RoboticsSupportBay(_), classOf[RoboticsSupportBay])),
+      UnitType.Protoss_Stargate -> ((new Stargate(_), classOf[Stargate])),
 
       UnitType.Zerg_Drone -> ((new Drone(_), classOf[Drone])),
       UnitType.Zerg_Broodling -> ((new Broodling(_), classOf[Broodling])),

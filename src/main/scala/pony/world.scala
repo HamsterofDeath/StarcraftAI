@@ -1,13 +1,13 @@
 package pony
 
+import bwapi.{Color, Game, Player, PlayerType, Position, TilePosition}
+import pony.brain.{ResourceRequestSum, Supplies}
+
 import scala.collection.JavaConverters._
 import scala.collection.immutable.BitSet
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.language.postfixOps
-
-import bwapi.{Color, Game, Player, PlayerType, Position, TilePosition}
-import pony.brain.{ResourceRequestSum, Supplies}
 
 class UnitData(in: bwapi.Unit) {
   // todo use this
@@ -625,9 +625,15 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
   def freeAndInBounds(a: Area): Boolean = a.tiles.forall(e => inBounds(e) && free(e))
   def inBounds(p: MapTilePosition): Boolean = inBounds(p.x, p.y)
   def free(p: MapTilePosition): Boolean = free(p.x, p.y)
-  def anyBlocked(a: Area): Boolean = !inBounds(a) || !free(a)
+  def cut(a: Area) = {
+    val ul = MapTilePosition(a.upperLeft.x max 0, a.upperLeft.y max 0)
+    val lr = MapTilePosition(a.lowerRight.x min (cols - 1), a.lowerRight.y min (rows - 1))
+    Area(ul, lr)
+  }
+  def anyBlocked(a: Area): Boolean = !free(cut(a))
+  def anyBlockedOrOutside(a: Area): Boolean = !inBounds(a) || !free(a)
   def free(a: Area): Boolean = a.tiles.forall(free)
-  def inBounds(area: Area): Boolean = area.outline.forall(inBounds)
+  def inBounds(area: Area): Boolean = area.edges.forall(inBounds)
   def free(p: TilePosition): Boolean = free(p.getX, p.getY)
   def anyBlockedOnLine(center: MapTilePosition, from: HasXY, to: HasXY): Boolean = {
     val absoluteFrom = center.movedBy(from)

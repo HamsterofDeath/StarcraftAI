@@ -1,8 +1,8 @@
-import scala.collection.mutable
-
 import bwapi.Game
 import org.pmw.tinylog
 import org.pmw.tinylog.{Configurator, Level}
+
+import scala.collection.mutable
 /**
  * Created by HoD on 01.08.2015.
  */
@@ -11,7 +11,7 @@ package object pony {
   // milestone 2:
 
   // next:
-  // TODO move units out of planned building spots -> solve exteme cases
+  // TODO move units out of planned building spots -> solve extreme cases
   // TODO add meeting points to attacks, attack in sync -> choose better mettings points
   // TODO make support units accompany armies
   // TODO no longer ignore enemy buildings
