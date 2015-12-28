@@ -1199,7 +1199,6 @@ trait CanCloak extends Mobile {
   def isCloaked = cloaked.get
 
   def isDecloaked = decloaked.get
-
 }
 
 trait DetectorsFirst extends IsTech {

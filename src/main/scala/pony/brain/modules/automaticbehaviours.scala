@@ -645,7 +645,7 @@ object Terran {
     override protected def wrapBase(t: Comsat) = new SingleUnitBehaviour[Comsat](t, meta) {
       override def describeShort = "Scan"
       override def toOrder(what: Objective) = {
-        mapNth(Primes.prime79, List.empty[UnitOrder]) {
+        mapNth(Primes.prime47, List.empty[UnitOrder]) {
           val dangerous = enemies.allByType[CanCloak]
                           .filterNot(_.isDecloaked)
                           .filter { cloaked =>

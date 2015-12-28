@@ -10,23 +10,19 @@ package object pony {
 
   // milestone 2:
 
-  // next:
-  // TODO move units out of planned building spots -> solve extreme cases
-  // TODO add meeting points to attacks, attack in sync -> choose better mettings points
+  // TODO make units use safe paths while on their way to attack
   // TODO make support units accompany armies
-  // TODO no longer ignore enemy buildings
   // TODO use comsat to detect cloaked attackers if no detector is around
 
   // later:
+  // TODO make shuttles use safe paths (always)
   // TODO send only necessary units for defenses
   // TODO add air defenses
   // TODO optimize worker paths -> might be impossible
   // TODO send units via shuttle to attack/defend islands
-  // TODO make units use safe paths while not trying to attack
-  // TODO fix tank siege behaviour
 
   // milestone 3:
-  // TODO cover all zerg & protoss units (as enemy)
+  // TODO cover all zerg units (as enemy)
 
   // milestone 4:
   //  ...
