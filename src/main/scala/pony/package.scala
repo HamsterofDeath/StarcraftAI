@@ -182,6 +182,20 @@ package object pony {
         Some(t.maxBy(cmp))
       }
     }
+    def minByOptFiltered[C](cmp: T => C)(check: C => Boolean)(implicit cmp2: Ordering[C]) = {
+      if (t.isEmpty) {
+        None
+      } else {
+        Some(t.minBy(cmp)).filter(e => check(cmp(e)))
+      }
+    }
+    def maxByOptFiltered[C](cmp: T => C)(check: C => Boolean)(implicit cmp2: Ordering[C]) = {
+      if (t.isEmpty) {
+        None
+      } else {
+        Some(t.maxBy(cmp)).filter(e => check(cmp(e)))
+      }
+    }
   }
 
   implicit class RichIterator[T](val i: Iterator[T]) extends AnyVal {

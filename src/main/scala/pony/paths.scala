@@ -682,11 +682,24 @@ class ConstructionSiteFinder(universe: Universe) {
   // initialisation happens in the main thread
   private val freeToBuildOn            = universe.mapLayers.buildableBlockedByNothingTiles
                                          .mutableCopy
+                                         .or_!(
+                                           universe.mapLayers.blockedByPotentialAddons.mutableCopy)
+                                         .or_!(
+                                           universe.mapLayers.blockedByPlannedBuildings.mutableCopy)
+  private val freeToBuildOnIgnoreUnits = universe.mapLayers.freeTilesForConstruction.mutableCopy
                                          .or_!(universe.mapLayers.blockedByPotentialAddons
                                                .mutableCopy)
-  private val freeToBuildOnIgnoreUnits = universe.mapLayers.freeTilesForConstruction.mutableCopy
-                                         .or_!(universe.mapLayers.blockedByPotentialAddons.mutableCopy)
+                                         .or_!(
+                                           universe.mapLayers.blockedByPlannedBuildings.mutableCopy)
                                          .asReadOnlyCopyIfMutable
+
+  private val outlineTouchCountArea = universe.mapLayers.blockedByBuildingTiles.mutableCopy
+                                      .or_!(universe.mapLayers.blockedByPotentialAddons.mutableCopy)
+                                      .or_!(
+                                        universe.mapLayers.blockedByPlannedBuildings.mutableCopy)
+                                      .asReadOnlyCopyIfMutable
+
+
   private val helper                   = new GeometryHelpers(universe.world.map.sizeX, universe.world.map.sizeY)
   def forResourceArea(resources: ResourceArea): SubFinder = {
     // we magically know this by now
@@ -743,10 +756,11 @@ class ConstructionSiteFinder(universe: Universe) {
         withStreets.block_!(Line(near.movedBy(-20, 20), near.movedBy(20, -20)))
     */
 
-    helper.iterateBlockSpiralClockWise(near).find { upperLeft =>
+    helper.iterateBlockSpiralClockWise(near).flatMap { upperLeft =>
       val area = Area(upperLeft, necessarySize)
       val addonArea = necessarySizeAddon.map(Area(area.lowerRight.movedBy(1, -1), _))
-      def containsArea = freeToBuildOn.inBounds(area) && addonArea.map(freeToBuildOn.inBounds).getOrElse(true)
+      def containsArea = freeToBuildOn.inBounds(area) &&
+                         addonArea.map(freeToBuildOn.inBounds).getOrElse(true)
       def free = {
         val checkIfBlocksSelf = freeToBuildOnIgnoreUnits.mutableCopy
         checkIfBlocksSelf.block_!(area)
@@ -756,8 +770,17 @@ class ConstructionSiteFinder(universe: Universe) {
         def noLock = checkIfBlocksSelf.areaCount == freeToBuildOnIgnoreUnits.areaCount
         areaFree && noLock
       }
-      containsArea && free
-    }
+      if (containsArea && free) {
+        val freeSurroundingTiles = area.growBy(1).outline
+                                   .count(outlineTouchCountArea.freeAndInBounds)
+        val distanceToCenter = area.centerTile.distanceTo(near)
+        Some((upperLeft, distanceToCenter / 6.0, freeSurroundingTiles))
+      } else {
+        None
+      }
+    }.take(25)
+    .minByOpt { case (_, b, c) => (b, c) }
+    .map(_._1)
   }
 }
 

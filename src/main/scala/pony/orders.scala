@@ -1,6 +1,6 @@
 package pony
 
-import bwapi.{Color, Game}
+import bwapi.{Color, Game, TechType}
 import pony.Upgrades.{SinglePointMagicSpell, SingleTargetMagicSpell}
 
 import scala.collection.mutable.ArrayBuffer
@@ -40,6 +40,22 @@ abstract class UnitOrder {
 }
 
 object Orders {
+  case class ScanWithComsat(comsat: Comsat, where: MapTilePosition) extends UnitOrder {
+    override def myUnit = comsat
+
+    override def issueOrderToGame() = {
+      comsat.nativeUnit.useTech(TechType.Scanner_Sweep, where.nativeMapPosition)
+    }
+
+    override def renderDebug(renderer: Renderer) = {
+
+      val red = renderer.in_!(Color.Red)
+      for (x <- -10 to 10; y <- -10 to 10) {
+        red.drawCircleAroundTile(where.movedBy(x, y))
+      }
+    }
+  }
+
   case class AttackUnit(attacker: MobileRangeWeapon, target: MaybeCanDie) extends UnitOrder {
 
     override def obsolete = super.obsolete || target.isDead

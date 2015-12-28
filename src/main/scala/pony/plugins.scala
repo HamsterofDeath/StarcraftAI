@@ -1,12 +1,13 @@
 package pony
 
 import java.text.DecimalFormat
-import scala.collection.mutable.ArrayBuffer
-import scala.util.{Failure, Success, Try}
 
 import bwapi.Color
 import pony.brain.modules.{GatherMineralsAtSinglePatch, ProvideExpansions}
-import pony.brain.{HasUniverse, TwilightSparkle, UnitWithJob, Universe}
+import pony.brain.{HasUniverse, TwilightSparkle, Universe}
+
+import scala.collection.mutable.ArrayBuffer
+import scala.util.{Failure, Success, Try}
 
 class MapReveal extends AIPluginRunOnce {
   override def runOnce(): Unit = {
@@ -78,8 +79,17 @@ class UnitIdRenderer extends AIPlugIn {
     lazyWorld.debugger.debugRender { renderer =>
       renderer.in_!(Color.Green)
 
-      lazyWorld.ownUnits.mineByType[Mobile].foreach { u =>
+      lazyWorld.ownUnits.allByType[Mobile].foreach { u =>
         renderer.drawTextAtMobileUnit(u, u.unitIdText)
+      }
+      lazyWorld.ownUnits.allByType[Building].foreach { u =>
+        renderer.drawTextAtStaticUnit(u, u.unitIdText)
+      }
+      lazyWorld.enemyUnits.allByType[Mobile].foreach { u =>
+        renderer.drawTextAtMobileUnit(u, u.unitIdText)
+      }
+      lazyWorld.enemyUnits.allByType[Building].foreach { u =>
+        renderer.drawTextAtStaticUnit(u, u.unitIdText)
       }
     }
   }
@@ -372,7 +382,8 @@ class DebugHelper(main: MainAI) extends AIPlugIn with HasUniverse {
             case "debug" | "d" =>
               params match {
                 case List(id) =>
-                  unitManager.jobByUnitIdString(id).foreach {debugUnit}
+                  ownUnits.all.find(_.unitIdText == id).foreach(debugUnit)
+                  enemies.all.find(_.unitIdText == id).foreach(debugUnit)
               }
             case "attack" | "a" =>
               val target = params match {
@@ -405,7 +416,7 @@ class DebugHelper(main: MainAI) extends AIPlugIn with HasUniverse {
     // nop
   }
 
-  private def debugUnit(wrapsUnit: UnitWithJob[_ <: WrapsUnit]): Unit = {
+  private def debugUnit(wrapsUnit: WrapsUnit): Unit = {
     info(s"user requested inspection of $wrapsUnit")
   }
 }

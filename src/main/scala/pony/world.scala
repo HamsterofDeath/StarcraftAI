@@ -486,13 +486,9 @@ class Units(game: Game, hostile: Boolean) {
   def allCanDie = allByType[MaybeCanDie]
   def firstByType[T: Manifest]: Option[T] = {
     val lookFor = manifest[T].runtimeClass
-    mine.find(lookFor.isInstance).map(_.asInstanceOf[T])
+    inFaction.find(lookFor.isInstance).map(_.asInstanceOf[T])
   }
-  def mineByType[T: Manifest]: Iterator[T] = {
-    val lookFor = manifest[T].runtimeClass
-    mine.filter(lookFor.isInstance).map(_.asInstanceOf[T])
-  }
-  def mine = all.filter(_.nativeUnit.getPlayer == game.self())
+  def inFaction = all.filter(_.nativeUnit.getPlayer == game.self())
   def minerals = allByType[MineralPatch]
 
   import scala.collection.JavaConverters._
@@ -555,8 +551,8 @@ class Units(game: Game, hostile: Boolean) {
             info(s"${ownAndNeutral.ifElse("Own", "Hostile")} unit added: $lifted")
             registerUnit(u, lifted)
           case Some(unit) if unit.initialNativeType != u.getType =>
-            info(s"Unit morphed from ${unit.initialNativeType} to ${u.getType}")
             if (unit.shouldReRegisterOnMorph) {
+              info(s"Unit morphed from ${unit.initialNativeType} to ${u.getType}")
               val lifted = UnitWrapper.lift(u)
               registerUnit(u, lifted)
               fresh += lifted

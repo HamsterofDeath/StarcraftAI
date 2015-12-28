@@ -12,7 +12,8 @@ trait NiceToString extends WrapsUnit {
   override def toString = s"[$unitIdText] ${getClass.className}"
 }
 
-abstract class AnyUnit(val nativeUnit: APIUnit) extends WrapsUnit with NiceToString with OrderHistorySupport {
+abstract class AnyUnit(val nativeUnit: APIUnit)
+  extends WrapsUnit with NiceToString with OrderHistorySupport {
 
 }
 
@@ -26,7 +27,8 @@ trait OrderHistorySupport extends WrapsUnit {
     super.onTick()
     if (universe.world.debugger.isDebugging) {
       if (universe.unitManager.hasJob(this)) {
-        history += HistoryElement(nativeUnit.getOrder, nativeUnit.getOrderTarget, universe.unitManager.jobOf(this))
+        history += HistoryElement(nativeUnit.getOrder, nativeUnit.getOrderTarget,
+          universe.unitManager.jobOf(this))
         if (history.size > maxHistory) {
           history.remove(0)
         }
@@ -49,7 +51,16 @@ trait WrapsUnit extends HasUniverse with AfterTickListener {
   val unitId            = WrapsUnit.nextId
   val nativeUnitId      = nativeUnit.getID
   val initialNativeType = nativeUnit.getType
-  private val nativeOrder          = oncePerTick {
+  private var morphed = false
+  val nativeType = oncePerTick {
+    val ret = nativeUnit.getType
+    morphed = morphed || ret != initialNativeType
+    ret
+  }
+
+  def hasEverMorphed = morphed
+
+  private val nativeOrder = oncePerTick {
     nativeUnit.getOrder
   }
 
@@ -119,11 +130,22 @@ trait WrapsUnit extends HasUniverse with AfterTickListener {
   }
 
   object surroundings {
-    def closeOwnBuildings = myCloseOwnBuildings.get
+    private val myEnemyGroundUnits = oncePer(Primes.prime23, {
+      universe.unitGrid.enemy.allInRange[GroundUnit](centerTile, 12).toVector
+    })
 
     private val myCloseOwnBuildings = oncePer(Primes.prime29, {
-      ownUnits.allBuildings.filter(_.centerTile.distanceToIsLess(centerTile, 15))
+      ownUnits.allBuildings.filter(_.centerTile.distanceToIsLess(centerTile, 12))
     })
+
+    private val myCloseEnemyBuildings = oncePer(Primes.prime29, {
+      enemies.allBuildings.filter(_.centerTile.distanceToIsLess(centerTile, 12))
+    })
+
+    def closeEnemyBuildings = myCloseEnemyBuildings.get
+    def closeEnemyGroundUnits = myEnemyGroundUnits.get
+    def closeOwnBuildings = myCloseOwnBuildings.get
+
   }
 }
 
@@ -228,7 +250,8 @@ class Upgrade(val nativeType: Either[UpgradeType, TechType]) {
     this(Right(t))
   }
 
-  def energyCost = nativeType.fold(_ => throw new UnsupportedOperationException(s"Called on $this"), _.energyCost())
+  def energyCost = nativeType.fold(_ => throw new UnsupportedOperationException(s"Called on $this"),
+    _.energyCost())
 
   override def toString = s"Upgrade: ${nativeType.fold(_.toString, _.toString)}"
 
@@ -329,7 +352,8 @@ object Upgrades {
     case object ShipArmor extends Upgrade(UpgradeType.Terran_Ship_Plating)
     case object VehicleArmor extends Upgrade(UpgradeType.Terran_Vehicle_Plating)
     case object InfantryArmor extends Upgrade(UpgradeType.Terran_Infantry_Armor)
-    case object InfantryCooldown extends Upgrade(TechType.Stim_Packs) with SingleTargetMagicSpell with CastOnSelf {
+    case object InfantryCooldown
+      extends Upgrade(TechType.Stim_Packs) with SingleTargetMagicSpell with CastOnSelf {
       override val canCastOn = classOf[CanUseStimpack]
     }
     case object InfantryWeapons extends Upgrade(UpgradeType.Terran_Infantry_Weapons)
@@ -338,31 +362,42 @@ object Upgrades {
     case object MarineRange extends Upgrade(UpgradeType.U_238_Shells)
     case object MedicEnergy extends Upgrade(UpgradeType.Caduceus_Reactor)
     case object MedicFlare
-      extends Upgrade(TechType.Optical_Flare) with SingleTargetMagicSpell with CastOnOrganic with DetectorsFirst
-    case object MedicHeal extends Upgrade(TechType.Restoration) with SingleTargetMagicSpell with CastOnAll
+      extends Upgrade(TechType.Optical_Flare) with SingleTargetMagicSpell with CastOnOrganic with
+              DetectorsFirst
+    case object MedicHeal
+      extends Upgrade(TechType.Restoration) with SingleTargetMagicSpell with CastOnAll
     case object GoliathRange extends Upgrade(UpgradeType.Charon_Boosters)
-    case object SpiderMines extends Upgrade(TechType.Spider_Mines) with SinglePointMagicSpell with CastAtFreeTile
-    case object Defensematrix extends Upgrade(TechType.Defensive_Matrix) with SingleTargetMagicSpell with CastOnAll
+    case object SpiderMines
+      extends Upgrade(TechType.Spider_Mines) with SinglePointMagicSpell with CastAtFreeTile
+    case object Defensematrix
+      extends Upgrade(TechType.Defensive_Matrix) with SingleTargetMagicSpell with CastOnAll
     case object VultureSpeed extends Upgrade(UpgradeType.Ion_Thrusters)
-    case object TankSiegeMode extends Upgrade(TechType.Tank_Siege_Mode) with SingleTargetMagicSpell with CastOnSelf {
+    case object TankSiegeMode
+      extends Upgrade(TechType.Tank_Siege_Mode) with SingleTargetMagicSpell with CastOnSelf {
       override val canCastOn = classOf[CanSiege]
     }
-    case object EMP extends Upgrade(TechType.EMP_Shockwave) with SingleTargetMagicSpell with CastOnAll
-    case object Irradiate extends Upgrade(TechType.Irradiate) with SingleTargetMagicSpell with CastOnAll
+    case object EMP
+      extends Upgrade(TechType.EMP_Shockwave) with SingleTargetMagicSpell with CastOnAll
+    case object Irradiate
+      extends Upgrade(TechType.Irradiate) with SingleTargetMagicSpell with CastOnAll
     case object ScienceVesselEnergy extends Upgrade(UpgradeType.Titan_Reactor)
     case object GhostStop
-      extends Upgrade(TechType.Lockdown) with SingleTargetMagicSpell with CastOnMechanic with ByPrice
+      extends Upgrade(TechType.Lockdown) with SingleTargetMagicSpell with CastOnMechanic with
+              ByPrice
     case object GhostVisiblityRange extends Upgrade(UpgradeType.Ocular_Implants)
     case object GhostEnergy extends Upgrade(UpgradeType.Moebius_Reactor)
     case object GhostCloak
-      extends Upgrade(TechType.Personnel_Cloaking) with PermanentSpell with SingleTargetMagicSpell with CastOnSelf {
+      extends Upgrade(TechType.Personnel_Cloaking) with PermanentSpell with
+              SingleTargetMagicSpell with CastOnSelf {
       override val canCastOn = classOf[CanCloak]
     }
     case object WraithCloak
-      extends Upgrade(TechType.Cloaking_Field) with PermanentSpell with SingleTargetMagicSpell with CastOnSelf {
+      extends Upgrade(TechType.Cloaking_Field) with PermanentSpell with SingleTargetMagicSpell with
+              CastOnSelf {
       override val canCastOn = classOf[CanCloak]
     }
-    case object CruiserGun extends Upgrade(TechType.Yamato_Gun) with SingleTargetMagicSpell with CastOnAll
+    case object CruiserGun
+      extends Upgrade(TechType.Yamato_Gun) with SingleTargetMagicSpell with CastOnAll
 
     case object CruiserEnergy extends Upgrade(UpgradeType.Colossus_Reactor)
 
@@ -525,7 +560,7 @@ trait MaybeCanDie extends WrapsUnit {
   }
   private var lastFrameHp = HitPoints(-1, -1)
   // obviously wrong, but that doesn't matter
-  private var dead = false
+  private var dead        = false
   def percentageHPOk = {
     hitPoints.sum.toDouble / (maxHp + maxShields)
   }
@@ -665,7 +700,7 @@ trait GroundWeapon extends Weapon {
   val groundCanAttackGround  = groundWeapon.targetsGround()
   val groundDamageMultiplier = groundWeapon.damageFactor()
   val groundDamageType: DamageType
-  private val damage       = LazyVal.from(
+  private val damage = LazyVal.from(
     evalDamage(groundWeapon, groundDamageType, groundDamageMultiplier, targetsAir = false))
   def damageDelayFactorGround: Int
   override def weaponRangeRadius: Int = super.weaponRangeRadius max groundRange
@@ -680,11 +715,12 @@ trait GroundWeapon extends Weapon {
   }
   private def selfCanAttack(other: MaybeCanDie) = {
     matchOn[Boolean](other)(
-    _ => groundCanAttackAir,
-    _ => groundCanAttackGround,
-    b => if (b.isFloating) groundCanAttackAir else groundCanAttackGround)
+      _ => groundCanAttackAir,
+      _ => groundCanAttackGround,
+      b => if (b.isFloating) groundCanAttackAir else groundCanAttackGround)
   }
-  override def calculateDamageOn(other: Armor, assumeHP: Int, assumeShields: Int, shotCount: Int) = {
+  override def calculateDamageOn(other: Armor, assumeHP: Int, assumeShields: Int,
+                                 shotCount: Int) = {
     if (selfCanAttack(other.owner)) {
       damage.get.damageIfHits(other, assumeHP, assumeShields, shotCount)
     } else {
@@ -774,7 +810,6 @@ trait AutoGroundWeaponType extends GroundWeapon {
   override val groundDamageType = DamageTypes.fromNative(groundWeapon.damageType)
 }
 
-
 trait AirWeapon extends Weapon {
   protected val airWeapon = initialNativeType.airWeapon()
 
@@ -783,7 +818,7 @@ trait AirWeapon extends Weapon {
   val airCanAttackGround  = airWeapon.targetsGround()
   val airDamageMultiplier = airWeapon.damageFactor()
   val airDamageType: DamageType
-  private val damage    = LazyVal.from(
+  private val damage = LazyVal.from(
     evalDamage(airWeapon, airDamageType, airDamageMultiplier, targetsAir = true))
   def damageDelayFactorAir: Int
   override def weaponRangeRadius: Int = super.weaponRangeRadius max airRange
@@ -797,7 +832,8 @@ trait AirWeapon extends Weapon {
   override def canAttack(other: MaybeCanDie) = {
     super.canAttack(other) || selfCanAttack(other)
   }
-  override def calculateDamageOn(other: Armor, assumeHP: Int, assumeShields: Int, shotCount: Int) = {
+  override def calculateDamageOn(other: Armor, assumeHP: Int, assumeShields: Int,
+                                 shotCount: Int) = {
     if (selfCanAttack(other.owner)) {
       damage.get.damageIfHits(other, assumeHP, assumeShields, shotCount)
     } else {
@@ -842,23 +878,26 @@ trait Weapon extends Controllable {
   def calculateDamageOn(other: MaybeCanDie, assumeHP: Int, assumeShields: Int,
                         shotCount: Int): DamageSingleAttack = calculateDamageOn(
     other.armor, assumeHP, assumeShields, shotCount)
-  def calculateDamageOn(other: Armor, assumeHP: Int, assumeShields: Int, shotCount: Int): DamageSingleAttack = !!!(
+  def calculateDamageOn(other: Armor, assumeHP: Int, assumeShields: Int,
+                        shotCount: Int): DamageSingleAttack = !!!(
     "Forgot to override this")
 
   def matchOn[X](other: MaybeCanDie)
                 (ifAir: AirUnit => X, ifGround: GroundUnit => X, ifBuilding: Building => X) =
     other match {
-    case a: AirUnit => ifAir(a)
-    case g: GroundUnit => ifGround(g)
-    case b: Building => ifBuilding(b)
-    case x => !!!(s"Check this $x")
-  }
+      case a: AirUnit => ifAir(a)
+      case g: GroundUnit => ifGround(g)
+      case b: Building => ifBuilding(b)
+      case x => !!!(s"Check this $x")
+    }
   def isInWeaponRange(target: MaybeCanDie): Boolean = false
   // needs to be overriden to return true
   def weaponRangeRadius = 0
-  protected def evalDamage(weapon: WeaponType, damageType: DamageType, hitCount: Int, targetsAir: Boolean) = {
+  protected def evalDamage(weapon: WeaponType, damageType: DamageType, hitCount: Int,
+                           targetsAir: Boolean) = {
     val level = universe.upgrades.weaponLevelOf(self)
-    Damage(weapon.damageAmount(), weapon.damageBonus(), weapon.damageCooldown(), damageType, hitCount, level,
+    Damage(weapon.damageAmount(), weapon.damageBonus(), weapon.damageCooldown(), damageType,
+      hitCount, level,
       targetsAir)
   }
 
@@ -970,7 +1009,7 @@ trait TransporterUnit extends AirUnit {
   private val myPickingUp = oncePerTick {
     nativeUnit.getOrderTarget != null
   }
-  private val carrying = oncePerTick {
+  private val carrying    = oncePerTick {
     nativeUnit.getLoadedUnits.asScala.flatMap { u =>
       ownUnits.byNative(u).asInstanceOf[Option[GroundUnit]]
     }.toSet
@@ -991,7 +1030,8 @@ trait Resource extends BlockingTiles {
     Area(ul, lr)
   }
 
-  private val remainingResources = oncePerTick {if (nativeUnit.exists) nativeUnit.getResources else 0}
+  private val remainingResources = oncePerTick
+                                   {if (nativeUnit.exists) nativeUnit.getResources else 0}
   def remaining = remainingResources.get
 }
 
@@ -1042,14 +1082,18 @@ class SupplyDepot(unit: APIUnit)
 class Pylon(unit: APIUnit)
   extends AnyUnit(unit) with Building with PsiArea with ImmobileSupplyProvider
 class Overlord(unit: APIUnit)
-  extends AnyUnit(unit) with MobileSupplyProvider with TransporterUnit with CanDetectHidden with IsBig
+  extends AnyUnit(unit) with MobileSupplyProvider with TransporterUnit with CanDetectHidden with
+          IsBig
 
 class SCV(unit: APIUnit)
-  extends AnyUnit(unit) with WorkerUnit with IsSmall with NormalGroundDamage with InstantAttackGround
+  extends AnyUnit(unit) with WorkerUnit with IsSmall with NormalGroundDamage with
+          InstantAttackGround
 class Probe(unit: APIUnit)
-  extends AnyUnit(unit) with WorkerUnit with IsSmall with NormalGroundDamage with InstantAttackGround
+  extends AnyUnit(unit) with WorkerUnit with IsSmall with NormalGroundDamage with
+          InstantAttackGround
 class Drone(unit: APIUnit)
-  extends AnyUnit(unit) with WorkerUnit with IsSmall with Organic with NormalGroundDamage with InstantAttackGround
+  extends AnyUnit(unit) with WorkerUnit with IsSmall with Organic with NormalGroundDamage with
+          InstantAttackGround
 
 class Shuttle(unit: APIUnit) extends AnyUnit(unit) with TransporterUnit with SupportUnit with IsBig
 class Dropship(unit: APIUnit) extends AnyUnit(unit) with TransporterUnit with SupportUnit with IsBig
@@ -1146,10 +1190,16 @@ trait PermaCloak extends CanCloak {
   override def isCloaked = true
 }
 trait CanCloak extends Mobile {
-  private val cloaked = oncePerTick {
+  private val cloaked   = oncePerTick {
     nativeUnit.isCloaked
   }
+  private val decloaked = oncePerTick {
+    nativeUnit.decloak()
+  }
   def isCloaked = cloaked.get
+
+  def isDecloaked = decloaked.get
+
 }
 
 trait DetectorsFirst extends IsTech {
@@ -1207,19 +1257,22 @@ object Spells {
     }
   }
 
-  case object Stimpack extends SingleTargetSpell[CanUseStimpack, CanUseStimpack](Upgrades.Terran.InfantryCooldown) {
+  case object Stimpack
+    extends SingleTargetSpell[CanUseStimpack, CanUseStimpack](Upgrades.Terran.InfantryCooldown) {
     override def isAffected(m: CanUseStimpack) = {
       m.isStimmed
     }
   }
 
-  case object Irradiate extends SingleTargetSpell[ScienceVessel, Organic](Upgrades.Terran.Irradiate) {
+  case object Irradiate
+    extends SingleTargetSpell[ScienceVessel, Organic](Upgrades.Terran.Irradiate) {
     override def isAffected(m: Organic) = {
       m.isIrradiated
     }
   }
 
-  case object DefenseMatrix extends SingleTargetSpell[ScienceVessel, Mobile](Upgrades.Terran.Defensematrix) {
+  case object DefenseMatrix
+    extends SingleTargetSpell[ScienceVessel, Mobile](Upgrades.Terran.Defensematrix) {
     override def isAffected(m: Mobile) = m.matrixHp >= 25 // allow refreshing the matrix
 
     override def castOn = OwnUnits
@@ -1299,69 +1352,91 @@ trait IsBig extends Mobile with MaybeCanDie {
 }
 
 class Zergling(unit: APIUnit)
-  extends AnyUnit(unit) with Organic with GroundUnit with GroundWeapon with NormalGroundDamage with IsSmall with
+  extends AnyUnit(unit) with Organic with GroundUnit with GroundWeapon with NormalGroundDamage with
+          IsSmall with
           MeleeWeapon with InstantAttackGround
 class Broodling(unit: APIUnit)
-  extends AnyUnit(unit) with Organic with GroundUnit with GroundWeapon with NormalGroundDamage with IsSmall with
+  extends AnyUnit(unit) with Organic with GroundUnit with GroundWeapon with NormalGroundDamage with
+          IsSmall with
           InstantAttackGround
 class Hydralisk(unit: APIUnit)
-  extends AnyUnit(unit) with Organic with GroundUnit with GroundAndAirWeapon with ExplosiveAirDamage with
+  extends AnyUnit(unit) with Organic with GroundUnit with GroundAndAirWeapon with
+          ExplosiveAirDamage with
           ExplosiveGroundDamage with IsMedium with InstantAttackAir with InstantAttackGround
 class Lurker(unit: APIUnit)
-  extends AnyUnit(unit) with Organic with GroundUnit with GroundWeapon with NormalGroundDamage with IsBig with
+  extends AnyUnit(unit) with Organic with GroundUnit with GroundWeapon with NormalGroundDamage with
+          IsBig with
           InstantAttackGround
 class Mutalisk(unit: APIUnit)
-  extends AnyUnit(unit) with Organic with AirUnit with GroundAndAirWeapon with NormalGroundDamage with
+  extends AnyUnit(unit) with Organic with AirUnit with GroundAndAirWeapon with
+          NormalGroundDamage with
           NormalAirDamage with IsMedium with InstantAttackAir with InstantAttackGround
 class Queen(unit: APIUnit) extends AnyUnit(unit) with Organic with AirUnit with IsMedium
 class Scourge(unit: APIUnit) extends AnyUnit(unit) with Organic with AirUnit with IsSmall
 class Guardian(unit: APIUnit)
-  extends AnyUnit(unit) with Organic with AirUnit with GroundWeapon with IsBig with NormalGroundDamage with
+  extends AnyUnit(unit) with Organic with AirUnit with GroundWeapon with IsBig with
+          NormalGroundDamage with
           MediumAttackGround
 class Devourer(unit: APIUnit) extends AnyUnit(unit) with Organic with GroundUnit with IsBig
 class Ultralisk(unit: APIUnit)
-  extends AnyUnit(unit) with Organic with IsBig with GroundWeapon with MeleeWeapon with NormalGroundDamage with
+  extends AnyUnit(unit) with Organic with IsBig with GroundWeapon with MeleeWeapon with
+          NormalGroundDamage with
           InstantAttackGround
 class Defiler(unit: APIUnit) extends AnyUnit(unit) with Organic with GroundUnit with IsMedium
 class InfestedTerran(unit: APIUnit) extends AnyUnit(unit) with Organic with GroundUnit with IsSmall
 
-class Observer(unit: APIUnit) extends AnyUnit(unit) with MobileDetector with Mechanic with IsSmall with AirUnit
+class Observer(unit: APIUnit)
+  extends AnyUnit(unit) with MobileDetector with Mechanic with IsSmall with AirUnit
 class Scout(unit: APIUnit)
-  extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with Mechanic with IsBig with ExplosiveAirDamage with
+  extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with Mechanic with IsBig with
+          ExplosiveAirDamage with
           NormalGroundDamage with MediumAttackAir with InstantAttackGround
 class Zealot(unit: APIUnit)
-  extends AnyUnit(unit) with GroundUnit with GroundWeapon with IsSmall with IsInfantry with NormalGroundDamage with
+  extends AnyUnit(unit) with GroundUnit with GroundWeapon with IsSmall with IsInfantry with
+          NormalGroundDamage with
           InstantAttackGround
 class Dragoon(unit: APIUnit)
-  extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with Mechanic with IsBig with IsVehicle with
+  extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with Mechanic with IsBig with
+          IsVehicle with
           ExplosiveGroundDamage with ExplosiveAirDamage with MediumAttackAir with MediumAttackGround
 class Archon(unit: APIUnit)
-  extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with IsBig with IsInfantry with NormalAirDamage with
+  extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with IsBig with IsInfantry with
+          NormalAirDamage with
           NormalGroundDamage with InstantAttackAir with InstantAttackGround
 class Carrier(unit: APIUnit) extends AnyUnit(unit) with AirUnit with Mechanic with IsBig with IsShip
 class Arbiter(unit: APIUnit)
-  extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with Mechanic with IsBig with IsShip with
+  extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with Mechanic with IsBig with
+          IsShip with
           ExplosiveAirDamage with ExplosiveGroundDamage with MediumAttackAir with MediumAttackGround
 class Templar(unit: APIUnit)
-  extends AnyUnit(unit) with GroundUnit with PermaCloak with HasSingleTargetSpells with IsSmall with IsInfantry {
+  extends AnyUnit(unit) with GroundUnit with PermaCloak with HasSingleTargetSpells with IsSmall with
+          IsInfantry {
   override val spells = Nil
+  override def shouldReRegisterOnMorph = true
 }
 class DarkTemplar(unit: APIUnit)
-  extends AnyUnit(unit) with GroundUnit with GroundWeapon with CanCloak with IsSmall with IsInfantry with
-          NormalGroundDamage with InstantAttackGround
+  extends AnyUnit(unit) with GroundUnit with GroundWeapon with CanCloak with IsSmall with
+          IsInfantry with
+          NormalGroundDamage with InstantAttackGround {
+  override def shouldReRegisterOnMorph = true
+}
 class DarkArchon(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with IsBig with IsInfantry
 class Corsair(unit: APIUnit)
-  extends AnyUnit(unit) with AirUnit with AirWeapon with Mechanic with IsMedium with IsShip with ExplosiveAirDamage with
+  extends AnyUnit(unit) with AirUnit with AirWeapon with Mechanic with IsMedium with IsShip with
+          ExplosiveAirDamage with
           InstantAttackAir
 class Interceptor(unit: APIUnit)
-  extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with Mechanic with IsSmall with IsShip with
+  extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with Mechanic with IsSmall with
+          IsShip with
           NormalAirDamage with NormalGroundDamage with InstantAttackAir with InstantAttackGround
 class Reaver(unit: APIUnit)
-  extends AnyUnit(unit) with GroundUnit with GroundWeapon with Mechanic with IsBig with IsVehicle with
+  extends AnyUnit(unit) with GroundUnit with GroundWeapon with Mechanic with IsBig with
+          IsVehicle with
           NormalGroundDamage with SlowAttackGround
 
 class Scarab(unit: APIUnit)
-  extends AnyUnit(unit) with SimplePosition with Mobile with AutoPilot with IsSmall with GroundUnit with
+  extends AnyUnit(unit) with SimplePosition with Mobile with AutoPilot with IsSmall with
+          GroundUnit with
           IndestructibleUnit
 class SpiderMine(unit: APIUnit)
   extends AnyUnit(unit) with SimplePosition with GroundUnit with IsSmall with AutoPilot {
@@ -1369,70 +1444,88 @@ class SpiderMine(unit: APIUnit)
 }
 
 class Marine(unit: APIUnit)
-  extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with CanUseStimpack with MobileRangeWeapon with
-          IsSmall with IsInfantry with NormalAirDamage with NormalGroundDamage with HasSingleTargetSpells with
+  extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with CanUseStimpack with
+          MobileRangeWeapon with
+          IsSmall with IsInfantry with NormalAirDamage with NormalGroundDamage with
+          HasSingleTargetSpells with
           InstantAttackAir with InstantAttackGround {
   override type CasterType = CanUseStimpack
   override val spells = List(Spells.Stimpack)
 }
 class Firebat(unit: APIUnit)
-  extends AnyUnit(unit) with GroundUnit with GroundWeapon with CanUseStimpack with IsSmall with IsInfantry with
+  extends AnyUnit(unit) with GroundUnit with GroundWeapon with CanUseStimpack with IsSmall with
+          IsInfantry with
           HasSingleTargetSpells with InstantAttackGround with ConcussiveGroundDamage {
   override type CasterType = CanUseStimpack
   override val spells = List(Spells.Stimpack)
 }
 
 class Ghost(unit: APIUnit)
-  extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with CanCloak with InstantAttackAir with
+  extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with CanCloak with
+          InstantAttackAir with
           InstantAttackGround with
-          HasSingleTargetSpells with MobileRangeWeapon with IsSmall with IsInfantry with ConcussiveAirDamage with
+          HasSingleTargetSpells with MobileRangeWeapon with IsSmall with IsInfantry with
+          ConcussiveAirDamage with
           ConcussiveGroundDamage {
   override type CasterType = Ghost
   override val spells = List(Spells.Lockdown)
 }
 class Medic(unit: APIUnit)
-  extends AnyUnit(unit) with GroundUnit with SupportUnit with HasSingleTargetSpells with IsSmall with IsInfantry {
+  extends AnyUnit(unit) with GroundUnit with SupportUnit with HasSingleTargetSpells with
+          IsSmall with IsInfantry {
   override type CasterType = Medic
   override val spells = List(Spells.Blind)
 }
 class Vulture(unit: APIUnit)
-  extends AnyUnit(unit) with GroundUnit with GroundWeapon with HasSpiderMines with MediumAttackGround with Mechanic with
-          MobileRangeWeapon with IsMedium with IsVehicle with ConcussiveGroundDamage with HasSinglePointMagicSpell {
+  extends AnyUnit(unit) with GroundUnit with GroundWeapon with HasSpiderMines with
+          MediumAttackGround with Mechanic with
+          MobileRangeWeapon with IsMedium with IsVehicle with ConcussiveGroundDamage with
+          HasSinglePointMagicSpell {
   override type Caster = Vulture
   override val spells = List(Upgrades.Terran.SpiderMines)
 }
 
 class Tank(unit: APIUnit)
-  extends AnyUnit(unit) with GroundUnit with GroundWeapon with InstantAttackGround with Mechanic with CanSiege with
-          MobileRangeWeapon with IsBig with IsVehicle with ExplosiveGroundDamage with HasSingleTargetSpells {
+  extends AnyUnit(unit) with GroundUnit with GroundWeapon with InstantAttackGround with
+          Mechanic with CanSiege with
+          MobileRangeWeapon with IsBig with IsVehicle with ExplosiveGroundDamage with
+          HasSingleTargetSpells {
   override type CasterType = Tank
   override val spells = List(Spells.TankSiege)
 }
 class Goliath(unit: APIUnit)
-  extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with InstantAttackGround with SlowAttackAir with
+  extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with InstantAttackGround with
+          SlowAttackAir with
           Mechanic with
-          MobileRangeWeapon with IsBig with IsVehicle with NormalGroundDamage with ExplosiveAirDamage
+          MobileRangeWeapon with IsBig with IsVehicle with NormalGroundDamage with
+          ExplosiveAirDamage
 class Wraith(unit: APIUnit)
-  extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with CanCloak with InstantAttackGround with
+  extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with CanCloak with
+          InstantAttackGround with
           MediumAttackAir with Mechanic with
-          MobileRangeWeapon with IsBig with IsShip with NormalGroundDamage with ExplosiveAirDamage with
+          MobileRangeWeapon with IsBig with IsShip with NormalGroundDamage with
+          ExplosiveAirDamage with
           HasSingleTargetSpells {
 
   override type CasterType = Wraith
   override val spells = List(Spells.WraithCloak)
 }
 class Valkery(unit: APIUnit)
-  extends AnyUnit(unit) with AirUnit with AirWeapon with Mechanic with MobileRangeWeapon with IsBig with IsShip with
+  extends AnyUnit(unit) with AirUnit with AirWeapon with Mechanic with MobileRangeWeapon with
+          IsBig with IsShip with
           ExplosiveAirDamage with SlowAttackAir
 class Battlecruiser(unit: APIUnit)
-  extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with InstantAttackAir with InstantAttackGround with
+  extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with InstantAttackAir with
+          InstantAttackGround with
           Mechanic with
-          HasSingleTargetSpells with MobileRangeWeapon with IsBig with IsShip with NormalAirDamage with
+          HasSingleTargetSpells with MobileRangeWeapon with IsBig with IsShip with
+          NormalAirDamage with
           NormalGroundDamage {
   override val spells = Nil
 }
 class ScienceVessel(unit: APIUnit)
-  extends AnyUnit(unit) with AirUnit with SupportUnit with CanDetectHidden with Mechanic with HasSingleTargetSpells with
+  extends AnyUnit(unit) with AirUnit with SupportUnit with CanDetectHidden with Mechanic with
+          HasSingleTargetSpells with
           IsBig with IsShip {
   override type CasterType = ScienceVessel
   override val spells = List(Spells.DefenseMatrix, Spells.Irradiate)

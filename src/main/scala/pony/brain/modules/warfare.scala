@@ -250,6 +250,11 @@ object GroupingHelper {
     val helper = new GroupingHelper(universe, seq)
     BWFuture(Option(helper.evaluateUnitGroups))
   }
+
+  def groupTheseNow(seq: TraversableOnce[Mobile], universe: Universe) = {
+    val helper = new GroupingHelper(universe, seq)
+    helper.evaluateUnitGroups
+  }
 }
 
 class GroupingHelper(override val universe: Universe, seq: TraversableOnce[Mobile])
@@ -275,7 +280,9 @@ class GroupingHelper(override val universe: Universe, seq: TraversableOnce[Mobil
     }
     groups.toSeq
   }
+
   class Group {
+    def size = members.size
 
     private val members  = ArrayBuffer.empty[((Int, MapTilePosition))]
     private var myCenter = MapTilePosition.zero

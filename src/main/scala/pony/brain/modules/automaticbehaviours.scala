@@ -8,8 +8,12 @@ import pony.Upgrades.Terran.{GhostCloak, InfantryCooldown, SpiderMines, TankSieg
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
-abstract class DefaultBehaviour[T <: Mobile : Manifest](override val universe: Universe)
+abstract class DefaultBehaviour[T <: WrapsUnit : Manifest](override val universe: Universe)
   extends HasUniverse {
+
+  def employer = asEmployer
+
+  private val asEmployer      = new Employer[T](universe)
   private val unit2behaviour  = mutable.HashMap.empty[T, SingleUnitBehaviour[T]]
   private val controlledUnits = mutable.HashSet.empty[T]
 
@@ -21,26 +25,26 @@ abstract class DefaultBehaviour[T <: Mobile : Manifest](override val universe: U
 
   }
   def renderDebug(renderer: Renderer): Unit = {}
-  def behaviourOf(unit: Mobile) = {
+  def behaviourOf(unit: T) = {
     ifControlsOpt(unit) {identity}
   }
-  def ifControlsOpt[R](m: Mobile)(f: (SingleUnitBehaviour[T]) => R) = {
+  def ifControlsOpt[R](m: T)(f: (SingleUnitBehaviour[T]) => R) = {
     ifControls(m, Option.empty[R])(e => Some(f(e)))
   }
-  def ifControls[R](m: Mobile, ifNot: R)(f: (SingleUnitBehaviour[T]) => R) = {
+  def ifControls[R](m: T, ifNot: R)(f: (SingleUnitBehaviour[T]) => R) = {
     if (controls(m)) {
       f(unit2behaviour(assumeSafe(m)))
     } else {
       ifNot
     }
   }
-  def controls(unit: Mobile) = {
+  def controls(unit: T) = {
     canControl(unit) && controlledUnits.contains(assumeSafe(unit))
   }
   def canControl(u: WrapsUnit) = {
     manifest[T].runtimeClass.isInstance(u) && !u.isInstanceOf[AutoPilot]
   }
-  def assumeSafe(unit: Mobile): T = unit.asInstanceOf[T]
+  def assumeSafe(unit: WrapsUnit): T = unit.asInstanceOf[T]
   def add_!(u: WrapsUnit, objective: Objective) = {
     assert(canControl(u))
     val behaviour = wrapBase(u.asInstanceOf[T])
@@ -73,11 +77,12 @@ object Terran {
                       new RepairDamagedUnit(universe) ::
                       new RepairDamagedBuilding(universe) ::
                       new MoveAwayFromConstructionSite(universe) ::
-                      new UntrapOwnUnits(universe) ::
+                      new PreventBlockades(universe) ::
                       new ContinueInterruptedConstruction(universe) ::
+                      new UseComsat(universe) ::
+
                       /*
                                             new RepairDamagedBuilding ::
-                                           new UseComsat ::
                                            new Scout ::
                                            new DoNotStray ::
                                            new HealDamagedUnit ::
@@ -275,7 +280,7 @@ object Terran {
     private def tolerance = 2
   }
 
-  class UntrapOwnUnits(universe: Universe) extends DefaultBehaviour[Mobile](universe) {
+  class PreventBlockades(universe: Universe) extends DefaultBehaviour[Mobile](universe) {
 
     private val newBlockingUnits = oncePer(Primes.prime37, {
       val baseArea = mapLayers.freeWalkableTiles.asReadOnlyCopyIfMutable
@@ -368,6 +373,8 @@ object Terran {
 
   class RepairDamagedUnit(universe: Universe) extends DefaultBehaviour[SCV](universe) {
 
+    override def priority = SecondPriority.More
+
     private val helper = new NonConflictingTargets[Mechanic, SCV](universe = universe,
       rateTarget = m => PriorityChain(m.percentageHPOk),
       validTarget = _.isDamaged,
@@ -376,6 +383,10 @@ object Terran {
       own = true,
       allowReplacements = true)
 
+    override def onTick() = {
+      super.onTick()
+      helper.onTick()
+    }
     override protected def wrapBase(unit: SCV) = new SingleUnitBehaviour[SCV](unit, meta) {
 
       override def onStealUnit() = {
@@ -394,6 +405,8 @@ object Terran {
 
   class RepairDamagedBuilding(universe: Universe) extends DefaultBehaviour[SCV](universe) {
 
+    override def priority = SecondPriority.More
+
     private val helper = new NonConflictingTargets[TerranBuilding, SCV](universe = universe,
       rateTarget = m => PriorityChain(m.percentageHPOk),
       validTarget = _.isDamaged,
@@ -401,6 +414,11 @@ object Terran {
       subRate = (m, t) => PriorityChain(-m.currentTile.distanceSquaredTo(t.centerTile)),
       own = true,
       allowReplacements = true)
+
+    override def onTick() = {
+      super.onTick()
+      helper.onTick()
+    }
 
     override protected def wrapBase(unit: SCV) = new SingleUnitBehaviour[SCV](unit, meta) {
       override def onStealUnit() = {
@@ -419,6 +437,8 @@ object Terran {
 
   class ContinueInterruptedConstruction(universe: Universe) extends DefaultBehaviour[SCV](universe) {
 
+    override def priority = SecondPriority.More
+
     private val area = oncePerTick {
       mapLayers.rawWalkableMap.asReadOnlyCopyIfMutable
     }
@@ -432,6 +452,11 @@ object Terran {
       allowReplacements = true,
       subAccept = (w, b) => true)
 
+    override def onTick() = {
+      super.onTick()
+      helper.onTick()
+    }
+
     override protected def wrapBase(unit: SCV) = new SingleUnitBehaviour[SCV](unit, meta) {
 
       private var target = Option.empty[Building]
@@ -442,6 +467,7 @@ object Terran {
       }
 
       override def describeShort: String = "Finish construction"
+
       override def toOrder(what: Objective): Seq[UnitOrder] = {
         def eval = helper.suggestTarget(unit)
         target.filter(_.incomplete).orElse(eval).map { building =>
@@ -525,22 +551,26 @@ object Terran {
       override def preconditionOk = upgrades.hasResearched(TankSiegeMode)
 
       override def toOrder(what: Objective) = {
-        val trav = universe.unitGrid.enemy.allInRange[GroundUnit](unit.currentTile, 12)
-        def enemiesNear = {
-          trav.view.filter(!_.isHarmlessNow).take(4).size >= 3
+        val enemies = unit.surroundings.closeEnemyGroundUnits
+        val buildings = unit.surroundings.closeEnemyBuildings
+
+        def buildingInRange = buildings.exists(e => unit.isInWeaponRange(e))
+
+        def siegeableInRange = {
+          buildingInRange || enemies.iterator.filterNot(_.isHarmlessNow).take(4).size >= 3
         }
         def anyNear = {
-          trav.exists(!_.isHarmlessNow)
+          enemies.exists(e => !e.isHarmlessNow && e.centerTile.distanceToIsMore(unit.centerTile, 4))
         }
 
         if (unit.isSieged) {
-          if (anyNear) {
+          if (buildingInRange || anyNear) {
             Nil
           } else {
             Orders.TechOnSelf(unit, TankSiegeMode).toList
           }
         } else {
-          if (enemiesNear) {
+          if (siegeableInRange) {
             Orders.TechOnSelf(unit, TankSiegeMode).toList
           } else {
             Nil
@@ -605,8 +635,29 @@ object Terran {
     }
   }
 
-  class UseComsat(universe: Universe) extends DefaultBehaviour[MobileDetector](universe) {
-    override protected def wrapBase(t: MobileDetector) = ???
+  class UseComsat(universe: Universe) extends DefaultBehaviour[Comsat](universe) {
+    override protected def wrapBase(t: Comsat) = new SingleUnitBehaviour[Comsat](t, meta) {
+      override def describeShort = "Scan"
+      override def toOrder(what: Objective) = {
+        mapNth(Primes.prime79, List.empty[UnitOrder]) {
+          val dangerous = enemies.allByType[CanCloak]
+                          .filterNot(_.isDecloaked)
+                          .filter { cloaked =>
+                            ownUnits.allCompletedMobiles
+                            .exists(_.centerTile.distanceToIsLess(cloaked.centerTile, 8))
+                          }
+
+          val groups = GroupingHelper.groupTheseNow(dangerous, universe)
+          groups.maxByOpt(_.size).map { biggest =>
+            val req = UnitJobRequest.idleOfType[Comsat](employer, classOf[Comsat])
+            unitManager.request(req)
+            .units
+            .map(Orders.ScanWithComsat(_, biggest.center))
+            .toList
+          }.toList.flatten
+        }
+      }
+    }
   }
 
   class SetupMineField(universe: Universe) extends DefaultBehaviour[Vulture](universe) {
@@ -734,6 +785,13 @@ object Terran {
     extends DefaultBehaviour[C](universe) {
     private val helper = NonConflictingSpellTargets.forSpell(spell, universe)
 
+    universe.register_!(() => {
+      helper.afterTick()
+    })
+
+    override def onTick() = {
+      super.onTick()
+    }
     override def refuseCommandsForTicks = 12
 
     override def priority: SecondPriority = SecondPriority.Max
@@ -771,6 +829,11 @@ object Terran {
   class FocusFire(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon](universe) {
 
     private val helper = new FocusFireOrganizer(universe)
+
+    override def onTick() = {
+      super.onTick()
+      helper.onTick()
+    }
 
     override protected def wrapBase(unit: MobileRangeWeapon) = new
         SingleUnitBehaviour(unit, meta) {
@@ -1042,9 +1105,6 @@ class NonConflictingSpellTargets[T <: HasSingleTargetSpells, M <: Mobile : Manif
   extends HasUniverse {
   private val locked        = mutable.HashSet.empty[M]
 
-  universe.register_!(() => {
-    afterTick()
-  })
   private val lockedTargets = mutable.HashSet.empty[Target[M]]
   private val assignments   = mutable.HashMap.empty[M, Target[M]]
   private val prioritizedTargets = LazyVal.from {

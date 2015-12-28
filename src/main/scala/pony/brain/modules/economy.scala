@@ -23,7 +23,8 @@ class ProvideNewBuildings(universe: Universe)
                            .orElse(in.jobRequest.customPosition.evaluateCostly)
                            .orElse(helper.findSpotFor(in.base.mainBuilding.tilePosition, in.buildingType))
 
-      customPosition.foreach(e => assert(mapLayers.rawWalkableMap.insideBounds(e)))
+      customPosition
+      .foreach(e => assert(mapLayers.rawWalkableMap.insideBounds(e), s"$e was not inside map :("))
       customPosition.map(newJob)
     }
 
@@ -422,7 +423,7 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
           val notFull = assignments.filter(_._2.openSpotCount == maxFreeSlots)
           if (notFull.nonEmpty) {
             val (_, patch) = notFull.minBy { case (mins, _) =>
-              mins.area.closestDirectConnection(base.mainBuilding).length
+              mins.area.closestDirectConnection(worker.blockedArea).length
             }
             Some(patch)
           } else

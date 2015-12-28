@@ -189,7 +189,8 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
       }
     }
 
-    val myOwn = universe.world.ownUnits.mine.filterNot(assignments.contains).map(initialJobOf).toSeq
+    val myOwn = universe.world.ownUnits.inFaction.filterNot(assignments.contains).map(initialJobOf)
+                .toSeq
     info(s"Found ${myOwn.size} new units of player", myOwn.nonEmpty)
 
     myOwn.foreach(assignJob_!)
@@ -1018,7 +1019,7 @@ object Objective {
 
 case class SingleUnitBehaviourMeta(priority: SecondPriority, refuseCommandsForTicks: Int, forceRepeats: Boolean)
 
-abstract class SingleUnitBehaviour[T <: Mobile](val unit: T, meta: SingleUnitBehaviourMeta) {
+abstract class SingleUnitBehaviour[T <: WrapsUnit](val unit: T, meta: SingleUnitBehaviourMeta) {
   def onStealUnit(): Unit = {}
 
   def toOrder(what: Objective): Seq[UnitOrder]
