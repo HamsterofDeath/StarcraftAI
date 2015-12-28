@@ -648,7 +648,8 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   private def evalOnlyUnits(units: TraversableOnce[StaticallyPositioned], increaseSizeBy: Int = 0) = {
     val ret = emptyGrid
     units.foreach { b =>
-      ret.block_!(b.area.growBy(increaseSizeBy))
+      val by = b.area.growBy(increaseSizeBy)
+      ret.block_!(by)
     }
     ret
   }

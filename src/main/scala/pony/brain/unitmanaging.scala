@@ -24,6 +24,7 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
   }
   def hasJob(support: OrderHistorySupport) = assignments.contains(support)
   def allIdleMobiles = allJobsByType[BusyDoingNothing[Mobile]].filter(_.unit.isInstanceOf[Mobile])
+  def allIdles = allJobsByType[BusyDoingNothing[WrapsUnit]].filter(_.unit.isInstanceOf[WrapsUnit])
   def allFundedJobs = assignments.values.collect { case f: JobHasFunding[_] => f }
   def existsOrPlanned(c: Class[_ <: WrapsUnit]) = {
     ownUnits.ownsByType(c) ||
@@ -455,13 +456,6 @@ class UnitCollector[T <: WrapsUnit : Manifest](req: UnitJobRequest[T], override 
         def allWithType = um.allOfEmployerAndType(um.Nobody, req.requestedUnitType).iterator ++
                           um.allNotOfEmployerButType(um.Nobody, req.requestedUnitType)
 
-        /*
-                def all = um.allOfEmployer(um.Nobody).iterator ++
-                          um.allNotOfEmployer(um.Nobody).iterator
-
-                assert(allWithType.toList.filter(requests).toSet == all.toList.filter(requests).toSet,
-                s"${allWithType.toList.filter(requests)} \n!=\n ${all.toList.filter(requests)}")
-        */
         val defaultSuggestions = allWithType.filter(_.unit.isInGame)
                                  .filter {
                                    _.unit match {
@@ -476,7 +470,8 @@ class UnitCollector[T <: WrapsUnit : Manifest](req: UnitJobRequest[T], override 
         withExplicitCandidates.map(typed).toVector
       }
       priorityRule.fold(potential) { rule =>
-        potential.sortBy(rule.giveRating)
+        val prepared = potential.map(e => e -> rule.giveRating(e))
+        prepared.sortBy(_._2).map(_._1)
       }
     }
 
@@ -1021,18 +1016,32 @@ case class SingleUnitBehaviourMeta(priority: SecondPriority, refuseCommandsForTi
 
 abstract class SingleUnitBehaviour[T <: WrapsUnit](val unit: T, meta: SingleUnitBehaviourMeta) {
   def onStealUnit(): Unit = {}
-
-  def toOrder(what: Objective): Seq[UnitOrder]
+  def orderForTick(what: Objective) = {
+    if (skipFor > 0) {
+      skipFor -= 1
+      Nil
+    } else {
+      toOrder(what)
+    }
+  }
+  protected def toOrder(what: Objective): Seq[UnitOrder]
   def preconditionOk = true
   def describeShort: String
   def priority = meta.priority
   def blocksForTicks = meta.refuseCommandsForTicks
   def forceRepeats = meta.forceRepeats
   def canInterrupt = true
+
+  private var skipFor = 0
+
+  def skipFor(i: Int): Unit = {
+    skipFor = i
+  }
 }
 
-class BusyDoingSomething[T <: Mobile](employer: Employer[T], behaviour: Seq[SingleUnitBehaviour[T]],
-                                      private var objective: Objective)
+class BusyDoingSomething[T <: WrapsUnit](employer: Employer[T],
+                                         behaviour: Seq[SingleUnitBehaviour[T]],
+                                         private var objective: Objective)
   extends UnitWithJob(employer, behaviour.head.unit, Priority.DefaultBehaviour) with Interruptable[T] {
 
   assert(behaviour.map(_.unit).distinct.size == 1, s"Wrong grouping: $behaviour")
@@ -1067,7 +1076,8 @@ class BusyDoingSomething[T <: Mobile](employer: Employer[T], behaviour: Seq[Sing
 
   private def highestPriorityOrdersForTick = {
     val options = active.map { rule =>
-      rule -> rule.toOrder(objective).map(_.lockingFor_!(rule.blocksForTicks).forceRepeat_!(rule.forceRepeats))
+      rule -> rule.orderForTick(objective)
+              .map(_.lockingFor_!(rule.blocksForTicks).forceRepeat_!(rule.forceRepeats))
     }.filter(_._2.nonEmpty)
     if (options.isEmpty) {
       None -> Nil
@@ -1118,19 +1128,14 @@ class BusyBeingContructed[T <: WrapsUnit](unit: T, employer: Employer[T])
 case class PriorityChain(data: Vector[Double]) {
   lazy val sum = data.sum
 }
+
 object PriorityChain {
 
   implicit val ordOnPriorities: Ordering[PriorityChain] = {
-    implicit val ordOnVectorWithDoubles: Ordering[Vector[Double]] = Ordering.fromLessThan { (a, b) =>
+    implicit val ordOnVectorWithDoubles: Ordering[Vector[Double]] = Ordering.fromLessThan { (a,
+                                                                                             b) =>
       assert(a.size == b.size)
-      def isLess: Boolean = {
-        for (i <- a.indices) {
-          val lessThan = a(i) < b(i)
-          if (lessThan) return true
-        }
-        false
-      }
-      isLess
+      a.indices.forall(i => a(i) < b(i))
     }
     Ordering.by(_.data)
   }
@@ -1286,9 +1291,10 @@ case class UnitJobRequest[T <: WrapsUnit : Manifest](request: UnitRequest[T], em
   def allRequiredTypes = request.typeOfRequestedUnit.toSet ++ makeSureDependenciesCleared
   def priorityRule: Option[RateCandidate[T]] = {
     val picker = request.ratingFuntion
-    picker.map { nat => new RateCandidate[T] {
-      def giveRating(forThatOne: UnitWithJob[T]): PriorityChain = nat(forThatOne)
-    }
+    picker.map { nat =>
+      new RateCandidate[T] {
+        def giveRating(forThatOne: UnitWithJob[T]): PriorityChain = nat(forThatOne)
+      }
     }
   }
   def acceptOnly_!(only: T => Boolean) = {

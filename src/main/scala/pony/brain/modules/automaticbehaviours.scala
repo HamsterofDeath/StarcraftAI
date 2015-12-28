@@ -51,7 +51,7 @@ abstract class DefaultBehaviour[T <: WrapsUnit : Manifest](override val universe
     controlledUnits += behaviour.unit
     unit2behaviour.put(behaviour.unit, behaviour)
   }
-  def cast = this.asInstanceOf[DefaultBehaviour[Mobile]]
+  def cast = this.asInstanceOf[DefaultBehaviour[WrapsUnit]]
   protected def meta = SingleUnitBehaviourMeta(priority, refuseCommandsForTicks, forceRepeatedCommands)
   def forceRepeatedCommands = false
   def priority = SecondPriority.Default
@@ -61,7 +61,7 @@ abstract class DefaultBehaviour[T <: WrapsUnit : Manifest](override val universe
 }
 
 object Terran {
-  def allBehaviours(universe: Universe): Seq[DefaultBehaviour[Mobile]] = {
+  def allBehaviours(universe: Universe): Seq[DefaultBehaviour[WrapsUnit]] = {
     val allOfThem = (
                       new StimSelf(universe) ::
                       new StopMechanic(universe) ::
@@ -92,7 +92,8 @@ object Terran {
                       new Dance(universe) ::
                       new FocusFire(universe) ::
                       new ReallyReallyLazy(universe) ::
-                      Nil).map(_.cast)
+                      Nil)
+                    .map(_.cast)
     allOfThem
   }
 
@@ -286,7 +287,6 @@ object Terran {
       val baseArea = mapLayers.freeWalkableTiles.asReadOnlyCopyIfMutable
       val unitsToPositions = ownUnits.allCompletedMobiles
                              .iterator
-                             .filterNot(_.isInstanceOf[WorkerUnit])
                              .filter(_.canMove)
                              .filter(_.surroundings.closeOwnBuildings.size > 3)
                              .map { e => e.nativeUnitId -> e.blockedArea }
@@ -349,9 +349,15 @@ object Terran {
           val command = lastFreeGoTo.filter { check =>
             layer.freeAndInBounds(safeArea)
           }.map(Orders.MoveToTile(unit, _)).orElse {
-              val moveTo = layer.spiralAround(unit.currentTile).find { e =>
+            val moveTo = layer.spiralAround(unit.currentTile, 15)
+                         .filter(layer.freeAndInBounds)
+                         .find { e =>
                 layer.freeAndInBounds(safeArea.growBy(1).moveTo(e))
               }
+            if (moveTo.isEmpty) {
+              skipFor(Primes.prime59.i)
+            }
+
               moveTo.map { whereTo =>
                 lastFreeGoTo = Some(whereTo)
                 Orders.MoveToTile(unit, whereTo)
@@ -835,8 +841,7 @@ object Terran {
       helper.onTick()
     }
 
-    override protected def wrapBase(unit: MobileRangeWeapon) = new
-        SingleUnitBehaviour(unit, meta) {
+    override protected def wrapBase(unit: MobileRangeWeapon) = new SingleUnitBehaviour(unit, meta) {
       override def describeShort = "Focus fire"
       override def toOrder(what: Objective) = {
         helper.suggestTarget(unit).map { target =>

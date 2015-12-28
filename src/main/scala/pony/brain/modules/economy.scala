@@ -99,7 +99,9 @@ class ProvideExpansions(universe: Universe) extends OrderlessAIModule[WorkerUnit
   }
   override def onTick(): Unit = {
     ifNth(Primes.prime241) {
-      plannedExpansionPoint = plannedExpansionPoint.orElse(strategy.current.suggestNextExpansion)
+      plannedExpansionPoint = plannedExpansionPoint.filter { where =>
+        universe.unitGrid.enemy.allInRange[Mobile](where.center, 15).nonEmpty
+      }.orElse(strategy.current.suggestNextExpansion)
       info(s"AI wants to expand to ${plannedExpansionPoint.get}", plannedExpansionPoint.isDefined)
     }
 
@@ -202,10 +204,10 @@ class ProvideNewUnits(universe: Universe) extends OrderlessAIModule[UnitFactory]
   }
 }
 
-class DefaultBehaviours(universe: Universe) extends OrderlessAIModule[Mobile](universe) {
+class DefaultBehaviours(universe: Universe) extends OrderlessAIModule[WrapsUnit](universe) {
   self =>
   private val rules  = Terran.allBehaviours(universe)
-  private val ignore = mutable.HashSet.empty[Mobile]
+  private val ignore = mutable.HashSet.empty[WrapsUnit]
 
   override def renderDebug(renderer: Renderer): Unit = {
     rules.foreach(_.renderDebug(renderer))
@@ -213,7 +215,7 @@ class DefaultBehaviours(universe: Universe) extends OrderlessAIModule[Mobile](un
   override def onTick(): Unit = {
     rules.foreach(_.onTick())
     // fetch all idles and assign "always on" background tasks to them
-    val hireUs = unitManager.allIdleMobiles.filterNot(e => ignore(e.unit)).flatMap { free =>
+    val hireUs = unitManager.allIdles.filterNot(e => ignore(e.unit)).flatMap { free =>
       val unit = free.unit
       rules.filter(_.canControl(unit)).foreach(_.add_!(unit, Objective.initial))
       val behaviours = rules.filter(_.controls(unit)).flatMap(_.behaviourOf(unit))

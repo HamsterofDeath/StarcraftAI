@@ -16,8 +16,13 @@ class FormationHelper(override val universe: Universe,
     val walkable = mapLayers.rawWalkableMap.asReadOnlyCopyIfMutable
     val pf = pathFinder.spawn
 
-    val avoid = universe.enemyUnits.all.filter(e => e.canDoDamage || e.isInstanceOf[Building])
-                .map(_.centerTile).toList
+    val avoid = universe.enemyUnits
+                .all
+                .filter { e =>
+                  e.canDoDamage || e.isInstanceOf[Building]
+                }
+                .map(_.centerTile)
+                .toList
 
     BWFuture.from {
       val minDst = 12
@@ -399,7 +404,7 @@ trait BuildingRequestHelper extends AIModule[WorkerUnit] {
                                      saveMoneyIfPoor: Boolean = false,
                                      customBuildingPosition: AlternativeBuildingSpot =
                                      AlternativeBuildingSpot
-                                                                                       .useDefault,
+                                     .useDefault,
                                      belongsTo: Option[ResourceArea] = None,
                                      priority: Priority = Priority.Default): Unit = {
     val req = ResourceRequests.forUnit(universe.myRace, buildingType, priority)
@@ -759,7 +764,7 @@ object Strategy {
       if (shouldExpand) {
         val covered = bases.bases.map(_.resourceArea).toSet
         val dangerous = strategicMap.resources.filter { res =>
-          universe.unitGrid.enemy.allInRange[Mobile](res.center, 10).nonEmpty
+          universe.unitGrid.enemy.allInRange[Mobile](res.center, 15).nonEmpty
         }.toSet
         bases.mainBase.map(_.mainBuilding.tilePosition).flatMap { where =>
           val others = strategicMap.resources

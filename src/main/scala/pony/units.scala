@@ -1194,7 +1194,7 @@ trait CanCloak extends Mobile {
     nativeUnit.isCloaked
   }
   private val decloaked = oncePerTick {
-    nativeUnit.decloak()
+    nativeUnit.isDetected
   }
   def isCloaked = cloaked.get
 
