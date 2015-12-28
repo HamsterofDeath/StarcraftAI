@@ -117,6 +117,14 @@ trait WrapsUnit extends HasUniverse with AfterTickListener {
   override def onTick() = {
     super.onTick()
   }
+
+  object surroundings {
+    def closeOwnBuildings = myCloseOwnBuildings.get
+
+    private val myCloseOwnBuildings = oncePer(Primes.prime29, {
+      ownUnits.allBuildings.filter(_.centerTile.distanceToIsLess(centerTile, 15))
+    })
+  }
 }
 
 trait Controllable extends WrapsUnit with MaybeCanDie
@@ -160,6 +168,21 @@ trait BlockingTiles extends StaticallyPositioned {
 trait IsInfantry extends WrapsUnit
 trait IsVehicle extends WrapsUnit
 trait IsShip extends WrapsUnit
+
+trait TerranBuilding extends Building {
+  private val myCurrentArea = oncePerTick {
+    mapLayers.rawWalkableMap.areaWhichContainsAsFree(centerTile).orElse {
+      mapLayers.rawWalkableMap
+      .spiralAround(centerTile, 5)
+      .map(mapLayers.rawWalkableMap.areaWhichContainsAsFree)
+      .find(_.isDefined)
+      .map(_.get)
+    }
+  }
+
+  def areaOnMap = myCurrentArea.get
+
+}
 
 trait Building extends BlockingTiles with MaybeCanDie {
   self =>
@@ -1014,7 +1037,8 @@ trait SupportUnit extends Mobile
 
 trait PsiArea extends AnyUnit
 
-class SupplyDepot(unit: APIUnit) extends AnyUnit(unit) with ImmobileSupplyProvider
+class SupplyDepot(unit: APIUnit)
+  extends AnyUnit(unit) with ImmobileSupplyProvider with TerranBuilding
 class Pylon(unit: APIUnit)
   extends AnyUnit(unit) with Building with PsiArea with ImmobileSupplyProvider
 class Overlord(unit: APIUnit)
@@ -1030,7 +1054,8 @@ class Drone(unit: APIUnit)
 class Shuttle(unit: APIUnit) extends AnyUnit(unit) with TransporterUnit with SupportUnit with IsBig
 class Dropship(unit: APIUnit) extends AnyUnit(unit) with TransporterUnit with SupportUnit with IsBig
 
-class CommandCenter(unit: APIUnit) extends AnyUnit(unit) with MainBuilding with CanBuildAddons
+class CommandCenter(unit: APIUnit)
+  extends AnyUnit(unit) with MainBuilding with CanBuildAddons with TerranBuilding
 class Nexus(unit: APIUnit) extends AnyUnit(unit) with MainBuilding
 class Hive(unit: APIUnit) extends AnyUnit(unit) with MainBuilding
 
@@ -1054,28 +1079,35 @@ class Forge(unit: APIUnit) extends AnyUnit(unit) with Building with Upgrader
 class Citadel(unit: APIUnit) extends AnyUnit(unit) with Building with Upgrader
 class Stargate(unit: APIUnit) extends AnyUnit(unit) with UnitFactory
 
-class Comsat(unit: APIUnit) extends AnyUnit(unit) with SpellcasterBuilding with Addon
-class NuclearSilo(unit: APIUnit) extends AnyUnit(unit) with SpellcasterBuilding with Addon
-class PhysicsLab(unit: APIUnit) extends AnyUnit(unit) with Upgrader with Addon
-class Refinery(unit: APIUnit) extends AnyUnit(unit) with GasProvider
-class CovertOps(unit: APIUnit) extends AnyUnit(unit) with Upgrader with Addon
-class MachineShop(unit: APIUnit) extends AnyUnit(unit) with Upgrader with Addon
-class ControlTower(unit: APIUnit) extends AnyUnit(unit) with Upgrader with Addon
+class Comsat(unit: APIUnit)
+  extends AnyUnit(unit) with SpellcasterBuilding with Addon with TerranBuilding
+class NuclearSilo(unit: APIUnit)
+  extends AnyUnit(unit) with SpellcasterBuilding with Addon with TerranBuilding
+class PhysicsLab(unit: APIUnit) extends AnyUnit(unit) with Upgrader with Addon with TerranBuilding
+class Refinery(unit: APIUnit) extends AnyUnit(unit) with GasProvider with TerranBuilding
+class CovertOps(unit: APIUnit) extends AnyUnit(unit) with Upgrader with Addon with TerranBuilding
+class MachineShop(unit: APIUnit) extends AnyUnit(unit) with Upgrader with Addon with TerranBuilding
+class ControlTower(unit: APIUnit) extends AnyUnit(unit) with Upgrader with Addon with TerranBuilding
 
-class Barracks(unit: APIUnit) extends AnyUnit(unit) with UnitFactory
-class Factory(unit: APIUnit) extends AnyUnit(unit) with UnitFactory with CanBuildAddons
-class Starport(unit: APIUnit) extends AnyUnit(unit) with UnitFactory with CanBuildAddons
+class Barracks(unit: APIUnit) extends AnyUnit(unit) with UnitFactory with TerranBuilding
+class Factory(unit: APIUnit)
+  extends AnyUnit(unit) with UnitFactory with CanBuildAddons with TerranBuilding
+class Starport(unit: APIUnit)
+  extends AnyUnit(unit) with UnitFactory with CanBuildAddons with TerranBuilding
 
-class Academy(unit: APIUnit) extends AnyUnit(unit) with Upgrader
-class Armory(unit: APIUnit) extends AnyUnit(unit) with Upgrader
-class EngineeringBay(unit: APIUnit) extends AnyUnit(unit) with Upgrader
-class ScienceFacility(unit: APIUnit) extends AnyUnit(unit) with Upgrader with CanBuildAddons with UpgradeLimitLifter
+class Academy(unit: APIUnit) extends AnyUnit(unit) with Upgrader with TerranBuilding
+class Armory(unit: APIUnit) extends AnyUnit(unit) with Upgrader with TerranBuilding
+class EngineeringBay(unit: APIUnit) extends AnyUnit(unit) with Upgrader with TerranBuilding
+class ScienceFacility(unit: APIUnit)
+  extends AnyUnit(unit) with Upgrader with CanBuildAddons with UpgradeLimitLifter with
+          TerranBuilding
 
 class MissileTurret(unit: APIUnit)
-  extends AnyUnit(unit) with ArmedBuilding with CanDetectHidden with SlowAttackAir with AirWeapon with
-          ExplosiveAirDamage
+  extends AnyUnit(unit) with ArmedBuilding with CanDetectHidden with SlowAttackAir with AirWeapon
+          with
+          ExplosiveAirDamage with TerranBuilding
 
-class Bunker(unit: APIUnit) extends AnyUnit(unit) with Building
+class Bunker(unit: APIUnit) extends AnyUnit(unit) with Building with TerranBuilding
 
 trait InstantAttackAir extends AirWeapon {
   override def damageDelayFactorAir = 0

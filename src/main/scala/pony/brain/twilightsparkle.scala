@@ -37,11 +37,11 @@ trait HasUniverse extends HasLazyVals {
 
 trait HasLazyVals {
   private val lazyVals  = ArrayBuffer.empty[LazyVal[_]]
-  private var tick: Int = 0
+  protected def currentTick: Int
   def oncePer[T <: AnyRef](prime: PrimeNumber, t: => T) = {
     var store: T = null.asInstanceOf[T]
     oncePerTick {
-      if (store == null || tick % prime.i == 0) {
+      if (store == null || currentTick % prime.i == 0) {
         store = t
       }
       store
@@ -56,7 +56,6 @@ trait HasLazyVals {
 
   def onTick(): Unit = {
     lazyVals.foreach(_.invalidate())
-    tick += 1
   }
 }
 

@@ -123,6 +123,8 @@ package object pony {
   var tickCount = 0
   private var setTinyLogLevel_! : LogLevel = LogLevels.Trace
 
+  setLogLevel_!(LogLevels.Info)
+
   import LogLevels._
 
   def setLogLevel_!(logLevel: LogLevel): Unit = {

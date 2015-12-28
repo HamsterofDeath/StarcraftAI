@@ -71,6 +71,7 @@ object Terran {
                       new MigrateTowardsPosition(universe) ::
                       new FerryService(universe) ::
                       new RepairDamagedUnit(universe) ::
+                      new RepairDamagedBuilding(universe) ::
                       new MoveAwayFromConstructionSite(universe) ::
                       new UntrapOwnUnits(universe) ::
                       new ContinueInterruptedConstruction(universe) ::
@@ -234,33 +235,41 @@ object Terran {
     }
   }
 
-  class RepairDamagedBuilding(universe: Universe) extends DefaultBehaviour[SCV](universe) {
-    override protected def wrapBase(t: SCV) = ???
-  }
-
-
   class MoveAwayFromConstructionSite(universe: Universe) extends DefaultBehaviour[Mobile](universe) {
     override protected def wrapBase(unit: Mobile) = new SingleUnitBehaviour[Mobile](unit, meta) {
+      private var lastTarget = Option.empty[MapTilePosition]
+
       override def describeShort: String = "<>"
       override def toOrder(what: Objective): Seq[UnitOrder] = {
-        val layer = mapLayers.blockedByPlannedBuildings
+        def secondLayer = mapLayers.freeWalkableTiles
+        def layer = mapLayers.blockedByPlannedBuildings
+        val extendedSizeToBeSafe = unit.unitTileSize.growBy(tolerance + 2)
         def shouldAttempt = {
           universe.unitGrid.own.allInRange[Mobile](unit.currentTile, 4).size < 12
         }
         val needsToMove = layer.anyBlocked(unit.blockedArea.growBy(tolerance)) && shouldAttempt
-        if (needsToMove) {
-          val secondLayer = mapLayers.freeWalkableTiles
 
-          layer.spiralAround(unit.currentTile).find { tile =>
-            val extendedSizeToBeSafe = unit.unitTileSize.growBy(tolerance+2)
-            layer.freeAndInBounds(tile, extendedSizeToBeSafe) &&
-            secondLayer.freeAndInBounds(tile, extendedSizeToBeSafe)
-          }.map { target =>
-            Orders.MoveToTile(unit, target)
-          }.toList
-        } else {
-          Nil
+        val order = lastTarget.filter { where =>
+          needsToMove &&
+          layer.freeAndInBounds(where, extendedSizeToBeSafe) &&
+          secondLayer.freeAndInBounds(where, extendedSizeToBeSafe)
+        }.map { where =>
+          Orders.MoveToTile(unit, where)
+        }.orElse {
+          if (needsToMove) {
+            val myLayer = layer
+            myLayer.spiralAround(unit.currentTile).find { tile =>
+              myLayer.freeAndInBounds(tile, extendedSizeToBeSafe) &&
+              secondLayer.freeAndInBounds(tile, extendedSizeToBeSafe)
+            }.map { target =>
+              Orders.MoveToTile(unit, target)
+            }
+          } else {
+            None
+          }
         }
+        lastTarget = order.map(_.to)
+        order.toList
       }
     }
     private def tolerance = 2
@@ -271,8 +280,10 @@ object Terran {
     private val newBlockingUnits = oncePer(Primes.prime37, {
       val baseArea = mapLayers.freeWalkableTiles.asReadOnlyCopyIfMutable
       val unitsToPositions = ownUnits.allCompletedMobiles
-                             .filter(_.canMove)
+                             .iterator
                              .filterNot(_.isInstanceOf[WorkerUnit])
+                             .filter(_.canMove)
+                             .filter(_.surroundings.closeOwnBuildings.size > 3)
                              .map { e => e.nativeUnitId -> e.blockedArea }
                              .toMap
 
@@ -333,10 +344,6 @@ object Terran {
           val command = lastFreeGoTo.filter { check =>
             layer.freeAndInBounds(safeArea)
           }.map(Orders.MoveToTile(unit, _)).orElse {
-            val isNearBuilding = layer.spiralAround(unit.currentTile, 15)
-                                 .count(myBuildings.includesAndBlocked) > 3
-
-            if (isNearBuilding) {
               val moveTo = layer.spiralAround(unit.currentTile).find { e =>
                 layer.freeAndInBounds(safeArea.growBy(1).moveTo(e))
               }
@@ -344,9 +351,6 @@ object Terran {
                 lastFreeGoTo = Some(whereTo)
                 Orders.MoveToTile(unit, whereTo)
               }
-            } else {
-              None
-            }
           }.toList
           if (command.isEmpty ||
               lastFreeGoTo.map(_.distanceTo(unit.currentTile)).getOrElse(0.0) < 1.5 ||
@@ -369,13 +373,45 @@ object Terran {
       validTarget = _.isDamaged,
       subAccept = (m, t) => m.currentArea == t.currentArea,
       subRate = (m, t) => PriorityChain(-m.currentTile.distanceSquaredTo(t.currentTile)),
-      own = true, allowReplacements = true)
+      own = true,
+      allowReplacements = true)
 
     override protected def wrapBase(unit: SCV) = new SingleUnitBehaviour[SCV](unit, meta) {
+
+      override def onStealUnit() = {
+        super.onStealUnit()
+        helper.unlock_!(unit)
+      }
       override def describeShort: String = "Repair unit"
       override def toOrder(what: Objective): Seq[UnitOrder] = {
         helper.suggestTarget(unit).map { what =>
-          Orders.Repair(unit, what)
+          Orders.RepairUnit(unit, what)
+        }.toList
+      }
+    }
+
+  }
+
+  class RepairDamagedBuilding(universe: Universe) extends DefaultBehaviour[SCV](universe) {
+
+    private val helper = new NonConflictingTargets[TerranBuilding, SCV](universe = universe,
+      rateTarget = m => PriorityChain(m.percentageHPOk),
+      validTarget = _.isDamaged,
+      subAccept = (m, t) => m.currentArea == t.areaOnMap,
+      subRate = (m, t) => PriorityChain(-m.currentTile.distanceSquaredTo(t.centerTile)),
+      own = true,
+      allowReplacements = true)
+
+    override protected def wrapBase(unit: SCV) = new SingleUnitBehaviour[SCV](unit, meta) {
+      override def onStealUnit() = {
+        super.onStealUnit()
+        helper.unlock_!(unit)
+      }
+
+      override def describeShort: String = "Repair building"
+      override def toOrder(what: Objective): Seq[UnitOrder] = {
+        helper.suggestTarget(unit).map { what =>
+          Orders.RepairBuilding(unit, what)
         }.toList
       }
     }
@@ -752,7 +788,8 @@ case class Target[T <: Mobile](caster: HasSingleTargetSpells, target: T)
 
 class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
 
-  universe.register_!(() => {
+  override def onTick() = {
+    super.onTick()
     enemy2Attackers.filter(_._1.isDead).foreach { case (dead, attackers) =>
       trace(s"Unit $dead died, reorganizing attackers")
       enemy2Attackers.remove(dead)
@@ -767,11 +804,9 @@ class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
         enemy2Attackers(canDie).removeAttacker_!(dead)
       }
     }
-  })
 
-  universe.register_!(() => {
     invalidateQueue()
-  })
+  }
 
   private val enemy2Attackers    = mutable.HashMap.empty[MaybeCanDie, Attackers]
   private val me2Enemy           = mutable.HashMap.empty[MobileRangeWeapon, MaybeCanDie]
@@ -810,9 +845,11 @@ class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
     }
     me2Enemy.get(myUnit)
   }
+
   def invalidateQueue(): Unit = {
     prioritizedTargets.invalidate()
   }
+
   class Attackers(val target: MaybeCanDie) {
     private val attackers = mutable.HashSet.empty[MobileRangeWeapon]
     private val plannedDamage       = mutable.HashMap.empty[MobileRangeWeapon, DamageSingleAttack]
@@ -906,12 +943,13 @@ class NonConflictingTargets[T <: WrapsUnit : Manifest, M <: Mobile : Manifest](o
                                                                                allowReplacements: Boolean)
   extends HasUniverse {
 
-  universe.register_!(() => {
+  override def onTick() = {
+    super.onTick()
     val noLongerValid = assignments.filter { case (m, t) =>
       !m.isInGame || !validTarget(t)
     }
     noLongerValid.foreach { case (k, v) => unlock_!(k, v) }
-  })
+  }
 
   private val locks              = mutable.HashSet.empty[T]
   private val assignments        = mutable.HashMap.empty[M, T]
@@ -972,11 +1010,18 @@ class NonConflictingTargets[T <: WrapsUnit : Manifest, M <: Mobile : Manifest](o
         }
     }
   }
-  def unlock_!(m: M, target: T) = {
+  def unlock_!(m: M, target: T): Unit = {
     assignments.remove(m)
     assignmentsReverse.remove(target)
     locks -= target
   }
+  def unlock_!(m: M): Unit = {
+    if (assignments.contains(m)) {
+      val target = assignments(m)
+      unlock_!(m, target)
+    }
+  }
+
   def lock_!(t: T, m: M): Unit = {
     assert(!locked(t))
     assert(!assignments.contains(m))

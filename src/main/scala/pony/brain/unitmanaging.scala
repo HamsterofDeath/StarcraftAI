@@ -1019,6 +1019,8 @@ object Objective {
 case class SingleUnitBehaviourMeta(priority: SecondPriority, refuseCommandsForTicks: Int, forceRepeats: Boolean)
 
 abstract class SingleUnitBehaviour[T <: Mobile](val unit: T, meta: SingleUnitBehaviourMeta) {
+  def onStealUnit(): Unit = {}
+
   def toOrder(what: Objective): Seq[UnitOrder]
   def preconditionOk = true
   def describeShort: String
@@ -1034,6 +1036,10 @@ class BusyDoingSomething[T <: Mobile](employer: Employer[T], behaviour: Seq[Sing
 
   assert(behaviour.map(_.unit).distinct.size == 1, s"Wrong grouping: $behaviour")
 
+  override def onStealUnit() = {
+    super.onStealUnit()
+    behaviour.foreach(_.onStealUnit())
+  }
   override def interruptableNow = super.interruptableNow &&
                                   lastTickOrderIssuedBy.exists(_.canInterrupt)
 

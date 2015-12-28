@@ -9,6 +9,8 @@ trait HasXY {
   def x: Int
   def y: Int
 
+  def distanceToIsLess(other: HasXY, dst: Int) = distanceSquaredTo(other) < dst * dst
+
   def distanceTo(other: HasXY) = math.sqrt(distanceSquaredTo(other))
 
   def distanceSquaredTo(other: HasXY) = {

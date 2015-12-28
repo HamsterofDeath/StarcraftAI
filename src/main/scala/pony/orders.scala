@@ -1,10 +1,10 @@
 package pony
 
-import scala.collection.mutable.ArrayBuffer
-import scala.util.Try
-
 import bwapi.{Color, Game}
 import pony.Upgrades.{SinglePointMagicSpell, SingleTargetMagicSpell}
+
+import scala.collection.mutable.ArrayBuffer
+import scala.util.Try
 
 abstract class UnitOrder {
   private var myGame:Game = _
@@ -242,13 +242,23 @@ object Orders {
     }
   }
 
-  case class Repair(myUnit: SCV, fixWhat: Mechanic) extends UnitOrder {
+  case class RepairUnit(myUnit: SCV, fixWhat: Mechanic) extends UnitOrder {
     override def issueOrderToGame(): Unit = {
       myUnit.nativeUnit.repair(fixWhat.nativeUnit)
     }
 
     override def renderDebug(renderer: Renderer): Unit = {
       renderer.in_!(Color.Blue).indicateTarget(myUnit.currentPosition, fixWhat.currentPosition)
+    }
+  }
+
+  case class RepairBuilding(myUnit: SCV, fixWhat: TerranBuilding) extends UnitOrder {
+    override def issueOrderToGame(): Unit = {
+      myUnit.nativeUnit.repair(fixWhat.nativeUnit)
+    }
+
+    override def renderDebug(renderer: Renderer): Unit = {
+      renderer.in_!(Color.Blue).indicateTarget(myUnit.currentPosition, fixWhat.centerTile)
     }
   }
 

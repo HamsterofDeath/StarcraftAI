@@ -28,8 +28,10 @@ class MigrationPath(follow: Paths, override val universe: Universe) extends HasU
     val todo = remaining.getOrElseUpdate(t, ArrayBuffer.empty ++= initialFullPath.waypoints)
     val closest = todo.minByOpt(_.distanceSquaredTo(t.currentTile))
     val formationPoint = helper.assignedPosition(t)
-    val canSeeFormationPoint = formationPoint.exists(
-      target => mapLayers.rawWalkableMap.connectedByLine(target, t.currentTile))
+    val canSeeFormationPoint = formationPoint.exists { target =>
+      target.distanceToIsLess(t.currentTile, 15) &&
+      mapLayers.rawWalkableMap.connectedByLine(target, t.currentTile)
+    }
     def isOver30Percent = todo.size / initialFullPath.waypoints.size.toDouble <= 0.7
     def manyArrived = atFormationStep.size.toDouble / counter.size >= 0.8
 
