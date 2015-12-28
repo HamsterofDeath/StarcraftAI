@@ -44,7 +44,7 @@ trait OrderHistorySupport extends WrapsUnit {
   }
 }
 
-trait WrapsUnit extends HasUniverse with HasLazyVals with AfterTickListener {
+trait WrapsUnit extends HasUniverse with AfterTickListener {
 
   val unitId            = WrapsUnit.nextId
   val nativeUnitId      = nativeUnit.getID

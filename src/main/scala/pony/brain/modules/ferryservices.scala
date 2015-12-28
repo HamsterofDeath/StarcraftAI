@@ -77,7 +77,8 @@ class FerryManager(override val universe: Universe) extends HasUniverse {
     newPlans
   }
 
-  def onTick(): Unit = {
+  override def onTick(): Unit = {
+    super.onTick()
     val done = ferryPlans.filterNot(_.unfinished)
     trace(s"Ferry plans done: $done")
     ferryPlans --= done

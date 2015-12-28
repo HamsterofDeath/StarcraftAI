@@ -256,7 +256,8 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
   class GetMinerals(base: Base, minerals: MineralPatchGroup) extends Employer[WorkerUnit](universe) {
     emp =>
 
-    def onTick(): Unit = {
+    override def onTick(): Unit = {
+      super.onTick()
       minerals.tick()
       Micro.MiningOrganization.onTick()
       val missing = idealNumberOfWorkers - teamSize
@@ -468,7 +469,8 @@ class GatherGas(universe: Universe) extends OrderlessAIModule[WorkerUnit](univer
 
     override def toString = s"GetGas@${geysir.tilePosition}"
 
-    def onTick(): Unit = {
+    override def onTick(): Unit = {
+      super.onTick()
       refinery match {
         case None =>
           if (unitManager.unitsByType[WorkerUnit].size >= workerCountBeforeWantingGas) {

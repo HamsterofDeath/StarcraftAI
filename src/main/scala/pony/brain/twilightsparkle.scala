@@ -1,14 +1,14 @@
 package pony
 package brain
 
+import pony.brain.modules.Strategy.Strategies
+import pony.brain.modules._
+
 import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, Future}
 
-import pony.brain.modules.Strategy.Strategies
-import pony.brain.modules._
-
-trait HasUniverse {
+trait HasUniverse extends HasLazyVals {
   def pathFinder = universe.pathFinder
   def ferryManager = universe.ferryManager
   def unitGrid = universe.unitGrid

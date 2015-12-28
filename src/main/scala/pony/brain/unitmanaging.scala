@@ -1,12 +1,12 @@
 package pony
 package brain
 
-import scala.collection.mutable
-import scala.collection.mutable.{ArrayBuffer, ListBuffer}
-
 import bwapi.Order
 import pony.Orders.Stop
 import pony.brain.modules.AlternativeBuildingSpot
+
+import scala.collection.mutable
+import scala.collection.mutable.{ArrayBuffer, ListBuffer}
 
 class UnitManager(override val universe: Universe) extends HasUniverse {
   private val reorganizeJobQueue          = ListBuffer.empty[CanAcceptUnitSwitch[_ <: WrapsUnit]]
@@ -597,7 +597,7 @@ object JobCounter {
 
 abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: T, val priority:
 Priority)
-  extends HasUniverse with HasLazyVals {
+  extends HasUniverse {
 
   override val universe           = employer.universe
   private val myJobId = JobCounter.next()

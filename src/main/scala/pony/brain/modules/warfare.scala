@@ -131,7 +131,7 @@ class FormationAtFrontLineHelper(override val universe: Universe, distance: Int 
 
 }
 
-class WorldDominationPlan(override val universe: Universe) extends HasUniverse with HasLazyVals {
+class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
 
   private           val attacks                                   = ArrayBuffer.empty[Attack]
   private           var planInProgress: BWFuture[Option[Attacks]] = BWFuture(None)

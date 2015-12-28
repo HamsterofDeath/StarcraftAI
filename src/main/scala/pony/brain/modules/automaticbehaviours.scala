@@ -9,7 +9,7 @@ import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
 abstract class DefaultBehaviour[T <: Mobile : Manifest](override val universe: Universe)
-  extends HasUniverse with HasLazyVals {
+  extends HasUniverse {
   private val unit2behaviour  = mutable.HashMap.empty[T, SingleUnitBehaviour[T]]
   private val controlledUnits = mutable.HashSet.empty[T]
 
@@ -244,12 +244,13 @@ object Terran {
       override def describeShort: String = "<>"
       override def toOrder(what: Objective): Seq[UnitOrder] = {
         val layer = mapLayers.blockedByPlannedBuildings
-        val secondLayer = mapLayers.freeWalkableTiles
         def shouldAttempt = {
-          universe.unitGrid.own.allInRange[Mobile](unit.currentTile, 4).size < 10
+          universe.unitGrid.own.allInRange[Mobile](unit.currentTile, 4).size < 12
         }
         val needsToMove = layer.anyBlocked(unit.blockedArea.growBy(tolerance)) && shouldAttempt
         if (needsToMove) {
+          val secondLayer = mapLayers.freeWalkableTiles
+
           layer.spiralAround(unit.currentTile).find { tile =>
             val extendedSizeToBeSafe = unit.unitTileSize.growBy(tolerance+2)
             layer.freeAndInBounds(tile, extendedSizeToBeSafe) &&
@@ -302,7 +303,8 @@ object Terran {
     }
     override def forceRepeatedCommands: Boolean = false
 
-    universe.register_! { () =>
+    override def onTick() = {
+      super.onTick()
       newBlockingUnits.get.ifDoneOpt { locking =>
         val problems = locking.flatMap { case (_, id) =>
           ownUnits.byId(id).asInstanceOf[Option[Mobile]]
@@ -317,6 +319,7 @@ object Terran {
         locking.clear()
       }
     }
+
     override protected def wrapBase(unit: Mobile) = new SingleUnitBehaviour[Mobile](unit, meta) {
 
       override def describeShort: String = "<->"
@@ -331,7 +334,7 @@ object Terran {
             layer.freeAndInBounds(safeArea)
           }.map(Orders.MoveToTile(unit, _)).orElse {
             val isNearBuilding = layer.spiralAround(unit.currentTile, 15)
-                                 .exists(myBuildings.includesAndBlocked)
+                                 .count(myBuildings.includesAndBlocked) > 3
 
             if (isNearBuilding) {
               val moveTo = layer.spiralAround(unit.currentTile).find { e =>

@@ -398,7 +398,8 @@ class UnitGrid(override val universe: Universe) extends HasUniverse {
     if (set != null) set else Set.empty[Mobile]
   }
   private def on(hostile: Boolean) = if (hostile) enemyUnits else myUnits
-  def onTick(): Unit = {
+  override def onTick(): Unit = {
+    super.onTick()
     //reset
     touched.foreach { modified =>
       modified.clear()
