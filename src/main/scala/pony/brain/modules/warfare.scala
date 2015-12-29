@@ -173,7 +173,7 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
   }
   def initiateAttack(where: MapTilePosition, units: Seq[Mobile]): Unit = {
     debug(s"Attacking $where with $units")
-    val helper = new GroupingHelper(universe, units)
+    val helper = new GroupingHelper(universe.mapLayers.rawWalkableMap, units, universe.allUnits)
     planInProgress = BWFuture.produceFrom {
       val on = universe.mapLayers.rawWalkableMap
       val grouped = helper.evaluateUnitGroups
@@ -244,40 +244,45 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
 case class UnitGroup[T <: WrapsUnit](members: Seq[T], center: MapTilePosition)
 
 object GroupingHelper {
-  def typedGroup(universe: Universe, group: Group) = {
+  def typedGroup[T <: WrapsUnit](universe: Universe, group: Group[T]) = {
     val members = group.memberIds.flatMap { e =>
-      universe.enemyUnits.byId(e).orElse(universe.ownUnits.byId(e)).asInstanceOf[Option[Mobile]]
+      universe.enemyUnits.byId(e).orElse(universe.ownUnits.byId(e)).asInstanceOf[Option[T]]
     }.toVector
     UnitGroup(members, group.center)
   }
 
-  def groupThese(seq: TraversableOnce[Mobile], universe: Universe) = {
-    val helper = new GroupingHelper(universe, seq)
+  def groupThese[T <: WrapsUnit](seq: TraversableOnce[T], universe: Universe) = {
+    val helper = new GroupingHelper(universe.mapLayers.rawWalkableMap.asReadOnlyCopyIfMutable, seq,
+      universe.allUnits)
     BWFuture(Option(helper.evaluateUnitGroups))
   }
 
-  def groupTheseNow(seq: TraversableOnce[Mobile], universe: Universe) = {
-    val helper = new GroupingHelper(universe, seq)
+  def groupTheseNow[T <: WrapsUnit](seq: TraversableOnce[T], universe: Universe) = {
+    val helper = new GroupingHelper(universe.mapLayers.rawWalkableMap.asReadOnlyCopyIfMutable, seq,
+      universe.allUnits)
+    helper.evaluateUnitGroups
+  }
+
+  def groupTheseNow[T <: WrapsUnit](seq: TraversableOnce[T], map: Grid2D, allUnits: AllUnits) = {
+    val helper = new GroupingHelper(map.asReadOnlyCopyIfMutable, seq, allUnits)
     helper.evaluateUnitGroups
   }
 }
 
-class GroupingHelper(override val universe: Universe, seq: TraversableOnce[Mobile])
-  extends HasUniverse {
-  private val immutable = seq.map { u => u.nativeUnitId -> u.currentTile }
+class GroupingHelper[T <: WrapsUnit](val map: Grid2D, seq: TraversableOnce[T], source: AllUnits) {
+  private val immutable = seq.map { u => u.nativeUnitId -> u.centerTile }
 
-  private val map    = universe.mapLayers.rawWalkableMap.asReadOnlyCopyIfMutable
   /**
     * can/should be run asynchronously
     * @return
     */
   def evaluateUnitGroups = {
-    val groups = ArrayBuffer.empty[Group]
+    val groups = ArrayBuffer.empty[Group[T]]
     immutable.foreach { elem =>
       groups.find(_.canJoin(elem)) match {
         case Some(joinMe) => joinMe.add_!(elem)
         case None =>
-          val ng = new Group(map)
+          val ng = new Group[T](map, source)
           groups += ng
           ng.add_!(elem)
       }
@@ -287,28 +292,36 @@ class GroupingHelper(override val universe: Universe, seq: TraversableOnce[Mobil
 
 }
 
-class Group(map: Grid2D) {
+class Group[T <: WrapsUnit](map: Grid2D, source: AllUnits) {
+  def memberUnits = {
+    val typed = (memberIds.flatMap(source.own.byId) ++
+                 memberIds.flatMap(source.other.byId)).toVector
+
+    assert(typed.size == size, s"Expected $size but found only ${typed.size}")
+    typed.asInstanceOf[Vector[T]]
+  }
+
   private val maxDst = 10 * 10
 
-  def size = members.size
+  def size = myMembers.size
 
-  private val members  = ArrayBuffer.empty[((Int, MapTilePosition))]
-  private var myCenter = MapTilePosition.zero
-  def memberIds = members.iterator.map(_._1)
+  private val myMembers = ArrayBuffer.empty[((Int, MapTilePosition))]
+  private var myCenter  = MapTilePosition.zero
+  def memberIds = myMembers.iterator.map(_._1)
   def center = myCenter
   def add_!(elem: (Int, MapTilePosition)): Unit = {
-    members += elem
+    myMembers += elem
     myCenter = evalCenter
   }
   private def evalCenter = {
     var x = 0
     var y = 0
-    members.foreach { case (_, p) =>
+    myMembers.foreach { case (_, p) =>
       x += p.x
       y += p.y
     }
-    x /= members.size
-    y /= members.size
+    x /= myMembers.size
+    y /= myMembers.size
     MapTilePosition.shared(x, y)
   }
   def canJoin(e: (Int, MapTilePosition)) = {
@@ -392,6 +405,11 @@ object AlternativeBuildingSpot {
     Some(fixedPosition))
   def fromPreset(fixedPosition: Option[MapTilePosition]): AlternativeBuildingSpot = new
       AlternativeBuildingSpot {
+
+    fixedPosition.foreach { where =>
+      assert(where.x < 1000)
+      assert(where.y < 1000)
+    }
     override def shouldUse = true
     override def evaluateCostly = throw new RuntimeException("This should not be called")
     override def predefined = fixedPosition
@@ -541,7 +559,7 @@ class ProvideSuggestedAndRequestedAddons(universe: Universe)
 
 class HandleDefenses(universe: Universe) extends OrderlessAIModule[Mobile](universe) {
 
-  private var backgroundOp = BWFuture.none[Seq[Group]]
+  private var backgroundOp = BWFuture.none[Seq[Group[Mobile]]]
   override def onTick(): Unit = {
     if (backgroundOp.result.isEmpty) {
       ifNth(Primes.prime43) {
@@ -569,7 +587,7 @@ class HandleDefenses(universe: Universe) extends OrderlessAIModule[Mobile](unive
     }
   }
   private def resetBackgroundOp(): Unit = {
-    backgroundOp = BWFuture.none[Seq[Group]]
+    backgroundOp = BWFuture.none
   }
 }
 

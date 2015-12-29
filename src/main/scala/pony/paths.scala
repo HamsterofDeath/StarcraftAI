@@ -70,7 +70,8 @@ case class Paths(paths: Seq[Path]) {
 
 object PathFinder {
 
-  implicit def convBack(gn: GridNode2DInt): MapTilePosition = MapTilePosition.shared(gn.getX, gn.getY)
+  implicit def convBack(gn: GridNode2DInt): MapTilePosition = MapTilePosition
+                                                              .shared(gn.getX, gn.getY)
 
   def on(map: Grid2D) = {
     new PathFinder(map)
@@ -384,7 +385,8 @@ object AreaHelper {
 
 class ViewOnGrid(ug: UnitGrid, hostile: Boolean) {
   def onTile(tile: MapTilePosition) = ug.onTile(tile, hostile)
-  def allInRange[T <: Mobile : Manifest](tile: MapTilePosition, radius: Int) = ug.allInRangeOf[T](tile, radius,
+  def allInRange[T <: Mobile : Manifest](tile: MapTilePosition, radius: Int) = ug.allInRangeOf[T](
+    tile, radius,
     !hostile)
 }
 
@@ -624,7 +626,8 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   private def evalOnlyAreasToDefend = {
     evalOnlyUnits(ownUnits.allByType[Building], 8)
   }
-  private def evalOnlyBlockedForMainBuildings = evalOnlyBlockedResourceAreas(ownUnits.allByType[Resource])
+  private def evalOnlyBlockedForMainBuildings = evalOnlyBlockedResourceAreas(
+    ownUnits.allByType[Resource])
   private def evalPotentialAddonLocations = evalOnlyAddonAreas(ownUnits.allByType[CanBuildAddons])
   private def evalOnlyAddonAreas(units: TraversableOnce[CanBuildAddons]) = {
     val ret = emptyGrid
@@ -642,10 +645,12 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
     }
     ret
   }
-  private def evalOnlyResources = evalOnlyUnits(ownUnits.allByType[MineralPatch].filter(_.remaining > 0))
+  private def evalOnlyResources = evalOnlyUnits(
+    ownUnits.allByType[MineralPatch].filter(_.remaining > 0))
                                   .or_!(evalOnlyUnits(ownUnits.allByType[Geysir]))
 
-  private def evalOnlyUnits(units: TraversableOnce[StaticallyPositioned], increaseSizeBy: Int = 0) = {
+  private def evalOnlyUnits(units: TraversableOnce[StaticallyPositioned],
+                            increaseSizeBy: Int = 0) = {
     val ret = emptyGrid
     units.foreach { b =>
       val by = b.area.growBy(increaseSizeBy)
@@ -700,8 +705,7 @@ class ConstructionSiteFinder(universe: Universe) {
                                         universe.mapLayers.blockedByPlannedBuildings.mutableCopy)
                                       .asReadOnlyCopyIfMutable
 
-
-  private val helper                   = new GeometryHelpers(universe.world.map.sizeX, universe.world.map.sizeY)
+  private val helper = new GeometryHelpers(universe.world.map.sizeX, universe.world.map.sizeY)
   def forResourceArea(resources: ResourceArea): SubFinder = {
     val size = Size(4 + 2, 3) // include space for comsat
     //main thread
@@ -709,29 +713,40 @@ class ConstructionSiteFinder(universe: Universe) {
     new SubFinder {
       override def find: Option[MapTilePosition] = {
         // background
-        val possible = helper.iterateBlockSpiralClockWise(resources.center, 25)
+        val possible = helper.iterateBlockSpiralClockWise(resources.center, 35)
                        .filter { candidate =>
                          def correctArea = {
                            val area = Area(candidate, size)
                            grid.inBounds(area) && grid.free(area)
                          }
                          def lineOfSight = {
-                           resources.patches.exists { mpg =>
+                           def fromPatch = resources.patches.exists { mpg =>
                              mpg.patches.exists { p =>
                                AreaHelper.directLineOfSight(p.area.centerTile, candidate,
                                  universe.mapLayers.rawWalkableMap)
                              }
                            }
+                           def fromGeysir = resources.geysirs.exists { geysir =>
+                             geysir.area.outline.exists { p =>
+                               AreaHelper.directLineOfSight(p, candidate,
+                                 universe.mapLayers.rawWalkableMap)
+                             }
+                           }
+                           fromPatch || fromGeysir
                          }
                          correctArea && lineOfSight
                        }
+                       .toVector
 
         if (possible.isEmpty) {
           None
         } else {
           val closest = possible.minBy { elem =>
             val area = Area(elem, size)
-            resources.patches.map(_.patches.map(_.area.distanceTo(area)).sum).get
+            val distanceToPatches = resources.patches
+                                    .map(_.patches.map(_.area.distanceTo(area)).sum).getOrElse(0.0)
+            val distanceToGeysirs = resources.geysirs.map(_.area.distanceTo(area)).sum
+            distanceToPatches + distanceToGeysirs
           }
           Some(closest)
         }

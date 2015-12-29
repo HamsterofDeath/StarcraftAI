@@ -1103,6 +1103,12 @@ class BusyDoingNothing[T <: WrapsUnit](unit: T, employer: Employer[T])
     }
   }
 
+  override protected def fail() = {
+    super.fail()
+  }
+  override def onFinishOrFail() = {
+    super.onFinishOrFail()
+  }
   override def times: Int = 5
 
   override def isFinished = false

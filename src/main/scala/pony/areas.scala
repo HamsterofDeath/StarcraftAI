@@ -6,6 +6,7 @@ import pony.brain.Base
 import scala.collection.mutable.ArrayBuffer
 
 case class ResourceArea(patches: Option[MineralPatchGroup], geysirs: Set[Geysir]) {
+  assert(patches.isDefined || geysirs.nonEmpty)
   val resources = patches.map(_.patches).getOrElse(Nil) ++ geysirs
   def mineralsAndGas = resources.iterator.map(_.remaining).sum
   def center = patches.map(_.center).getOrElse(geysirs.head.tilePosition)

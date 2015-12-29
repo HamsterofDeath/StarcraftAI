@@ -10,6 +10,7 @@ import scala.collection.mutable.ArrayBuffer
 
 trait Universe {
   private val myTime = new Time(this)
+  def allUnits = AllUnits(ownUnits, enemyUnits)
   def time = myTime
   def currentTick: Int
   def world: DefaultWorld

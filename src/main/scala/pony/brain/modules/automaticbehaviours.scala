@@ -651,12 +651,12 @@ object Terran {
   }
 
   class UseComsat(universe: Universe) extends DefaultBehaviour[Comsat](universe) {
-    private val detectThese = ArrayBuffer.empty[Group]
+    private val detectThese = ArrayBuffer.empty[Group[CanCloak]]
 
     override def onTick() = {
       super.onTick()
       detectThese ++= {
-        mapNth(Primes.prime31, Seq.empty[Group]) {
+        mapNth(Primes.prime31, Seq.empty[Group[CanCloak]]) {
           val dangerous = {
                             enemies.allByType[CanCloak]
                             .iterator
