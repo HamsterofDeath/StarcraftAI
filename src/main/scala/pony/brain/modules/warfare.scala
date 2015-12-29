@@ -590,7 +590,9 @@ class ProvideUpgrades(universe: Universe) extends OrderlessAIModule[Upgrader](un
       val needs = race.techTree.upgraderFor(wantedUpgrade)
       val buildingPlannedOrExists = unitManager.existsOrPlanned(needs)
       if (buildingPlannedOrExists) {
-        val buildMissing = ownUnits.allByClass(needs).size < bases.bases.count(_.resourceArea.rich)
+        val buildMissing = !unitManager.plannedToBuild(needs) &&
+                           ownUnits.allByClass(needs).size < bases.bases.count(_.resourceArea.rich)
+
         val result = unitManager
                      .request(UnitJobRequest.upgraderFor(wantedUpgrade, self), buildMissing)
         result.units.foreach { up =>
