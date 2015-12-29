@@ -171,6 +171,7 @@ object Orders {
       renderer.indicateTarget(myUnit.currentPosition, ferry.currentPosition)
     }
   }
+
   case class LoadUnit(ferry: TransporterUnit, loadThis: GroundUnit) extends UnitOrder {
     override def issueOrderToGame(): Unit = {
       myUnit.nativeUnit.rightClick(loadThis.nativeUnit)

@@ -8,21 +8,23 @@ import scala.collection.mutable.ArrayBuffer
 class FormationHelper(override val universe: Universe,
                       paths: Paths,
                       distanceForUnits: Int = 1) extends HasUniverse {
-  private val target             = paths.idealTarget
+  private val target             = paths.realisticTarget
   private val assignments        = mutable.HashMap.empty[Mobile, MapTilePosition]
   private val used               = mutable.HashSet.empty[MapTilePosition]
   private val availablePositions = {
-    val area = mapLayers.freeWalkableIgnoringMobiles.mutableCopy
     val walkable = mapLayers.rawWalkableMap.asReadOnlyCopyIfMutable
     val pf = pathFinder.spawn
+    val area = pf.basedOn.mutableCopy
 
-    val avoid = universe.enemyUnits
-                .all
-                .filter { e =>
-                  e.canDoDamage || e.isInstanceOf[Building]
-                }
-                .map(_.centerTile)
-                .toList
+    val avoid = {
+      val allToAvoid = universe.enemyUnits
+                       .all
+                       .filter { e =>
+                         e.canDoDamage || e.isInstanceOf[Building]
+                       }
+
+      allToAvoid.map(_.centerTile).toList
+    }
 
     BWFuture.from {
       val minDst = 12
@@ -39,32 +41,18 @@ class FormationHelper(override val universe: Universe,
                        .filter(availableArea.freeAndInBounds)
                        .toVector
 
-      val unsorted = validTiles.headOption.map { head =>
+      val unsorted = validTiles.minByOpt(paths.minimalDistanceTo).map { head =>
         validTiles.filter { where =>
-          val path = pf.findPath(where, head)
-          path.isPerfectSolution && path.length <= 50
+          val distanceOk = paths.minimalDistanceTo(where) < 10
+          def pathOk = {
+            val path = pf.findPathBestEffort(where, target)
+            path.isPerfectSolution && path.length <= 50
+          }
+          distanceOk && pathOk
         }
       }.getOrElse(Vector.empty)
 
-      val referencePointForAttackDirection = {
-        val near = paths.paths.flatMap { path =>
-          path.waypoints.filter { tile =>
-            walkable.connectedByLine(tile, target)
-          }
-        }
-        if (near.nonEmpty) {
-          near.fold(MapTilePosition.zero)(_ movedBy _) / near.size
-        } else {
-          MapTilePosition.zero
-        }
-      }
-
-      if (referencePointForAttackDirection != MapTilePosition.zero) {
-        unsorted.sortBy(_.distanceSquaredTo(referencePointForAttackDirection))
-      } else {
-        warn(s"Problem calculating reference point!")
-        Vector.empty
-      }
+      unsorted.sortBy(_.distanceSquaredTo(target))
     }
   }
 
@@ -179,7 +167,15 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
       val grouped = helper.evaluateUnitGroups
       val newAttacks = grouped.map { group =>
         val asUnits = group.memberIds
-                      .map(e => ownUnits.byId(e).getOr(s"Id $e missing").asInstanceOf[Mobile])
+                      .flatMap { e =>
+                        val op = ownUnits.byId(e)
+                        op.forNone {
+                          warn(s"Cannot find unit with id $e aka ${e.toBase36}")
+                        }
+                        op.map(_.asInstanceOf[Mobile])
+                      }
+
+
         new Attack(asUnits.toSet, TargetPosition(where, 10))
       }
       debug(s"Attack calculation finished, results: $newAttacks")
@@ -207,6 +203,7 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
         acc.movedByNew(e.currentTile)
       ) / currentForce.size
     }
+
     private val pathToFollow  = universe.pathFinder.findPath(currentCenter, where.where)
     private val migration     = pathToFollow.map(_.map(new MigrationPath(_, universe)))
 
@@ -328,7 +325,6 @@ class Group[T <: WrapsUnit](map: Grid2D, source: AllUnits) {
     e._2.distanceSquaredTo(myCenter) < maxDst && map.connectedByLine(myCenter, e._2)
   }
 }
-
 
 trait AddonRequestHelper extends AIModule[CanBuildAddons] {
   self =>

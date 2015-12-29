@@ -64,8 +64,13 @@ case class Path(waypoints: Seq[MapTilePosition], solved: Boolean, solvable: Bool
 }
 
 case class Paths(paths: Seq[Path]) {
-  val pathCount   = paths.size
-  val idealTarget = paths.headOption.map(_.requestedTarget).get
+  def minimalDistanceTo(tile: MapTilePosition) = {
+    math.sqrt(paths.iterator.flatMap(_.waypoints.map(_.distanceSquaredTo(tile))).min)
+  }
+
+  val pathCount       = paths.size
+  val idealTarget     = paths.headOption.map(_.requestedTarget).get
+  val realisticTarget = MapTilePosition.average(paths.map(_.bestEffort))
 }
 
 object PathFinder {
@@ -144,8 +149,14 @@ class PathFinder(on: Grid2D) {
 
   import PathFinder._
 
-  def this(mapLayers: MapLayers) {
-    this(mapLayers.freeWalkableIgnoringMobiles.asReadOnlyCopyIfMutable)
+  def this(mapLayers: MapLayers, safe: Boolean) {
+    this {
+      if (safe) {
+        mapLayers.freeWalkableMapSafe.asReadOnlyCopyIfMutable
+      } else {
+        mapLayers.freeWalkableIgnoringMobiles.asReadOnlyCopyIfMutable
+      }
+    }
   }
 
   def findPath(from: MapTilePosition, to: MapTilePosition) = BWFuture {
@@ -158,9 +169,17 @@ class PathFinder(on: Grid2D) {
     spawn.findPath(from, to)
   }
   def spawn = new AstarPathFinder(to2DArray(on))
+
   class AstarPathFinder(grid: Array[Array[GridNode2DInt]]) {
 
     def basedOn = on
+
+    def findPathBestEffort(from: MapTilePosition, to: MapTilePosition) = {
+      val fromSafe = basedOn.nearestFree(from).getOr(s"Sorry, could not find alternative for $from")
+      val toSafe = basedOn.areaWhichContainsAsFree(fromSafe).flatMap(_.nearestFree(to))
+                   .getOr(s"Sorry, could not find alternative for $to")
+      findPath(fromSafe, toSafe)
+    }
 
     def findPath(from: MapTilePosition, to: MapTilePosition) = {
       val a = new AStarSearch[GridNode2DInt](from, to).performSearch()
@@ -169,6 +188,14 @@ class PathFinder(on: Grid2D) {
            .toVector,
         a.isSolved, !a.isUnsolvable, a.getTargetOrNearestReachable, to)
     }
+
+    def findPathsBestEffort(from: MapTilePosition, to: MapTilePosition, width: Int) = {
+      val fromSafe = basedOn.nearestFree(from).getOr(s"Sorry, could not find alternative for $from")
+      val toSafe = basedOn.areaWhichContainsAsFree(fromSafe).flatMap(_.nearestFree(to))
+                   .getOr(s"Sorry, could not find alternative for $to")
+      findPaths(fromSafe, toSafe, width)
+    }
+
     def findPaths(from: MapTilePosition, to: MapTilePosition, width: Int) = {
       info(s"Searching path from $from to $to")
       val finder = new AStarSearch[GridNode2DInt](from, to)
@@ -498,6 +525,8 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   private var withEverythingStaticWalkable    = evalEverythingStaticWalkable
   private var withEverythingBlockingBuildable = evalEverythingBlockingBuildable
   private var withEverythingBlockingWalkable  = evalEverythingBlockingWalkable
+  private var freeWalkableAndSafeInProgress   = evalSafe
+  private var freeWalkableAndSafe             = rawMapWalk.asReadOnlyCopyIfMutable
   private var lastUpdatePerformedInTick       = universe.currentTick
   def isOnIsland(tilePosition: MapTilePosition) = {
     val areaInQuestion = rawMapWalk.areas.find(_.free(tilePosition))
@@ -521,6 +550,8 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
     justAddonLocations.asReadOnlyView
   }
   def blockedByPlannedBuildings = plannedBuildings.asReadOnlyView
+
+  def freeWalkableMapSafe = freeWalkableAndSafe
 
   def freeTilesForConstruction = {
     update()
@@ -618,6 +649,11 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
       withEverythingStaticWalkable = evalEverythingStaticWalkable
       withEverythingBlockingBuildable = evalEverythingBlockingBuildable
       withEverythingBlockingWalkable = evalEverythingBlockingWalkable
+
+      freeWalkableAndSafeInProgress.ifDoneOpt { grid =>
+        freeWalkableAndSafe = grid
+        freeWalkableAndSafeInProgress = evalSafe
+      }
     }
   }
   private def evalWithBuildings = rawMapBuild.mutableCopy.or_!(justBuildings)
@@ -677,6 +713,18 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
                                                 .or_!(justBlockingMobiles)
   private def evalEverythingBlockingWalkable = withEverythingStaticWalkable.mutableCopy
                                                .or_!(justBlockingMobiles)
+
+  private def evalSafe = {
+    val base = rawMapWalk.mutableCopy
+    val blockAroundThese = universe.enemyUnits.allMobilesAndBuildings.map(_.centerTile)
+    BWFuture.produceFrom {
+      blockAroundThese.foreach { where =>
+        val area = Area(where, Size(1, 1)).growBy(10)
+        base.block_!(area)
+      }
+      base.asReadOnlyCopyIfMutable
+    }
+  }
 }
 
 trait SubFinder {

@@ -140,12 +140,11 @@ object Terran {
                 Orders.UnloadAll(unit, where).forceRepeat_!(true)
               }
             } else if (unit.isPickingUp) {
-              Some(Orders.Stop(unit))
+              Orders.Stop(unit).toSome
             }
             else {
               None
             }).toList
-
         }
       }
     }
@@ -501,7 +500,7 @@ object Terran {
 
     override def canControl(u: WrapsUnit): Boolean = super.canControl(u) &&
                                                      !u.isInstanceOf[WorkerUnit] &&
-                                                     !u.isInstanceOf[transient] &&
+                                                     !u.isInstanceOf[TransporterUnit] &&
                                                      !u.isInstanceOf[AutoPilot]
 
     override def onTick(): Unit = {

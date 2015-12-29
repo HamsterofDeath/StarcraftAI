@@ -94,7 +94,10 @@ trait WrapsUnit extends HasUniverse with AfterTickListener {
   def shouldReRegisterOnMorph: Boolean
   def currentOrder = curOrder.get
   def age = universe.currentTick - creationTick
-  def isInGame = inGame
+  def isInGame = {
+    val ct = centerTile
+    inGame && ct.x < 1000 && ct.y < 1000
+  }
   def canDoDamage = false
   def init_!(universe: Universe): Unit = {
     myUniverse = universe
@@ -1437,7 +1440,7 @@ class Arbiter(unit: APIUnit)
           IsShip with
           ExplosiveAirDamage with ExplosiveGroundDamage with MediumAttackAir with MediumAttackGround
 class Templar(unit: APIUnit)
-  extends AnyUnit(unit) with GroundUnit with PermaCloak with HasSingleTargetSpells with IsSmall with
+  extends AnyUnit(unit) with GroundUnit with HasSingleTargetSpells with IsSmall with
           IsInfantry {
   override val spells = Nil
   override def shouldReRegisterOnMorph = true

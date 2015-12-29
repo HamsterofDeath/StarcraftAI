@@ -51,6 +51,15 @@ case class MapTilePosition(x: Int, y: Int) extends HasXY {
   override def toString = s"($x,$y)"
 }
 object MapTilePosition {
+
+  def average(ps: TraversableOnce[MapTilePosition]) = {
+    var size = 1
+    ps.foldLeft(MapTilePosition.zero)((acc, e) => {
+      size += 1
+      acc movedBy e
+    }) / size
+  }
+
   val max          = 256 * 4
   val points       = if (memoryHog) {
     Array.tabulate(max * 2, max * 2)((x, y) => MapTilePosition(x - max, y - max))

@@ -160,9 +160,11 @@ class FerryPlan(val ferry: TransporterUnit, initial: Set[GroundUnit], val toWher
     dropThese.headOption
   }
 
-  def unfinished = toTransport.exists { gu =>
-    gu.currentArea != targetArea || gu.loaded
-  } || loadedLeft
+  def unfinished = {
+    toTransport.exists { gu =>
+      gu.currentArea != targetArea || gu.loaded
+    } || loadedLeft
+  }
 
   def loadedLeft = {
     ferry.hasUnitsLoaded && ferry.currentArea == targetArea

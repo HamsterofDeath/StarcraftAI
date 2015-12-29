@@ -161,6 +161,16 @@ package object pony {
       case None => !!!(excuse)
       case Some(x) => x
     }
+
+    def forNone[T2](x: => T2) = {
+      if (o.isEmpty) {
+        x
+      }
+    }
+  }
+
+  implicit class RichInt(val i: Int) extends AnyVal {
+    def toBase36 = Integer.toString(i, 36)
   }
 
   implicit class RichTraversableOnce[T](val t: TraversableOnce[T]) extends AnyVal {
@@ -229,8 +239,9 @@ package object pony {
       buff.remove(where)
     }
 
-    def retain(f: T => Boolean): Unit = {
+    def retain(f: T => Boolean) = {
       buff --= buff.filterNot(f)
+      buff
     }
 
     def removeFirstMatch(elemIdentifier: T => Boolean): Unit = {

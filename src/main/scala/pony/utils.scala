@@ -208,7 +208,9 @@ object FileStorageLazyVal {
 }
 
 class BWFuture[+T](val future: Future[T], incomplete: T) {
-  def idle = future.isCompleted
+  def isDone = future.isCompleted
+
+  def idle = isDone
   def map[X](f: T => X) = new BWFuture(future.map(f), f(incomplete))
   def ifDone[X](ifDone: T => X): Unit = {
     if (future.isCompleted) {

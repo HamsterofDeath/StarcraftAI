@@ -10,6 +10,7 @@ import scala.concurrent.{Await, Future}
 
 trait HasUniverse extends HasLazyVals {
   def pathFinder = universe.pathFinder
+  def pathFinderSafe = universe.pathFinderSafe
   def ferryManager = universe.ferryManager
   def unitGrid = universe.unitGrid
   def upgrades = universe.upgrades
@@ -192,20 +193,22 @@ class TwilightSparkle(world: DefaultWorld) {
     override def enemyUnits = world.enemyUnits
     override def strategicMap = world.strategicMap
     override def pathFinder = self.pathFinder
+    override def pathFinderSafe = self.pathFinderSafe
     override def strategy = self.strategy
     override def worldDominationPlan = self.worldDomination
     override def unitGrid = self.unitGrid
     override def ferryManager = self.ferryManager
   }
-  private val bases           = new Bases(world)
-  private val resources       = new ResourceManager(universe)
-  private val strategy        = new Strategies(universe)
-  private val worldDomination = new WorldDominationPlan(universe)
-  private val aiModules      = List(
+  private val bases            = new Bases(world)
+  private val resources        = new ResourceManager(universe)
+  private val strategy         = new Strategies(universe)
+  private val worldDomination  = new WorldDominationPlan(universe)
+  private val aiModules        = List(
     new DefaultBehaviours(universe),
     new GatherMinerals(universe),
     new GatherGas(universe),
     new ProvideNewUnits(universe),
+    new ProvideSpareSCVs(universe),
     new ProvideNewSupply(universe),
     new ProvideExpansions(universe),
     new ProvideNewBuildings(universe),
@@ -218,14 +221,17 @@ class TwilightSparkle(world: DefaultWorld) {
     new SendOrdersToStarcraft(universe),
     AIModule.noop(universe)
   )
-  private val unitManager    = new UnitManager(universe)
-  private val upgradeManager = new UpgradeManager(universe)
-  private val maps           = new MapLayers(universe)
-  private val myPathFinder   = LazyVal.from {
-    new PathFinder(maps)
+  private val unitManager      = new UnitManager(universe)
+  private val upgradeManager   = new UpgradeManager(universe)
+  private val maps             = new MapLayers(universe)
+  private val myPathFinder     = LazyVal.from {
+    new PathFinder(maps, false)
   }
-  private val unitGrid       = new UnitGrid(universe)
-  private val ferryManager   = new FerryManager(universe)
+  private val myPathFinderSafe = LazyVal.from {
+    new PathFinder(maps, true)
+  }
+  private val unitGrid         = new UnitGrid(universe)
+  private val ferryManager     = new FerryManager(universe)
 
   world.enemyUnits.registerKill_!(onKillOrCreate)
   world.ownUnits.registerKill_!(onKillOrCreate)
@@ -265,6 +271,7 @@ class TwilightSparkle(world: DefaultWorld) {
       case _ =>
     }
   private def pathFinder = myPathFinder.get
+  private def pathFinderSafe = myPathFinderSafe.get
 }
 
 class Bases(world: DefaultWorld) {

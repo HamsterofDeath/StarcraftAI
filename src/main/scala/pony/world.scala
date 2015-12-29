@@ -507,6 +507,7 @@ class Units(game: Game, hostile: Boolean) {
     val cached = preparedByClass.getOrElseUpdate(lookFor, lazyCreate)
     cached.asInstanceOf[collection.Set[T]]
   }
+  def allMobilesAndBuildings = allCompletedMobiles ++ allBuildings
   def all = nativeIdToUnit.valuesIterator
   def tick(): Unit = {
     if (initial) {
@@ -556,6 +557,15 @@ class Units(game: Game, hostile: Boolean) {
             if (unit.shouldReRegisterOnMorph) {
               info(s"Unit morphed from ${unit.initialNativeType} to ${u.getType}")
               val lifted = UnitWrapper.lift(u)
+
+              // clean up old indexes
+              classIndexes.foreach { c =>
+                if (c.isInstance(unit)) {
+                  preparedByClass.removeBinding(c, unit)
+                }
+              }
+
+
               registerUnit(u, lifted)
               fresh += lifted
               unit.onMorph(u.getType)
@@ -611,7 +621,9 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
     areaWhichContainsAsFree(a).exists(_.free(b))
   def emptySameSize(blocked: Boolean) = new MutableGrid2D(cols, rows, mutable.BitSet.empty, blocked)
   def nearestFree(p: MapTilePosition) = {
-    spiralAround(p).find(free)
+    spiralAround(p).find { e =>
+      free(e) //&& areInSameWalkableArea(e, p)
+    }
   }
   def blockedMutableCopy = new MutableGrid2D(cols, rows, mutable.BitSet.empty, false)
   def asReadOnlyCopyIfMutable = this

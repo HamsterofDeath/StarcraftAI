@@ -89,6 +89,7 @@ class ProvideNewBuildings(universe: Universe)
                   jobRequest: BuildUnitRequest[Building])
 }
 
+
 class ProvideExpansions(universe: Universe) extends OrderlessAIModule[WorkerUnit](universe) with BuildingRequestHelper {
   private var plannedExpansionPoint = Option.empty[ResourceArea]
   def forceExpand(patch: MineralPatchGroup) = {
@@ -151,6 +152,22 @@ class ProvideNewSupply(universe: Universe) extends OrderlessAIModule[WorkerUnit]
     val real = resources.supplies
     val planned = unitManager.plannedSupplyAdditions
     real.copy(total = real.total + planned)
+  }
+}
+
+class ProvideSpareSCVs(universe: Universe) extends OrderlessAIModule[CommandCenter](universe) {
+
+  private val emp = new Employer[WorkerUnit](universe)
+
+  override def onTick() = {
+    super.onTick()
+    ifNth(Primes.prime37) {
+      // only for terran!
+      val ok = unitManager.allJobsByUnitType[SCV].exists(_.isIdle)
+      if (!ok) {
+        unitManager.request(UnitJobRequest.idleOfType(emp, classOf[WorkerUnit], 1))
+      }
+    }
   }
 }
 
@@ -459,7 +476,7 @@ class GatherGas(universe: Universe) extends OrderlessAIModule[WorkerUnit](univer
       }.foreach {gatheringJobs += _}
     }
 
-    gatheringJobs.foreach(_.onTick())
+    gatheringJobs.retain(_.keep).foreach(_.onTick())
   }
 
   class GetGas(base: Base, geysir: Geysir) extends Employer[WorkerUnit](universe) {
@@ -471,6 +488,8 @@ class GatherGas(universe: Universe) extends OrderlessAIModule[WorkerUnit](univer
     private var refinery                    = Option.empty[Refinery]
 
     override def toString = s"GetGas@${geysir.tilePosition}"
+
+    def keep = geysir.isInGame
 
     override def onTick(): Unit = {
       super.onTick()

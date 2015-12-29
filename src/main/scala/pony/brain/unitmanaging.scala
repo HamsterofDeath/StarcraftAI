@@ -124,6 +124,7 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
   def failedToProvideFlat = failedToProvide.map(_.request)
   def failedToProvide = unfulfilledRequestsLastTick.toSeq
   def jobOf[T <: WrapsUnit](unit: T) = assignments(unit).asInstanceOf[UnitWithJob[T]]
+
   def tick(): Unit = {
     // do not pile these up, clear per tick - this is why unitmanagers tick must come last.
     val (clearable, keep) = unfulfilledRequestsLastTick.partition(_.clearable)
@@ -211,8 +212,8 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
                      .toSeq
     info(s"Found ${registerUs.size} new units (not of player)", registerUs.nonEmpty)
     assignments ++= registerUs.map(e => e.unit -> e)
-
   }
+
   def assignJob_![T <: WrapsUnit](newJob: UnitWithJob[T]): Unit = {
     val employer = newJob.employer
     trace(s"New job assignment: $newJob, employed by $employer")
@@ -235,14 +236,17 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
     assignments.put(newUnit, newJob)
     allJobs.addBinding(employer, newJob)
   }
+
   def allRequirementsFulfilled[T <: WrapsUnit](c: Class[_ <: T]) = {
     val (m, i) = findMissingRequirements[T](collection.immutable.Set(c))
     m.isEmpty && i.isEmpty
   }
+
   def requirementsQueuedToBuild[T <: WrapsUnit](c: Class[_ <: T]) = {
     val (_, i) = findMissingRequirements[T](collection.immutable.Set(c))
     i.nonEmpty
   }
+
   private def findMissingRequirements[T <: WrapsUnit](c: Set[Class[_ <: T]]) = {
     val mustHave = c.flatMap(race.techTree.requiredFor)
     val i = mutable.Set.empty[Class[_ <: Building]]
@@ -262,6 +266,7 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
     }
     (m.toSet, i.toSet)
   }
+
   def request[T <: WrapsUnit : Manifest](req: UnitJobRequest[T], buildIfNoneAvailable: Boolean = true) = {
     trace(s"${req.employer} requested ${req.request.toString}")
     def hireResult: Option[UnitCollector[T]] = {
@@ -769,6 +774,8 @@ class TrainUnit[F <: UnitFactory, T <: Mobile](factory: F, trainType: Class[_ <:
   extends UnitWithJob[F](employer, factory, Priority.Default) with JobHasFunding[F] with IssueOrderNTimes[F] with
           CreatesUnit[F] {
 
+  private val patience = 20
+
   private var startedToProduce = false
   override def proofForFunding = funding
   override def getOrder: Seq[UnitOrder] = {
@@ -780,7 +787,7 @@ class TrainUnit[F <: UnitFactory, T <: Mobile](factory: F, trainType: Class[_ <:
   override def onTick(): Unit = {
     super.onTick()
 
-    if (!startedToProduce && ageSinceLastReset > 20 && factory.isProducing) {
+    if (!startedToProduce && ageSinceLastReset > patience && factory.isProducing) {
       startedToProduce = true
       trace(s"Job $this started to produce ${trainType.className}")
       unlockManually_!()
@@ -788,7 +795,7 @@ class TrainUnit[F <: UnitFactory, T <: Mobile](factory: F, trainType: Class[_ <:
   }
 
   override def jobHasFailedWithoutDeath: Boolean = {
-    ageSinceLastReset > 50 && !startedToProduce
+    ageSinceLastReset > patience + 5 && !startedToProduce
   }
 
   override def isFinished = {

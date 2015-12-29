@@ -23,6 +23,7 @@ trait Universe {
   def mapLayers: MapLayers
   def strategicMap: StrategicMap
   def pathFinder: PathFinder
+  def pathFinderSafe: PathFinder
   def strategy: Strategies
   def unitGrid: UnitGrid
   def ferryManager: FerryManager
