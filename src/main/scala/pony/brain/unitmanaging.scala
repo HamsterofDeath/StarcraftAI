@@ -178,26 +178,37 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
 
     def initialJobOf[T <: WrapsUnit](unit: T) = {
       if (unit.isBeingCreated) {
-        unit match {
+        Some(unit match {
           case b: Building =>
             new BusyBeingContructed(unit, Constructor)
           case m: Mobile =>
             new BusyBeingTrained(unit, Trainer)
           case _ => throw new UnsupportedOperationException(s"Check this: $unit")
-        }
+        })
+      } else if (!unit.isInstanceOf[Irrelevant]) {
+        Some(new BusyDoingNothing(unit, Nobody))
       } else {
-        new BusyDoingNothing(unit, Nobody)
+        None
       }
     }
 
-    val myOwn = universe.world.ownUnits.inFaction.filterNot(assignments.contains).map(initialJobOf)
+    val myOwn = universe.world
+                .ownUnits
+                .inFaction
+                .filterNot(assignments.contains)
+                .flatMap(e => initialJobOf(e).toList)
                 .toSeq
     info(s"Found ${myOwn.size} new units of player", myOwn.nonEmpty)
 
     myOwn.foreach(assignJob_!)
     assignments ++= myOwn.map(e => e.unit -> e)
 
-    val registerUs = universe.world.ownUnits.all.filterNot(assignments.contains).map(initialJobOf).toSeq
+    val registerUs = universe.world
+                     .ownUnits
+                     .all
+                     .filterNot(assignments.contains)
+                     .flatMap(e => initialJobOf(e).toList)
+                     .toSeq
     info(s"Found ${registerUs.size} new units (not of player)", registerUs.nonEmpty)
     assignments ++= registerUs.map(e => e.unit -> e)
 
