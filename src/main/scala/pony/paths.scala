@@ -71,6 +71,7 @@ case class Paths(paths: Seq[Path]) {
   val pathCount       = paths.size
   val idealTarget     = paths.headOption.map(_.requestedTarget).get
   val realisticTarget = MapTilePosition.average(paths.map(_.bestEffort))
+  val anyTarget       = paths.head.bestEffort
 }
 
 object PathFinder {

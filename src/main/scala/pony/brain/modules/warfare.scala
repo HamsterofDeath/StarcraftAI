@@ -8,7 +8,7 @@ import scala.collection.mutable.ArrayBuffer
 class FormationHelper(override val universe: Universe,
                       paths: Paths,
                       distanceForUnits: Int = 1) extends HasUniverse {
-  private val target             = paths.realisticTarget
+  private val target             = paths.anyTarget
   private val assignments        = mutable.HashMap.empty[Mobile, MapTilePosition]
   private val used               = mutable.HashSet.empty[MapTilePosition]
   private val availablePositions = {
@@ -27,7 +27,7 @@ class FormationHelper(override val universe: Universe,
     }
 
     BWFuture.from {
-      val minDst = 12
+      val minDst = 24
       val availableArea = {
         area.spiralAround(target, minDst).foreach(area.block_!)
         avoid.foreach { where =>
@@ -36,9 +36,10 @@ class FormationHelper(override val universe: Universe,
         area
       }
 
-
-      val validTiles = availableArea.spiralAround(target)
+      val targetArea = pf.basedOn.areaWhichContainsAsFree(target).get
+      val validTiles = availableArea.spiralAround(target, 80)
                        .filter(availableArea.freeAndInBounds)
+                       .filter(targetArea.freeAndInBounds)
                        .toVector
 
       val unsorted = validTiles.minByOpt(paths.minimalDistanceTo).map { head =>
