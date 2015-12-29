@@ -244,7 +244,7 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
 case class UnitGroup[T <: WrapsUnit](members: Seq[T], center: MapTilePosition)
 
 object GroupingHelper {
-  def typedGroup(universe: Universe, group: GroupingHelper#Group) = {
+  def typedGroup(universe: Universe, group: Group) = {
     val members = group.memberIds.flatMap { e =>
       universe.enemyUnits.byId(e).orElse(universe.ownUnits.byId(e)).asInstanceOf[Option[Mobile]]
     }.toVector
@@ -266,7 +266,6 @@ class GroupingHelper(override val universe: Universe, seq: TraversableOnce[Mobil
   extends HasUniverse {
   private val immutable = seq.map { u => u.nativeUnitId -> u.currentTile }
 
-  private val maxDst = 10 * 10
   private val map    = universe.mapLayers.rawWalkableMap.asReadOnlyCopyIfMutable
   /**
     * can/should be run asynchronously
@@ -278,7 +277,7 @@ class GroupingHelper(override val universe: Universe, seq: TraversableOnce[Mobil
       groups.find(_.canJoin(elem)) match {
         case Some(joinMe) => joinMe.add_!(elem)
         case None =>
-          val ng = new Group
+          val ng = new Group(map)
           groups += ng
           ng.add_!(elem)
       }
@@ -286,33 +285,37 @@ class GroupingHelper(override val universe: Universe, seq: TraversableOnce[Mobil
     groups.toSeq
   }
 
-  class Group {
-    def size = members.size
+}
 
-    private val members  = ArrayBuffer.empty[((Int, MapTilePosition))]
-    private var myCenter = MapTilePosition.zero
-    def memberIds = members.iterator.map(_._1)
-    def center = myCenter
-    def add_!(elem: (Int, MapTilePosition)): Unit = {
-      members += elem
-      myCenter = evalCenter
+class Group(map: Grid2D) {
+  private val maxDst = 10 * 10
+
+  def size = members.size
+
+  private val members  = ArrayBuffer.empty[((Int, MapTilePosition))]
+  private var myCenter = MapTilePosition.zero
+  def memberIds = members.iterator.map(_._1)
+  def center = myCenter
+  def add_!(elem: (Int, MapTilePosition)): Unit = {
+    members += elem
+    myCenter = evalCenter
+  }
+  private def evalCenter = {
+    var x = 0
+    var y = 0
+    members.foreach { case (_, p) =>
+      x += p.x
+      y += p.y
     }
-    private def evalCenter = {
-      var x = 0
-      var y = 0
-      members.foreach { case (_, p) =>
-        x += p.x
-        y += p.y
-      }
-      x /= members.size
-      y /= members.size
-      MapTilePosition.shared(x, y)
-    }
-    def canJoin(e: (Int, MapTilePosition)) = {
-      e._2.distanceSquaredTo(myCenter) < maxDst && map.connectedByLine(myCenter, e._2)
-    }
+    x /= members.size
+    y /= members.size
+    MapTilePosition.shared(x, y)
+  }
+  def canJoin(e: (Int, MapTilePosition)) = {
+    e._2.distanceSquaredTo(myCenter) < maxDst && map.connectedByLine(myCenter, e._2)
   }
 }
+
 
 trait AddonRequestHelper extends AIModule[CanBuildAddons] {
   self =>
@@ -538,7 +541,7 @@ class ProvideSuggestedAndRequestedAddons(universe: Universe)
 
 class HandleDefenses(universe: Universe) extends OrderlessAIModule[Mobile](universe) {
 
-  private var backgroundOp = BWFuture.none[Seq[GroupingHelper#Group]]
+  private var backgroundOp = BWFuture.none[Seq[Group]]
   override def onTick(): Unit = {
     if (backgroundOp.result.isEmpty) {
       ifNth(Primes.prime43) {
@@ -566,7 +569,7 @@ class HandleDefenses(universe: Universe) extends OrderlessAIModule[Mobile](unive
     }
   }
   private def resetBackgroundOp(): Unit = {
-    backgroundOp = BWFuture.none[Seq[GroupingHelper#Group]]
+    backgroundOp = BWFuture.none[Seq[Group]]
   }
 }
 
@@ -576,21 +579,20 @@ class ProvideUpgrades(universe: Universe) extends OrderlessAIModule[Upgrader](un
   private val researched = collection.mutable.Map.empty[Upgrade, Int]
   override def onTick(): Unit = {
     val maxLimitEnabled = hasLimitDisabler
-    strategy.current.suggestUpgrades
-    .filterNot(e => researched.getOrElse(e.upgrade, 0) == maxLimitEnabled.ifElse(e.maxLevel, 1))
-    .filter(_.isActive)
-    .foreach { request =>
+    val requested = {
+      strategy.current.suggestUpgrades
+      .filterNot(e => researched.getOrElse(e.upgrade, 0) == maxLimitEnabled.ifElse(e.maxLevel, 1))
+      .filter(_.isActive)
+    }
 
+    requested.foreach { request =>
       val wantedUpgrade = request.upgrade
       val needs = race.techTree.upgraderFor(wantedUpgrade)
-      val waitForDependency = unitManager.existsOrPlanned(needs)
-      if (!waitForDependency) {
-        trace(s"Requesting ${
-          needs.className
-        } to be build in order for ${wantedUpgrade} to be researched")
-        helper.requestBuilding(needs, takeCareOfDependencies = true)
-      } else {
-        val result = unitManager.request(UnitJobRequest.upgraderFor(wantedUpgrade, self))
+      val buildingPlannedOrExists = unitManager.existsOrPlanned(needs)
+      if (buildingPlannedOrExists) {
+        val buildMissing = ownUnits.allByClass(needs).size < bases.bases.count(_.resourceArea.rich)
+        val result = unitManager
+                     .request(UnitJobRequest.upgraderFor(wantedUpgrade, self), buildMissing)
         result.units.foreach { up =>
           val price = new UpgradePrice {
             private val current = researched.getOrElse(wantedUpgrade, 0)
@@ -613,6 +615,11 @@ class ProvideUpgrades(universe: Universe) extends OrderlessAIModule[Upgrader](un
             assignJob_!(researchUpgrade)
           }
         }
+      } else {
+        trace(s"Requesting ${
+          needs.className
+        } to be build in order for $wantedUpgrade to be researched")
+        helper.requestBuilding(needs, takeCareOfDependencies = true)
       }
     }
   }

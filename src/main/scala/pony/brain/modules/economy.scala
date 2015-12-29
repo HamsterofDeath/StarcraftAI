@@ -100,7 +100,7 @@ class ProvideExpansions(universe: Universe) extends OrderlessAIModule[WorkerUnit
   override def onTick(): Unit = {
     ifNth(Primes.prime241) {
       plannedExpansionPoint = plannedExpansionPoint.filter { where =>
-        universe.unitGrid.enemy.allInRange[Mobile](where.center, 15).nonEmpty
+        universe.unitGrid.enemy.allInRange[Mobile](where.center, 15).isEmpty
       }.orElse(strategy.current.suggestNextExpansion)
       info(s"AI wants to expand to ${plannedExpansionPoint.get}", plannedExpansionPoint.isDefined)
     }

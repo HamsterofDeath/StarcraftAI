@@ -1,6 +1,7 @@
 package pony
 
 import bwapi.{Order, Race, TechType, Unit => APIUnit, UnitType, UpgradeType, WeaponType}
+import pony.Upgrades.Terran.{Nuke, ScannerSweep}
 import pony.Upgrades.{IsTech, SinglePointMagicSpell, SingleTargetMagicSpell}
 import pony.brain._
 
@@ -369,6 +370,10 @@ object Upgrades {
     case object GoliathRange extends Upgrade(UpgradeType.Charon_Boosters)
     case object SpiderMines
       extends Upgrade(TechType.Spider_Mines) with SinglePointMagicSpell with CastAtFreeTile
+    case object ScannerSweep
+      extends Upgrade(TechType.Scanner_Sweep) with SinglePointMagicSpell with CastAtFreeTile
+    case object Nuke
+      extends Upgrade(TechType.Nuclear_Strike) with SinglePointMagicSpell with CastAtFreeTile
     case object Defensematrix
       extends Upgrade(TechType.Defensive_Matrix) with SingleTargetMagicSpell with CastOnAll
     case object VultureSpeed extends Upgrade(UpgradeType.Ion_Thrusters)
@@ -430,8 +435,13 @@ trait ResourceGatherPoint
 
 trait MainBuilding extends Building with UnitFactory with ResourceGatherPoint with SupplyProvider
 
-trait SpellcasterBuilding extends Building with Controllable {
+trait AreaSpellcasterBuilding
+  extends Building with Controllable with HasSinglePointMagicSpell with HasMana {
 
+  override def canCastNow(tech: SinglePointMagicSpell) = {
+    def hasMana = tech.energyNeeded <= mana
+    super.canCastNow(tech) && hasMana
+  }
 }
 
 case class HitPoints(hitpoints: Int, shield: Int) {
@@ -450,6 +460,10 @@ case class HitPoints(hitpoints: Int, shield: Int) {
 
   def <(otherHp: Int, otherShield: Int) = {
     hitpoints < otherHp || shield < otherShield
+  }
+
+  def <(t: (Int, Int)) = {
+    hitpoints < t._1 || shield < t._2
   }
 }
 
@@ -800,7 +814,15 @@ case class Damage(baseAmount: Int, bonus: Int, cooldown: Int, damageType: Damage
   }
 }
 
-case class DamageSingleAttack(onHp: Int, onShields: Int, airHit: Boolean)
+trait HasHpAndShields {
+  val hp     : Int
+  val shields: Int
+}
+
+case class DamageSingleAttack(onHp: Int, onShields: Int, airHit: Boolean) extends HasHpAndShields {
+  override val hp     : Int = onHp
+  override val shields: Int = onShields
+}
 
 trait AutoAirWeaponType extends AirWeapon {
   override val airDamageType = DamageTypes.fromNative(airWeapon.damageType)
@@ -1124,9 +1146,15 @@ class Citadel(unit: APIUnit) extends AnyUnit(unit) with Building with Upgrader
 class Stargate(unit: APIUnit) extends AnyUnit(unit) with UnitFactory
 
 class Comsat(unit: APIUnit)
-  extends AnyUnit(unit) with SpellcasterBuilding with Addon with TerranBuilding
+  extends AnyUnit(unit) with AreaSpellcasterBuilding with Addon with TerranBuilding {
+  override type Caster = Comsat
+  override val spells: List[SinglePointMagicSpell] = List(ScannerSweep)
+}
 class NuclearSilo(unit: APIUnit)
-  extends AnyUnit(unit) with SpellcasterBuilding with Addon with TerranBuilding
+  extends AnyUnit(unit) with AreaSpellcasterBuilding with Addon with TerranBuilding {
+  override type Caster = NuclearSilo
+  override val spells: List[SinglePointMagicSpell] = List(Nuke)
+}
 class PhysicsLab(unit: APIUnit) extends AnyUnit(unit) with Upgrader with Addon with TerranBuilding
 class Refinery(unit: APIUnit) extends AnyUnit(unit) with GasProvider with TerranBuilding
 class CovertOps(unit: APIUnit) extends AnyUnit(unit) with Upgrader with Addon with TerranBuilding
@@ -1308,7 +1336,7 @@ trait HasSingleTargetSpells extends Mobile with HasMana {
   }
 }
 
-trait HasSinglePointMagicSpell extends Mobile {
+trait HasSinglePointMagicSpell extends WrapsUnit {
 
   type Caster <: HasSinglePointMagicSpell
   val spells: List[SinglePointMagicSpell]
@@ -1320,6 +1348,7 @@ trait HasSinglePointMagicSpell extends Mobile {
     lastCast = universe.currentTick
     Orders.TechOnTile(this, target, tech)
   }
+
   def canCastNow(tech: SinglePointMagicSpell) = {
     assert(spells.contains(tech))
     def isReadyForCastCool = lastCast + cooldown < universe.currentTick

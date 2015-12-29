@@ -12,6 +12,9 @@ case class ResourceArea(patches: Option[MineralPatchGroup], geysirs: Set[Geysir]
   def isPatchId(id: Int) = patches.fold(false)(_.patchId == id)
   lazy val coveredTiles             = resources.flatMap(_.area.tiles).toSet
   lazy val mostAnnoyingMinePosition = center
+  def rich = {
+    geysirs.iterator.map(_.remaining).sum > 1500 && patches.fold(0)(_.value) > 5000
+  }
 }
 
 case class PotentialDomain(coveredOnLand: Seq[ResourceArea], needsToControl: Seq[MapTilePosition])

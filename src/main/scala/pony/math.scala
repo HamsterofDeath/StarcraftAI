@@ -23,8 +23,8 @@ trait HasXY {
 
 }
 case class MapTilePosition(x: Int, y: Int) extends HasXY {
-  val asTuple       = (x, y)
-  val asMapPosition = MapPosition(x * tileSize, y * tileSize)
+  def asTuple = (x, y)
+  def asMapPosition = MapPosition(x * tileSize, y * tileSize)
   def middleBetween(center: MapTilePosition) = {
     movedBy(center) / 2
   }

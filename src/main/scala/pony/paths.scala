@@ -703,8 +703,7 @@ class ConstructionSiteFinder(universe: Universe) {
 
   private val helper                   = new GeometryHelpers(universe.world.map.sizeX, universe.world.map.sizeY)
   def forResourceArea(resources: ResourceArea): SubFinder = {
-    // we magically know this by now
-    val size = Size(4, 3)
+    val size = Size(4 + 2, 3) // include space for comsat
     //main thread
     val grid = freeToBuildOn.or_!(universe.mapLayers.blockedForResourceDeposit.mutableCopy)
     new SubFinder {
@@ -749,13 +748,6 @@ class ConstructionSiteFinder(universe: Universe) {
     } else None
 
     val withStreets = freeToBuildOn.mutableCopy
-    // add "streets" to make sure that we don't lock ourselves in too much
-    /*
-    withStreets.block_!(Line(near.movedBy(-20, 0), near.movedBy(20, 0)))
-    withStreets.block_!(Line(near.movedBy(0, 20), near.movedBy(0, -20)))
-        withStreets.block_!(Line(near.movedBy(-20, -20), near.movedBy(20, 20)))
-        withStreets.block_!(Line(near.movedBy(-20, 20), near.movedBy(20, -20)))
-    */
 
     helper.iterateBlockSpiralClockWise(near).flatMap { upperLeft =>
       val area = Area(upperLeft, necessarySize)
@@ -779,7 +771,7 @@ class ConstructionSiteFinder(universe: Universe) {
       } else {
         None
       }
-    }.take(25)
+    }.take(128)
     .minByOpt { case (_, b, c) => (b, c) }
     .map(_._1)
   }

@@ -1,10 +1,10 @@
 package pony
 package brain
 
+import pony.brain.modules.UpgradePrice
+
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
-
-import pony.brain.modules.UpgradePrice
 
 case class IncomeStats(minerals: Int, gas: Int, frames: Int) {
   def mineralsPerMinute = 60 * mineralsPerSecond
@@ -249,7 +249,7 @@ trait ResourceRequest {
 case class MineralsRequest(amount: Int) extends ResourceRequest
 case class GasRequest(amount: Int) extends ResourceRequest
 case class SupplyRequest(amount: Int) extends ResourceRequest
-case class ResourceRequests(requests: Seq[ResourceRequest], priority: Priority, whatFor: Class[_ <: WrapsUnit]) {
+case class ResourceRequests(requests: Seq[ResourceRequest], priority: Priority, whatFor: Class[_]) {
   val sum = requests.foldLeft(ResourceRequestSum.empty)((acc, e) => {
     acc + e
   })

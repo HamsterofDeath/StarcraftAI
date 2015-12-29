@@ -849,7 +849,7 @@ class ResearchUpgrade[U <: Upgrader](employer: Employer[U],
   }
 
   override def jobHasFailedWithoutDeath: Boolean = {
-    super.jobHasFailedWithoutDeath || (ageSinceLastReset > 50 && !startedResearch)
+    super.jobHasFailedWithoutDeath || (ageSinceLastReset > 10 && !startedResearch)
   }
 
   override def onTick(): Unit = {

@@ -34,9 +34,11 @@ trait HasUniverse extends HasLazyVals {
     }
   }
 
-  def mapNth[T](prime: PrimeNumber, orElse: T)(body: => T): T = {
+  def mapNth[T](prime: PrimeNumber, orElse: T, condition: Boolean = true)(body: => T): T = {
     ifNth(prime) {
-      return body
+      if (condition) {
+        return body
+      }
     }
     orElse
   }

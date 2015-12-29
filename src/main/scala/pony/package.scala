@@ -248,6 +248,7 @@ package object pony {
   implicit class RichBoolean(val b: Boolean) extends AnyVal {
     def not = !b
     def ifElse[T](ifTrue: T, ifFalse: T) = if (b) ifTrue else ifFalse
+    def someIfTrue[T](ifTrue: => T) = if (b) Some(ifTrue) else None
   }
   implicit class RichBitSet(val b: mutable.BitSet) extends AnyVal {
     def immutableCopy = collection.immutable.BitSet.fromBitMaskNoCopy(b.toBitMask)

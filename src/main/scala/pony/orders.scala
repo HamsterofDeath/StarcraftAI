@@ -96,7 +96,7 @@ object Orders {
     override def myUnit = caster
 
     override def renderDebug(renderer: Renderer): Unit = {
-      renderer.in_!(Color.Red).indicateTarget(caster.currentPosition, target)
+      renderer.in_!(Color.Red).indicateTarget(caster.centerTile.asMapPosition, target)
     }
 
     override def issueOrderToGame(): Unit = {

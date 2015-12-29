@@ -3,7 +3,7 @@ package brain
 package modules
 
 import bwapi.Color
-import pony.Upgrades.Terran.{GhostCloak, InfantryCooldown, SpiderMines, TankSiegeMode, WraithCloak}
+import pony.Upgrades.Terran._
 
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
@@ -52,7 +52,8 @@ abstract class DefaultBehaviour[T <: WrapsUnit : Manifest](override val universe
     unit2behaviour.put(behaviour.unit, behaviour)
   }
   def cast = this.asInstanceOf[DefaultBehaviour[WrapsUnit]]
-  protected def meta = SingleUnitBehaviourMeta(priority, refuseCommandsForTicks, forceRepeatedCommands)
+  protected def meta = SingleUnitBehaviourMeta(priority, refuseCommandsForTicks,
+    forceRepeatedCommands)
   def forceRepeatedCommands = false
   def priority = SecondPriority.Default
   def refuseCommandsForTicks = 0
@@ -101,7 +102,8 @@ object Terran {
 
     override def forceRepeatedCommands: Boolean = false
 
-    override protected def wrapBase(unit: TransporterUnit) = new SingleUnitBehaviour[TransporterUnit](unit, meta) {
+    override protected def wrapBase(unit: TransporterUnit) = new
+        SingleUnitBehaviour[TransporterUnit](unit, meta) {
 
       override def forceRepeats: Boolean = true
 
@@ -158,7 +160,8 @@ object Terran {
     override def canControl(u: WrapsUnit): Boolean = super.canControl(u) && u.isInstanceOf[Weapon]
     override def refuseCommandsForTicks = 6
     // to avoid wasting cpu time
-    override protected def wrapBase(unit: Mobile with Weapon): SingleUnitBehaviour[Mobile with Weapon] = new
+    override protected def wrapBase(unit: Mobile with Weapon): SingleUnitBehaviour[Mobile with
+      Weapon] = new
         SingleUnitBehaviour[Mobile with Weapon](unit, meta) {
 
       trait State
@@ -179,9 +182,10 @@ object Terran {
                 val allEnemies = universe.unitGrid.enemy.allInRange[Mobile](unit.currentTile,
                   unit.weaponRangeRadius / 32)
                 allEnemies
-                .collect { case enemy: Weapon if enemy.initialNativeType.topSpeed <= unit.initialNativeType.topSpeed &&
-                                                 enemy.weaponRangeRadius <= unit.weaponRangeRadius &&
-                                                 unit.canAttack(enemy) =>
+                .collect { case enemy: Weapon if
+                enemy.initialNativeType.topSpeed <= unit.initialNativeType.topSpeed &&
+                enemy.weaponRangeRadius <= unit.weaponRangeRadius &&
+                unit.canAttack(enemy) =>
                   enemy
                 }
               }
@@ -226,7 +230,8 @@ object Terran {
                 beLazy
               }
             case current@Fallback(where, startedWhen) =>
-              if (unit.isReadyToFireWeapon || startedWhen + 24 < universe.currentTick || unit.currentTile == where) {
+              if (unit.isReadyToFireWeapon || startedWhen + 24 < universe.currentTick ||
+                  unit.currentTile == where) {
                 beLazy
               } else {
                 (current, runningCommands)
@@ -241,7 +246,8 @@ object Terran {
     }
   }
 
-  class MoveAwayFromConstructionSite(universe: Universe) extends DefaultBehaviour[Mobile](universe) {
+  class MoveAwayFromConstructionSite(universe: Universe)
+    extends DefaultBehaviour[Mobile](universe) {
     override protected def wrapBase(unit: Mobile) = new SingleUnitBehaviour[Mobile](unit, meta) {
       private var lastTarget = Option.empty[MapTilePosition]
 
@@ -283,7 +289,7 @@ object Terran {
 
   class PreventBlockades(universe: Universe) extends DefaultBehaviour[Mobile](universe) {
 
-    private val newBlockingUnits = oncePer(Primes.prime37, {
+    private val newBlockingUnits   = oncePer(Primes.prime37, {
       val baseArea = mapLayers.freeWalkableTiles.asReadOnlyCopyIfMutable
       val unitsToPositions = ownUnits.allCompletedMobiles
                              .iterator
@@ -314,7 +320,7 @@ object Terran {
       }
     })
     private val blockingUnitsQueue = mutable.HashSet.empty[Mobile]
-    private val relevantLayer = oncePerTick {
+    private val relevantLayer      = oncePerTick {
       mapLayers.freeWalkableTiles.asReadOnlyCopyIfMutable
     }
     override def forceRepeatedCommands: Boolean = false
@@ -352,16 +358,16 @@ object Terran {
             val moveTo = layer.spiralAround(unit.currentTile, 15)
                          .filter(layer.freeAndInBounds)
                          .find { e =>
-                layer.freeAndInBounds(safeArea.growBy(1).moveTo(e))
-              }
+                           layer.freeAndInBounds(safeArea.growBy(1).moveTo(e))
+                         }
             if (moveTo.isEmpty) {
               skipFor(Primes.prime59.i)
             }
 
-              moveTo.map { whereTo =>
-                lastFreeGoTo = Some(whereTo)
-                Orders.MoveToTile(unit, whereTo)
-              }
+            moveTo.map { whereTo =>
+              lastFreeGoTo = Some(whereTo)
+              Orders.MoveToTile(unit, whereTo)
+            }
           }.toList
           if (command.isEmpty ||
               lastFreeGoTo.map(_.distanceTo(unit.currentTile)).getOrElse(0.0) < 1.5 ||
@@ -441,7 +447,8 @@ object Terran {
     }
   }
 
-  class ContinueInterruptedConstruction(universe: Universe) extends DefaultBehaviour[SCV](universe) {
+  class ContinueInterruptedConstruction(universe: Universe)
+    extends DefaultBehaviour[SCV](universe) {
 
     override def priority = SecondPriority.More
 
@@ -494,6 +501,7 @@ object Terran {
 
     override def canControl(u: WrapsUnit): Boolean = super.canControl(u) &&
                                                      !u.isInstanceOf[WorkerUnit] &&
+                                                     !u.isInstanceOf[transient] &&
                                                      !u.isInstanceOf[AutoPilot]
 
     override def onTick(): Unit = {
@@ -511,13 +519,13 @@ object Terran {
     }
     override protected def wrapBase(unit: Mobile) =
       new SingleUnitBehaviour[Mobile](unit, meta) {
-      override def describeShort: String = "Migrate"
-      override def toOrder(what: Objective) = {
-        worldDominationPlan.attackOf(unit).map { attack =>
-          attack.suggestActionFor(unit).asOrder.toList
-        }.getOrElse(Nil)
+        override def describeShort: String = "Migrate"
+        override def toOrder(what: Objective) = {
+          worldDominationPlan.attackOf(unit).map { attack =>
+            attack.suggestActionFor(unit).asOrder.toList
+          }.getOrElse(Nil)
+        }
       }
-    }
   }
 
   class ReallyReallyLazy(universe: Universe) extends DefaultBehaviour[Mobile](universe) {
@@ -533,7 +541,8 @@ object Terran {
   }
 
   class StimSelf(universe: Universe) extends DefaultBehaviour[CanUseStimpack](universe) {
-    override protected def wrapBase(unit: CanUseStimpack) = new SingleUnitBehaviour[CanUseStimpack](unit, meta) {
+    override protected def wrapBase(unit: CanUseStimpack) = new
+        SingleUnitBehaviour[CanUseStimpack](unit, meta) {
 
       override def preconditionOk = upgrades.hasResearched(InfantryCooldown)
 
@@ -642,25 +651,41 @@ object Terran {
   }
 
   class UseComsat(universe: Universe) extends DefaultBehaviour[Comsat](universe) {
-    override protected def wrapBase(t: Comsat) = new SingleUnitBehaviour[Comsat](t, meta) {
-      override def describeShort = "Scan"
-      override def toOrder(what: Objective) = {
-        mapNth(Primes.prime47, List.empty[UnitOrder]) {
-          val dangerous = enemies.allByType[CanCloak]
-                          .filterNot(_.isDecloaked)
-                          .filter { cloaked =>
-                            ownUnits.allCompletedMobiles
-                            .exists(_.centerTile.distanceToIsLess(cloaked.centerTile, 8))
-                          }
+    private val detectThese = ArrayBuffer.empty[Group]
+
+    override def onTick() = {
+      super.onTick()
+      detectThese ++= {
+        mapNth(Primes.prime31, Seq.empty[Group]) {
+          val dangerous = {
+                            enemies.allByType[CanCloak]
+                            .iterator
+                            .filterNot(_.isDecloaked)
+                            .filter { cloaked =>
+                              ownUnits.allCompletedMobiles
+                              .exists(_.centerTile.distanceToIsLess(cloaked.centerTile, 8))
+                            }
+                          }.toVector
 
           val groups = GroupingHelper.groupTheseNow(dangerous, universe)
-          groups.maxByOpt(_.size).map { biggest =>
-            val req = UnitJobRequest.idleOfType[Comsat](employer, classOf[Comsat])
-            unitManager.request(req)
-            .units
-            .map(Orders.ScanWithComsat(_, biggest.center))
-            .toList
-          }.toList.flatten
+          groups.sortBy(-_.size)
+        }
+      }
+
+      debug(s"Currently known cloaked groups: ${
+        detectThese.map(e => s"${e.size}@${e.center}").mkString(", ")
+      })", detectThese.nonEmpty)
+    }
+
+    override protected def wrapBase(comsat: Comsat) = new
+        SingleUnitBehaviour[Comsat](comsat, meta) {
+      override def describeShort = "Scan"
+      override def toOrder(what: Objective) = {
+        if (detectThese.nonEmpty && comsat.canCastNow(ScannerSweep)) {
+          val first = detectThese.remove(0)
+          Orders.ScanWithComsat(comsat, first.center).toList
+        } else {
+          Nil
         }
       }
     }
@@ -712,23 +737,26 @@ object Terran {
                 inBattle = true
                 // drop mines on sight of enemy
                 val on = freeArea
-                val freeTarget = on.spiralAround(unit.currentTile).filter(on.free).maxByOpt { where =>
-                  def ownUnitsCost = {
-                    universe.unitGrid.own.allInRange[GroundUnit](where, 5)
-                    .view
-                    .filter(e => !e.isInstanceOf[HasSpiderMines] && !e.isAutoPilot)
-                    .map(_.buildPrice)
-                    .fold(Price.zero)(_ + _)
-                  }
-                  def enemyUnitsCost = {
-                    universe.unitGrid.enemy.allInRange[GroundUnit](where, 5)
-                    .view
-                    .filter(e => !e.isInstanceOf[HasSpiderMines] && !e.isAutoPilot)
-                    .map(_.buildPrice)
-                    .fold(Price.zero)(_ + _)
-                  }
-                  enemyUnitsCost - ownUnitsCost
-                }
+                val freeTarget = on.spiralAround(unit.currentTile).filter(on.free)
+                                 .maxByOpt { where =>
+                                   def ownUnitsCost = {
+                                     universe.unitGrid.own.allInRange[GroundUnit](where, 5)
+                                     .view
+                                     .filter(
+                                       e => !e.isInstanceOf[HasSpiderMines] && !e.isAutoPilot)
+                                     .map(_.buildPrice)
+                                     .fold(Price.zero)(_ + _)
+                                   }
+                                   def enemyUnitsCost = {
+                                     universe.unitGrid.enemy.allInRange[GroundUnit](where, 5)
+                                     .view
+                                     .filter(
+                                       e => !e.isInstanceOf[HasSpiderMines] && !e.isAutoPilot)
+                                     .map(_.buildPrice)
+                                     .fold(Price.zero)(_ + _)
+                                   }
+                                   enemyUnitsCost - ownUnitsCost
+                                 }
                 freeTarget.map { where =>
                   on.block_!(where.asArea.extendedBy(1))
                   plannedDrops += where.asArea.extendedBy(1) -> universe.currentTick
@@ -762,7 +790,8 @@ object Terran {
         state = newState
         orders
       }
-      override def preconditionOk: Boolean = universe.upgrades.hasResearched(Upgrades.Terran.SpiderMines)
+      override def preconditionOk: Boolean = universe.upgrades
+                                             .hasResearched(Upgrades.Terran.SpiderMines)
     }
     private def suggestMinePositions = {
       val defense = helper.allOutsideNonBlacklisted
@@ -785,9 +814,10 @@ object Terran {
     override protected def wrapBase(t: SupportUnit) = ???
   }
 
-  class OneTimeUnitSpellCast[C <: HasSingleTargetSpells : Manifest, T <: Mobile : Manifest](universe: Universe,
-                                                                                            spell:
-                                                                                            SingleTargetSpell[C, T])
+  class OneTimeUnitSpellCast[C <: HasSingleTargetSpells : Manifest, T <: Mobile : Manifest]
+  (universe: Universe,
+   spell:
+   SingleTargetSpell[C, T])
     extends DefaultBehaviour[C](universe) {
     private val helper = NonConflictingSpellTargets.forSpell(spell, universe)
 
@@ -802,7 +832,8 @@ object Terran {
 
     override def priority: SecondPriority = SecondPriority.Max
 
-    override protected def wrapBase(unit: C): SingleUnitBehaviour[C] = new SingleUnitBehaviour[C](unit, meta) {
+    override protected def wrapBase(unit: C): SingleUnitBehaviour[C] = new
+        SingleUnitBehaviour[C](unit, meta) {
       override def describeShort: String = s"Cast ${spell.getClass.className}"
       override def toOrder(what: Objective): Seq[UnitOrder] = {
         if (unit.canCastNow(spell.tech)) {
@@ -819,8 +850,10 @@ object Terran {
   }
 
   class StopMechanic(universe: Universe) extends OneTimeUnitSpellCast(universe, Spells.Lockdown)
-  class ShieldUnit(universe: Universe) extends OneTimeUnitSpellCast(universe, Spells.DefenseMatrix)
-  class IrradiateUnit(universe: Universe) extends OneTimeUnitSpellCast(universe, Spells.Irradiate)
+  class ShieldUnit(universe: Universe)
+    extends OneTimeUnitSpellCast(universe, Spells.DefenseMatrix)
+  class IrradiateUnit(universe: Universe)
+    extends OneTimeUnitSpellCast(universe, Spells.Irradiate)
   class CloakWraith(universe: Universe) extends OneTimeUnitSpellCast(universe, Spells.Irradiate)
 
   class HealDamagedUnit(universe: Universe) extends DefaultBehaviour[Medic](universe) {
@@ -841,7 +874,8 @@ object Terran {
       helper.onTick()
     }
 
-    override protected def wrapBase(unit: MobileRangeWeapon) = new SingleUnitBehaviour(unit, meta) {
+    override protected def wrapBase(unit: MobileRangeWeapon) = new
+        SingleUnitBehaviour(unit, meta) {
       override def describeShort = "Focus fire"
       override def toOrder(what: Objective) = {
         helper.suggestTarget(unit).map { target =>
@@ -880,7 +914,9 @@ class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
   private val me2Enemy           = mutable.HashMap.empty[MobileRangeWeapon, MaybeCanDie]
   private val prioritizedTargets = LazyVal.from {
     val prioritized = universe.enemyUnits.allCanDie.toVector.sortBy { e =>
-      (e.isHarmlessNow.ifElse(1, 0), enemy2Attackers.contains(e).ifElse(0, 1), -e.price.sum, e.hitPoints.sum)
+      (e.isHarmlessNow.ifElse(1, 0), enemy2Attackers.contains(e).ifElse(0, 1), -e.price.sum, e
+                                                                                             .hitPoints
+                                                                                             .sum)
     }
     prioritized
   }
@@ -919,25 +955,64 @@ class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
   }
 
   class Attackers(val target: MaybeCanDie) {
-    private val attackers = mutable.HashSet.empty[MobileRangeWeapon]
-    private val plannedDamage       = mutable.HashMap.empty[MobileRangeWeapon, DamageSingleAttack]
-    private val hpAfterNextAttacks  = new
-        MutableHP(actualHP.hitpoints, actualHP.shield)
-    private var plannedDamageMerged = new MutableHP(0, 0)
+    class MutableHP(var hitPoints: Int, var shieldPoints: Int) extends HasHpAndShields {
+      override val hp      = hitPoints
+      override val shields = shieldPoints
+
+      def toHP = HitPoints(hitPoints, shieldPoints)
+
+      def set(hp: MutableHP): Unit = {
+        this.hitPoints = hp.hitPoints
+        shieldPoints = hp.shieldPoints
+      }
+
+      def +!(damageDone: HasHpAndShields) = {
+        hitPoints += damageDone.hp
+        shieldPoints += damageDone.shields
+        this
+      }
+
+      assert(shieldPoints >= 0)
+
+      def alive = hitPoints > 0
+
+      def -!(dsa: HasHpAndShields) = {
+        hitPoints -= dsa.hp
+        shieldPoints -= dsa.shields
+        this
+      }
+
+    }
+
+    private val attackers     = mutable.HashSet.empty[MobileRangeWeapon]
+    private val plannedDamage = mutable.HashMap
+                                .empty[MobileRangeWeapon, DamageSingleAttack]
+    private def currentHp = new MutableHP(actualHP.hitpoints, actualHP.shield)
+
+    private val hpAfterNextAttacks  = currentHp
+    private val plannedDamageMerged = new MutableHP(0, 0)
+
     def isOutOfRange(myUnit: MobileRangeWeapon) = !myUnit.isInWeaponRange(target)
+
     def removeAttacker_!(t: MobileRangeWeapon): Unit = {
       attackers -= t
       plannedDamage -= t
       recalculatePlannedDamage_!()
+      hpAfterNextAttacks.set(currentHp -! plannedDamageMerged)
       invalidateQueue()
     }
+
     def canSpare(attacker: MobileRangeWeapon) = {
       assert(isAttacker(attacker))
-      // this is not entirely correct because of shields & zerg regeneration, but should be close enough
+      // this is not entirely correct because of shields & zerg regeneration, but should be
+      // close enough
       val damage = plannedDamage(attacker)
 
-      actualHP <(plannedDamageMerged.hp - damage.onHp, plannedDamageMerged.shields - damage.onShields)
+      val predicted = (plannedDamageMerged.hitPoints - damage.onHp,
+        plannedDamageMerged.shieldPoints - damage.onShields)
+      actualHP < predicted
     }
+
     def isAttacker(t: MobileRangeWeapon) = attackers(t)
     def allAttackers = attackers.iterator
     def addAttacker_!(t: MobileRangeWeapon): Unit = {
@@ -947,13 +1022,15 @@ class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
       val expectedDamage = {
         val factor = 1 + t.assumeShotDelayOn(target)
 
-        t.calculateDamageOn(target, hpAfterNextAttacks.hp, hpAfterNextAttacks.shields, factor)
+        t.calculateDamageOn(target, hpAfterNextAttacks.hitPoints, hpAfterNextAttacks.shieldPoints,
+          factor)
       }
 
       plannedDamage.put(t, expectedDamage)
       recalculatePlannedDamage_!()
       hpAfterNextAttacks -! expectedDamage
     }
+
     def recalculatePlannedDamage_!(): Unit = {
       val attackersSorted = plannedDamage.keys.toArray.sortBy(_.cooldownTimer)
       val damage = new MutableHP(0, 0)
@@ -962,37 +1039,24 @@ class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
       attackersSorted.foreach { attacker =>
         val shotCount = 1 + attacker.assumeShotDelayOn(target)
         val moreDamage = attacker
-                         .calculateDamageOn(target, assumeHp.hp, assumeHp.shields, shotCount)
+                         .calculateDamageOn(target, assumeHp.hitPoints, assumeHp.shieldPoints,
+                           shotCount)
         damage +! moreDamage
         assumeHp -! moreDamage
       }
-      plannedDamageMerged = damage
+      plannedDamageMerged.set(damage)
     }
+
     private def actualHP = target.hitPoints
-    def isOverkill = actualHP <(plannedDamageMerged.hp, plannedDamageMerged.shields)
+    def isOverkill = actualHP <(plannedDamageMerged.hitPoints, plannedDamageMerged.shieldPoints)
     def canTakeMore = hpAfterNextAttacks.alive
-    class MutableHP(var hp: Int, var shields: Int) {
-      def toHP = HitPoints(hp, shields)
 
-      def +!(damageDone: DamageSingleAttack) = {
-        hp += damageDone.onHp
-        shields += damageDone.onShields
-      }
-
-      assert(shields >= 0)
-
-      def alive = hp > 0
-
-      def -!(dsa: DamageSingleAttack) = {
-        hp -= dsa.onHp
-        shields -= dsa.onShields
-      }
-    }
   }
 }
 
 object NonConflictingSpellTargets {
-  def forSpell[T <: HasSingleTargetSpells, M <: Mobile : Manifest](spell: SingleTargetSpell[T, M],
+  def forSpell[T <: HasSingleTargetSpells, M <: Mobile : Manifest](spell:
+                                                                   SingleTargetSpell[T, M],
                                                                    universe: Universe) = {
 
     new NonConflictingSpellTargets(spell, {
@@ -1002,13 +1066,22 @@ object NonConflictingSpellTargets {
   }
 }
 
-class NonConflictingTargets[T <: WrapsUnit : Manifest, M <: Mobile : Manifest](override val universe: Universe,
-                                                                               rateTarget: T => PriorityChain,
-                                                                               validTarget: T => Boolean,
-                                                                               subAccept: (M, T) => Boolean,
-                                                                               subRate: (M, T) => PriorityChain,
+class NonConflictingTargets[T <: WrapsUnit : Manifest, M <: Mobile : Manifest](override val
+                                                                               universe:
+                                                                               Universe,
+                                                                               rateTarget: T
+                                                                                 =>
+                                                                                 PriorityChain,
+                                                                               validTarget: T
+                                                                                 => Boolean,
+                                                                               subAccept: (M,
+                                                                                 T) => Boolean,
+                                                                               subRate: (M,
+                                                                                 T) =>
+                                                                                 PriorityChain,
                                                                                own: Boolean,
-                                                                               allowReplacements: Boolean)
+                                                                               allowReplacements:
+                                                                               Boolean)
   extends HasUniverse {
 
   override def onTick() = {
@@ -1022,7 +1095,7 @@ class NonConflictingTargets[T <: WrapsUnit : Manifest, M <: Mobile : Manifest](o
   private val locks              = mutable.HashSet.empty[T]
   private val assignments        = mutable.HashMap.empty[M, T]
   private val assignmentsReverse = mutable.HashMap.empty[T, M]
-  private val targets = universe.oncePerTick {
+  private val targets            = universe.oncePerTick {
     val on = if (own) ownUnits else enemies
     on.allByType[T].iterator
     .filter(validTarget)
@@ -1102,16 +1175,20 @@ class NonConflictingTargets[T <: WrapsUnit : Manifest, M <: Mobile : Manifest](o
   private def targetOf(m: M) = assignments(m)
 }
 
-class NonConflictingSpellTargets[T <: HasSingleTargetSpells, M <: Mobile : Manifest](spell: SingleTargetSpell[T, M],
+class NonConflictingSpellTargets[T <: HasSingleTargetSpells, M <: Mobile : Manifest](spell:
+                                                                                     SingleTargetSpell[T, M],
                                                                                      targetConstraint:
                                                                                      PartialFunction[Mobile, M],
-                                                                                     keepLocked: M => Boolean,
-                                                                                     override val universe: Universe)
+                                                                                     keepLocked:
+                                                                                     M => Boolean,
+                                                                                     override val
+                                                                                     universe:
+                                                                                     Universe)
   extends HasUniverse {
-  private val locked        = mutable.HashSet.empty[M]
+  private val locked = mutable.HashSet.empty[M]
 
-  private val lockedTargets = mutable.HashSet.empty[Target[M]]
-  private val assignments   = mutable.HashMap.empty[M, Target[M]]
+  private val lockedTargets      = mutable.HashSet.empty[Target[M]]
+  private val assignments        = mutable.HashMap.empty[M, Target[M]]
   private val prioritizedTargets = LazyVal.from {
     val base = {
       val targets = {
