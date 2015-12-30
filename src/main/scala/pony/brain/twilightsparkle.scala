@@ -227,7 +227,7 @@ class TwilightSparkle(world: DefaultWorld) {
   private val myPathFinder     = LazyVal.from {
     new PathFinder(maps, false)
   }
-  private val myPathFinderSafe = LazyVal.from {
+  private val myPathFinderSafe = universe.oncePerTick {
     new PathFinder(maps, true)
   }
   private val unitGrid         = new UnitGrid(universe)
@@ -268,6 +268,7 @@ class TwilightSparkle(world: DefaultWorld) {
     unit match {
       case _: StaticallyPositioned =>
         myPathFinder.invalidate()
+        myPathFinderSafe.invalidate()
       case _ =>
     }
   private def pathFinder = myPathFinder.get

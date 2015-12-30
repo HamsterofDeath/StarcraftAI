@@ -13,45 +13,20 @@ class FormationHelper(override val universe: Universe,
   private val used               = mutable.HashSet.empty[MapTilePosition]
   private val availablePositions = {
     val walkable = mapLayers.rawWalkableMap.asReadOnlyCopyIfMutable
-    val pf = pathFinder.spawn
-    val area = pf.basedOn.mutableCopy
-
-    val avoid = {
-      val allToAvoid = universe.enemyUnits
-                       .all
-                       .filter { e =>
-                         e.canDoDamage || e.isInstanceOf[Building]
-                       }
-
-      allToAvoid.map(_.centerTile).toList
-    }
 
     BWFuture.from {
       val minDst = 24
       val availableArea = {
-        area.spiralAround(target, minDst).foreach(area.block_!)
-        avoid.foreach { where =>
-          area.spiralAround(where, minDst).foreach(area.block_!)
-        }
-        area
+        mapLayers.freeWalkableMapSafe.mutableCopy
       }
 
-      val targetArea = pf.basedOn.areaWhichContainsAsFree(target).get
+      val targetArea = walkable.areaWhichContainsAsFree(target).get
       val validTiles = availableArea.spiralAround(target, 80)
                        .filter(availableArea.freeAndInBounds)
                        .filter(targetArea.freeAndInBounds)
                        .toVector
 
-      val unsorted = validTiles.minByOpt(paths.minimalDistanceTo).map { head =>
-        validTiles.filter { where =>
-          val distanceOk = paths.minimalDistanceTo(where) < 10
-          def pathOk = {
-            val path = pf.findPathBestEffort(where, target)
-            path.isPerfectSolution && path.length <= 50
-          }
-          distanceOk && pathOk
-        }
-      }.getOrElse(Vector.empty)
+      val unsorted = validTiles.filter { p => paths.isEmpty || paths.minimalDistanceTo(p) < 10 }
 
       unsorted.sortBy(_.distanceSquaredTo(target))
     }
@@ -196,17 +171,32 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
   case class StayInPosition(who: Mobile) extends Action {
     override def asOrder = Orders.NoUpdate(who)
   }
-  class Attack(private var currentForce: Set[Mobile], where: TargetPosition) {
+  class Attack(private var currentForce: Set[Mobile], meetingPoint: TargetPosition) {
     assert(currentForce.nonEmpty, "WTF?")
 
-    private val centerOfForce = oncePerTick {
-      currentForce.foldLeft(MapTilePosition.shared(0, 0))((acc, e) =>
-        acc.movedByNew(e.currentTile)
-      ) / currentForce.size
+    private val area = {
+      currentForce.map { unit =>
+        mapLayers.rawWalkableMap
+        .areaWhichContainsAsFree(unit.currentTile)
+      }
+      .groupBy(identity)
+      .mapValuesStrict(_.size)
+      .maxBy(_._2)
+      ._1
     }
 
-    private val pathToFollow  = universe.pathFinder.findPath(currentCenter, where.where)
-    private val migration     = pathToFollow.map(_.map(new MigrationPath(_, universe)))
+    private val centerOfForce = oncePerTick {
+      val realCenter = {
+        currentForce.foldLeft(MapTilePosition.shared(0, 0))((acc, e) =>
+          acc.movedByNew(e.currentTile)
+        ) / currentForce.size
+      }
+      area.flatMap(_.nearestFree(realCenter))
+      .getOrElse(realCenter)
+    }
+
+    private val pathToFollow = universe.pathFinderSafe.findPaths(currentCenter, meetingPoint.where)
+    private val migration    = pathToFollow.map(_.map(new MigrationPath(_, universe)))
 
     def migrationPlan = migration.result
     def hasNotEnded = !hasEnded

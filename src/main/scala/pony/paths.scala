@@ -10,6 +10,8 @@ import scala.collection.mutable.ArrayBuffer
 import scala.language.implicitConversions
 
 class MigrationPath(follow: Paths, override val universe: Universe) extends HasUniverse {
+  def finalDestination = follow.unsafeTarget
+  def safeDestination = follow.requestedTargetSafe
   private val remaining       = mutable.HashMap.empty[Mobile, ArrayBuffer[MapTilePosition]]
   private val counter         = mutable.HashMap.empty[Mobile, Int]
   private val helper          = new FormationHelper(universe, follow, 2)
@@ -36,7 +38,7 @@ class MigrationPath(follow: Paths, override val universe: Universe) extends HasU
     def manyArrived = atFormationStep.size.toDouble / counter.size >= 0.8
 
     if (manyArrived) {
-      Some(follow.idealTarget -> true)
+      Some(follow.unsafeTarget -> true)
     } else if (canSeeFormationPoint) {
       todo.clear()
       atFormationStep += t
@@ -53,7 +55,8 @@ class MigrationPath(follow: Paths, override val universe: Universe) extends HasU
 }
 
 case class Path(waypoints: Seq[MapTilePosition], solved: Boolean, solvable: Boolean,
-                bestEffort: MapTilePosition, requestedTarget: MapTilePosition) {
+                bestEffort: MapTilePosition, requestedTarget: MapTilePosition,
+                unsafeTarget: MapTilePosition) {
   lazy val length = {
     if (waypoints.size <= 1)
       0
@@ -64,14 +67,20 @@ case class Path(waypoints: Seq[MapTilePosition], solved: Boolean, solvable: Bool
 }
 
 case class Paths(paths: Seq[Path]) {
+  def isEmpty = paths.forall(_.waypoints.isEmpty)
+
   def minimalDistanceTo(tile: MapTilePosition) = {
-    math.sqrt(paths.iterator.flatMap(_.waypoints.map(_.distanceSquaredTo(tile))).min)
+    if (paths.isEmpty)
+      0.0
+    else
+      math.sqrt(paths.iterator.flatMap(_.waypoints.map(_.distanceSquaredTo(tile))).min)
   }
 
-  val pathCount       = paths.size
-  val idealTarget     = paths.headOption.map(_.requestedTarget).get
-  val realisticTarget = MapTilePosition.average(paths.map(_.bestEffort))
-  val anyTarget       = paths.head.bestEffort
+  val pathCount           = paths.size
+  val requestedTargetSafe = paths.headOption.map(_.requestedTarget).get
+  val unsafeTarget        = paths.headOption.map(_.unsafeTarget).get
+  val realisticTarget     = MapTilePosition.average(paths.map(_.bestEffort))
+  val anyTarget           = paths.head.bestEffort
 }
 
 object PathFinder {
@@ -160,49 +169,51 @@ class PathFinder(on: Grid2D) {
     }
   }
 
-  def findPath(from: MapTilePosition, to: MapTilePosition) = BWFuture {
+  def findPaths(from: MapTilePosition, to: MapTilePosition, paths: Int = 10) = BWFuture {
     val fromFixed = on.nearestFree(from)
-    val toFixed = on.nearestFree(to)
-    for (a <- fromFixed; b <- toFixed) yield spawn.findPaths(a, b, 10)
+    val toFixed = fromFixed.flatMap { e =>
+      on.areaWhichContainsAsFree(e).flatMap(_.nearestFree(to))
+    }
+    warn(s"Could not fix start $from", fromFixed.isEmpty)
+    warn(s"Could not fix goal $to", toFixed.isEmpty)
+    val unsafeTarget = to
+    for (a <- fromFixed; b <- toFixed) yield spawn.findPaths(a, b, paths, unsafeTarget)
   }
 
-  def findPathNow(from: MapTilePosition, to: MapTilePosition) = {
-    spawn.findPath(from, to)
+  def findPathNow(from: MapTilePosition, to: MapTilePosition): Option[Path] = {
+    findPaths(from, to, 1).blockAndGet.flatMap(_.paths.headOption)
   }
+
   def spawn = new AstarPathFinder(to2DArray(on))
 
   class AstarPathFinder(grid: Array[Array[GridNode2DInt]]) {
 
     def basedOn = on
 
-    def findPathBestEffort(from: MapTilePosition, to: MapTilePosition) = {
+    def findPathBestEffort(from: MapTilePosition, to: MapTilePosition,
+                           unsafeTarget: MapTilePosition) = {
       val fromSafe = basedOn.nearestFree(from).getOr(s"Sorry, could not find alternative for $from")
       val toSafe = basedOn.areaWhichContainsAsFree(fromSafe).flatMap(_.nearestFree(to))
                    .getOr(s"Sorry, could not find alternative for $to")
-      findPath(fromSafe, toSafe)
+      findPath(fromSafe, toSafe, unsafeTarget)
     }
 
-    def findPath(from: MapTilePosition, to: MapTilePosition) = {
+    def findPath(from: MapTilePosition, to: MapTilePosition, unsafeTarget: MapTilePosition) = {
       val a = new AStarSearch[GridNode2DInt](from, to).performSearch()
       Path(a.getSolution.asScala
            .map(e => MapTilePosition.shared(e.getX, e.getY))
            .toVector,
-        a.isSolved, !a.isUnsolvable, a.getTargetOrNearestReachable, to)
+        a.isSolved, !a.isUnsolvable, a.getTargetOrNearestReachable, to, unsafeTarget)
     }
 
-    def findPathsBestEffort(from: MapTilePosition, to: MapTilePosition, width: Int) = {
-      val fromSafe = basedOn.nearestFree(from).getOr(s"Sorry, could not find alternative for $from")
-      val toSafe = basedOn.areaWhichContainsAsFree(fromSafe).flatMap(_.nearestFree(to))
-                   .getOr(s"Sorry, could not find alternative for $to")
-      findPaths(fromSafe, toSafe, width)
-    }
-
-    def findPaths(from: MapTilePosition, to: MapTilePosition, width: Int) = {
+    def findPaths(from: MapTilePosition, to: MapTilePosition, width: Int,
+                  unsafeTarget: MapTilePosition) = {
       info(s"Searching path from $from to $to")
       val finder = new AStarSearch[GridNode2DInt](from, to)
       var first = Option.empty[Path]
       def pathFrom(seq: Seq[MapTilePosition]) = {
-        Path(seq, finder.isSolved, !finder.isUnsolvable, finder.getTargetOrNearestReachable, to)
+        Path(seq, finder.isSolved, !finder.isUnsolvable, finder.getTargetOrNearestReachable, to,
+          unsafeTarget)
       }
       val paths = (0 to width).iterator.map { _ =>
         finder.performSearch()
@@ -529,6 +540,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   private var freeWalkableAndSafeInProgress   = evalSafe
   private var freeWalkableAndSafe             = rawMapWalk.asReadOnlyCopyIfMutable
   private var lastUpdatePerformedInTick       = universe.currentTick
+
   def isOnIsland(tilePosition: MapTilePosition) = {
     val areaInQuestion = rawMapWalk.areas.find(_.free(tilePosition))
     val maxArea = rawWalkableMap.areas.sortBy(-_.freeCount)
@@ -651,9 +663,11 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
       withEverythingBlockingBuildable = evalEverythingBlockingBuildable
       withEverythingBlockingWalkable = evalEverythingBlockingWalkable
 
-      freeWalkableAndSafeInProgress.ifDoneOpt { grid =>
-        freeWalkableAndSafe = grid
-        freeWalkableAndSafeInProgress = evalSafe
+      ifNth(Primes.prime41) {
+        freeWalkableAndSafeInProgress.ifDoneOpt { grid =>
+          freeWalkableAndSafe = grid
+          freeWalkableAndSafeInProgress = evalSafe
+        }
       }
     }
   }
@@ -717,12 +731,16 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
 
   private def evalSafe = {
     val base = rawMapWalk.mutableCopy
-    val blockAroundThese = universe.enemyUnits.allMobilesAndBuildings.map(_.centerTile)
+    val blockAroundThese = universe.enemyUnits.allBuildings.map(_.centerTile)
+    val blockMaybeAroundThese = universe.enemyUnits.allMobiles.map(_.currentTile)
     BWFuture.produceFrom {
       blockAroundThese.foreach { where =>
         val area = Area(where, Size(1, 1)).growBy(10)
         base.block_!(area)
       }
+
+      base.geoHelper.tilesInRange(blockMaybeAroundThese, 24, 5).foreach(base.block_!)
+
       base.asReadOnlyCopyIfMutable
     }
   }

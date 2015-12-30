@@ -7,7 +7,8 @@ import java.util.zip.{Deflater, ZipEntry, ZipInputStream, ZipOutputStream}
 import bwapi.Game
 import org.apache.commons.io.FileUtils
 
-import scala.concurrent.Future
+import scala.concurrent.duration.Duration
+import scala.concurrent.{Await, Future}
 import scala.util.{Failure, Success, Try}
 
 class Renderer(game: Game, private var color: bwapi.Color) {
@@ -101,15 +102,24 @@ class Renderer(game: Game, private var color: bwapi.Color) {
 }
 
 class LazyVal[T](gen: => T, onValueChange: Option[() => Unit] = None) extends Serializable {
+  private var locked = false
+  def lockValueForever(): Unit = {
+    locked = true
+  }
+
   private var evaluated = false
   private var value: T  = _
   def invalidate(): Unit = {
-    evaluated = false
-    if (onValueChange.isEmpty) {
-      value = null.asInstanceOf[T]
+    if (!locked) {
+      evaluated = false
+      if (onValueChange.isEmpty) {
+        value = null.asInstanceOf[T]
+      }
     }
   }
+
   override def toString = s"LazyVal($get)"
+
   def get = {
     if (!evaluated)
       if (onValueChange.isDefined) {
@@ -208,6 +218,9 @@ object FileStorageLazyVal {
 }
 
 class BWFuture[+T](val future: Future[T], incomplete: T) {
+  def blockAndGet = {
+    Await.result(future, Duration.Inf)
+  }
   def isDone = future.isCompleted
 
   def idle = isDone

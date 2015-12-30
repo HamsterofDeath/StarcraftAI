@@ -611,7 +611,8 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
   }
   def containsAndFree(a: Area): Boolean = a.tiles.forall(containsAndFree)
   def containsAndFree(p: MapTilePosition): Boolean = inBounds(p) && free(p)
-  def spiralAround(center: MapTilePosition, size: Int = 45) = new GeometryHelpers(cols, rows)
+  def geoHelper = new GeometryHelpers(cols, rows)
+  def spiralAround(center: MapTilePosition, size: Int = 45) = geoHelper
                                                               .iterateBlockSpiralClockWise(center,
                                                                 size)
   def insideBounds(t: MapTilePosition) = {
@@ -621,9 +622,7 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
     areaWhichContainsAsFree(a).exists(_.free(b))
   def emptySameSize(blocked: Boolean) = new MutableGrid2D(cols, rows, mutable.BitSet.empty, blocked)
   def nearestFree(p: MapTilePosition) = {
-    spiralAround(p).find { e =>
-      free(e) //&& areInSameWalkableArea(e, p)
-    }
+    spiralAround(p, 100).find(free)
   }
   def blockedMutableCopy = new MutableGrid2D(cols, rows, mutable.BitSet.empty, false)
   def asReadOnlyCopyIfMutable = this
@@ -874,7 +873,9 @@ class ResourceAnalyzer(map: AnalyzedMap, all: AllUnits) {
         def isClose = {
           g.allTiles.exists { check =>
             val path = pathFinder.findPathNow(check, mp.tilePosition)
-            path.isPerfectSolution && path.length < 20
+            path.exists { p =>
+              p.isPerfectSolution && p.length < 20
+            }
           }
         }
         isNew && isClose

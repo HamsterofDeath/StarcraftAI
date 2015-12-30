@@ -5,6 +5,8 @@ import java.util.function.Function
 
 import bwapi.{Position, TilePosition}
 
+import scala.collection.mutable
+
 trait HasXY {
   def x: Int
   def y: Int
@@ -209,6 +211,19 @@ case class MapPosition(x: Int, y: Int) extends HasXY {
 }
 
 class GeometryHelpers(maxX: Int, maxY: Int) {
+
+  def tilesInRange(seq: TraversableOnce[MapTilePosition], range: Int, times: Int) = {
+    val counts = mutable.HashMap.empty[MapTilePosition, Int]
+    seq.foreach { p =>
+      iterateBlockSpiralClockWise(p, range).foreach { where =>
+        counts.insertReplace(where, _ + 1, 0)
+      }
+    }
+
+    counts.iterator.filter { case (_, count) =>
+      count >= times
+    }.map(_._1)
+  }
 
   def blockSpiralClockWise(origin: MapTilePosition,
                            blockSize: Int = 45): Traversable[MapTilePosition] = new

@@ -62,7 +62,9 @@ class StrategicMap(val resources: Seq[ResourceArea], walkable: Grid2D, game: Gam
                           .filter(valid)
                           .filter { e =>
                             val solution = pf.findPathNow(e, chokePoint.center)
-                            solution.isPerfectSolution && solution.length <= 20
+                            solution.exists { p =>
+                              p.isPerfectSolution && p.length <= 20
+                            }
                           }
       val mineTiles = ArrayBuffer.empty[MapTilePosition]
       outsidePoints.foreach { p =>

@@ -210,6 +210,21 @@ package object pony {
     }
   }
 
+  implicit class RichMap[K, V](val m: Map[K, V]) extends AnyVal {
+    def mapValuesStrict[V2](f: V => V2) = {
+      m.map { case (k, v) => k -> f(v) }
+    }
+  }
+
+  implicit class RichMutableMap[K, V](val m: mutable.Map[K, V]) extends AnyVal {
+    def insertReplace(k: K, f: V => V, initial: V) = {
+      m.get(k) match {
+        case None => m.put(k, initial)
+        case Some(old) => m.put(k, f(old))
+      }
+    }
+  }
+
   implicit class ToOneElemList[T](val t: T) extends AnyVal {
     def toSome: Option[T] = Some(t)
     def toSeq = Seq(t)

@@ -1075,6 +1075,7 @@ class MineralPatch(unit: APIUnit) extends AnyUnit(unit) with Resource {
 }
 
 class VespeneGeysir(unit: APIUnit) extends AnyUnit(unit) with Geysir with Resource {
+  myTilePosition.lockValueForever()
 }
 
 trait ConcussiveGroundDamage extends GroundWeapon {
@@ -1638,6 +1639,7 @@ object UnitWrapper {
       UnitType.Protoss_Pylon -> ((new Pylon(_), classOf[Pylon])),
       UnitType.Protoss_Citadel_of_Adun -> ((new Citadel(_), classOf[Citadel])),
       UnitType.Protoss_Templar_Archives -> ((new TemplarArchive(_), classOf[TemplarArchive])),
+      UnitType.Protoss_Shield_Battery -> ((new ShieldBattery(_), classOf[ShieldBattery])),
       UnitType.Protoss_Cybernetics_Core -> ((new CyberneticsCore(_), classOf[CyberneticsCore])),
       UnitType.Protoss_Fleet_Beacon -> ((new FleetBeacon(_), classOf[FleetBeacon])),
       UnitType.Protoss_Forge -> ((new Forge(_), classOf[Forge])),

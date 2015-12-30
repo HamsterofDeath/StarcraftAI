@@ -354,7 +354,9 @@ object Terran {
           val command = lastFreeGoTo.filter { check =>
             layer.freeAndInBounds(safeArea)
           }.map(Orders.MoveToTile(unit, _)).orElse {
-            val moveTo = layer.spiralAround(unit.currentTile, 15)
+            val moveTo = layer.spiralAround(unit.currentTile, 45)
+                         .sliding(1, 5)
+                         .flatten
                          .filter(layer.freeAndInBounds)
                          .find { e =>
                            layer.freeAndInBounds(safeArea.growBy(1).moveTo(e))
@@ -513,6 +515,8 @@ object Terran {
           p.targetFormationTiles.foreach { tile =>
             renderer.in_!(Color.Cyan).drawCircleAround(tile)
           }
+          renderer.in_!(Color.Red).drawStar(p.finalDestination)
+          renderer.in_!(Color.Green).drawStar(p.safeDestination)
         }
       }
     }
@@ -547,6 +551,7 @@ object Terran {
 
       override def toOrder(what: Objective) = {
         if (unit.isAttacking && !unit.isStimmed) {
+          skipFor(10)
           List(Orders.TechOnSelf(unit, InfantryCooldown))
         } else {
           Nil
@@ -602,6 +607,7 @@ object Terran {
 
       override def toOrder(what: Objective) = {
         if (unit.isBeingAttacked && !unit.isCloaked) {
+          skipFor(10)
           List(Orders.TechOnSelf(unit, WraithCloak))
         } else {
           Nil
@@ -618,6 +624,7 @@ object Terran {
 
       override def toOrder(what: Objective) = {
         if (unit.isBeingAttacked && !unit.isCloaked) {
+          skipFor(10)
           List(Orders.TechOnSelf(unit, GhostCloak))
         } else {
           Nil
@@ -853,7 +860,6 @@ object Terran {
     extends OneTimeUnitSpellCast(universe, Spells.DefenseMatrix)
   class IrradiateUnit(universe: Universe)
     extends OneTimeUnitSpellCast(universe, Spells.Irradiate)
-  class CloakWraith(universe: Universe) extends OneTimeUnitSpellCast(universe, Spells.Irradiate)
 
   class HealDamagedUnit(universe: Universe) extends DefaultBehaviour[Medic](universe) {
     override protected def wrapBase(t: Medic) = ???
