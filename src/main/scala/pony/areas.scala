@@ -113,7 +113,8 @@ class StrategicMap(val resources: Seq[ResourceArea], walkable: Grid2D, game: Gam
         }
         ret
       }
-      FrontLine(choke, areas, insideArea.asReadOnlyCopyIfMutable, outsideArea.asReadOnlyCopyIfMutable, 1)
+      FrontLine(choke, areas, insideArea.guaranteeImmutability, outsideArea.guaranteeImmutability,
+        1)
     }.filter {_.isDefenseLine}
     defLine
   }
@@ -192,7 +193,7 @@ class StrategicMap(val resources: Seq[ResourceArea], walkable: Grid2D, game: Gam
                           val operateOn = area.mutableCopy
                           operateOn.block_!(line)
                           operateOn.anyFree.map { _ =>
-                            val modified = operateOn.areaCount
+                            val modified = operateOn.areaCountExpensive
                             val untouched = area.areaCount
                             val cutsArea = modified != untouched
                             line -> cutsArea
@@ -204,7 +205,7 @@ class StrategicMap(val resources: Seq[ResourceArea], walkable: Grid2D, game: Gam
               operateOn.block_!(line)
             }
 
-            val subAreas = operateOn.areas
+            val subAreas = operateOn.areasExpensive
             val cuttingLines = cutters.map(CuttingLine)
             val chokePoint = ChokePoint(center, cuttingLines)
             val grouped = relevantResources.groupBy { r1 =>

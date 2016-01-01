@@ -153,7 +153,7 @@ object Terran {
   class Dance(universe: Universe) extends DefaultBehaviour[Mobile with Weapon](universe) {
 
     private val immutableMapLayer = oncePerTick {
-      mapLayers.freeWalkableTiles.asReadOnlyCopyIfMutable
+      mapLayers.freeWalkableTiles.guaranteeImmutability
     }
     override def priority: SecondPriority = SecondPriority.More
     override def canControl(u: WrapsUnit): Boolean = super.canControl(u) && u.isInstanceOf[Weapon]
@@ -289,7 +289,7 @@ object Terran {
   class PreventBlockades(universe: Universe) extends DefaultBehaviour[Mobile](universe) {
 
     private val newBlockingUnits   = oncePer(Primes.prime37, {
-      val baseArea = mapLayers.freeWalkableTiles.asReadOnlyCopyIfMutable
+      val baseArea = mapLayers.freeWalkableTiles.guaranteeImmutability
       val unitsToPositions = ownUnits.allCompletedMobiles
                              .iterator
                              .filter(_.canMove)
@@ -297,7 +297,7 @@ object Terran {
                              .map { e => e.nativeUnitId -> e.blockedArea }
                              .toMap
 
-      val buildingLayer = mapLayers.freeWalkableTiles.asReadOnlyCopyIfMutable
+      val buildingLayer = mapLayers.freeWalkableTiles.guaranteeImmutability
       BWFuture.produceFrom {
         val badlyPositioned = unitsToPositions.flatMap { case (id, where) =>
           val withOutline = where.growBy(tolerance)
@@ -320,7 +320,7 @@ object Terran {
     })
     private val blockingUnitsQueue = mutable.HashSet.empty[Mobile]
     private val relevantLayer      = oncePerTick {
-      mapLayers.freeWalkableTiles.asReadOnlyCopyIfMutable
+      mapLayers.freeWalkableTiles.guaranteeImmutability
     }
     override def forceRepeatedCommands: Boolean = false
 
@@ -454,7 +454,7 @@ object Terran {
     override def priority = SecondPriority.More
 
     private val area = oncePerTick {
-      mapLayers.rawWalkableMap.asReadOnlyCopyIfMutable
+      mapLayers.rawWalkableMap.guaranteeImmutability
     }
 
     private val helper = new NonConflictingTargets[Building, SCV](
@@ -551,7 +551,6 @@ object Terran {
 
       override def toOrder(what: Objective) = {
         if (unit.isAttacking && !unit.isStimmed) {
-          skipFor(10)
           List(Orders.TechOnSelf(unit, InfantryCooldown))
         } else {
           Nil
@@ -607,7 +606,6 @@ object Terran {
 
       override def toOrder(what: Objective) = {
         if (unit.isBeingAttacked && !unit.isCloaked) {
-          skipFor(10)
           List(Orders.TechOnSelf(unit, WraithCloak))
         } else {
           Nil
@@ -624,7 +622,6 @@ object Terran {
 
       override def toOrder(what: Objective) = {
         if (unit.isBeingAttacked && !unit.isCloaked) {
-          skipFor(10)
           List(Orders.TechOnSelf(unit, GhostCloak))
         } else {
           Nil

@@ -475,7 +475,10 @@ class Units(game: Game, hostile: Boolean) {
     allBuildings.find(_.area.upperLeft == upperLeft)
   }
   def allBuildings = allByType[Building]
+  def allDetectors = allByType[Detector]
   def allCompletedMobiles = allMobiles.filterNot(_.isBeingCreated)
+  def allWithGroundWeapons = allByType[GroundWeapon]
+  def allWithAirWeapons = allByType[AirWeapon]
   def allMobiles = allByType[Mobile]
   def allAddonBuilders = allByType[CanBuildAddons]
   def allAddons = allByType[Addon]
@@ -625,7 +628,7 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
     spiralAround(p, 100).find(free)
   }
   def blockedMutableCopy = new MutableGrid2D(cols, rows, mutable.BitSet.empty, false)
-  def asReadOnlyCopyIfMutable = this
+  def guaranteeImmutability = this
   override def toString = s"$cols*$rows, $freeCount free"
   def freeCount = if (containsBlocked) size - areaDataBitSet.size else areaDataBitSet.size
   def size = cols * rows
@@ -760,7 +763,23 @@ class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet,
   def reverseView: Grid2D = new Grid2D(cols, rows, bitSet, false)
   def anyFree = allFree.toStream.headOption
 
-  override def areas = new AreaHelper(this).findFreeAreas
+  override def areas = {
+    error(s"Check this!!!", doIt = true)
+    areasExpensive
+  }
+
+  override def areaCount = {
+    error(s"Check this!!!", doIt = true)
+    areaCountExpensive
+  }
+
+  def areasExpensive = {
+    new AreaHelper(this).findFreeAreas
+  }
+
+  def areaCountExpensive = {
+    areasExpensive.size
+  }
 
   def block_!(a: MapTilePosition, b: MapTilePosition): Unit = {
     AreaHelper.traverseTilesOfLine(a, b, block_!)
@@ -775,7 +794,7 @@ class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet,
   }
   def asReadOnlyView: Grid2D = this
 
-  override def asReadOnlyCopyIfMutable = new Grid2D(cols, rows, bitSet, containsBlocked)
+  override def guaranteeImmutability = new Grid2D(cols, rows, bitSet, containsBlocked)
 
   def or_!(other: MutableGrid2D) = {
     if (containsBlocked == other.containsBlocked) {

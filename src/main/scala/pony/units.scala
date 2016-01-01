@@ -586,7 +586,9 @@ trait MaybeCanDie extends WrapsUnit {
   override def isInGame: Boolean = super.isInGame && !isDead
   def isDead = dead || currentHp.isDead
   def hitPoints = currentHp
-  def isHarmlessNow = isIncapacitated || (!canDoDamage && !hasSpells)
+  def isNonFighter = isUnArmed || isInstanceOf[WorkerUnit]
+  def isUnArmed = !canDoDamage && !hasSpells
+  def isHarmlessNow = isIncapacitated || isUnArmed
   def isIncapacitated = disabled.get
   def isBeingAttacked = currentHp < lastFrameHp
   def notifyDead_!(): Unit = {
@@ -696,8 +698,17 @@ trait Killable {
 
 }
 
-trait Detector {
+case class Circle(center: MapTilePosition, radius: Int, maxX: Int, maxY: Int) {
+  def asTiles = new GeometryHelpers(maxX, maxY).tilesInCircle(center, radius)
+}
 
+trait Detector extends WrapsUnit with HasLazyVals {
+  def detectionRadius: Int
+
+  private val myDetectionArea = oncePerTick {
+    geoHelper.circle(centerTile, detectionRadius)
+  }
+  def detectionArea = myDetectionArea.get
 }
 
 trait ArmedUnit extends WrapsUnit {
@@ -717,8 +728,10 @@ trait GroundWeapon extends Weapon {
   val groundCanAttackGround  = groundWeapon.targetsGround()
   val groundDamageMultiplier = groundWeapon.damageFactor()
   val groundDamageType: DamageType
-  private val damage = LazyVal.from(
-    evalDamage(groundWeapon, groundDamageType, groundDamageMultiplier, targetsAir = false))
+  private val damage = LazyVal.from {
+    // will be invalidated on upgrade
+    evalDamage(groundWeapon, groundDamageType, groundDamageMultiplier, targetsAir = false)
+  }
   def damageDelayFactorGround: Int
   override def weaponRangeRadius: Int = super.weaponRangeRadius max groundRange
   override def assumeShotDelayOn(target: MaybeCanDie) = {
@@ -727,6 +740,11 @@ trait GroundWeapon extends Weapon {
     } else
       super.assumeShotDelayOn(target)
   }
+
+  private val myInGroundWeaponRange = oncePerTick {
+    geoHelper.circle(centerTile, math.round(groundRange.toDouble / 32).toInt)
+  }
+  def inGroundWeaponRange = myInGroundWeaponRange.get
   override def canAttack(other: MaybeCanDie) = {
     super.canAttack(other) || selfCanAttack(other)
   }
@@ -843,8 +861,16 @@ trait AirWeapon extends Weapon {
   val airCanAttackGround  = airWeapon.targetsGround()
   val airDamageMultiplier = airWeapon.damageFactor()
   val airDamageType: DamageType
-  private val damage = LazyVal.from(
-    evalDamage(airWeapon, airDamageType, airDamageMultiplier, targetsAir = true))
+  private val damage = LazyVal.from {
+    // will be invalidated on upgrade
+    evalDamage(airWeapon, airDamageType, airDamageMultiplier, targetsAir = true)
+  }
+
+  private val myInAirWeaponRange = oncePerTick {
+    geoHelper.circle(centerTile, math.round(airRange.toDouble / 32).toInt)
+  }
+  def inAirWeaponRange = myInAirWeaponRange.get
+
   def damageDelayFactorAir: Int
   override def weaponRangeRadius: Int = super.weaponRangeRadius max airRange
   override def assumeShotDelayOn(target: MaybeCanDie) = {
@@ -957,6 +983,7 @@ trait GroundUnit extends Killable with Mobile {
     else ownUnits.byNative(nu).asInstanceOf[Option[TransporterUnit]]
   }
   private val myTransportSize = LazyVal.from(armorType.transportSize)
+  // why lazyval?
   private var inFerryLastTick = false
   def gotUnloaded = inFerryLastTick && onGround
   def onGround = !loaded
@@ -971,7 +998,9 @@ trait GroundUnit extends Killable with Mobile {
 trait Floating
 
 trait CanBuildAddons extends Building {
-  private val myAddonArea = LazyVal.from(Area(area.lowerRight.movedBy(1, -1), Size(2, 2)))
+  private val myAddonArea = oncePerTick {
+    Area(area.lowerRight.movedBy(1, -1), Size(2, 2))
+  }
   private var attached    = Option.empty[Addon]
   def positionedNextTo(addon: Addon) = {
     myAddonArea.get.upperLeft == addon.tilePosition
@@ -1072,6 +1101,7 @@ trait ShieldCharger extends AnyUnit
 class MineralPatch(unit: APIUnit) extends AnyUnit(unit) with Resource {
   def isBeingMined = nativeUnit.isBeingGathered
   def remainingMinerals = remaining
+  myTilePosition.lockValueForever()
 }
 
 class VespeneGeysir(unit: APIUnit) extends AnyUnit(unit) with Geysir with Resource {
@@ -1204,7 +1234,10 @@ trait SlowAttackGround extends GroundWeapon {
   override def damageDelayFactorGround = 2
 }
 trait MobileDetector extends CanDetectHidden with Mobile
-trait CanDetectHidden extends WrapsUnit
+trait CanDetectHidden extends WrapsUnit with Detector {
+  private val sight = math.round(nativeType.get.sightRange() / 32.0).toInt
+  override def detectionRadius = sight
+}
 trait CanSiege extends Mobile {
   private val sieged = oncePerTick {
     nativeUnit.isSieged
@@ -1213,7 +1246,7 @@ trait CanSiege extends Mobile {
 }
 
 trait CanUseStimpack extends Mobile with Weapon with HasSingleTargetSpells {
-  private val stimmed = LazyVal.from(nativeUnit.isStimmed || stimTime > 0)
+  private val stimmed = oncePerTick {nativeUnit.isStimmed || stimTime > 0}
   def isStimmed = stimmed.get
   private def stimTime = nativeUnit.getStimTimer
 }

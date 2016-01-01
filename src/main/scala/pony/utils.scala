@@ -2,6 +2,7 @@ package pony
 
 import java.io.{BufferedInputStream, ByteArrayInputStream, ByteArrayOutputStream, File,
 ObjectInputStream, ObjectOutputStream}
+import java.util.concurrent.locks.ReentrantReadWriteLock
 import java.util.zip.{Deflater, ZipEntry, ZipInputStream, ZipOutputStream}
 
 import bwapi.Game
@@ -130,9 +131,11 @@ class LazyVal[T](gen: => T, onValueChange: Option[() => Unit] = None) extends Se
         }
       } else {
         value = gen
+        assert(value != null)
       }
 
     evaluated = true
+    assert(value != null)
     value
   }
 }
@@ -218,9 +221,16 @@ object FileStorageLazyVal {
 }
 
 class BWFuture[+T](val future: Future[T], incomplete: T) {
+
   def blockAndGet = {
     Await.result(future, Duration.Inf)
   }
+
+  def assumeDoneAndGet = {
+    assert(future.isCompleted)
+    result
+  }
+
   def isDone = future.isCompleted
 
   def idle = isDone
@@ -245,7 +255,54 @@ class BWFuture[+T](val future: Future[T], incomplete: T) {
 
 }
 
+class FutureIterator[IN, T](feed: => IN, produce: IN => T) {
+  private val lock = new ReentrantReadWriteLock()
+
+  private var done = Option.empty[T]
+
+  private var inProgress = nextFuture
+  private var thinking   = true
+
+  private def nextFuture = {
+    val input = feed
+    val fut = BWFuture.produceFrom(produce(feed))
+    fut.future.onSuccess {
+      case any =>
+        lock.writeLock().lock()
+        thinking = false
+        done = any
+        lock.writeLock().unlock()
+    }
+    fut
+  }
+
+  def mostRecent = {
+    lock.readLock().lock()
+    val x = done
+    lock.readLock().unlock()
+    x
+  }
+
+  def prepareNextIfDone(): Unit = {
+    lock.writeLock().lock()
+    if (!thinking) {
+      thinking = true
+      inProgress = nextFuture
+    }
+    lock.writeLock().unlock()
+  }
+}
+
+object FutureIterator {
+  def feed[IN](in: => IN) = new {
+    def andProduce[T](produce: IN => T) = {
+      new FutureIterator(in, produce)
+    }
+  }
+}
+
 object BWFuture {
+
   def none[T] = apply(Option.empty[T])
   def apply[T](produce: => Option[T]): BWFuture[Option[T]] = BWFuture(produce, None)
   def apply[T](produce: => T, ifIncomplete: T) = {
@@ -257,6 +314,8 @@ object BWFuture {
   }
   def produceFrom[T](produce: => T) = BWFuture(Some(produce))
   implicit class Result[T](val fut: BWFuture[Option[T]]) extends AnyVal {
+    def orElse(other: T) = if (fut.isDone) fut.result.get else other
+
     def ifDoneOpt[X](ifDone: T => X): Unit = {
       fut.ifDone(op => ifDone(op.get))
     }

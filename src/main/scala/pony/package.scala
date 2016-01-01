@@ -9,26 +9,22 @@ import scala.collection.mutable
 package object pony {
 
   // milestone 2:
-
-  // TODO make units use safe paths while on their way to attack
   // TODO make support units accompany armies
-  // TODO use comsat to detect cloaked attackers if no detector is around
-
-  // later:
-  // TODO make shuttles use safe paths (always)
-  // TODO send only necessary units for defenses
   // TODO add air defenses
-  // TODO optimize worker paths -> might be impossible
   // TODO send units via shuttle to attack/defend islands
+  // TODO make shuttles use safe paths (always)
 
   // milestone 3:
-  // TODO cover all zerg units (as enemy)
+  // TODO send only necessary units for defenses, use "battle simulator" to estimate which units
+  // are required for each attack/defense
+  // TODO optimize worker paths -> might be impossible
 
   // milestone 4:
+  // TODO cover all zerg units (as enemy)
   //  ...
 
   // milestone 5:
-  // create technologial singularity
+  // TODO create technologial singularity
 
   class PrimeNumber(val i: Int) extends AnyVal
 

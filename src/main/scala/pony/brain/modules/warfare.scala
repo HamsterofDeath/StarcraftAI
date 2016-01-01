@@ -12,7 +12,7 @@ class FormationHelper(override val universe: Universe,
   private val assignments        = mutable.HashMap.empty[Mobile, MapTilePosition]
   private val used               = mutable.HashSet.empty[MapTilePosition]
   private val availablePositions = {
-    val walkable = mapLayers.rawWalkableMap.asReadOnlyCopyIfMutable
+    val walkable = mapLayers.rawWalkableMap.guaranteeImmutability
 
     BWFuture.from {
       val minDst = 24
@@ -240,19 +240,19 @@ object GroupingHelper {
   }
 
   def groupThese[T <: WrapsUnit](seq: TraversableOnce[T], universe: Universe) = {
-    val helper = new GroupingHelper(universe.mapLayers.rawWalkableMap.asReadOnlyCopyIfMutable, seq,
+    val helper = new GroupingHelper(universe.mapLayers.rawWalkableMap.guaranteeImmutability, seq,
       universe.allUnits)
     BWFuture(Option(helper.evaluateUnitGroups))
   }
 
   def groupTheseNow[T <: WrapsUnit](seq: TraversableOnce[T], universe: Universe) = {
-    val helper = new GroupingHelper(universe.mapLayers.rawWalkableMap.asReadOnlyCopyIfMutable, seq,
+    val helper = new GroupingHelper(universe.mapLayers.rawWalkableMap.guaranteeImmutability, seq,
       universe.allUnits)
     helper.evaluateUnitGroups
   }
 
   def groupTheseNow[T <: WrapsUnit](seq: TraversableOnce[T], map: Grid2D, allUnits: AllUnits) = {
-    val helper = new GroupingHelper(map.asReadOnlyCopyIfMutable, seq, allUnits)
+    val helper = new GroupingHelper(map.guaranteeImmutability, seq, allUnits)
     helper.evaluateUnitGroups
   }
 }

@@ -35,6 +35,8 @@ trait HasUniverse extends HasLazyVals {
     }
   }
 
+  def geoHelper = mapLayers.rawWalkableMap.geoHelper
+
   def mapNth[T](prime: PrimeNumber, orElse: T, condition: Boolean = true)(body: => T): T = {
     ifNth(prime) {
       if (condition) {

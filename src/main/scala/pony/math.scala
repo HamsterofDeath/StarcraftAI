@@ -211,18 +211,64 @@ case class MapPosition(x: Int, y: Int) extends HasXY {
 }
 
 class GeometryHelpers(maxX: Int, maxY: Int) {
+  self =>
 
-  def tilesInRange(seq: TraversableOnce[MapTilePosition], range: Int, times: Int) = {
-    val counts = mutable.HashMap.empty[MapTilePosition, Int]
-    seq.foreach { p =>
-      iterateBlockSpiralClockWise(p, range).foreach { where =>
-        counts.insertReplace(where, _ + 1, 0)
-      }
+  def circle(center: MapTilePosition, r: Int) = Circle(center, r, maxX, maxY)
+
+  def tilesInCircle(position: MapTilePosition, radius: Int) = {
+    val fromX = 0 max position.x - radius
+    val toX = maxX min position.x + radius
+    val fromY = 0 max position.y - radius
+    val toY = maxY min position.y + radius
+    val radSqr = radius * radius
+    val x2 = position.x
+    val y2 = position.y
+    def dstSqr(x: Int, y: Int) = {
+      val xx = x - x2
+      val yy = y - y2
+      xx * xx + yy * yy
     }
 
-    counts.iterator.filter { case (_, count) =>
-      count >= times
-    }.map(_._1)
+    val xSize = toX - fromX
+    val ySize = toY - fromY
+    val tiles = xSize * ySize
+    Iterator.range(tiles, tiles + 1).filter { index =>
+      val row = index / xSize
+      val col = index % xSize
+      dstSqr(col, row) <= radSqr
+    }.map { index =>
+      val row = index / xSize
+      val col = index % xSize
+      MapTilePosition(col, row)
+    }
+  }
+
+  object intersections {
+    def tilesInCircle(seq: TraversableOnce[MapTilePosition], range: Int, times: Int) = {
+      val counts = mutable.HashMap.empty[MapTilePosition, Int]
+      seq.foreach { p =>
+        self.tilesInCircle(p, range).foreach { where =>
+          counts.insertReplace(where, _ + 1, 0)
+        }
+      }
+
+      counts.iterator.filter { case (_, count) =>
+        count >= times
+      }.map(_._1)
+    }
+
+    def tilesInSquare(seq: TraversableOnce[MapTilePosition], range: Int, times: Int) = {
+      val counts = mutable.HashMap.empty[MapTilePosition, Int]
+      seq.foreach { p =>
+        iterateBlockSpiralClockWise(p, range * 2).foreach { where =>
+          counts.insertReplace(where, _ + 1, 0)
+        }
+      }
+
+      counts.iterator.filter { case (_, count) =>
+        count >= times
+      }.map(_._1)
+    }
   }
 
   def blockSpiralClockWise(origin: MapTilePosition,
