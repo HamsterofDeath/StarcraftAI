@@ -191,7 +191,7 @@ trait BlockingTiles extends StaticallyPositioned {
 
 }
 
-trait IsInfantry extends WrapsUnit
+trait IsInfantry extends WrapsUnit with BadDancer
 trait IsVehicle extends WrapsUnit
 trait IsShip extends WrapsUnit
 
@@ -1508,10 +1508,14 @@ class Scarab(unit: APIUnit)
   extends AnyUnit(unit) with SimplePosition with Mobile with AutoPilot with IsSmall with
           GroundUnit with
           IndestructibleUnit
+
+trait BadDancer extends Mobile
+
 class SpiderMine(unit: APIUnit)
   extends AnyUnit(unit) with SimplePosition with GroundUnit with IsSmall with AutoPilot {
   override def canMove = false
 }
+
 
 class Marine(unit: APIUnit)
   extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with CanUseStimpack with

@@ -55,7 +55,7 @@ case class MapTilePosition(x: Int, y: Int) extends HasXY {
 object MapTilePosition {
 
   def average(ps: TraversableOnce[MapTilePosition]) = {
-    var size = 1
+    var size = 0
     ps.foldLeft(MapTilePosition.zero)((acc, e) => {
       size += 1
       acc movedBy e

@@ -150,18 +150,18 @@ object Terran {
     }
   }
 
-  class Dance(universe: Universe) extends DefaultBehaviour[Mobile with Weapon](universe) {
+  class Dance(universe: Universe) extends DefaultBehaviour[ArmedMobile](universe) {
 
     private val immutableMapLayer = oncePerTick {
       mapLayers.freeWalkableTiles.guaranteeImmutability
     }
     override def priority: SecondPriority = SecondPriority.More
-    override def canControl(u: WrapsUnit): Boolean = super.canControl(u) && u.isInstanceOf[Weapon]
+    override def canControl(u: WrapsUnit): Boolean = super.canControl(u) &&
+                                                     !u.isInstanceOf[BadDancer]
     override def refuseCommandsForTicks = 6
     // to avoid wasting cpu time
-    override protected def wrapBase(unit: Mobile with Weapon): SingleUnitBehaviour[Mobile with
-      Weapon] = new
-        SingleUnitBehaviour[Mobile with Weapon](unit, meta) {
+    override protected def wrapBase(unit: ArmedMobile): SingleUnitBehaviour[ArmedMobile] = new
+        SingleUnitBehaviour[ArmedMobile](unit, meta) {
 
       trait State
       case object Idle extends State
