@@ -215,13 +215,25 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
           // no path calculated yet
           StayInPosition(t)
         case Some(path) =>
-          path.nextFor(t) match {
-            case Some((targetTile, attackMove)) if attackMove =>
-              AttackToPosition(t, targetTile)
-            case Some((targetTile, attackMove)) =>
-              MoveToPosition(t, targetTile)
-            case None =>
-              StayInPosition(t)
+          t match {
+            case s: SupportUnit =>
+              val stayHere = {
+                val stayBetweenThese = s.nearestAllies.iterator
+                                       .filter(_.currentTile.distanceToIsLess(s.currentTile, 8))
+                                       .take(3)
+                MapTilePosition.averageOpt(stayBetweenThese.map(_.currentTile))
+              }
+              stayHere.map {AttackToPosition(t, _)}.getOrElse(StayInPosition(t))
+            case _ =>
+              path.nextFor(t) match {
+                case Some((targetTile, attackMove)) if attackMove =>
+                  AttackToPosition(t, targetTile)
+                case Some((targetTile, attackMove)) =>
+                  MoveToPosition(t, targetTile)
+                case None =>
+                  StayInPosition(t)
+              }
+
           }
       }
     }

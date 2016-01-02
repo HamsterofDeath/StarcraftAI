@@ -61,7 +61,7 @@ class StrategicMap(val resources: Seq[ResourceArea], walkable: Grid2D, game: Gam
                           .filter(blocked.free)
                           .filter(valid)
                           .filter { e =>
-                            val solution = pf.findPathNow(e, chokePoint.center)
+                            val solution = pf.findPathNow(e, chokePoint.center, false)
                             solution.exists { p =>
                               p.isPerfectSolution && p.length <= 20
                             }

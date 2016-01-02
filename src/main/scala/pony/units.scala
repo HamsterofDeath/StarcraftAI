@@ -134,17 +134,17 @@ trait WrapsUnit extends HasUniverse with AfterTickListener {
   }
 
   object surroundings {
-    private val myEnemyGroundUnits = oncePer(Primes.prime23, {
+    private val myEnemyGroundUnits = oncePer(Primes.prime23) {
       universe.unitGrid.enemy.allInRange[GroundUnit](centerTile, 12).toVector
-    })
+    }
 
-    private val myCloseOwnBuildings = oncePer(Primes.prime29, {
+    private val myCloseOwnBuildings = oncePer(Primes.prime29) {
       ownUnits.allBuildings.filter(_.centerTile.distanceToIsLess(centerTile, 12))
-    })
+    }
 
-    private val myCloseEnemyBuildings = oncePer(Primes.prime29, {
+    private val myCloseEnemyBuildings = oncePer(Primes.prime29) {
       enemies.allBuildings.filter(_.centerTile.distanceToIsLess(centerTile, 12))
-    })
+    }
 
     def closeEnemyBuildings = myCloseEnemyBuildings.get
     def closeEnemyGroundUnits = myEnemyGroundUnits.get
@@ -913,7 +913,9 @@ trait AirWeapon extends Weapon {
 
 }
 
-trait Weapon extends Controllable {
+trait ArmedMobile extends Mobile with Weapon
+
+trait Weapon extends Controllable with ArmedUnit {
   self: WrapsUnit =>
 
   def assumeShotDelayOn(target: MaybeCanDie): Int = !!!("This should never be called")
@@ -1129,7 +1131,15 @@ trait NormalAirDamage extends AirWeapon {
 
 trait UpgradeLimitLifter extends Building
 
-trait SupportUnit extends Mobile
+trait SupportUnit extends Mobile {
+  private val myNearestAlliesWithWeapons = oncePer(Primes.prime47) {
+    ownUnits.allMobilesWithWeapons.toArray.sortBy { other =>
+      other.centerTile.distanceSquaredTo(centerTile)
+    }.toVector
+  }
+
+  def nearestAllies = myNearestAlliesWithWeapons.get
+}
 
 trait PsiArea extends AnyUnit
 
@@ -1163,7 +1173,7 @@ class Assimilator(unit: APIUnit) extends AnyUnit(unit) with Building with GasPro
 class Gateway(unit: APIUnit) extends AnyUnit(unit) with UnitFactory
 class PhotonCannon(unit: APIUnit)
   extends AnyUnit(unit) with Building with GroundAndAirWeapon with NormalAirDamage with
-          NormalGroundDamage {
+          NormalGroundDamage with ArmedBuilding {
   override def damageDelayFactorAir = 1
   override def damageDelayFactorGround = 1
 }
@@ -1418,61 +1428,58 @@ trait IsBig extends Mobile with MaybeCanDie {
 
 class Zergling(unit: APIUnit)
   extends AnyUnit(unit) with Organic with GroundUnit with GroundWeapon with NormalGroundDamage with
-          IsSmall with
-          MeleeWeapon with InstantAttackGround
+          IsSmall with ArmedMobile with MeleeWeapon with InstantAttackGround
 class Broodling(unit: APIUnit)
   extends AnyUnit(unit) with Organic with GroundUnit with GroundWeapon with NormalGroundDamage with
-          IsSmall with
-          InstantAttackGround
+          IsSmall with ArmedMobile with InstantAttackGround
 class Hydralisk(unit: APIUnit)
   extends AnyUnit(unit) with Organic with GroundUnit with GroundAndAirWeapon with
-          ExplosiveAirDamage with
+          ExplosiveAirDamage with ArmedMobile with
           ExplosiveGroundDamage with IsMedium with InstantAttackAir with InstantAttackGround
 class Lurker(unit: APIUnit)
   extends AnyUnit(unit) with Organic with GroundUnit with GroundWeapon with NormalGroundDamage with
-          IsBig with
-          InstantAttackGround
+          IsBig with ArmedMobile with InstantAttackGround
 class Mutalisk(unit: APIUnit)
   extends AnyUnit(unit) with Organic with AirUnit with GroundAndAirWeapon with
-          NormalGroundDamage with
+          NormalGroundDamage with ArmedMobile with
           NormalAirDamage with IsMedium with InstantAttackAir with InstantAttackGround
 class Queen(unit: APIUnit) extends AnyUnit(unit) with Organic with AirUnit with IsMedium
-class Scourge(unit: APIUnit) extends AnyUnit(unit) with Organic with AirUnit with IsSmall
+class Scourge(unit: APIUnit)
+  extends AnyUnit(unit) with Organic with AirUnit with IsSmall with ArmedMobile
 class Guardian(unit: APIUnit)
   extends AnyUnit(unit) with Organic with AirUnit with GroundWeapon with IsBig with
-          NormalGroundDamage with
-          MediumAttackGround
+          NormalGroundDamage with ArmedMobile with MediumAttackGround
 class Devourer(unit: APIUnit) extends AnyUnit(unit) with Organic with GroundUnit with IsBig
 class Ultralisk(unit: APIUnit)
   extends AnyUnit(unit) with Organic with IsBig with GroundWeapon with MeleeWeapon with
-          NormalGroundDamage with
-          InstantAttackGround
+          NormalGroundDamage with ArmedMobile with InstantAttackGround
 class Defiler(unit: APIUnit) extends AnyUnit(unit) with Organic with GroundUnit with IsMedium
-class InfestedTerran(unit: APIUnit) extends AnyUnit(unit) with Organic with GroundUnit with IsSmall
+class InfestedTerran(unit: APIUnit)
+  extends AnyUnit(unit) with Organic with GroundUnit with ArmedMobile with IsSmall
 
 class Observer(unit: APIUnit)
   extends AnyUnit(unit) with MobileDetector with Mechanic with IsSmall with AirUnit
 class Scout(unit: APIUnit)
   extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with Mechanic with IsBig with
-          ExplosiveAirDamage with
+          ExplosiveAirDamage with ArmedMobile with
           NormalGroundDamage with MediumAttackAir with InstantAttackGround
 class Zealot(unit: APIUnit)
   extends AnyUnit(unit) with GroundUnit with GroundWeapon with IsSmall with IsInfantry with
-          NormalGroundDamage with
-          InstantAttackGround
+          NormalGroundDamage with ArmedMobile with InstantAttackGround
 class Dragoon(unit: APIUnit)
   extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with Mechanic with IsBig with
-          IsVehicle with
-          ExplosiveGroundDamage with ExplosiveAirDamage with MediumAttackAir with MediumAttackGround
+          IsVehicle with ArmedMobile with ExplosiveGroundDamage with ExplosiveAirDamage
+          with MediumAttackAir with MediumAttackGround
 class Archon(unit: APIUnit)
   extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with IsBig with IsInfantry with
-          NormalAirDamage with
-          NormalGroundDamage with InstantAttackAir with InstantAttackGround
-class Carrier(unit: APIUnit) extends AnyUnit(unit) with AirUnit with Mechanic with IsBig with IsShip
+          NormalAirDamage with ArmedMobile with NormalGroundDamage with InstantAttackAir with
+          InstantAttackGround
+class Carrier(unit: APIUnit)
+  extends AnyUnit(unit) with AirUnit with Mechanic with IsBig with ArmedMobile with IsShip
 class Arbiter(unit: APIUnit)
   extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with Mechanic with IsBig with
-          IsShip with
-          ExplosiveAirDamage with ExplosiveGroundDamage with MediumAttackAir with MediumAttackGround
+          IsShip with ArmedMobile with ExplosiveAirDamage with ExplosiveGroundDamage with
+          MediumAttackAir with MediumAttackGround
 class Templar(unit: APIUnit)
   extends AnyUnit(unit) with GroundUnit with HasSingleTargetSpells with IsSmall with
           IsInfantry {
@@ -1481,23 +1488,21 @@ class Templar(unit: APIUnit)
 }
 class DarkTemplar(unit: APIUnit)
   extends AnyUnit(unit) with GroundUnit with GroundWeapon with CanCloak with IsSmall with
-          IsInfantry with
+          IsInfantry with ArmedMobile with
           NormalGroundDamage with InstantAttackGround {
   override def shouldReRegisterOnMorph = true
 }
 class DarkArchon(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with IsBig with IsInfantry
 class Corsair(unit: APIUnit)
   extends AnyUnit(unit) with AirUnit with AirWeapon with Mechanic with IsMedium with IsShip with
-          ExplosiveAirDamage with
-          InstantAttackAir
+          ExplosiveAirDamage with ArmedMobile with InstantAttackAir
 class Interceptor(unit: APIUnit)
   extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with Mechanic with IsSmall with
-          IsShip with
-          NormalAirDamage with NormalGroundDamage with InstantAttackAir with InstantAttackGround
+          IsShip with ArmedMobile with NormalAirDamage with NormalGroundDamage with
+          InstantAttackAir with InstantAttackGround
 class Reaver(unit: APIUnit)
   extends AnyUnit(unit) with GroundUnit with GroundWeapon with Mechanic with IsBig with
-          IsVehicle with
-          NormalGroundDamage with SlowAttackGround
+          IsVehicle with ArmedMobile with NormalGroundDamage with SlowAttackGround
 
 class Scarab(unit: APIUnit)
   extends AnyUnit(unit) with SimplePosition with Mobile with AutoPilot with IsSmall with
@@ -1510,7 +1515,7 @@ class SpiderMine(unit: APIUnit)
 
 class Marine(unit: APIUnit)
   extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with CanUseStimpack with
-          MobileRangeWeapon with
+          MobileRangeWeapon with ArmedMobile with
           IsSmall with IsInfantry with NormalAirDamage with NormalGroundDamage with
           HasSingleTargetSpells with
           InstantAttackAir with InstantAttackGround {
@@ -1519,7 +1524,7 @@ class Marine(unit: APIUnit)
 }
 class Firebat(unit: APIUnit)
   extends AnyUnit(unit) with GroundUnit with GroundWeapon with CanUseStimpack with IsSmall with
-          IsInfantry with
+          IsInfantry with ArmedMobile with
           HasSingleTargetSpells with InstantAttackGround with ConcussiveGroundDamage {
   override type CasterType = CanUseStimpack
   override val spells = List(Spells.Stimpack)
@@ -1527,11 +1532,9 @@ class Firebat(unit: APIUnit)
 
 class Ghost(unit: APIUnit)
   extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with CanCloak with
-          InstantAttackAir with
-          InstantAttackGround with
+          InstantAttackAir with ArmedMobile with InstantAttackGround with
           HasSingleTargetSpells with MobileRangeWeapon with IsSmall with IsInfantry with
-          ConcussiveAirDamage with
-          ConcussiveGroundDamage {
+          ConcussiveAirDamage with ConcussiveGroundDamage {
   override type CasterType = Ghost
   override val spells = List(Spells.Lockdown)
 }
@@ -1545,14 +1548,14 @@ class Vulture(unit: APIUnit)
   extends AnyUnit(unit) with GroundUnit with GroundWeapon with HasSpiderMines with
           MediumAttackGround with Mechanic with
           MobileRangeWeapon with IsMedium with IsVehicle with ConcussiveGroundDamage with
-          HasSinglePointMagicSpell {
+          HasSinglePointMagicSpell with ArmedMobile {
   override type Caster = Vulture
   override val spells = List(Upgrades.Terran.SpiderMines)
 }
 
 class Tank(unit: APIUnit)
   extends AnyUnit(unit) with GroundUnit with GroundWeapon with InstantAttackGround with
-          Mechanic with CanSiege with
+          Mechanic with CanSiege with ArmedMobile with
           MobileRangeWeapon with IsBig with IsVehicle with ExplosiveGroundDamage with
           HasSingleTargetSpells {
   override type CasterType = Tank
@@ -1560,29 +1563,25 @@ class Tank(unit: APIUnit)
 }
 class Goliath(unit: APIUnit)
   extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with InstantAttackGround with
-          SlowAttackAir with
-          Mechanic with
-          MobileRangeWeapon with IsBig with IsVehicle with NormalGroundDamage with
-          ExplosiveAirDamage
+          SlowAttackAir with Mechanic with MobileRangeWeapon with IsBig with IsVehicle with
+          NormalGroundDamage with
+          ExplosiveAirDamage with ArmedMobile
 class Wraith(unit: APIUnit)
   extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with CanCloak with
-          InstantAttackGround with
-          MediumAttackAir with Mechanic with
-          MobileRangeWeapon with IsBig with IsShip with NormalGroundDamage with
-          ExplosiveAirDamage with
-          HasSingleTargetSpells {
+          InstantAttackGround with MediumAttackAir with Mechanic with MobileRangeWeapon with
+          IsBig with IsShip with NormalGroundDamage with
+          ExplosiveAirDamage with ArmedMobile with HasSingleTargetSpells {
 
   override type CasterType = Wraith
   override val spells = List(Spells.WraithCloak)
 }
 class Valkery(unit: APIUnit)
   extends AnyUnit(unit) with AirUnit with AirWeapon with Mechanic with MobileRangeWeapon with
-          IsBig with IsShip with
+          IsBig with IsShip with ArmedMobile with
           ExplosiveAirDamage with SlowAttackAir
 class Battlecruiser(unit: APIUnit)
   extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with InstantAttackAir with
-          InstantAttackGround with
-          Mechanic with
+          InstantAttackGround with Mechanic with ArmedMobile with
           HasSingleTargetSpells with MobileRangeWeapon with IsBig with IsShip with
           NormalAirDamage with
           NormalGroundDamage {

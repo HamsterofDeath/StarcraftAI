@@ -38,6 +38,7 @@ class MigrationPath(follow: Paths, override val universe: Universe) extends HasU
     def manyArrived = atFormationStep.size.toDouble / counter.size >= 0.8
 
     if (manyArrived) {
+      todo.clear()
       Some(follow.unsafeTarget -> true)
     } else if (canSeeFormationPoint) {
       todo.clear()
@@ -169,10 +170,15 @@ class PathFinder(on: Grid2D) {
     }
   }
 
-  def findPaths(from: MapTilePosition, to: MapTilePosition, paths: Int = 10) = BWFuture {
-    val fromFixed = on.nearestFree(from)
-    val toFixed = fromFixed.flatMap { e =>
-      on.areaWhichContainsAsFree(e).flatMap(_.nearestFree(to))
+  def findPaths(from: MapTilePosition, to: MapTilePosition, paths: Int = 10,
+                tryFixPath: Boolean = true) = BWFuture {
+    val fromFixed = {if (tryFixPath) on.nearestFree(from) else Some(from)}
+    val toFixed = {
+      if (tryFixPath) {
+        fromFixed.flatMap { e =>
+          on.areaWhichContainsAsFree(e).flatMap(_.nearestFree(to))
+        }
+      } else {Some(to)}
     }
     warn(s"Could not fix start $from", fromFixed.isEmpty)
     warn(s"Could not fix goal $to", toFixed.isEmpty)
@@ -180,8 +186,9 @@ class PathFinder(on: Grid2D) {
     for (a <- fromFixed; b <- toFixed) yield spawn.findPaths(a, b, paths, unsafeTarget)
   }
 
-  def findPathNow(from: MapTilePosition, to: MapTilePosition): Option[Path] = {
-    findPaths(from, to, 1).blockAndGet.flatMap(_.paths.headOption)
+  def findPathNow(from: MapTilePosition, to: MapTilePosition,
+                  tryFixPath: Boolean = true): Option[Path] = {
+    findPaths(from, to, 1, tryFixPath).blockAndGet.flatMap(_.paths.headOption)
   }
 
   def spawn = new AstarPathFinder(to2DArray(on))
@@ -208,7 +215,7 @@ class PathFinder(on: Grid2D) {
 
     def findPaths(from: MapTilePosition, to: MapTilePosition, width: Int,
                   unsafeTarget: MapTilePosition) = {
-      info(s"Searching path from $from to $to")
+      debug(s"Searching path from $from to $to", tick > 1)
       val finder = new AStarSearch[GridNode2DInt](from, to)
       var first = Option.empty[Path]
       def pathFrom(seq: Seq[MapTilePosition]) = {
@@ -770,11 +777,11 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   }
 
   private def evalGroundDefended = areaOfCircles {
-    universe.ownUnits.allWithGroundWeapons.map(_.inGroundWeaponRange)
+    universe.ownUnits.allWithGroundWeapon.map(_.inGroundWeaponRange)
   }
 
   private def evalAirDefended = areaOfCircles {
-    universe.ownUnits.allWithAirWeapons.map(_.inAirWeaponRange)
+    universe.ownUnits.allWithAirWeapon.map(_.inAirWeaponRange)
   }
 
   private def evalSafe = {
@@ -872,7 +879,7 @@ class ConstructionSiteFinder(universe: Universe) {
 
     val withStreets = freeToBuildOn.mutableCopy
 
-    helper.iterateBlockSpiralClockWise(near).flatMap { upperLeft =>
+    helper.iterateBlockSpiralClockWise(near, 75).flatMap { upperLeft =>
       val area = Area(upperLeft, necessarySize)
       val addonArea = necessarySizeAddon.map(Area(area.lowerRight.movedBy(1, -1), _))
       def containsArea = freeToBuildOn.inBounds(area) &&

@@ -477,8 +477,9 @@ class Units(game: Game, hostile: Boolean) {
   def allBuildings = allByType[Building]
   def allDetectors = allByType[Detector]
   def allCompletedMobiles = allMobiles.filterNot(_.isBeingCreated)
-  def allWithGroundWeapons = allByType[GroundWeapon]
-  def allWithAirWeapons = allByType[AirWeapon]
+  def allWithGroundWeapon = allByType[GroundWeapon]
+  def allMobilesWithWeapons = allByType[ArmedMobile]
+  def allWithAirWeapon = allByType[AirWeapon]
   def allMobiles = allByType[Mobile]
   def allAddonBuilders = allByType[CanBuildAddons]
   def allAddons = allByType[Addon]
@@ -887,11 +888,12 @@ class ResourceAnalyzer(map: AnalyzedMap, all: AllUnits) {
     val allMins = ArrayBuffer.empty ++= myUnits.minerals
     val pathFinder = PathFinder.on(map.walkableGrid)
     allMins.foreach { mp =>
+      print(".")
       patchGroups.find { g =>
         def isNew = !g.contains(mp)
         def isClose = {
           g.allTiles.exists { check =>
-            val path = pathFinder.findPathNow(check, mp.tilePosition)
+            val path = pathFinder.findPathNow(check, mp.tilePosition, false)
             path.exists { p =>
               p.isPerfectSolution && p.length < 20
             }

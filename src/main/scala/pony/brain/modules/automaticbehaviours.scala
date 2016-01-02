@@ -288,7 +288,7 @@ object Terran {
 
   class PreventBlockades(universe: Universe) extends DefaultBehaviour[Mobile](universe) {
 
-    private val newBlockingUnits   = oncePer(Primes.prime37, {
+    private val newBlockingUnits   = oncePer(Primes.prime37) {
       val baseArea = mapLayers.freeWalkableTiles.guaranteeImmutability
       val unitsToPositions = ownUnits.allCompletedMobiles
                              .iterator
@@ -317,7 +317,7 @@ object Terran {
         }
         mutable.HashMap.empty ++= badlyPositioned
       }
-    })
+    }
     private val blockingUnitsQueue = mutable.HashSet.empty[Mobile]
     private val relevantLayer      = oncePerTick {
       mapLayers.freeWalkableTiles.guaranteeImmutability
@@ -508,6 +508,7 @@ object Terran {
     override def onTick(): Unit = {
       super.onTick()
     }
+
     override def renderDebug(renderer: Renderer) = {
       super.renderDebug(renderer)
       worldDominationPlan.allAttacks.foreach { plan =>

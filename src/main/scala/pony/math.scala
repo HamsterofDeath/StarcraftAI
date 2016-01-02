@@ -61,6 +61,9 @@ object MapTilePosition {
       acc movedBy e
     }) / size
   }
+  def averageOpt(ps: TraversableOnce[MapTilePosition]) = {
+    if (ps.isEmpty) None else Some(average(ps))
+  }
 
   val max          = 256 * 4
   val points       = if (memoryHog) {
@@ -232,15 +235,12 @@ class GeometryHelpers(maxX: Int, maxY: Int) {
     val xSize = toX - fromX
     val ySize = toY - fromY
     val tiles = xSize * ySize
-    Iterator.range(tiles, tiles + 1).filter { index =>
-      val row = index / xSize
-      val col = index % xSize
-      dstSqr(col, row) <= radSqr
-    }.map { index =>
-      val row = index / xSize
-      val col = index % xSize
-      MapTilePosition(col, row)
-    }
+
+    Iterator.range(fromX, toX + 1).map { x =>
+      Iterator.range(fromY, toY + 1).filter { y =>
+        dstSqr(x, y) <= radSqr
+      }.map { y => MapTilePosition.shared(x, y) }
+    }.flatten
   }
 
   object intersections {
