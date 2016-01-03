@@ -420,7 +420,7 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
         override def isFinished = !miningTarget.patch.isInGame
         override def hasFailed: Boolean = super.hasFailed || base.mainBuilding.isDead
         override protected def suggestFerryDropPosition = {
-          targetPatch.tilePosition.middleBetween(base.mainBuilding.tilePosition)
+          targetPatch.tilePosition.middleBetween(base.mainBuilding.tilePosition).toSome
         }
         override def targetPatch = miningTarget.patch
       }
@@ -546,7 +546,10 @@ class GatherGas(universe: Universe) extends OrderlessAIModule[WorkerUnit](univer
         order.toSeq
       }
       override protected def suggestFerryDropPosition = {
-        freeNearGeysir.getOr(s"No free tile around $geysir")
+        freeNearGeysir.forNone {
+          warn(s"No free tile around $geysir")
+        }
+        freeNearGeysir
       }
       trait State
       case object Idle extends State

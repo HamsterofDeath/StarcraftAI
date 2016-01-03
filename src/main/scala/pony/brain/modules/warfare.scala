@@ -122,7 +122,7 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
   def attackOf(m: Mobile) = attacks.find(_.force(m))
   def initiateAttack(where: MapTilePosition, complete: Boolean = true): Unit = {
     majorInfo(s"Initiating attack of $where")
-    assert(!thinking, s"Cannot multitask, sorry")
+    assert(!thinking, s"Cannot multitask yet, sorry")
     //this attack has priority over an existing one
     if (complete) {
       attacks.clear()
@@ -172,6 +172,8 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
     override def asOrder = Orders.NoUpdate(who)
   }
   class Attack(private var currentForce: Set[Mobile], meetingPoint: TargetPosition) {
+    def destination = meetingPoint
+
     assert(currentForce.nonEmpty, "WTF?")
 
     private val area = {

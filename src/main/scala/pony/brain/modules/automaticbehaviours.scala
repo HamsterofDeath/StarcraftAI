@@ -521,15 +521,35 @@ object Terran {
         }
       }
     }
-    override protected def wrapBase(unit: Mobile) =
-      new SingleUnitBehaviour[Mobile](unit, meta) {
-        override def describeShort: String = "Migrate"
-        override def toOrder(what: Objective) = {
-          worldDominationPlan.attackOf(unit).map { attack =>
-            attack.suggestActionFor(unit).asOrder.toList
-          }.getOrElse(Nil)
+
+    private class DefaultMigrationBehaviour[+T <: Mobile](unit: T)
+      extends SingleUnitBehaviour(unit, meta) {
+      override def describeShort = "Migrate"
+      override protected def toOrder(what: Objective) = {
+        worldDominationPlan.attackOf(unit).map { attack =>
+          attack.suggestActionFor(unit).asOrder.toList
+        }.getOrElse(Nil)
+      }
+    }
+
+    override protected def wrapBase(unit: Mobile): SingleUnitBehaviour[Mobile] = {
+      def finalDestination = {
+        worldDominationPlan.attackOf(unit).map { attack =>
+          attack.destination.where
         }
       }
+      val behaviour = unit match {
+        case g: GroundUnit =>
+          new DefaultMigrationBehaviour[GroundUnit](g) with FerrySupport[GroundUnit] {
+            override protected def suggestFerryDropPosition = {
+              finalDestination
+            }
+          }
+
+        case m => new DefaultMigrationBehaviour[Mobile](unit)
+      }
+      behaviour
+    }
   }
 
   class ReallyReallyLazy(universe: Universe) extends DefaultBehaviour[Mobile](universe) {

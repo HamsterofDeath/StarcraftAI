@@ -607,9 +607,8 @@ object JobCounter {
   }
 }
 
-abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: T, val priority:
-Priority)
-  extends HasUniverse {
+abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: T,
+                                           val priority: Priority) extends JobOrSubJob[T] {
 
   override val universe           = employer.universe
   private val myJobId = JobCounter.next()
@@ -657,7 +656,7 @@ Priority)
 
         noCommandsForTicks = everyNth
         def injectedOrMine = {
-          val maybe = injectedOrder
+          val maybe = higherPriorityOrder
           if (maybe.isEmpty) ordersForTick else maybe
         }
         val nextOrder = injectedOrMine
@@ -675,7 +674,7 @@ Priority)
     }
   }
   protected def omitRepeatedOrders = false
-  def injectedOrder: Seq[UnitOrder] = Nil
+  def higherPriorityOrder: Seq[UnitOrder] = Nil
   def everyNth = 0
   def noCommandsForTicks_!(n: Int): Unit = {
     noCommandsForTicks = n
@@ -887,29 +886,37 @@ class ResearchUpgrade[U <: Upgrader](employer: Employer[U],
 
 }
 
-trait FerrySupport[T <: GroundUnit] extends UnitWithJob[T] {
+trait JobOrSubJob[+T <: WrapsUnit] extends HasUniverse {
+  def unit: T
+  protected def higherPriorityOrder: Seq[UnitOrder]
+}
 
-  override def injectedOrder: Seq[UnitOrder] = {
+trait FerrySupport[T <: GroundUnit] extends JobOrSubJob[T] {
+
+  override def higherPriorityOrder: Seq[UnitOrder] = {
     val where = unit.currentTile
-    val to = suggestFerryDropPosition
+    val toOpt = suggestFerryDropPosition
 
-    val needsFerry = !unit.currentArea.exists(_.free(to))
-    if (needsFerry) {
-      ferryManager.requestFerry(unit, to) match {
-        case Some(plan) if unit.onGround =>
-          Orders.BoardFerry(unit, plan.ferry).toList
-        case _ if unit.loaded =>
-          // do nothing while in transporter
-          Orders.NoUpdate(unit).toList
-        case None =>
-          //go there while waiting for ferry
-          Orders.MoveToTile(unit, to).toList
+    toOpt.map { to =>
+      val needsFerry = !unit.currentArea.exists(_.free(to))
+      if (needsFerry) {
+        ferryManager.requestFerry(unit, to) match {
+          case Some(plan) if unit.onGround =>
+            Orders.BoardFerry(unit, plan.ferry).toList
+          case _ if unit.loaded =>
+            // do nothing while in transporter
+            Orders.NoUpdate(unit).toList
+          case None =>
+            //go there while waiting for ferry
+            Orders.MoveToTile(unit, to).toList
+        }
+      } else {
+        Nil
       }
-    } else {
-      Nil
-    }
+    }.getOrElse(Nil)
   }
-  protected def suggestFerryDropPosition: MapTilePosition
+
+  protected def suggestFerryDropPosition: Option[MapTilePosition]
 }
 
 class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, buildingType: Class[_ <: B],
@@ -1014,7 +1021,7 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, bu
   }
   override def newFor(replacement: W) = new
       ConstructBuilding(replacement, buildingType, employer, buildWhere, funding, belongsTo)
-  override protected def suggestFerryDropPosition = area.centerTile
+  override protected def suggestFerryDropPosition = area.centerTile.toSome
 }
 
 sealed trait Behaviour
@@ -1032,14 +1039,26 @@ object Objective {
 
 case class SingleUnitBehaviourMeta(priority: SecondPriority, refuseCommandsForTicks: Int, forceRepeats: Boolean)
 
-abstract class SingleUnitBehaviour[T <: WrapsUnit](val unit: T, meta: SingleUnitBehaviourMeta) {
+
+abstract class SingleUnitBehaviour[+T <: WrapsUnit](val unit: T, meta: SingleUnitBehaviourMeta)
+  extends JobOrSubJob[T] {
+
+  protected def higherPriorityOrder = Seq.empty[UnitOrder]
+
+  override def universe = unit.universe
+
   def onStealUnit(): Unit = {}
   def orderForTick(what: Objective) = {
     if (skipFor > 0) {
       skipFor -= 1
       Nil
     } else {
-      toOrder(what)
+      val interrupt = higherPriorityOrder
+      if (interrupt.isEmpty) {
+        toOrder(what)
+      } else {
+        interrupt
+      }
     }
   }
   protected def toOrder(what: Objective): Seq[UnitOrder]
