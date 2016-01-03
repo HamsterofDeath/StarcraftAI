@@ -757,9 +757,10 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
                                                .or_!(justBlockingMobiles)
 
   private class EvalSafeInput {
-    val base      = rawMapWalk.mutableCopy
-    val buildings = universe.enemyUnits.allBuildings.map(_.centerTile)
-    val units     = universe.enemyUnits.allMobiles.filterNot(_.isHarmlessNow).map(_.currentTile)
+    val base           = rawMapWalk.mutableCopy
+    val buildings      = universe.enemyUnits.allBuildings.map(_.centerTile)
+    val armedBuildings = universe.enemyUnits.allBuildingsWithWeapons.map(_.centerTile)
+    val units          = universe.enemyUnits.allMobiles.filterNot(_.isHarmlessNow).map(_.currentTile)
   }
 
   private def areaOfCircles(trav: => TraversableOnce[Circle]) = {
@@ -789,6 +790,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
       val base = in.base
       base.geoHelper.intersections.tilesInCircle(in.buildings, 12, 3).foreach(base.block_!)
       base.geoHelper.intersections.tilesInCircle(in.units, 12, 5).foreach(base.block_!)
+      base.geoHelper.intersections.tilesInCircle(in.armedBuildings, 12, 1).foreach(base.block_!)
       base.guaranteeImmutability
     }
   }

@@ -475,6 +475,7 @@ class Units(game: Game, hostile: Boolean) {
     allBuildings.find(_.area.upperLeft == upperLeft)
   }
   def allBuildings = allByType[Building]
+  def allBuildingsWithWeapons = allByType[ArmedBuilding]
   def allDetectors = allByType[Detector]
   def allCompletedMobiles = allMobiles.filterNot(_.isBeingCreated)
   def allWithGroundWeapon = allByType[GroundWeapon]
