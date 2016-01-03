@@ -952,7 +952,8 @@ case class MineralPatchGroup(patchId: Int) {
     val (x, y) = myPatches.foldLeft((0, 0)) {
       case ((x, y), mp) => (x + mp.tilePosition.x, y + mp.tilePosition.y)
     }
-    MapTilePosition.shared(x / myPatches.size, y / myPatches.size)
+    val reference = MapTilePosition.shared(x / myPatches.size, y / myPatches.size)
+    myPatches.flatMap(_.area.tiles).minBy(_.distanceSquaredTo(reference))
   }
 }
 

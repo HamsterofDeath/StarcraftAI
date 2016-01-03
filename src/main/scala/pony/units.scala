@@ -1568,7 +1568,7 @@ class Tank(unit: APIUnit)
 class Goliath(unit: APIUnit)
   extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with InstantAttackGround with
           SlowAttackAir with Mechanic with MobileRangeWeapon with IsBig with IsVehicle with
-          NormalGroundDamage with
+          NormalGroundDamage with BadDancer with
           ExplosiveAirDamage with ArmedMobile
 class Wraith(unit: APIUnit)
   extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with CanCloak with

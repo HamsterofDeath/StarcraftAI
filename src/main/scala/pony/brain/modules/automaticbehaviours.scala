@@ -103,11 +103,35 @@ object Terran {
 
     override def forceRepeatedCommands: Boolean = false
 
+    private val timeBetweenUpdates = 24
+    private val maxAge             = 24 * 4
+
     override protected def wrapBase(unit: TransporterUnit) = new
         SingleUnitBehaviour[TransporterUnit](unit, meta) {
 
-      case class PositionOrUnit(where: MapTilePosition, unit: Option[GroundUnit])
-      case class MaybePath(creationTick: Int, path: FutureIterator[MapTilePosition, Option[Path]])
+      trait PositionOrUnit {
+        def where: MapTilePosition
+        def unit: Option[GroundUnit]
+      }
+
+      case class IsPosition(where: MapTilePosition) extends PositionOrUnit {
+        override def unit = None
+      }
+      case class IsUnit(basedOn: GroundUnit) extends PositionOrUnit {
+        override def where = basedOn.currentTile
+        private val u = basedOn.toSome
+        override def unit = u
+      }
+      case class MaybePath(path: FutureIterator[PositionOrUnit, Option[MigrationPath]]) {
+        private var lastTouched = currentTick
+        def age = currentTick - lastTouched
+
+        def updateFuture(): Unit = {
+          trace(s"Update requested for path to ${path.feedObj}")
+          path.prepareNextIfDone()
+          lastTouched = currentTick
+        }
+      }
 
       private val paths = mutable.HashMap.empty[PositionOrUnit, MaybePath]
 
@@ -119,38 +143,52 @@ object Terran {
 
       override def toOrder(what: Objective): Seq[UnitOrder] = {
         ifNth(Primes.prime61) {
-          val old = paths.filter { case (_, maybe) => maybe.creationTick + 50 < currentTick }
+          val old = paths.filter { case (_, maybe) => maybe.age > maxAge }
                     .keySet
                     .toList
           paths --= old
+          trace(s"Kicked out obsolete paths for: ${old}")
         }
 
         def currentSafeOrder(transporterTarget: PositionOrUnit): Option[UnitOrder] = {
           val maybeCalculatedPath = paths.getOrElseUpdate(transporterTarget, {
-            val future = FutureIterator.feed(transporterTarget.where).andProduce { to =>
-              pathfinder.airSafe.findPathNow(unit.currentTile, to)
+            val future = FutureIterator.feed(transporterTarget).andProduce { target =>
+              val path = pathfinder.airSafe.findPathNow(unit.currentTile, target.where)
+              path.map(e => new Paths(List(e))).map(new MigrationPath(_, universe))
             }
-            MaybePath(currentTick, future)
+            MaybePath(future)
           })
+          if (maybeCalculatedPath.age > timeBetweenUpdates) {
+            maybeCalculatedPath.updateFuture()
+          }
           maybeCalculatedPath.path.mostRecent.flatMap { maybeFoundPath =>
             maybeFoundPath.map { safePath =>
-              transporterTarget.unit match {
-                case Some(pickupTarget) =>
-                  Orders.LoadUnit(unit, pickupTarget)
-                case None =>
-                  Orders.MoveToTile(unit, transporterTarget.where)
+              def simpleCommand = {
+                transporterTarget.unit match {
+                  case Some(pickupTarget) =>
+                    Orders.LoadUnit(unit, pickupTarget)
+                  case None =>
+                    Orders.MoveToTile(unit, transporterTarget.where)
+                }
               }
+              val near = unit.currentTile.distanceToIsLess(transporterTarget.where, 5)
+              if (near)
+                simpleCommand
+              else
+                safePath.nextFor(unit).map { case (where, _) =>
+                  Orders.MoveToTile(unit, where)
+                }.getOrElse(simpleCommand)
             }
           }
         }
 
         def orderByUnit(groundUnit: GroundUnit): Option[UnitOrder] = {
-          val what = PositionOrUnit(groundUnit.currentTile, groundUnit.toSome)
+          val what = IsUnit(groundUnit)
           currentSafeOrder(what)
         }
 
         def orderByTile(simpleTile: MapTilePosition): Option[UnitOrder] = {
-          val what = PositionOrUnit(simpleTile, None)
+          val what = IsPosition(simpleTile)
           currentSafeOrder(what)
         }
 
@@ -201,7 +239,6 @@ object Terran {
     override def canControl(u: WrapsUnit): Boolean = super.canControl(u) &&
                                                      !u.isInstanceOf[BadDancer]
     override def refuseCommandsForTicks = 6
-    // to avoid wasting cpu time
     override protected def wrapBase(unit: ArmedMobile): SingleUnitBehaviour[ArmedMobile] = new
         SingleUnitBehaviour[ArmedMobile](unit, meta) {
 
@@ -212,6 +249,10 @@ object Terran {
       private var state: State    = Idle
       private var runningCommands = List.empty[UnitOrder]
       private val beLazy          = (Idle, List.empty[UnitOrder])
+      private val dropAtFirst     = 36
+      private val tries           = 100
+      private val range           = 10
+      private val takeNth         = 7
 
       override def describeShort: String = "Dance"
       override def toOrder(what: Objective) = {
@@ -247,7 +288,12 @@ object Terran {
                 val dpSize = dancePartners.size
                 val whereToGo = {
                   // first try: just escape antigravity style
-                  on.spiralAround(unit.currentTile, 8).slice(36, 186).filter { c =>
+                  on.spiralAround(unit.currentTile, range)
+                  .drop(dropAtFirst)
+                  .sliding(1, takeNth)
+                  .flatten
+                  .take(tries)
+                  .filter { c =>
                     c.distanceSquaredTo(ref) <= unit.currentTile.distanceSquaredTo(ref)
                   }.find {on.free}
                   .orElse {
@@ -256,7 +302,11 @@ object Terran {
                     val map = on
                     val myArea = map.areaWhichContainsAsFree(unit.currentTile)
                     myArea.flatMap { a =>
-                      on.spiralAround(unit.currentTile, 8).slice(36, 186)
+                      on.spiralAround(unit.currentTile, range)
+                      .drop(dropAtFirst)
+                      .sliding(1, takeNth)
+                      .flatten
+                      .take(tries)
                       .filter(map.free)
                       .filter(a.free)
                       .maxByOpt(center.distanceSquaredTo)
@@ -432,7 +482,7 @@ object Terran {
 
     private val helper = new NonConflictingTargets[Mechanic, SCV](universe = universe,
       rateTarget = m => PriorityChain(m.percentageHPOk),
-      validTarget = _.isDamaged,
+      validTargetTest = _.isDamaged,
       subAccept = (m, t) => m.currentArea == t.currentArea,
       subRate = (m, t) => PriorityChain(-m.currentTile.distanceSquaredTo(t.currentTile)),
       own = true,
@@ -464,7 +514,7 @@ object Terran {
 
     private val helper = new NonConflictingTargets[TerranBuilding, SCV](universe = universe,
       rateTarget = m => PriorityChain(m.percentageHPOk),
-      validTarget = _.isDamaged,
+      validTargetTest = _.isDamaged,
       subAccept = (m, t) => m.currentArea == t.areaOnMap,
       subRate = (m, t) => PriorityChain(-m.currentTile.distanceSquaredTo(t.centerTile)),
       own = true,
@@ -502,7 +552,7 @@ object Terran {
     private val helper = new NonConflictingTargets[Building, SCV](
       universe = universe,
       rateTarget = b => PriorityChain(-b.remainingBuildTime),
-      validTarget = e => e.isIncompleteAbandoned && !e.isInstanceOf[Addon],
+      validTargetTest = e => e.isIncompleteAbandoned && !e.isInstanceOf[Addon],
       subRate = (w, b) => PriorityChain(-w.currentTile.distanceSquaredTo(b.tilePosition)),
       own = true,
       allowReplacements = true,
@@ -1131,23 +1181,12 @@ object NonConflictingSpellTargets {
   }
 }
 
-class NonConflictingTargets[T <: WrapsUnit : Manifest, M <: Mobile : Manifest](override val
-                                                                               universe:
-                                                                               Universe,
-                                                                               rateTarget: T
-                                                                                 =>
-                                                                                 PriorityChain,
-                                                                               validTarget: T
-                                                                                 => Boolean,
-                                                                               subAccept: (M,
-                                                                                 T) => Boolean,
-                                                                               subRate: (M,
-                                                                                 T) =>
-                                                                                 PriorityChain,
-                                                                               own: Boolean,
-                                                                               allowReplacements:
-                                                                               Boolean)
-  extends HasUniverse {
+class NonConflictingTargets[T <: WrapsUnit : Manifest, M <: Mobile : Manifest]
+(override val universe: Universe, rateTarget: T => PriorityChain, validTargetTest: T => Boolean,
+ subAccept: (M, T) => Boolean, subRate: (M, T) => PriorityChain, own: Boolean,
+ allowReplacements: Boolean) extends HasUniverse {
+
+  private val validTarget = (t: T) => t.isInGame && validTargetTest(t)
 
   override def onTick() = {
     super.onTick()

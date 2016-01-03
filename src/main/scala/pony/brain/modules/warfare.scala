@@ -20,7 +20,7 @@ class FormationHelper(override val universe: Universe,
         mapLayers.safeGround.mutableCopy
       }
 
-      val targetArea = walkable.areaWhichContainsAsFree(target).get
+      val targetArea = walkable.areaWhichContainsAsFree(target).getOr(s"No area contains $target")
       val validTiles = availableArea.spiralAround(target, 80)
                        .filter(availableArea.freeAndInBounds)
                        .filter(targetArea.freeAndInBounds)

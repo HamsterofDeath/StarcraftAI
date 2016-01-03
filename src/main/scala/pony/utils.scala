@@ -263,6 +263,8 @@ class FutureIterator[IN, T](feed: => IN, produce: IN => T) {
   private var inProgress = nextFuture
   private var thinking   = true
 
+  def feedObj = feed
+
   private def nextFuture = {
     val input = feed
     val fut = BWFuture.produceFrom(produce(feed))
