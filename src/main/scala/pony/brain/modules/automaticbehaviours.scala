@@ -74,7 +74,7 @@ object Terran {
                       new CloakSelfWraith(universe) ::
                       new SiegeUnsiegeSelf(universe) ::
                       new MigrateTowardsPosition(universe) ::
-                      new FerryService(universe) ::
+                      new TransportGroundUnits(universe) ::
                       new RepairDamagedUnit(universe) ::
                       new RepairDamagedBuilding(universe) ::
                       new MoveAwayFromConstructionSite(universe) ::
@@ -98,12 +98,18 @@ object Terran {
     allOfThem
   }
 
-  class FerryService(universe: Universe) extends DefaultBehaviour[TransporterUnit](universe) {
+  class TransportGroundUnits(universe: Universe)
+    extends DefaultBehaviour[TransporterUnit](universe) {
 
     override def forceRepeatedCommands: Boolean = false
 
     override protected def wrapBase(unit: TransporterUnit) = new
         SingleUnitBehaviour[TransporterUnit](unit, meta) {
+
+      case class PositionOrUnit(where: MapTilePosition, unit: Option[GroundUnit])
+      case class MaybePath(creationTick: Int, path: FutureIterator[MapTilePosition, Option[Path]])
+
+      private val paths = mutable.HashMap.empty[PositionOrUnit, MaybePath]
 
       override def forceRepeats: Boolean = true
 
@@ -112,6 +118,42 @@ object Terran {
       override def describeShort: String = "Transport"
 
       override def toOrder(what: Objective): Seq[UnitOrder] = {
+        ifNth(Primes.prime61) {
+          val old = paths.filter { case (_, maybe) => maybe.creationTick + 50 < currentTick }
+                    .keySet
+                    .toList
+          paths --= old
+        }
+
+        def currentSafeOrder(transporterTarget: PositionOrUnit): Option[UnitOrder] = {
+          val maybeCalculatedPath = paths.getOrElseUpdate(transporterTarget, {
+            val future = FutureIterator.feed(transporterTarget.where).andProduce { to =>
+              pathfinder.airSafe.findPathNow(unit.currentTile, to)
+            }
+            MaybePath(currentTick, future)
+          })
+          maybeCalculatedPath.path.mostRecent.flatMap { maybeFoundPath =>
+            maybeFoundPath.map { safePath =>
+              transporterTarget.unit match {
+                case Some(pickupTarget) =>
+                  Orders.LoadUnit(unit, pickupTarget)
+                case None =>
+                  Orders.MoveToTile(unit, transporterTarget.where)
+              }
+            }
+          }
+        }
+
+        def orderByUnit(groundUnit: GroundUnit): Option[UnitOrder] = {
+          val what = PositionOrUnit(groundUnit.currentTile, groundUnit.toSome)
+          currentSafeOrder(what)
+        }
+
+        def orderByTile(simpleTile: MapTilePosition): Option[UnitOrder] = {
+          val what = PositionOrUnit(simpleTile, None)
+          currentSafeOrder(what)
+        }
+
         ferryManager.planFor(unit) match {
           case Some(plan) =>
             plan.toDropNow.map { dropThis =>
@@ -122,9 +164,9 @@ object Terran {
                                .view
                                .filterNot(_.loaded)
                                .minBy(_.currentTile.distanceSquaredTo(unit.currentTile))
-                Orders.LoadUnit(unit, loadThis).toSome
+                orderByUnit(loadThis)
               } else if (plan.needsToReachTarget) {
-                Orders.MoveToTile(plan.ferry, plan.toWhere).toSome
+                orderByTile(plan.toWhere)
               } else if (plan.loadedLeft) {
                 plan.nextToDropAtTarget.map { drop =>
                   Orders.UnloadUnit(unit, drop)

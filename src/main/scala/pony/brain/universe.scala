@@ -8,7 +8,15 @@ import pony.brain.modules.{FerryManager, WorldDominationPlan}
 
 import scala.collection.mutable.ArrayBuffer
 
-trait Universe {
+trait Pathfinders {
+  def ground: PathFinder
+  def groundSafe: PathFinder
+  def airSafe: PathFinder
+}
+
+trait Universe extends HasLazyVals {
+  def pathfinder: Pathfinders
+
   private val myTime = new Time(this)
   def allUnits = AllUnits(ownUnits, enemyUnits)
   def time = myTime
@@ -22,8 +30,6 @@ trait Universe {
   def enemyUnits: Units
   def mapLayers: MapLayers
   def strategicMap: StrategicMap
-  def pathFinder: PathFinder
-  def pathFinderSafe: PathFinder
   def strategy: Strategies
   def unitGrid: UnitGrid
   def ferryManager: FerryManager
@@ -44,12 +50,6 @@ trait Universe {
 
   def unregister_!(listener: AfterTickListener): Unit = {
     afterTickListeners -= listener
-  }
-
-  def oncePerTick[T](gen: => T) = {
-    val ret = LazyVal.from(gen)
-    register_!(() => ret.invalidate())
-    ret
   }
 }
 

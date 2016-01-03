@@ -9,8 +9,7 @@ import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, Future}
 
 trait HasUniverse extends HasLazyVals {
-  def pathFinder = universe.pathFinder
-  def pathFinderSafe = universe.pathFinderSafe
+  def pathfinder = universe.pathfinder
   def ferryManager = universe.ferryManager
   def unitGrid = universe.unitGrid
   def upgrades = universe.upgrades
@@ -184,6 +183,12 @@ class TwilightSparkle(world: DefaultWorld) {
   self =>
 
   val universe: Universe = new Universe {
+
+    override def pathfinder = new Pathfinders {
+      override def groundSafe = myPathFinderGroundSafe.get
+      override def ground = myPathFinderGround.get
+      override def airSafe = myPathFinderAirSafe.get
+    }
     override def bases = self.bases
     override def world = self.world
     override def upgrades = self.upgradeManager
@@ -194,8 +199,6 @@ class TwilightSparkle(world: DefaultWorld) {
     override def ownUnits = world.ownUnits
     override def enemyUnits = world.enemyUnits
     override def strategicMap = world.strategicMap
-    override def pathFinder = self.pathFinder
-    override def pathFinderSafe = self.pathFinderSafe
     override def strategy = self.strategy
     override def worldDominationPlan = self.worldDomination
     override def unitGrid = self.unitGrid
@@ -205,7 +208,7 @@ class TwilightSparkle(world: DefaultWorld) {
   private val resources        = new ResourceManager(universe)
   private val strategy         = new Strategies(universe)
   private val worldDomination  = new WorldDominationPlan(universe)
-  private val aiModules        = List(
+  private val aiModules              = List(
     new DefaultBehaviours(universe),
     new GatherMinerals(universe),
     new GatherGas(universe),
@@ -223,17 +226,20 @@ class TwilightSparkle(world: DefaultWorld) {
     new SendOrdersToStarcraft(universe),
     AIModule.noop(universe)
   )
-  private val unitManager      = new UnitManager(universe)
-  private val upgradeManager   = new UpgradeManager(universe)
-  private val maps             = new MapLayers(universe)
-  private val myPathFinder     = LazyVal.from {
-    new PathFinder(maps, false)
+  private val unitManager            = new UnitManager(universe)
+  private val upgradeManager         = new UpgradeManager(universe)
+  private val maps                   = new MapLayers(universe)
+  private val myPathFinderGround     = LazyVal.from {
+    new PathFinder(maps, false, true)
   }
-  private val myPathFinderSafe = universe.oncePerTick {
-    new PathFinder(maps, true)
+  private val myPathFinderAirSafe    = universe.oncePerTick {
+    new PathFinder(maps, true, false)
   }
-  private val unitGrid         = new UnitGrid(universe)
-  private val ferryManager     = new FerryManager(universe)
+  private val myPathFinderGroundSafe = universe.oncePerTick {
+    new PathFinder(maps, true, true)
+  }
+  private val unitGrid               = new UnitGrid(universe)
+  private val ferryManager           = new FerryManager(universe)
 
   world.enemyUnits.registerKill_!(onKillOrCreate)
   world.ownUnits.registerKill_!(onKillOrCreate)
@@ -249,6 +255,7 @@ class TwilightSparkle(world: DefaultWorld) {
     world.ownUnits.consumeFresh_! {_.init_!(universe)}
     world.enemyUnits.consumeFresh_! {_.init_!(universe)}
 
+    universe.onTick()
     maps.tick()
     resources.tick()
     unitManager.tick()
@@ -269,12 +276,11 @@ class TwilightSparkle(world: DefaultWorld) {
   private def onKillOrCreate = (unit: WrapsUnit) =>
     unit match {
       case _: StaticallyPositioned =>
-        myPathFinder.invalidate()
-        myPathFinderSafe.invalidate()
+        myPathFinderGroundSafe.invalidate()
+        myPathFinderGround.invalidate()
+        myPathFinderAirSafe.invalidate()
       case _ =>
     }
-  private def pathFinder = myPathFinder.get
-  private def pathFinderSafe = myPathFinderSafe.get
 }
 
 class Bases(world: DefaultWorld) {

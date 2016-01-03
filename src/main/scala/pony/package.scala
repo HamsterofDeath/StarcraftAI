@@ -10,7 +10,6 @@ package object pony {
 
   // milestone 2:
   // TODO add air defenses
-  // TODO send units via shuttle to attack/defend islands
   // TODO make shuttles use safe paths (always)
 
   // milestone 3:

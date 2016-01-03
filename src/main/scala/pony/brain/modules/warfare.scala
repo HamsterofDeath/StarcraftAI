@@ -17,7 +17,7 @@ class FormationHelper(override val universe: Universe,
     BWFuture.from {
       val minDst = 24
       val availableArea = {
-        mapLayers.freeWalkableMapSafe.mutableCopy
+        mapLayers.safeGround.mutableCopy
       }
 
       val targetArea = walkable.areaWhichContainsAsFree(target).get
@@ -197,7 +197,8 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
       .getOrElse(realCenter)
     }
 
-    private val pathToFollow = universe.pathFinderSafe.findPaths(currentCenter, meetingPoint.where)
+    private val pathToFollow = universe.pathfinder.groundSafe
+                               .findPaths(currentCenter, meetingPoint.where)
     private val migration    = pathToFollow.map(_.map(new MigrationPath(_, universe)))
 
     def migrationPlan = migration.result

@@ -49,6 +49,7 @@ class FerryManager(override val universe: Universe) extends HasUniverse {
                                       buildNewIfRequired: Boolean = false) = {
     assert(forWhat.forall(_.currentArea != mapLayers.rawWalkableMap.areaWhichContainsAsFree(to)),
       s"One of the units is already in the target area")
+    assert(mapLayers.rawWalkableMap.free(to), s"$to is supposed to be a free ground tile")
     val groups = ArrayBuffer.empty[FerryCargoBuilder]
     val remaining = forWhat.toBuffer
 
