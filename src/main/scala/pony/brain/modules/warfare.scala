@@ -571,6 +571,86 @@ class ProvideSuggestedAndRequestedAddons(universe: Universe)
   }
 }
 
+class SetupAntiCloakDefenses(universe: Universe)
+  extends OrderlessAIModule[WorkerUnit](universe) with BuildingRequestHelper {
+
+  private val richBaseCount = oncePerTick {
+    bases.richBasesCount
+  }
+
+  private def targetBuildingType = race.detectorBuildingClass
+
+  class Input {
+    val buildingType           = targetBuildingType
+    val existing               = ownUnits.allByClass(buildingType)
+    val planned                = unitManager.plannedToBuildByClass(buildingType)
+    val exposed                = mapLayers.exposedToCloakedUnits
+    val constructionSiteFinder = new ConstructionSiteFinder(universe)
+  }
+
+  private def input = new Input
+
+  private val analyzed = FutureIterator.feed(input) produceAsync { in =>
+    val limit = richBaseCount.get min 3
+    val counts = mutable.HashMap.empty[MapTilePosition, Int]
+
+    // goal: position detectors so that all values are >= 0
+    in.exposed.allBlocked.foreach { where =>
+      counts.put(where, -limit)
+    }
+
+    in.existing.foreach { detector =>
+      detector.detectionArea.asTiles.foreach { where =>
+        counts.insertReplace(where, _ + 1, 0)
+      }
+    }
+
+    val exposure = -counts.values.sum
+
+    if (exposure > 0) {
+      // find the next spot that minimized the exposure
+      val byPriority = counts.keySet.toVector.sortBy { candidate =>
+        val covered = {
+          geoHelper.circle(candidate, 8).asTiles.count { tile =>
+            counts.get(tile) match {
+              case Some(value) if value < 0 => true
+              case _ => false
+            }
+          }
+        }
+        exposure - covered
+      }
+      // of those, take the first one that is ok
+      val bestPosition = byPriority.iterator.flatMap { where =>
+        in.constructionSiteFinder.findSpotFor(where, in.buildingType, 1, 1)
+      }.toStream.headOption
+      info(s"Next detector should be built at ${bestPosition.get}", bestPosition.isDefined)
+      trace(s"Exposed by $exposure, but cannot add detector building", bestPosition.isEmpty)
+      bestPosition
+    } else {
+      None
+    }
+  }
+
+  override def onTick() = {
+    super.onTick()
+    analyzed.mostRecent.foreach { bestBuildingLocation =>
+      val inProgress = {
+        unitManager.requestedConstructions[MissileTurret]
+        .exists(_.customPosition.predefined == bestBuildingLocation)
+      }
+      if (inProgress) {
+        analyzed.prepareNextIfDone()
+      } else {
+        bestBuildingLocation.foreach { where =>
+          requestBuilding(targetBuildingType,
+            customBuildingPosition = AlternativeBuildingSpot.fromPreset(where))
+        }
+      }
+    }
+  }
+}
+
 class HandleDefenses(universe: Universe) extends OrderlessAIModule[Mobile](universe) {
 
   private var backgroundOp = BWFuture.none[Seq[Group[Mobile]]]
@@ -599,11 +679,11 @@ class HandleDefenses(universe: Universe) extends OrderlessAIModule[Mobile](unive
         resetBackgroundOp()
       }, {})
     }
-  }
+    }
   private def resetBackgroundOp(): Unit = {
     backgroundOp = BWFuture.none
+    }
   }
-}
 
 class ProvideUpgrades(universe: Universe) extends OrderlessAIModule[Upgrader](universe) {
   self =>
@@ -623,7 +703,7 @@ class ProvideUpgrades(universe: Universe) extends OrderlessAIModule[Upgrader](un
       val buildingPlannedOrExists = unitManager.existsOrPlanned(needs)
       if (buildingPlannedOrExists) {
         val buildMissing = !unitManager.plannedToBuild(needs) &&
-                           ownUnits.allByClass(needs).size < bases.bases.count(_.resourceArea.rich)
+                           ownUnits.allByClass(needs).size < bases.richBases.size
 
         val result = unitManager
                      .request(UnitJobRequest.upgraderFor(wantedUpgrade, self), buildMissing)
@@ -655,23 +735,23 @@ class ProvideUpgrades(universe: Universe) extends OrderlessAIModule[Upgrader](un
         } to be build in order for $wantedUpgrade to be researched")
         helper.requestBuilding(needs, takeCareOfDependencies = true)
       }
+      }
     }
-  }
   private def hasLimitDisabler = universe.ownUnits.allByType[UpgradeLimitLifter].nonEmpty
-}
+  }
 
 class EnqueueFactories(universe: Universe)
   extends OrderlessAIModule[WorkerUnit](universe) with BuildingRequestHelper {
 
   override def onTick(): Unit = {
     evaluateCapacities.foreach { cap =>
-      val existingByType = unitManager.unitsByType(cap.typeOfFactory).size +
+      val existingByType = ownUnits.allByClass(cap.typeOfFactory).size +
                            unitManager.plannedToBuildByClass(cap.typeOfFactory).size
       if (existingByType < cap.maximumSustainable) {
         requestBuilding(cap.typeOfFactory, takeCareOfDependencies = true)
+        }
       }
     }
-  }
 
   private def evaluateCapacities = {
     strategy.current.suggestProducers
@@ -682,20 +762,20 @@ class EnqueueFactories(universe: Universe)
       val copy = IdealProducerCount(elems.head.typeOfFactory, sum)(active = true)
       copy
     }
+    }
   }
-}
 
 case class IdealProducerCount[T <: UnitFactory](typeOfFactory: Class[_ <: UnitFactory],
                                                 maximumSustainable: Int)
                                                (active: => Boolean) {
-  def isActive = active
-}
+    def isActive = active
+  }
 case class IdealUnitRatio[T <: Mobile](unitType: Class[_ <: Mobile], amount: Int)
                                       (active: => Boolean) {
   def fixedAmount = amount max 1
 
-  def isActive = active
-}
+    def isActive = active
+  }
 
 class EnqueueArmy(universe: Universe)
   extends OrderlessAIModule[UnitFactory](universe) with UnitRequestHelper {
@@ -705,7 +785,7 @@ class EnqueueArmy(universe: Universe)
     val mostMissing = p.wanted.toVector.sortBy { case (t, idealRatio) =>
       val existingRatio = p.existing.getOrElse(t, 0.0)
       existingRatio / idealRatio
-    }
+      }
     val (canBuild, needsSomething) =
       mostMissing.partition { case (c, _) => universe.unitManager.allRequirementsFulfilled(c) }
 
@@ -727,7 +807,7 @@ class EnqueueArmy(universe: Universe)
     needsSomething.foreach { case (thisOne, _) =>
       requestUnit(thisOne, takeCareOfDependencies = true)
     }
-  }
+    }
   def percentages = {
     val ratios = strategy.current.suggestUnits.filter(_.isActive)
     val summed = ratios.groupBy(_.unitType)
@@ -738,7 +818,7 @@ class EnqueueArmy(universe: Universe)
     val percentagesWanted = summed.map { case (t, v) => t -> v.toDouble / totalWanted }
 
     val existingCounts = {
-      val existing = unitManager.unitsByType[Mobile].groupBy(_.getClass)
+      val existing = ownUnits.allByType[Mobile].groupBy(_.getClass)
       summed.keySet.map { t =>
         t -> existing.get(t).map(_.size).getOrElse(0)
       }.toMap
@@ -753,7 +833,7 @@ class EnqueueArmy(universe: Universe)
   }
   case class Percentages(wanted: Map[Class[_ <: Mobile], Double],
                          existing: Map[Class[_ <: Mobile], Double])
-}
+  }
 
 object Strategy {
 
@@ -787,7 +867,7 @@ object Strategy {
         def isAnyTime = true
       }
     }
-  }
+    }
 
   trait TerranDefaults extends LongTermStrategy {
     override def suggestAddons: Seq[AddonToAdd] = {
@@ -831,21 +911,22 @@ object Strategy {
       }
     }
     protected def expandNow = {
-      val (poor, rich) = bases.myMineralFields.partition(_.remainingPercentage < expansionThreshold)
+      val (poor, rich) = bases.myMineralFields
+                         .partition(_.remainingPercentage < expansionThreshold)
       poor.size >= rich.size && rich.size <= 2
     }
     protected def expansionThreshold = 0.5
-  }
+    }
 
   case class UpgradeToResearch(upgrade: Upgrade)(active: => Boolean) {
     val maxLevel = upgrade.nativeType.fold(_.maxRepeats, _ => 1)
 
     def isActive = active
-  }
+    }
   case class AddonToAdd(addon: Class[_ <: Addon], requestNewBuildings: Boolean)
                        (active: => Boolean) {
     def isActive = active
-  }
+    }
 
   class Strategies(override val universe: Universe) extends HasUniverse {
     private val available              = new TerranHeavyMetal(universe) ::
@@ -902,21 +983,24 @@ object Strategy {
       UpgradeToResearch(Upgrades.Terran.VehicleArmor)(timingHelpers.phase.isSinceMid) ::
       UpgradeToResearch(Upgrades.Terran.GoliathRange)(timingHelpers.phase.isSinceLateMid) ::
       UpgradeToResearch(Upgrades.Terran.EMP)(timingHelpers.phase.isSinceLateMid) ::
-      UpgradeToResearch(Upgrades.Terran.ScienceVesselEnergy)(timingHelpers.phase.isSinceLateMid) ::
+      UpgradeToResearch(Upgrades.Terran.ScienceVesselEnergy)(
+        timingHelpers.phase.isSinceLateMid) ::
       UpgradeToResearch(Upgrades.Terran.Irradiate)(timingHelpers.phase.isSinceLateMid) ::
       UpgradeToResearch(Upgrades.Terran.CruiserGun)(timingHelpers.phase.isSinceVeryLateMid) ::
       UpgradeToResearch(Upgrades.Terran.CruiserEnergy)(timingHelpers.phase.isSinceVeryLateMid) ::
       UpgradeToResearch(Upgrades.Terran.MarineRange)(timingHelpers.phase.isSinceVeryLateMid) ::
-      UpgradeToResearch(Upgrades.Terran.InfantryCooldown)(timingHelpers.phase.isSinceVeryLateMid) ::
+      UpgradeToResearch(Upgrades.Terran.InfantryCooldown)(
+        timingHelpers.phase.isSinceVeryLateMid) ::
       UpgradeToResearch(Upgrades.Terran.InfantryArmor)(timingHelpers.phase.isSinceVeryLateMid) ::
-      UpgradeToResearch(Upgrades.Terran.InfantryWeapons)(timingHelpers.phase.isSinceVeryLateMid) ::
+      UpgradeToResearch(Upgrades.Terran.InfantryWeapons)(
+        timingHelpers.phase.isSinceVeryLateMid) ::
       UpgradeToResearch(Upgrades.Terran.GhostStop)(timingHelpers.phase.isSinceVeryLateMid) ::
       UpgradeToResearch(Upgrades.Terran.GhostCloak)(timingHelpers.phase.isSinceVeryLateMid) ::
       UpgradeToResearch(Upgrades.Terran.GhostEnergy)(timingHelpers.phase.isSinceVeryLateMid) ::
       UpgradeToResearch(Upgrades.Terran.GhostVisiblityRange)(
         timingHelpers.phase.isSinceVeryLateMid) ::
       Nil
-  }
+    }
 
   class TerranHeavyAir(override val universe: Universe)
     extends TerranAirSuperiority(universe) with TerranDefaults {
@@ -937,7 +1021,7 @@ object Strategy {
       UpgradeToResearch(Upgrades.Terran.ShipArmor)(timingHelpers.phase.isAnyTime) ::
       super.suggestUpgrades
 
-  }
+    }
 
   class TerranAirSuperiority(override val universe: Universe)
     extends LongTermStrategy with TerranDefaults {
@@ -988,8 +1072,10 @@ object Strategy {
       UpgradeToResearch(Upgrades.Terran.TankSiegeMode)(timingHelpers.phase.isSinceVeryLateMid) ::
       UpgradeToResearch(Upgrades.Terran.VehicleWeapons)(timingHelpers.phase.isSinceVeryLateMid) ::
       UpgradeToResearch(Upgrades.Terran.VehicleArmor)(timingHelpers.phase.isSinceVeryLateMid) ::
-      UpgradeToResearch(Upgrades.Terran.InfantryWeapons)(timingHelpers.phase.isSinceVeryLateMid) ::
-      UpgradeToResearch(Upgrades.Terran.InfantryCooldown)(timingHelpers.phase.isSinceVeryLateMid) ::
+      UpgradeToResearch(Upgrades.Terran.InfantryWeapons)(
+        timingHelpers.phase.isSinceVeryLateMid) ::
+      UpgradeToResearch(Upgrades.Terran.InfantryCooldown)(
+        timingHelpers.phase.isSinceVeryLateMid) ::
       UpgradeToResearch(Upgrades.Terran.GoliathRange)(timingHelpers.phase.isSinceVeryLateMid) ::
       UpgradeToResearch(Upgrades.Terran.VultureSpeed)(timingHelpers.phase.isSinceVeryLateMid) ::
       UpgradeToResearch(Upgrades.Terran.MedicFlare)(timingHelpers.phase.isSinceMid) ::
@@ -1001,7 +1087,7 @@ object Strategy {
       UpgradeToResearch(Upgrades.Terran.GhostVisiblityRange)(
         timingHelpers.phase.isSinceVeryLateMid) ::
       Nil
-  }
+    }
 
   class TerranFootSoldiers(override val universe: Universe)
     extends LongTermStrategy with TerranDefaults {
@@ -1040,6 +1126,6 @@ object Strategy {
       Nil
     }
 
-  }
+    }
 
-}
+  }

@@ -531,20 +531,19 @@ class UnitGrid(override val universe: Universe) extends HasUniverse {
 
 class MapLayers(override val universe: Universe) extends HasUniverse {
 
-  private val rawMapWalk                 = world.map.walkableGrid
-  private val empty                      = world.map.walkableGrid.emptySameSize(false)
+  private val rawMapWalk          = world.map.walkableGrid
+  private val empty               = world.map.walkableGrid.emptySameSize(false)
                                            .guaranteeImmutability
-  private val rawMapWalkMutable          = world.map.walkableGrid.mutableCopy
-  private val rawMapBuild                = world.map.buildableGrid.mutableCopy
-  private val plannedBuildings           = world.map.empty.zoomedOut.mutableCopy
-  private var justBuildings              = evalOnlyBuildings
-  private val justAreasToDefend          = evalOnlyAreasToDefend
-  private var justMines                  = evalOnlyMines
-  private val justBlockedForMainBuilding = evalOnlyBlockedForMainBuildings
-  private var justMineralsAndGas         = evalOnlyResources
-  private var justWorkerPaths            = evalWorkerPaths
-  private var justBlockingMobiles        = evalOnlyMobileBlockingUnits
-  private var justAddonLocations         = evalPotentialAddonLocations
+  private val full                = empty.reverseView
+  private val rawMapWalkMutable   = world.map.walkableGrid.mutableCopy
+  private val rawMapBuild         = world.map.buildableGrid.mutableCopy
+  private val plannedBuildings    = world.map.empty.zoomedOut.mutableCopy
+  private var justBuildings       = evalOnlyBuildings
+  private var justMines           = evalOnlyMines
+  private var justMineralsAndGas  = evalOnlyResources
+  private var justWorkerPaths     = evalWorkerPaths
+  private var justBlockingMobiles = evalOnlyMobileBlockingUnits
+  private var justAddonLocations  = evalPotentialAddonLocations
 
   private var withBuildings                   = evalWithBuildings
   private var withBuildingsAndResources       = evalWithBuildingsAndResources
@@ -554,10 +553,13 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   private var withEverythingBlockingWalkable  = evalEverythingBlockingWalkable
 
   //in background because expensive
-  private val coveredByDangerousUnits = evalDangerous
-  private val coveredByOwnDetectors   = evalDetected
-  private val coveredByOwnGround      = evalGroundDefended
-  private val coveredbyOwnAir         = evalAirDefended
+  private val justAreasToDefend          = evalOnlyAreasToDefend
+  private val justBlockedForMainBuilding = evalOnlyBlockedForMainBuildings
+  private val coveredByDangerousUnits    = evalDangerous
+  private val coveredByOwnDetectors      = evalDetected
+  private val coveredByOwnGround         = evalGroundDefended
+  private val coveredbyOwnAir            = evalAirDefended
+  private val exposedToCloaked           = evalExposedToCloakedUnits
 
   // based on maps generated in background
   private var walkableSafe = evalWalkableSafe
@@ -566,7 +568,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   private var lastUpdatePerformedInTick = universe.currentTick
 
   def isOnIsland(tilePosition: MapTilePosition) = {
-    val areaInQuestion = rawMapWalk.areas.find(_.free(tilePosition))
+    val areaInQuestion = rawMapWalk.areaWhichContainsAsFree(tilePosition)
     val maxArea = rawWalkableMap.areas.sortBy(-_.freeCount)
     if (maxArea.size > 1) {
       val main = maxArea.head
@@ -580,7 +582,12 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
 
   def defendedTiles = {
     update()
-    justAreasToDefend.mostRecent.getOrElse(empty).guaranteeImmutability
+    justAreasToDefend.mostRecent.getOrElse(empty)
+  }
+
+  def exposedToCloakedUnits = {
+    update()
+    exposedToCloaked.mostRecent.getOrElse(full)
   }
   def blockedByPotentialAddons = {
     update()
@@ -641,7 +648,9 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   }, notifyForExisting = true)
 
   def tick(): Unit = {
+    // nop... remove?
   }
+
   private def evalWorkerPaths = {
     trace("Re-evaluation of worker paths")
     val ret = emptyCopy
@@ -697,6 +706,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
         coveredbyOwnAir.prepareNextIfDone()
         coveredByOwnGround.prepareNextIfDone()
         coveredByOwnDetectors.prepareNextIfDone()
+        exposedToCloaked.prepareNextIfDone()
       }
     }
   }
@@ -744,7 +754,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
 
   private def evalOnlyUnitsAsync(units: => TraversableOnce[StaticallyPositioned], growBy: Int) = {
     def areas = units.map(_.area)
-    FutureIterator.feed(areas).andProduce { areas =>
+    FutureIterator.feed(areas).produceAsync { areas =>
       val ret = emptyCopy
       areas.foreach { a =>
         val by = a.growBy(growBy)
@@ -756,7 +766,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
 
   private def evalOnlyBlockedResourceAreas(units: => TraversableOnce[Resource]) = {
     def areas = units.map(_.blockingAreaForMainBuilding)
-    FutureIterator.feed(areas).andProduce { in =>
+    FutureIterator.feed(areas).produceAsync { in =>
       val ret = emptyCopy
       in.foreach { area =>
         ret.block_!(area)
@@ -790,17 +800,31 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
                          .map(_.currentTile)
   }
 
-  private def areaOfCircles(trav: => TraversableOnce[Circle]) = {
-    FutureIterator.feed {trav}.andProduce { in =>
-      val base = emptyCopy.mutableCopy
+  type AreaFromCircle = FutureIterator[TraversableOnce[Circle], Grid2D]
+
+  private def areaOfCircles(block: Boolean)(trav: => TraversableOnce[Circle]): AreaFromCircle = {
+    FutureIterator.feed(trav).produceAsync { in =>
+      val base = if (block) emptyCopy.mutableCopy else emptyCopy.mutableCopy.invertedMutable
       for (circle <- in; tile <- circle.asTiles) {
-        base.block_!(tile)
+        if (block) {
+          base.block_!(tile)
+        } else {
+          base.free_!(tile)
+        }
       }
       base.guaranteeImmutability
     }
-
   }
+
+  private def areaOfCircles(trav: => TraversableOnce[Circle]): AreaFromCircle = {
+    areaOfCircles(block = true)(trav)
+  }
+
   private def evalDetected = areaOfCircles {
+    universe.ownUnits.allDetectors.map(_.detectionArea)
+  }
+
+  private def evalExposedToCloakedUnits = areaOfCircles(block = false) {
     universe.ownUnits.allDetectors.map(_.detectionArea)
   }
 
@@ -812,12 +836,8 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
     universe.ownUnits.allWithAirWeapon.map(_.inAirWeaponRange)
   }
 
-  private def evalSafeWalkable = {
-
-  }
-
   private def evalDangerous = {
-    FutureIterator.feed(new EvalSafeInput).andProduce { in =>
+    FutureIterator.feed(new EvalSafeInput).produceAsync { in =>
       val base = in.base
       base.geoHelper.intersections.tilesInCircle(in.buildings, 12, 3).foreach(base.block_!)
       base.geoHelper.intersections.tilesInCircle(in.units, 12, 5).foreach(base.block_!)
@@ -901,7 +921,8 @@ class ConstructionSiteFinder(universe: Universe) {
       }
     }
   }
-  def findSpotFor[T <: Building](near: MapTilePosition, building: Class[_ <: T]) = {
+  def findSpotFor[T <: Building](near: MapTilePosition, building: Class[_ <: T], maxRange: Int = 75,
+                                 bestOfN: Int = 256) = {
     // this happens in the background
     val unitType = building.toUnitType
     val necessarySize = Size.shared(unitType.tileWidth(), unitType.tileHeight())
@@ -912,7 +933,7 @@ class ConstructionSiteFinder(universe: Universe) {
 
     val withStreets = freeToBuildOn.mutableCopy
 
-    helper.iterateBlockSpiralClockWise(near, 75).flatMap { upperLeft =>
+    helper.iterateBlockSpiralClockWise(near, maxRange).flatMap { upperLeft =>
       val area = Area(upperLeft, necessarySize)
       val addonArea = necessarySizeAddon.map(Area(area.lowerRight.movedBy(1, -1), _))
       def containsArea = freeToBuildOn.inBounds(area) &&
@@ -936,7 +957,7 @@ class ConstructionSiteFinder(universe: Universe) {
       } else {
         None
       }
-    }.take(256)
+    }.take(bestOfN)
     .minByOpt { case (_, b, c) => (b, c) }
     .map(_._1)
   }

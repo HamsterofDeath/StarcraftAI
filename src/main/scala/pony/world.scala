@@ -156,38 +156,43 @@ sealed trait SCRace {
   def workerClass: Class[_ <: WorkerUnit]
   def transporterClass: Class[_ <: TransporterUnit]
   def supplyClass: Class[_ <: SupplyProvider]
+  def detectorBuildingClass: Class[_ <: DetectorBuilding]
 }
 
 case object Terran extends SCRace {
   override val techTree = new TerranTechTree
-  override def workerClass: Class[_ <: WorkerUnit] = classOf[SCV]
-  override def transporterClass: Class[_ <: TransporterUnit] = classOf[Dropship]
-  override def supplyClass: Class[_ <: SupplyProvider] = classOf[SupplyDepot]
-  override def resourceDepositClass: Class[_ <: MainBuilding] = classOf[CommandCenter]
+  override def workerClass = classOf[SCV]
+  override def transporterClass = classOf[Dropship]
+  override def supplyClass = classOf[SupplyDepot]
+  override def resourceDepositClass = classOf[CommandCenter]
+  override def detectorBuildingClass = classOf[MissileTurret]
 }
 
 case object Zerg extends SCRace {
   override val techTree = ???
-  override def workerClass: Class[_ <: WorkerUnit] = classOf[Drone]
-  override def transporterClass: Class[_ <: TransporterUnit] = classOf[Overlord]
-  override def supplyClass: Class[_ <: SupplyProvider] = classOf[Overlord]
-  override def resourceDepositClass: Class[_ <: MainBuilding] = classOf[Hive]
+  override def workerClass = classOf[Drone]
+  override def transporterClass = classOf[Overlord]
+  override def supplyClass = classOf[Overlord]
+  override def resourceDepositClass = classOf[Hive]
+  override def detectorBuildingClass = classOf[SporeColony]
 }
 
 case object Protoss extends SCRace {
   override val techTree = ???
-  override def workerClass: Class[_ <: WorkerUnit] = classOf[Probe]
-  override def transporterClass: Class[_ <: TransporterUnit] = classOf[Shuttle]
-  override def supplyClass: Class[_ <: SupplyProvider] = classOf[Pylon]
-  override def resourceDepositClass: Class[_ <: MainBuilding] = classOf[Nexus]
+  override def workerClass = classOf[Probe]
+  override def transporterClass = classOf[Shuttle]
+  override def supplyClass = classOf[Pylon]
+  override def resourceDepositClass = classOf[Nexus]
+  override def detectorBuildingClass = classOf[PhotonCannon]
 }
 
 case object Other extends SCRace {
-  override val techTree: TechTree = ???
-  override def workerClass: Class[_ <: WorkerUnit] = ???
-  override def transporterClass: Class[_ <: TransporterUnit] = ???
-  override def supplyClass: Class[_ <: SupplyProvider] = ???
-  override def resourceDepositClass: Class[_ <: MainBuilding] = ???
+  override val techTree = ???
+  override def workerClass = ???
+  override def transporterClass = ???
+  override def supplyClass = ???
+  override def resourceDepositClass = ???
+  override def detectorBuildingClass = ???
 }
 
 trait WorldListener {
@@ -595,6 +600,11 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
              protected val containsBlocked: Boolean = true) extends Serializable {
   self =>
   private val lazyAreas = LazyVal.from {new AreaHelper(self).findFreeAreas}
+
+  def invertedMutable = { reverseView.mutableCopy }
+
+  def reverseView: Grid2D = new Grid2D(cols, rows, areaDataBitSet, false)
+
   def areasIntersecting(area: Area): Set[Grid2D] = {
     import scala.collection.breakOut
     area.tiles.flatMap(areaWhichContainsAsFree)(breakOut)
@@ -753,16 +763,13 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
 class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet,
                     bitSetContainsBlocked: Boolean = true)
   extends Grid2D(cols, rows, bitSet, bitSetContainsBlocked) {
-  def invertedMutable = {
-    mutable.BitSet
-  }
 
   def areaSize(anyContained: MapTilePosition) = {
     val isFree = free(anyContained)
     val on = if (isFree) this else reverseView
     AreaHelper.freeAreaSize(anyContained, on)
   }
-  def reverseView: Grid2D = new Grid2D(cols, rows, bitSet, false)
+
   def anyFree = allFree.toStream.headOption
 
   override def areas = {

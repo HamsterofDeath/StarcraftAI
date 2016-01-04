@@ -219,6 +219,7 @@ class TwilightSparkle(world: DefaultWorld) {
     new ProvideNewBuildings(universe),
     new ProvideSuggestedAndRequestedAddons(universe),
     new HandleDefenses(universe),
+    new SetupAntiCloakDefenses(universe),
     new EnqueueFactories(universe),
     new EnqueueArmy(universe),
     new ProvideUpgrades(universe),
@@ -284,6 +285,8 @@ class TwilightSparkle(world: DefaultWorld) {
 }
 
 class Bases(world: DefaultWorld) {
+  def richBases = bases.filter(_.resourceArea.rich)
+
   private val myBases          = ArrayBuffer.empty[Base]
   private val newBaseListeners = ArrayBuffer.empty[NewBaseListener]
   def isCovered(field: ResourceArea) = myBases.exists(_.resourceArea == field)
@@ -293,6 +296,8 @@ class Bases(world: DefaultWorld) {
     def muchGas = myGeysirs.map(_.remaining).sum > 3000
     (singleValuable || multipleIncomes) && muchGas
   }
+
+  def richBasesCount = richBases.size
   def myMineralFields = myBases.flatMap(_.myMineralGroup).toSeq
   def myGeysirs = myBases.flatMap(_.myGeysirs).toSeq
   def mainBase = myBases.headOption

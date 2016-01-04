@@ -495,7 +495,7 @@ class GatherGas(universe: Universe) extends OrderlessAIModule[WorkerUnit](univer
       super.onTick()
       refinery match {
         case None =>
-          if (unitManager.unitsByType[WorkerUnit].size >= workerCountBeforeWantingGas) {
+          if (ownUnits.allByType[WorkerUnit].size >= workerCountBeforeWantingGas) {
             def requestExists = unitManager.requestedConstructions[Refinery]
                                 .exists(_.customPosition.predefined.contains(geysir.tilePosition))
             def jobExists = unitManager.constructionsInProgress[Refinery]
@@ -504,7 +504,7 @@ class GatherGas(universe: Universe) extends OrderlessAIModule[WorkerUnit](univer
               val where = AlternativeBuildingSpot.fromPreset(geysir.tilePosition)
               requestBuilding(classOf[Refinery], customBuildingPosition = where)
             }
-            unitManager.unitsByType[Refinery]
+            ownUnits.allByType[Refinery]
             .find(_.tilePosition == geysir.tilePosition)
             .filterNot(_.isBeingCreated)
             .foreach { refinery =>

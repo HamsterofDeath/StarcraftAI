@@ -297,7 +297,7 @@ class FutureIterator[IN, T](feed: => IN, produce: IN => T) {
 
 object FutureIterator {
   def feed[IN](in: => IN) = new {
-    def andProduce[T](produce: IN => T) = {
+    def produceAsync[T](produce: IN => T) = {
       new FutureIterator(in, produce)
     }
   }

@@ -152,7 +152,7 @@ object Terran {
 
         def currentSafeOrder(transporterTarget: PositionOrUnit): Option[UnitOrder] = {
           val maybeCalculatedPath = paths.getOrElseUpdate(transporterTarget, {
-            val future = FutureIterator.feed(transporterTarget).andProduce { target =>
+            val future = FutureIterator.feed(transporterTarget).produceAsync { target =>
               val path = pathfinder.airSafe.findPathNow(unit.currentTile, target.where)
               path.map(e => new Paths(List(e))).map(new MigrationPath(_, universe))
             }

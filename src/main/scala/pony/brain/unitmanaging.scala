@@ -85,15 +85,6 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
       wanted.isAssignableFrom(job.getClass)
     }.map {_.asInstanceOf[T]}.toVector
   }
-  def unitsByType[T <: WrapsUnit : Manifest]: collection.Set[T] = {
-    val runtimeClass = manifest[T].runtimeClass.asInstanceOf[Class[_ <: T]]
-    unitsByType(runtimeClass)
-  }
-  def unitsByType[T <: WrapsUnit](typeOfFactory: Class[_ <: T]): collection.Set[T] = {
-    assignments.keySet.collect {
-      case elem: WrapsUnit if typeOfFactory.isInstance(elem) => elem.asInstanceOf[T]
-    }
-  }
   def jobsByType = assignments.values.toSeq.groupBy(_.getClass)
   def jobsOf[T <: WrapsUnit](emp: Employer[T]) = allJobs.allFlat.getOrElse(emp, Set.empty)
                                                  .asInstanceOf[collection.Set[UnitWithJob[T]]]

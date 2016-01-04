@@ -702,6 +702,8 @@ case class Circle(center: MapTilePosition, radius: Int, maxX: Int, maxY: Int) {
   def asTiles = new GeometryHelpers(maxX, maxY).tilesInCircle(center, radius)
 }
 
+trait DetectorBuilding extends CanDetectHidden with Building
+
 trait Detector extends WrapsUnit with HasLazyVals {
   def detectionRadius: Int
 
@@ -1173,7 +1175,7 @@ class Assimilator(unit: APIUnit) extends AnyUnit(unit) with Building with GasPro
 class Gateway(unit: APIUnit) extends AnyUnit(unit) with UnitFactory
 class PhotonCannon(unit: APIUnit)
   extends AnyUnit(unit) with Building with GroundAndAirWeapon with NormalAirDamage with
-          NormalGroundDamage with ArmedBuilding {
+          NormalGroundDamage with ArmedBuilding with DetectorBuilding {
   override def damageDelayFactorAir = 1
   override def damageDelayFactorGround = 1
 }
@@ -1219,11 +1221,18 @@ class ScienceFacility(unit: APIUnit)
           TerranBuilding
 
 class MissileTurret(unit: APIUnit)
-  extends AnyUnit(unit) with ArmedBuilding with CanDetectHidden with SlowAttackAir with AirWeapon
-          with
-          ExplosiveAirDamage with TerranBuilding
+  extends AnyUnit(unit) with ArmedBuilding with DetectorBuilding with SlowAttackAir with AirWeapon
+          with ExplosiveAirDamage with TerranBuilding
 
 class Bunker(unit: APIUnit) extends AnyUnit(unit) with Building with TerranBuilding
+
+class SporeColony(unit: APIUnit)
+  extends AnyUnit(unit) with Building with GroundAndAirWeapon with NormalAirDamage with
+          NormalGroundDamage with ArmedBuilding with DetectorBuilding {
+  override def damageDelayFactorAir = 1
+  override def damageDelayFactorGround = 1
+}
+
 
 trait InstantAttackAir extends AirWeapon {
   override def damageDelayFactorAir = 0
