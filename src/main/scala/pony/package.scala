@@ -8,9 +8,9 @@ import scala.collection.mutable
  */
 package object pony {
 
-  // milestone 2:
-  // TODO add air defenses
-  // TODO make shuttles use safe paths (always)
+  // milestone 2.5:
+  // TODO fix expansion delay
+  // TODO optimize transports
 
   // milestone 3:
   // TODO send only necessary units for defenses, use "battle simulator" to estimate which units
