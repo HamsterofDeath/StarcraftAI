@@ -59,6 +59,10 @@ trait HasLazyVals {
     }
   }
 
+  def once[T](t: => T) = {
+    LazyVal.from(t)
+  }
+
   def oncePerTick[T](t: => T) = {
     val l = LazyVal.from(t)
     lazyVals += l

@@ -166,16 +166,19 @@ object WrapsUnit {
 }
 
 trait StaticallyPositioned extends WrapsUnit {
-  val myTilePosition = oncePerTick {
+  val myTilePosition = once {
     val position = nativeUnit.getTilePosition
     val x = position.getX
     val y = position.getY
     MapTilePosition.shared(x, y)
   }
+
   val size           = Size.shared(nativeUnit.getType.tileWidth(), nativeUnit.getType.tileHeight())
-  private val myArea = oncePerTick {
+
+  private val myArea = once {
     Area(tilePosition, size)
   }
+
   def area = myArea.get
   override def shouldReRegisterOnMorph = true
   def nativeMapPosition = tilePosition.asMapPosition.toNative
@@ -1075,6 +1078,7 @@ trait TransporterUnit extends AirUnit {
   def isPickingUp = myPickingUp.get
   def loaded = carrying.get
   def isCarrying(gu: GroundUnit) = carrying.get(gu)
+  def isAboveWalkable = mapLayers.rawWalkableMap.free(currentTile)
 
   def hasUnitsLoaded = carrying.get.nonEmpty
 }

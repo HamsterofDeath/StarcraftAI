@@ -109,6 +109,35 @@ object Terran {
     override protected def wrapBase(unit: TransporterUnit) = new
         SingleUnitBehaviour[TransporterUnit](unit, meta) {
 
+      override def renderDebug(r: Renderer) = {
+        super.renderDebug(r)
+        ferryManager.planFor(unit).foreach { plan =>
+          val describe = {
+            val fly = if (plan.needsToReachTarget) "fly, " else ""
+            val unload = if (plan.dropUnitsNow) "unload, " else ""
+            val fetch = if (plan.pickupTargetsLeft) "fetch, " else ""
+            val instantDrop = if (plan.instantDropRequested) "drop, " else ""
+            s"$fly$unload$fetch$instantDrop"
+          }
+
+          if (plan.needsToReachTarget) {
+            r.in_!(Color.Green)
+            r.indicateTarget(unit.currentTile, plan.toWhere)
+          }
+          if (plan.pickupTargetsLeft) {
+            r.in_!(Color.Orange)
+            r.indicateTarget(unit.currentTile, plan.nextToPickUp.map(_.currentTile).get)
+          }
+
+          if (plan.dropUnitsNow) {
+            r.in_!(Color.Red)
+            r.indicateTarget(unit.currentTile, plan.nextToDrop.map(_.currentTile).get)
+          }
+
+          r.drawTextAtMobileUnit(unit, describe, 1)
+        }
+      }
+
       trait PositionOrUnit {
         def where: MapTilePosition
         def unit: Option[GroundUnit]
@@ -117,11 +146,13 @@ object Terran {
       case class IsPosition(where: MapTilePosition) extends PositionOrUnit {
         override def unit = None
       }
+
       case class IsUnit(basedOn: GroundUnit) extends PositionOrUnit {
         override def where = basedOn.currentTile
         private val u = basedOn.toSome
         override def unit = u
       }
+
       case class MaybePath(path: FutureIterator[PositionOrUnit, Option[MigrationPath]]) {
         private var lastTouched = currentTick
         def age = currentTick - lastTouched
@@ -142,13 +173,11 @@ object Terran {
       override def describeShort: String = "Transport"
 
       override def toOrder(what: Objective): Seq[UnitOrder] = {
-        ifNth(Primes.prime61) {
-          val old = paths.filter { case (_, maybe) => maybe.age > maxAge }
-                    .keySet
-                    .toList
-          paths --= old
-          trace(s"Kicked out obsolete paths for: ${old}")
-        }
+        val old = paths.filter { case (_, maybe) => maybe.age > maxAge }
+                  .keySet
+                  .toList
+        paths --= old
+        trace(s"Kicked out obsolete paths for: $old", old.nonEmpty)
 
         def currentSafeOrder(transporterTarget: PositionOrUnit): Option[UnitOrder] = {
           val maybeCalculatedPath = paths.getOrElseUpdate(transporterTarget, {
@@ -192,29 +221,26 @@ object Terran {
           currentSafeOrder(what)
         }
 
-        ferryManager.planFor(unit) match {
+        val order = ferryManager.planFor(unit) match {
           case Some(plan) =>
-            plan.toDropNow.map { dropThis =>
-              Orders.UnloadUnit(unit, dropThis)
-            }.orElse {
-              if (plan.unloadedLeft) {
-                val loadThis = plan.toTransport
-                               .view
-                               .filterNot(_.loaded)
-                               .minBy(_.currentTile.distanceSquaredTo(unit.currentTile))
-                orderByUnit(loadThis)
-              } else if (plan.needsToReachTarget) {
-                orderByTile(plan.toWhere)
-              } else if (plan.loadedLeft) {
-                plan.nextToDropAtTarget.map { drop =>
-                  Orders.UnloadUnit(unit, drop)
-                }
-              } else {
-                None
+            if (plan.instantDropRequested && unit.isAboveWalkable) {
+              plan.asapDrop.map { dropIt =>
+                Orders.UnloadUnit(unit, dropIt)
               }
-            }.toList
+            } else if (plan.dropUnitsNow) {
+              plan.nextToDrop.map { drop =>
+                Orders.UnloadUnit(unit, drop)
+              }
+            } else if (plan.pickupTargetsLeft) {
+              val loadThis = plan.nextToPickUp
+              orderByUnit(loadThis.get)
+            } else if (plan.needsToReachTarget) {
+              orderByTile(plan.toWhere)
+            } else {
+              None
+            }
           case None =>
-            (if (unit.hasUnitsLoaded) {
+            if (unit.hasUnitsLoaded) {
               val nearestFree = mapLayers.freeWalkableTiles.nearestFree(unit.currentTile)
               nearestFree.map { where =>
                 Orders.UnloadAll(unit, where).forceRepeat_!(true)
@@ -224,8 +250,9 @@ object Terran {
             }
             else {
               None
-            }).toList
+            }
         }
+        order.toList
       }
     }
   }

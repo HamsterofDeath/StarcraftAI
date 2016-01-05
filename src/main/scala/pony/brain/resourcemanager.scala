@@ -63,12 +63,13 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
     val isForced = lockedWithoutFunds.exists(_.reqs.sum.equalValue(proofForFunding))
     if (isForced) {
       lockedWithoutFunds.removeFirstMatch(_.reqs.sum.equalValue(proofForFunding))
+      assert(!locked.exists(_.proof.contains(proofForFunding)), s"Duplicate lock: $proofForFunding")
     } else {
       locked.removeFirstMatch(_.proof.contains(proofForFunding))
       assert(!locked.exists(_.proof.contains(proofForFunding)), s"Duplicate lock: $proofForFunding")
+      resourceAssignmentInfos.remove(proofForFunding)
     }
     lockedSums.invalidate()
-    resourceAssignmentInfos.remove(proofForFunding)
     trace(s"Unlocked $proofForFunding")
 
   }

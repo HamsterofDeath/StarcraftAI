@@ -79,7 +79,13 @@ class UnitIdRenderer extends AIPlugIn {
     lazyWorld.debugger.debugRender { renderer =>
       renderer.in_!(Color.Green)
 
-      lazyWorld.ownUnits.allByType[Mobile].foreach { u =>
+      lazyWorld.ownUnits.allByType[Mobile]
+      .iterator
+      .collect {
+        case g: GroundUnit if !g.loaded => g
+        case a: AirUnit => a
+      }
+      .foreach { u =>
         renderer.drawTextAtMobileUnit(u, u.unitIdText)
       }
       lazyWorld.ownUnits.allByType[Building].foreach { u =>
@@ -99,7 +105,13 @@ class UnitJobRenderer(override val universe: Universe) extends AIPlugIn with Has
 
   override protected def tickPlugIn(): Unit = {
     lazyWorld.debugger.debugRender { renderer =>
-      unitManager.allJobsByUnitType[Mobile].foreach { job =>
+      unitManager.allJobsByUnitType[Mobile]
+      .filter {
+        case g: GroundUnit if !g.loaded => true
+        case a: AirUnit => true
+        case _ => false
+      }
+      .foreach { job =>
         renderer.drawTextAtMobileUnit(job.unit, s"${job.shortDebugString} -> ${job.unit.nativeUnit.getOrder}", 1)
         job.renderDebug(renderer)
       }

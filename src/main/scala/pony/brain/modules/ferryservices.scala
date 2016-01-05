@@ -83,6 +83,7 @@ class FerryManager(override val universe: Universe) extends HasUniverse {
     val done = ferryPlans.filterNot(_.unfinished)
     trace(s"Ferry plans done: $done")
     ferryPlans --= done
+    ferryPlans.foreach(_.onTick())
   }
 }
 
@@ -112,14 +113,20 @@ object PlanIdCounter {
 }
 
 class FerryPlan(val ferry: TransporterUnit, initial: Set[GroundUnit], val toWhere: MapTilePosition,
-                val targetArea: Option[Grid2D]) {
-  private val currentPlannedCargo = collection.mutable.HashMap.empty ++= initial.map(e => e -> ferry.currentTick)
-  private val dropThese           = collection.mutable.HashSet.empty[GroundUnit]
-  private val planId              = PlanIdCounter.nextId()
+                val targetArea: Option[Grid2D]) extends HasUniverse {
+  private val currentPlannedCargo  = collection.mutable.HashMap.empty ++= initial.map(e => e -> ferry.currentTick)
 
-  def nextToDropAtTarget = {
-    ferry.loaded.minByOpt(_.unitId)
+  private val dropTheseImmediately = collection.mutable.HashSet.empty[GroundUnit]
+  private val planId               = PlanIdCounter.nextId()
+
+  override def universe = ferry.universe
+
+  private val myNextPickUp = oncePerTick {
+    toTransport.filterNot(_.loaded)
+    .minByOpt(_.currentTile.distanceSquaredTo(ferry.currentTile))
   }
+
+  def nextToPickUp = myNextPickUp.get
 
   def hasSpaceFor(forWhat: GroundUnit) = {
     takenSpace + forWhat.transportSize <= 8
@@ -147,27 +154,31 @@ class FerryPlan(val ferry: TransporterUnit, initial: Set[GroundUnit], val toWher
                                  .map(_._1)
 
 
-    dropThese ++= thoseChangedTheirMinds
+    dropTheseImmediately ++= thoseChangedTheirMinds
 
-    currentPlannedCargo --= dropThese
+    currentPlannedCargo --= dropTheseImmediately
 
     val loadedButNotPlanned = ferry.loaded.filterNot(currentPlannedCargo.keySet)
-    dropThese ++= loadedButNotPlanned
+    dropTheseImmediately ++= loadedButNotPlanned
 
-    dropThese.retain(ferry.isCarrying)
+    dropTheseImmediately.retain(ferry.isCarrying)
   }
 
-  def toDropNow = {
-    dropThese.headOption
+  def nextToDrop = {
+    ferry.loaded.headOption
+  }
+
+  def instantDropRequested = asapDrop.isDefined
+
+  def asapDrop = {
+    dropTheseImmediately.headOption
   }
 
   def unfinished = {
-    toTransport.exists { gu =>
-      gu.currentArea != targetArea || gu.loaded
-    } || loadedLeft
+    needsToReachTarget || pickupTargetsLeft || dropUnitsNow
   }
 
-  def loadedLeft = {
+  def dropUnitsNow = {
     ferry.hasUnitsLoaded && ferry.currentArea == targetArea
   }
 
@@ -177,9 +188,13 @@ class FerryPlan(val ferry: TransporterUnit, initial: Set[GroundUnit], val toWher
     currentPlannedCargo.contains(forWhat)
   }
 
-  def unloadedLeft = toTransport.exists { e =>
-    e.onGround && e.currentArea != targetArea
+  private val myPickupTargets = oncePerTick {
+    toTransport.exists { e =>
+      e.onGround && e.currentArea != targetArea
+    }
   }
+
+  def pickupTargetsLeft = myPickupTargets.get
 
   assert(toTransport.map(_.transportSize).sum <= 8, s"Too many units for single transport: $toTransport")
 

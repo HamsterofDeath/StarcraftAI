@@ -1039,7 +1039,12 @@ abstract class SingleUnitBehaviour[+T <: WrapsUnit](val unit: T, meta: SingleUni
 
   override def universe = unit.universe
 
+  def renderDebug(r: Renderer) = {
+    // nop
+  }
+
   def onStealUnit(): Unit = {}
+
   def orderForTick(what: Objective) = {
     if (skipFor > 0) {
       skipFor -= 1
@@ -1091,6 +1096,11 @@ class BusyDoingSomething[T <: WrapsUnit](employer: Employer[T],
     val realOrder = lastTickOrderIssuedBy.map(_.describeShort).getOrElse("???")
     val lastOrder = lastOrderIssuedBy.map(_.describeShort).getOrElse("???")
     s"[BG] $realOrder ($lastOrder)"
+  }
+
+  override def renderDebug(renderer: Renderer) = {
+    super.renderDebug(renderer)
+    lastOrderIssuedBy.foreach(_.renderDebug(renderer))
   }
   // never ends
   override def isFinished = false
