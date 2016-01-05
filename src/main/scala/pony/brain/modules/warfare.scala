@@ -7,7 +7,8 @@ import scala.collection.mutable.ArrayBuffer
 
 class FormationHelper(override val universe: Universe,
                       paths: Paths,
-                      distanceForUnits: Int = 1) extends HasUniverse {
+                      distanceForUnits: Int = 1,
+                      isGroundPath: Boolean) extends HasUniverse {
   private val target             = paths.anyTarget
   private val assignments        = mutable.HashMap.empty[Mobile, MapTilePosition]
   private val used               = mutable.HashSet.empty[MapTilePosition]
@@ -16,19 +17,32 @@ class FormationHelper(override val universe: Universe,
 
     BWFuture.from {
       val minDst = 24
-      val availableArea = {
-        mapLayers.safeGround.mutableCopy
+      if (isGroundPath) {
+        val availableArea = {
+          mapLayers.safeGround.mutableCopy
+        }
+
+        val targetArea = walkable.areaWhichContainsAsFree(target).getOr(s"No area contains $target")
+        val validTiles = availableArea.spiralAround(target, 80)
+                         .filter(availableArea.freeAndInBounds)
+                         .filter(targetArea.freeAndInBounds)
+                         .toVector
+
+        val unsorted = validTiles.filter { p => paths.isEmpty || paths.minimalDistanceTo(p) < 10 }
+
+        unsorted.sortBy(_.distanceSquaredTo(target))
+      } else {
+        val availableArea = {
+          mapLayers.safeAir.mutableCopy
+        }
+        val validTiles = availableArea.spiralAround(target, 80)
+                         .filter(availableArea.freeAndInBounds)
+                         .toVector
+
+        val unsorted = validTiles.filter { p => paths.isEmpty || paths.minimalDistanceTo(p) < 10 }
+
+        unsorted.sortBy(_.distanceSquaredTo(target))
       }
-
-      val targetArea = walkable.areaWhichContainsAsFree(target).getOr(s"No area contains $target")
-      val validTiles = availableArea.spiralAround(target, 80)
-                       .filter(availableArea.freeAndInBounds)
-                       .filter(targetArea.freeAndInBounds)
-                       .toVector
-
-      val unsorted = validTiles.filter { p => paths.isEmpty || paths.minimalDistanceTo(p) < 10 }
-
-      unsorted.sortBy(_.distanceSquaredTo(target))
     }
   }
 
@@ -199,7 +213,7 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
 
     private val pathToFollow = universe.pathfinder.groundSafe
                                .findPaths(currentCenter, meetingPoint.where)
-    private val migration    = pathToFollow.map(_.map(new MigrationPath(_, universe)))
+    private val migration    = pathToFollow.map(_.map(new MigrationPath(_, universe, true)))
 
     def migrationPlan = migration.result
     def hasNotEnded = !hasEnded
@@ -456,10 +470,8 @@ trait BuildingRequestHelper extends AIModule[WorkerUnit] {
       if (takeCareOfDependencies) {
         result.notExistingMissingRequiments.foreach { what =>
           if (!unitManager.plannedToBuild(what)) {
-            assert(customBuildingPosition.isEmpty, s"Does not make sense...")
-            requestBuilding(what, takeCareOfDependencies, saveMoneyIfPoor, customBuildingPosition,
-              belongsTo,
-              priority = priority)
+            requestBuilding(what, takeCareOfDependencies, saveMoneyIfPoor,
+              AlternativeBuildingSpot.useDefault, belongsTo, priority = priority)
           }
         }
       }
@@ -581,27 +593,35 @@ class SetupAntiCloakDefenses(universe: Universe)
   private def targetBuildingType = race.detectorBuildingClass
 
   class Input {
+    def age = currentTick - created
+    val created                = currentTick
     val buildingType           = targetBuildingType
     val existing               = ownUnits.allByClass(buildingType)
     val planned                = unitManager.plannedToBuildByClass(buildingType)
     val exposed                = mapLayers.exposedToCloakedUnits
+    val ownArea                = mapLayers.defendedTiles
     val constructionSiteFinder = new ConstructionSiteFinder(universe)
   }
 
   private def input = new Input
 
-  private val analyzed = FutureIterator.feed(input) produceAsync { in =>
+  private val analyzed = FutureIterator.feed(input) produceAsyncLater { in =>
     val limit = richBaseCount.get min 3
     val counts = mutable.HashMap.empty[MapTilePosition, Int]
 
     // goal: position detectors so that all values are >= 0
-    in.exposed.allBlocked.foreach { where =>
-      counts.put(where, -limit)
+    in.exposed.allBlocked
+    .filter(in.ownArea.blocked)
+    .foreach { where =>
+      val isIsland = mapLayers.isOnIsland(where)
+      counts.put(where, -limit - (if (isIsland) 2 else 0))
     }
 
     in.existing.foreach { detector =>
       detector.detectionArea.asTiles.foreach { where =>
-        counts.insertReplace(where, _ + 1, 0)
+        if (counts.contains(where)) {
+          counts.insertReplace(where, _ + 1 min 0, 0)
+        }
       }
     }
 
@@ -632,19 +652,36 @@ class SetupAntiCloakDefenses(universe: Universe)
     }
   }
 
+  private def kickOffOn24thTick(): Unit = {
+    if (currentTick == 24) {
+      analyzed.prepareNextIfDone()
+    }
+  }
+
   override def onTick() = {
     super.onTick()
+    kickOffOn24thTick()
+    val active = strategy.current.buildAntiCloakNow
     analyzed.mostRecent.foreach { bestBuildingLocation =>
-      val inProgress = {
-        unitManager.requestedConstructions[MissileTurret]
-        .exists(_.customPosition.predefined == bestBuildingLocation)
-      }
-      if (inProgress) {
-        analyzed.prepareNextIfDone()
-      } else {
-        bestBuildingLocation.foreach { where =>
-          requestBuilding(targetBuildingType,
-            customBuildingPosition = AlternativeBuildingSpot.fromPreset(where))
+      if (active) {
+        val buildingInProgress = {
+          unitManager.requestedConstructions[MissileTurret]
+          .exists(_.customPosition.predefined == bestBuildingLocation)
+        }
+        def buildingExists = {
+          bestBuildingLocation.exists(where => ownUnits.buildingAt(where).isDefined)
+        }
+        def outdated = {
+          analyzed.lastUsedFeed.map(_.age).getOrElse(0) > 80
+        }
+
+        if (outdated || buildingInProgress || buildingExists) {
+          analyzed.prepareNextIfDone()
+        } else {
+          bestBuildingLocation.foreach { where =>
+            requestBuilding(targetBuildingType, takeCareOfDependencies = true,
+              customBuildingPosition = AlternativeBuildingSpot.fromPreset(where))
+          }
         }
       }
     }
@@ -838,6 +875,8 @@ class EnqueueArmy(universe: Universe)
 object Strategy {
 
   trait LongTermStrategy extends HasUniverse {
+    def buildAntiCloakNow: Boolean
+
     val timingHelpers = new TimingHelpers
     def suggestNextExpansion: Option[ResourceArea]
     def suggestUpgrades: Seq[UpgradeToResearch]
@@ -870,6 +909,11 @@ object Strategy {
     }
 
   trait TerranDefaults extends LongTermStrategy {
+
+    override def buildAntiCloakNow = {
+      timingHelpers.phase.isSinceMid
+    }
+
     override def suggestAddons: Seq[AddonToAdd] = {
       AddonToAdd(classOf[Comsat], requestNewBuildings = true)(
         unitManager.existsAndDone(classOf[Academy]) || timingHelpers.phase.isSinceEarlyMid) ::
@@ -943,6 +987,7 @@ object Strategy {
     }
   }
   class IdleAround(override val universe: Universe) extends LongTermStrategy {
+    override def buildAntiCloakNow = false
     override def determineScore = -1
     override def suggestProducers = Nil
     override def suggestUnits = Nil

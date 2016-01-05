@@ -18,6 +18,16 @@ object ResourceManager {
 }
 
 class ResourceManager(override val universe: Universe) extends HasUniverse {
+  def informUsage[T <: WrapsUnit](proofForFunding: ResourceApproval, funded: HasFunding) = {
+    if (resourceAssignmentInfos.contains(proofForFunding)) {
+      trace(s"Holder of $proofForFunding changes from ${resourceAssignmentInfos(proofForFunding)}",
+        marker = "MONEY")
+    }
+    resourceAssignmentInfos.put(proofForFunding, funded)
+    trace(s"Holder of $proofForFunding changed to ${funded}", marker = "MONEY")
+  }
+
+  private val resourceAssignmentInfos = mutable.HashMap.empty[ResourceApproval, HasFunding]
   private val resourceHistory         = ArrayBuffer.empty[MinsGas]
   private val empty                   = Resources(0, 0, Supplies(0, 0))
   private val locked                  = ArrayBuffer.empty[LockedResources[_ <: WrapsUnit]]
@@ -55,9 +65,12 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
       lockedWithoutFunds.removeFirstMatch(_.reqs.sum.equalValue(proofForFunding))
     } else {
       locked.removeFirstMatch(_.proof.contains(proofForFunding))
+      assert(!locked.exists(_.proof.contains(proofForFunding)), s"Duplicate lock: $proofForFunding")
     }
-    trace(s"Unlocked $proofForFunding")
     lockedSums.invalidate()
+    resourceAssignmentInfos.remove(proofForFunding)
+    trace(s"Unlocked $proofForFunding")
+
   }
   def forceUnlock_![T <: WrapsUnit](requests: ResourceRequests, employer: Employer[T]) = {
     forceUnlockInternal_!(requests, employer)
@@ -98,7 +111,7 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
                               .sortBy { e =>
                                 (e.reqs.priority, -e.reqs.sum.mineralGasSum)
                               }
-            val abortableJobs = unitManager.allFundedJobs.filter {_.canReleaseResources}
+            val abortableJobs = unitManager.allJobsWithReleaseableResources
             val used = mutable.HashSet.empty[JobHasFunding[_]]
             unlockOrder.flatMap { locked =>
               val ret = abortableJobs.iterator
@@ -174,6 +187,13 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
     resourceHistory += MinsGas(resources.gatheredMinerals, resources.gatheredGas)
     if (resourceHistory.size == ResourceManager.frameSizeForStats + 1) {
       resourceHistory.remove(0)
+    }
+
+    locked.foreach { lockedResource =>
+      val ok = resourceAssignmentInfos.exists { case (proof, job) =>
+        lockedResource.proof.contains(proof)
+      }
+      assert(ok, s"Resources $lockedResource are locked, but no matching job/request is known!")
     }
   }
   def gatheredMinerals = nativeGame.self().gatheredMinerals()

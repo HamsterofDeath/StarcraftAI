@@ -255,27 +255,37 @@ class BWFuture[+T](val future: Future[T], incomplete: T) {
 
 }
 
-class FutureIterator[IN, T](feed: => IN, produce: IN => T) {
+class FutureIterator[IN, T](feed: => IN, produce: IN => T, startNow: Boolean) {
+  private var lastFeed = Option.empty[IN]
+
   private val lock = new ReentrantReadWriteLock()
 
   private var done = Option.empty[T]
 
-  private var inProgress = nextFuture
-  private var thinking   = true
+  private var inProgress = if (startNow) nextFuture else BWFuture.none
+  private var thinking   = startNow
 
   def feedObj = feed
 
   private def nextFuture = {
     val input = feed
-    val fut = BWFuture.produceFrom(produce(feed))
+    val fut = BWFuture.produceFrom(produce(input))
     fut.future.onSuccess {
       case any =>
         lock.writeLock().lock()
         thinking = false
         done = any
+        lastFeed = Some(input)
         lock.writeLock().unlock()
     }
     fut
+  }
+
+  def lastUsedFeed = {
+    lock.readLock().lock()
+    val x = lastFeed
+    lock.readLock().unlock()
+    x
   }
 
   def mostRecent = {
@@ -289,6 +299,7 @@ class FutureIterator[IN, T](feed: => IN, produce: IN => T) {
     lock.writeLock().lock()
     if (!thinking) {
       thinking = true
+      lastFeed = None
       inProgress = nextFuture
     }
     lock.writeLock().unlock()
@@ -298,7 +309,10 @@ class FutureIterator[IN, T](feed: => IN, produce: IN => T) {
 object FutureIterator {
   def feed[IN](in: => IN) = new {
     def produceAsync[T](produce: IN => T) = {
-      new FutureIterator(in, produce)
+      new FutureIterator(in, produce, true)
+    }
+    def produceAsyncLater[T](produce: IN => T) = {
+      new FutureIterator(in, produce, false)
     }
   }
 }

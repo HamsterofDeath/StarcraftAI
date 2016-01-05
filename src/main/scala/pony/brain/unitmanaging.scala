@@ -25,7 +25,8 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
   def hasJob(support: OrderHistorySupport) = assignments.contains(support)
   def allIdleMobiles = allJobsByType[BusyDoingNothing[Mobile]].filter(_.unit.isInstanceOf[Mobile])
   def allIdles = allJobsByType[BusyDoingNothing[WrapsUnit]].filter(_.unit.isInstanceOf[WrapsUnit])
-  def allFundedJobs = assignments.values.collect { case f: JobHasFunding[_] => f }
+  def allJobsWithPotentialFunding = assignments.values.collect { case f: JobHasFunding[_] => f }
+  def allJobsWithReleaseableResources = allJobsWithPotentialFunding.filter(_.canReleaseResources)
   def existsOrPlanned(c: Class[_ <: WrapsUnit]) = {
     ownUnits.ownsByType(c) ||
     plannedToBuild.exists(e => c.isAssignableFrom(e.typeOfRequestedUnit)) ||
@@ -60,7 +61,7 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
       case b: BuildUnitRequest[_] if b.typeOfRequestedUnit == targetType => b
     }
   }
-  private def allUnfulfilled = unfulfilledRequestsLastTick.toSet ++
+  def allUnfulfilled = unfulfilledRequestsLastTick.toSet ++
                                unfulfilledRequestsThisTick.toSet
   def plannedToBuildByClass(typeOfFactory: Class[_ <: Building]) = {
     unfulfilledByTargetType(typeOfFactory)
@@ -740,6 +741,8 @@ trait JobHasFunding[T <: WrapsUnit] extends UnitWithJob[T] with HasUniverse with
 
   assert(proofForFunding.isSuccess, s"Problem, check $this")
 
+  resources.informUsage(proofForFunding, this)
+
   def canReleaseResources = ageSinceLastReset == 0 && stillLocksResources
 
   override def notifyResourcesDisapproved_!(): Unit = {
@@ -1264,6 +1267,8 @@ case class BuildUnitRequest[T <: WrapsUnit](universe: Universe, typeOfRequestedU
   extends UnitRequest[T] with HasFunding with HasUniverse {
 
   self =>
+
+  universe.resources.informUsage(funding, this)
 
   lazy val isAddon = classOf[Addon].isAssignableFrom(typeOfRequestedUnit)
 

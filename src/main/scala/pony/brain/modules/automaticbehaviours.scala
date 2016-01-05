@@ -154,7 +154,7 @@ object Terran {
           val maybeCalculatedPath = paths.getOrElseUpdate(transporterTarget, {
             val future = FutureIterator.feed(transporterTarget).produceAsync { target =>
               val path = pathfinder.airSafe.findPathNow(unit.currentTile, target.where)
-              path.map(e => new Paths(List(e))).map(new MigrationPath(_, universe))
+              path.map(e => new Paths(List(e))).map(new MigrationPath(_, universe, false))
             }
             MaybePath(future)
           })
@@ -685,7 +685,7 @@ object Terran {
         val enemies = unit.surroundings.closeEnemyGroundUnits
         val buildings = unit.surroundings.closeEnemyBuildings
 
-        def buildingInRange = buildings.exists(e => unit.isInWeaponRange(e))
+        def buildingInRange = buildings.exists(_.area.distanceTo(unit.currentTile) <= 11)
 
         def siegeableInRange = {
           buildingInRange || enemies.iterator.filterNot(_.isHarmlessNow).take(4).size >= 3

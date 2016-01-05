@@ -2,6 +2,8 @@ package pony
 package brain
 package modules
 
+import bwapi.Color
+
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
@@ -98,6 +100,13 @@ class ProvideExpansions(universe: Universe) extends OrderlessAIModule[WorkerUnit
       all.find(_.isPatchId(patch.patchId))
     }
   }
+
+  override def renderDebug(renderer: Renderer) = {
+    plannedExpansionPoint.foreach { res =>
+      renderer.in_!(Color.White).drawTextAtTile("Expansion planned here", res.center)
+    }
+  }
+
   override def onTick(): Unit = {
     ifNth(Primes.prime241) {
       plannedExpansionPoint = plannedExpansionPoint.filter { where =>

@@ -9,12 +9,13 @@ import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.language.implicitConversions
 
-class MigrationPath(follow: Paths, override val universe: Universe) extends HasUniverse {
+class MigrationPath(follow: Paths, override val universe: Universe, isGroundPath: Boolean)
+  extends HasUniverse {
   def finalDestination = follow.unsafeTarget
   def safeDestination = follow.requestedTargetSafe
   private val remaining       = mutable.HashMap.empty[Mobile, ArrayBuffer[MapTilePosition]]
   private val counter         = mutable.HashMap.empty[Mobile, Int]
-  private val helper          = new FormationHelper(universe, follow, 2)
+  private val helper          = new FormationHelper(universe, follow, 2, isGroundPath)
   private val atFormationStep = mutable.HashSet.empty[Mobile]
 
   def targetFormationTiles = helper.formationTiles
@@ -718,7 +719,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   private def evalWithBuildingsAndResources = justBuildings.mutableCopy.or_!(justMineralsAndGas)
   private def evalOnlyBuildings = evalOnlyUnits(ownUnits.allByType[Building])
   private def evalOnlyAreasToDefend = {
-    evalOnlyUnitsAsync(ownUnits.allByType[Building], 8)
+    evalOnlyUnitsAsync(ownUnits.allByType[Building].filterNot(_.isInstanceOf[DetectorBuilding]), 8)
   }
   private def evalOnlyBlockedForMainBuildings = evalOnlyBlockedResourceAreas(
     ownUnits.allByType[Resource])

@@ -113,7 +113,7 @@ package object pony {
   var tickCount = 0
   private var setTinyLogLevel_! : LogLevel = LogLevels.Trace
 
-  setLogLevel_!(LogLevels.Info)
+  setLogLevel_!(LogLevels.Trace)
 
   import LogLevels._
 
@@ -142,9 +142,9 @@ package object pony {
     if (Debug.includes(setTinyLogLevel_!))
       tinylog.Logger.debug(s"[$tick] ${a.toString}")
   }
-  def trace(a: => Any, doIt: Boolean = true): Unit = {
+  def trace(a: => Any, doIt: Boolean = true, marker: String = ""): Unit = {
     if (doIt && Trace.includes(setTinyLogLevel_!))
-      tinylog.Logger.trace(s"[$tick] ${a.toString}")
+      tinylog.Logger.trace(s"[$tick] ${if (marker.isEmpty) "" else s"[$marker] "}${a.toString}")
   }
   abstract sealed class LogLevel(val level: Int) {
     def includes(other: LogLevel) = level >= other.level
