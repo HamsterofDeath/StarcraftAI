@@ -9,8 +9,11 @@ import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.language.implicitConversions
 
-class MigrationPath(follow: Paths, override val universe: Universe, isGroundPath: Boolean)
+class MigrationPath(follow: Paths, override val universe: Universe)
   extends HasUniverse {
+
+  def isGroundPath = follow.isGroundPath
+
   def finalDestination = follow.unsafeTarget
   def safeDestination = follow.requestedTargetSafe
   private val remaining       = mutable.HashMap.empty[Mobile, ArrayBuffer[MapTilePosition]]
@@ -20,11 +23,16 @@ class MigrationPath(follow: Paths, override val universe: Universe, isGroundPath
 
   def targetFormationTiles = helper.formationTiles
 
+  def renderDebug(renderer: Renderer): Unit = {
+    follow.renderDebug(renderer)
+  }
+
   def allReachedDestination = remaining.nonEmpty &&
                               remaining.iterator
                               .filter(_._1.isInGame)
                               .forall(_._2.isEmpty)
 
+  def nextPositionFor(t: Mobile) = nextFor(t).map(_._1)
   def nextFor(t: Mobile) = {
     val index = counter.getOrElseUpdate(t, counter.size) % follow.pathCount
     val initialFullPath = follow.paths(index)
@@ -68,7 +76,23 @@ case class Path(waypoints: Seq[MapTilePosition], solved: Boolean, solvable: Bool
   def isPerfectSolution = solved
 }
 
-case class Paths(paths: Seq[Path]) {
+case class Paths(paths: Seq[Path], isGroundPath: Boolean) {
+  def renderDebug(renderer: Renderer): Unit = {
+    paths.foreach { singlePath =>
+      var prev = Option.empty[MapTilePosition]
+      singlePath.waypoints.zipWithIndex.foreach { case (tile, index) =>
+        renderer.drawTextAtTile(s"P$index", tile)
+        prev.foreach { p =>
+          renderer.drawLine(p, tile)
+        }
+        prev = Some(tile)
+      }
+    }
+
+  }
+
+  def toMigration(implicit universe: Universe) = new MigrationPath(this, universe)
+
   def isEmpty = paths.forall(_.waypoints.isEmpty)
 
   def minimalDistanceTo(tile: MapTilePosition) = {
@@ -90,8 +114,8 @@ object PathFinder {
   implicit def convBack(gn: GridNode2DInt): MapTilePosition = MapTilePosition
                                                               .shared(gn.getX, gn.getY)
 
-  def on(map: Grid2D) = {
-    new PathFinder(map)
+  def on(map: Grid2D, isOnGround: Boolean) = {
+    new PathFinder(map, isOnGround)
   }
 
   def to2DArray(grid: Grid2D) = {
@@ -157,12 +181,12 @@ object PathFinder {
 
 }
 
-class PathFinder(on: Grid2D) {
+class PathFinder(on: Grid2D, isOnGround: Boolean) {
 
   import PathFinder._
 
   def this(mapLayers: MapLayers, safe: Boolean, ground: Boolean) {
-    this {
+    this({
       (safe, ground) match {
         case (true, true) =>
           mapLayers.safeGround.guaranteeImmutability
@@ -173,7 +197,11 @@ class PathFinder(on: Grid2D) {
         case (true, false) =>
           mapLayers.safeAir.guaranteeImmutability
       }
-    }
+    }, ground)
+  }
+
+  def findPath(from: MapTilePosition, to: MapTilePosition) = {
+    findPaths(from, to, 1)
   }
 
   def findPaths(from: MapTilePosition, to: MapTilePosition, paths: Int = 10,
@@ -193,13 +221,18 @@ class PathFinder(on: Grid2D) {
   }
 
   def findPathNow(from: MapTilePosition, to: MapTilePosition,
-                  tryFixPath: Boolean = true): Option[Path] = {
-    findPaths(from, to, 1, tryFixPath).blockAndGet.flatMap(_.paths.headOption)
+                  tryFixPath: Boolean = true): Option[Paths] = {
+    findPaths(from, to, 1, tryFixPath).blockAndGet
   }
 
-  def spawn = new AstarPathFinder(to2DArray(on))
+  def findSimplePathNow(from: MapTilePosition, to: MapTilePosition,
+                        tryFixPath: Boolean = true) = {
+    findPathNow(from, to, tryFixPath).flatMap(_.paths.headOption)
+  }
 
-  class AstarPathFinder(grid: Array[Array[GridNode2DInt]]) {
+  def spawn = new AstarPathFinder(to2DArray(on), isOnGround)
+
+  class AstarPathFinder(grid: Array[Array[GridNode2DInt]], isOnGround: Boolean) {
 
     def basedOn = on
 
@@ -228,7 +261,7 @@ class PathFinder(on: Grid2D) {
         Path(seq, finder.isSolved, !finder.isUnsolvable, finder.getTargetOrNearestReachable, to,
           unsafeTarget)
       }
-      val paths = (0 to width).iterator.map { _ =>
+      val paths = (0 until width).iterator.map { _ =>
         finder.performSearch()
         val waypoints = finder.getFullSolution
                         .asScala
@@ -247,7 +280,7 @@ class PathFinder(on: Grid2D) {
           }
         }
       }.toVector
-      Paths(paths.map(pathFrom))
+      Paths(paths.map(pathFrom), isOnGround)
     }
     private implicit def conv(mtp: MapTilePosition): GridNode2DInt = {
       val ret = grid(mtp.x)(mtp.y)

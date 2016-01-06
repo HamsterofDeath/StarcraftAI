@@ -213,7 +213,7 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
 
     private val pathToFollow = universe.pathfinder.groundSafe
                                .findPaths(currentCenter, meetingPoint.where)
-    private val migration    = pathToFollow.map(_.map(new MigrationPath(_, universe, true)))
+    private val migration    = pathToFollow.map(_.map(_.toMigration))
 
     def migrationPlan = migration.result
     def hasNotEnded = !hasEnded
@@ -254,15 +254,7 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
               }
               stayHere.map {AttackToPosition(t, _)}.getOrElse {defaultCommand}
             case _ =>
-              path.nextFor(t) match {
-                case Some((targetTile, attackMove)) if attackMove =>
-                  AttackToPosition(t, targetTile)
-                case Some((targetTile, attackMove)) =>
-                  MoveToPosition(t, targetTile)
-                case None =>
-                  StayInPosition(t)
-              }
-
+              defaultCommand
           }
       }
     }
@@ -711,7 +703,7 @@ class HandleDefenses(universe: Universe) extends OrderlessAIModule[Mobile](unive
         //prototype: just attack the biggest group with everything
 
         val biggest = typedGroups.maxBy(_.members.iterator.map(_.armorType.transportSize).sum)
-        worldDominationPlan.initiateAttack(biggest.center, complete = true)
+        worldDominationPlan.initiateAttack(biggest.center, complete = false)
 
         resetBackgroundOp()
       }, {})

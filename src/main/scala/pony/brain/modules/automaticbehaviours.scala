@@ -182,8 +182,8 @@ object Terran {
         def currentSafeOrder(transporterTarget: PositionOrUnit): Option[UnitOrder] = {
           val maybeCalculatedPath = paths.getOrElseUpdate(transporterTarget, {
             val future = FutureIterator.feed(transporterTarget).produceAsync { target =>
-              val path = pathfinder.airSafe.findPathNow(unit.currentTile, target.where)
-              path.map(e => new Paths(List(e))).map(new MigrationPath(_, universe, false))
+              universe
+              pathfinder.airSafe.findPathNow(unit.currentTile, target.where).map(_.toMigration)
             }
             MaybePath(future)
           })
@@ -204,7 +204,7 @@ object Terran {
               if (near)
                 simpleCommand
               else
-                safePath.nextFor(unit).map { case (where, _) =>
+                safePath.nextPositionFor(unit).map { where =>
                   Orders.MoveToTile(unit, where)
                 }.getOrElse(simpleCommand)
             }
@@ -635,8 +635,8 @@ object Terran {
           p.targetFormationTiles.foreach { tile =>
             renderer.in_!(Color.Cyan).drawCircleAround(tile)
           }
-          renderer.in_!(Color.Red).drawStar(p.finalDestination)
-          renderer.in_!(Color.Green).drawStar(p.safeDestination)
+          renderer.in_!(Color.Red).drawStar(p.finalDestination, 3)
+          renderer.in_!(Color.Green).drawStar(p.safeDestination, 2)
         }
       }
     }
@@ -660,7 +660,7 @@ object Terran {
       val behaviour = unit match {
         case g: GroundUnit =>
           new DefaultMigrationBehaviour[GroundUnit](g) with FerrySupport[GroundUnit] {
-            override protected def suggestFerryDropPosition = {
+            override protected def ferryDropTarget = {
               finalDestination
             }
           }

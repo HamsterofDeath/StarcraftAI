@@ -166,6 +166,9 @@ object WrapsUnit {
 }
 
 trait StaticallyPositioned extends WrapsUnit {
+
+  self =>
+
   val myTilePosition = once {
     val position = nativeUnit.getTilePosition
     val x = position.getX
@@ -178,6 +181,13 @@ trait StaticallyPositioned extends WrapsUnit {
   private val myArea = once {
     Area(tilePosition, size)
   }
+
+  private val myAreaOnMap = once {
+    mapLayers.rawWalkableMap.areaWhichContainsAsFree(centerTile)
+    .getOr(s"Building is not on valid ground: $self")
+  }
+
+  def areaOnMap = myAreaOnMap.get
 
   def area = myArea.get
   override def shouldReRegisterOnMorph = true
@@ -199,7 +209,7 @@ trait IsVehicle extends WrapsUnit
 trait IsShip extends WrapsUnit
 
 trait TerranBuilding extends Building {
-  private val myCurrentArea = oncePerTick {
+  private val myCurrentArea = oncePer(Primes.prime59) {
     mapLayers.rawWalkableMap.areaWhichContainsAsFree(centerTile).orElse {
       mapLayers.rawWalkableMap
       .spiralAround(centerTile, 5)
@@ -209,7 +219,7 @@ trait TerranBuilding extends Building {
     }
   }
 
-  def areaOnMap = myCurrentArea.get
+  def currentAreaOnMap = myCurrentArea.get
 
 }
 
@@ -637,7 +647,7 @@ trait AutoPilot extends Mobile {
 trait Mobile extends WrapsUnit with Controllable {
 
   val buildPrice = Price(nativeUnit.getType.mineralPrice(), nativeUnit.getType.gasPrice())
-  private val myCurrentArea         = oncePerTick {
+  private val myCurrentArea   = oncePer(Primes.prime11) {
     mapLayers.rawWalkableMap.areaWhichContainsAsFree(currentTile).orElse {
       mapLayers.rawWalkableMap
       .spiralAround(currentTile, 2)
@@ -646,13 +656,13 @@ trait Mobile extends WrapsUnit with Controllable {
       .map(_.get)
     }
   }
-  private val defenseMatrix         = oncePerTick {
+  private val defenseMatrix   = oncePerTick {
     nativeUnit.getDefenseMatrixPoints > 0 || nativeUnit.getDefenseMatrixTimer > 0
   }
-  private val defenseMatrixHP       = oncePerTick {
+  private val defenseMatrixHP = oncePerTick {
     nativeUnit.getDefenseMatrixPoints
   }
-  private val irradiation           = oncePerTick {
+  private val irradiation     = oncePerTick {
     nativeUnit.getIrradiateTimer > 0
   }
   private val myTile                = oncePerTick {

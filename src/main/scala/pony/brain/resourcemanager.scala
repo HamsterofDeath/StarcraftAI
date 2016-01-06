@@ -174,6 +174,7 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
   private def lock_![T <: WrapsUnit](requests: ResourceRequests, proof: Option[ResourceApprovalSuccess],
                                      employer: Employer[T]): Unit = {
     val newLock = LockedResources(requests, proof, employer)
+    assert(!isAlreadyForceLocked(requests, employer), s"Lock aready force locked: $requests")
     trace(s"Locked $newLock")
     locked += newLock
     lockedSums.invalidate()

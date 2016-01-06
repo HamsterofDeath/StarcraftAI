@@ -33,7 +33,7 @@ class ChokePointRenderer(override val universe: Universe) extends AIPlugIn with 
       }
 
       strategicMap.narrowPoints.foreach { narrow =>
-        renderer.drawStar(narrow.where)
+        renderer.drawStar(narrow.where, 1)
         renderer.drawTextAtTile(s"Narrow ${narrow.index}", narrow.where)
       }
     }
@@ -105,13 +105,15 @@ class UnitJobRenderer(override val universe: Universe) extends AIPlugIn with Has
 
   override protected def tickPlugIn(): Unit = {
     lazyWorld.debugger.debugRender { renderer =>
-      unitManager.allJobsByUnitType[Mobile]
-      .filter {
-        case g: GroundUnit if !g.loaded => true
-        case a: AirUnit => true
-        case _ => false
+      val renderUs = unitManager.allJobsByUnitType[Mobile].filter { job =>
+        job.unit match {
+          case g: GroundUnit if !g.loaded => true
+          case a: AirUnit => true
+          case _ => false
+        }
       }
-      .foreach { job =>
+
+      renderUs.foreach { job =>
         renderer.drawTextAtMobileUnit(job.unit, s"${job.shortDebugString} -> ${job.unit.nativeUnit.getOrder}", 1)
         job.renderDebug(renderer)
       }
@@ -142,16 +144,7 @@ class PathDebugRenderer(override val universe: Universe) extends AIPlugIn with H
         val count = attack.force.size
         renderer.drawCircleAround(center.asMapPosition, math.round(math.sqrt(count)).toInt)
         attack.completePath.result.foreach { path =>
-          path.paths.foreach { singlePath =>
-            var prev = Option.empty[MapTilePosition]
-            singlePath.waypoints.zipWithIndex.foreach { case (tile, index) =>
-              renderer.drawTextAtTile(s"P$index", tile)
-              prev.foreach { p =>
-                renderer.drawLine(p, tile)
-              }
-              prev = Some(tile)
-            }
-          }
+          path.renderDebug(renderer)
         }
       }
     }
@@ -409,7 +402,7 @@ class DebugHelper(main: MainAI) extends AIPlugIn with HasUniverse {
                   strategicMap.narrowPoints.find(_.index.toString == id).map(_.where)
               }
               target.foreach { where =>
-                main.brain.universe.worldDominationPlan.initiateAttack(where)
+                main.brain.universe.worldDominationPlan.initiateAttack(where, true)
               }
           }
         case Nil =>

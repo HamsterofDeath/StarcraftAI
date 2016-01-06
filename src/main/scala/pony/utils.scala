@@ -17,11 +17,15 @@ class Renderer(game: Game, private var color: bwapi.Color) {
     game.drawLineMap(from.mapX, from.mapY, to.mapX, to.mapY, color)
   }
 
-  def drawStar(where: MapTilePosition): Unit = {
-    game.drawLineMap(where.movedBy(-3, -3).nativeMapPosition, where.movedBy(3, 3).nativeMapPosition, color)
-    game.drawLineMap(where.movedBy(3, -3).nativeMapPosition, where.movedBy(-3, 3).nativeMapPosition, color)
-    game.drawLineMap(where.movedBy(-3, 0).nativeMapPosition, where.movedBy(3, 0).nativeMapPosition, color)
-    game.drawLineMap(where.movedBy(0, -3).nativeMapPosition, where.movedBy(0, 3).nativeMapPosition, color)
+  def drawStar(where: MapTilePosition, size: Int = 3): Unit = {
+    game.drawLineMap(where.movedBy(-size, -size).nativeMapPosition,
+      where.movedBy(size, size).nativeMapPosition, color)
+    game.drawLineMap(where.movedBy(size, -size).nativeMapPosition,
+      where.movedBy(-size, size).nativeMapPosition, color)
+    game.drawLineMap(where.movedBy(-size, 0).nativeMapPosition,
+      where.movedBy(size, 0).nativeMapPosition, color)
+    game.drawLineMap(where.movedBy(0, -size).nativeMapPosition,
+      where.movedBy(0, size).nativeMapPosition, color)
   }
 
   def drawLine(from: MapPosition, to: MapPosition): Unit = {
@@ -331,12 +335,19 @@ object BWFuture {
   def from[T](produce: => T): BWFuture[Option[T]] = {
     BWFuture(Some(produce), None)
   }
+
   def produceFrom[T](produce: => T) = BWFuture(Some(produce))
   implicit class Result[T](val fut: BWFuture[Option[T]]) extends AnyVal {
     def orElse(other: T) = if (fut.isDone) fut.result.get else other
 
+    def imap[X](f: T => X) = fut.map(_.map(f))
+
     def ifDoneOpt[X](ifDone: T => X): Unit = {
       fut.ifDone(op => ifDone(op.get))
+    }
+
+    def foldOpt[X](ifRunning: => X)(ifDone: T => X) = {
+      matchOnOptSelf(ifDone, ifRunning)
     }
 
     def matchOnOptSelf[X](ifDone: T => X, ifRunning: => X) = {

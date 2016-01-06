@@ -349,7 +349,8 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
         extends UnitWithJob(emp, myWorker, Priority.Default)
                 with GatherMineralsAtSinglePatch
                 with Interruptable[WorkerUnit]
-                with FerrySupport[WorkerUnit] {
+                with FerrySupport[WorkerUnit]
+                with PathfindingSupport[WorkerUnit] {
 
         listen_!(failed => {
           if (miningTarget.isInTeam(myWorker)) {
@@ -358,6 +359,22 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
         })
 
         import States._
+
+        override protected def pathTargetPosition = {
+          if (worker.isCarryingMinerals) {
+            nearestReachableBase.get.map(_.mainBuilding.centerTile)
+          } else {
+            miningTarget.patch.centerTile.toSome
+          }
+        }
+
+        private val nearestReachableBase = oncePer(Primes.prime71) {
+          bases.bases.filter { b =>
+            worker.currentArea.contains(b.mainBuilding.areaOnMap)
+          }.minByOpt { base =>
+            base.mainBuilding.area.distanceTo(worker.currentTile)
+          }
+        }
 
         private var state: State = Idle
         override def onStealUnit(): Unit = {
@@ -428,7 +445,7 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
         }
         override def isFinished = !miningTarget.patch.isInGame
         override def hasFailed: Boolean = super.hasFailed || base.mainBuilding.isDead
-        override protected def suggestFerryDropPosition = {
+        override protected def ferryDropTarget = {
           targetPatch.tilePosition.middleBetween(base.mainBuilding.tilePosition).toSome
         }
         override def targetPatch = miningTarget.patch
@@ -533,11 +550,29 @@ class GatherGas(universe: Universe) extends OrderlessAIModule[WorkerUnit](univer
     def covers(base: Base) = this.base.mainBuilding == base.mainBuilding
 
     class GatherGasAtRefinery(worker: WorkerUnit)
-      extends UnitWithJob[WorkerUnit](self, worker, Priority.ConstructBuilding) with Interruptable[WorkerUnit] with
-              FerrySupport[WorkerUnit] {
+      extends UnitWithJob[WorkerUnit](self, worker, Priority.ConstructBuilding)
+              with Interruptable[WorkerUnit]
+              with FerrySupport[WorkerUnit]
+              with PathfindingSupport[WorkerUnit] {
+
+      override protected def pathTargetPosition = {
+        if (worker.isCarryingGas) {
+          nearestReachableBase.get.map(_.mainBuilding.centerTile)
+        } else {
+          geysir.centerTile.toSome
+        }
+      }
 
       private val freeNearGeysir = {
         mapLayers.rawWalkableMap.nearestFreeBlock(geysir.tilePosition, 1)
+      }
+
+      private val nearestReachableBase = oncePer(Primes.prime71) {
+        bases.bases.filter { b =>
+          worker.currentArea.contains(b.mainBuilding.areaOnMap)
+        }.minByOpt { base =>
+          base.mainBuilding.area.distanceTo(worker.currentTile)
+        }
       }
       private var state: State = Idle
       override def shortDebugString: String = state.getClass.className
@@ -554,7 +589,7 @@ class GatherGas(universe: Universe) extends OrderlessAIModule[WorkerUnit](univer
         state = newState
         order.toSeq
       }
-      override protected def suggestFerryDropPosition = {
+      override protected def ferryDropTarget = {
         freeNearGeysir.forNone {
           warn(s"No free tile around $geysir")
         }

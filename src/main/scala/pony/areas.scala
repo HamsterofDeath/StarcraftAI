@@ -56,12 +56,13 @@ class StrategicMap(val resources: Seq[ResourceArea], walkable: Grid2D, game: Gam
 
     private def evalScatteredPoints(valid: MapTilePosition => Boolean) = {
       val blocked = walkable.mutableCopy
-      val pf = PathFinder.on(walkable)
+      val pf = PathFinder.on(walkable, isOnGround = true)
       val outsidePoints = walkable.spiralAround(chokePoint.center, 20)
                           .filter(blocked.free)
                           .filter(valid)
                           .filter { e =>
-                            val solution = pf.findPathNow(e, chokePoint.center, false)
+                            val solution = pf.findSimplePathNow(e, chokePoint.center,
+                              tryFixPath = false)
                             solution.exists { p =>
                               p.isPerfectSolution && p.length <= 20
                             }

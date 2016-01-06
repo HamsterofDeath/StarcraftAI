@@ -44,12 +44,15 @@ trait HasUniverse extends HasLazyVals {
     }
     orElse
   }
+
+  protected implicit def implicitUniverse = universe
+
 }
 
 trait HasLazyVals {
   private val lazyVals  = ArrayBuffer.empty[LazyVal[_]]
   protected def currentTick: Int
-  def oncePer[T <: AnyRef](prime: PrimeNumber)(t: => T) = {
+  def oncePer[T](prime: PrimeNumber)(t: => T) = {
     var store: T = null.asInstanceOf[T]
     oncePerTick {
       if (store == null || currentTick % prime.i == 0) {

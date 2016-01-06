@@ -230,33 +230,39 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
   }
 
   def allRequirementsFulfilled[T <: WrapsUnit](c: Class[_ <: T]) = {
-    val (m, i) = findMissingRequirements[T](collection.immutable.Set(c))
-    m.isEmpty && i.isEmpty
+    val (m, i, p) = findMissingRequirements[T](collection.immutable.Set(c))
+    m.isEmpty && i.isEmpty && p.isEmpty
   }
 
   def requirementsQueuedToBuild[T <: WrapsUnit](c: Class[_ <: T]) = {
-    val (_, i) = findMissingRequirements[T](collection.immutable.Set(c))
-    i.nonEmpty
+    val (_, i, p) = findMissingRequirements[T](collection.immutable.Set(c))
+    i.nonEmpty && p.isEmpty
   }
 
   private def findMissingRequirements[T <: WrapsUnit](c: Set[Class[_ <: T]]) = {
     val mustHave = c.flatMap(race.techTree.requiredFor)
     val i = mutable.Set.empty[Class[_ <: Building]]
     val m = mutable.Set.empty[Class[_ <: Building]]
+    val p = mutable.Set.empty[Class[_ <: Building]]
     val missing = {
       mustHave.foreach { dependency =>
         val complete = ownUnits.existsComplete(dependency)
         if (!complete) {
           val incomplete = ownUnits.existsIncomplete(dependency)
-          if (!incomplete) {
-            m += dependency
-          } else {
+          if (incomplete) {
             i += dependency
+          } else {
+            val planned = unitManager.plannedToBuild(dependency)
+            if (planned) {
+              p += dependency
+            } else {
+              m += dependency
+            }
           }
         }
       }
     }
-    (m.toSet, i.toSet)
+    (m.toSet, i.toSet, p.toSet)
   }
 
   def request[T <: WrapsUnit : Manifest](req: UnitJobRequest[T], buildIfNoneAvailable: Boolean = true) = {
@@ -265,8 +271,8 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
       new UnitCollector(req, universe).collect_!()
     }
 
-    val (missing, incomplete) = findMissingRequirements(req.allRequiredTypes)
-    val result = if (missing.isEmpty && incomplete.isEmpty) {
+    val (missing, incomplete, planned) = findMissingRequirements(req.allRequiredTypes)
+    val result = if (missing.isEmpty && incomplete.isEmpty && planned.isEmpty) {
       val hr = hireResult
       hr match {
         case None =>
@@ -288,7 +294,7 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
           }
       }
     } else {
-      new MissingRequirementResult[T](missing, incomplete)
+      new MissingRequirementResult[T](missing, incomplete, planned)
     }
 
     trace(s"Result of request: $result")
@@ -380,10 +386,13 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
 }
 
 trait PreHiringResult[T <: WrapsUnit] {
-  def hasAnyMissingRequirements = notExistingMissingRequiments.nonEmpty || inProgressMissingRequirements.nonEmpty
+  def hasAnyMissingRequirements = notExistingMissingRequiments.nonEmpty ||
+                                  inProgressMissingRequirements.nonEmpty ||
+                                  plannedMissingRequirements.nonEmpty
 
   def notExistingMissingRequiments: Set[Class[_ <: Building]] = Set.empty
   def inProgressMissingRequirements: Set[Class[_ <: Building]] = Set.empty
+  def plannedMissingRequirements: Set[Class[_ <: Building]] = Set.empty
   def success: Boolean
   def canHire: CanHireInfo[T]
   def units = canHire.details
@@ -410,12 +419,15 @@ class FailedPreHiringResult[T <: WrapsUnit] extends PreHiringResult[T] {
   def canHire = CanHireInfo.empty
 }
 
-class MissingRequirementResult[T <: WrapsUnit](needs: Set[Class[_ <: Building]], incomplete: Set[Class[_ <: Building]])
+class MissingRequirementResult[T <: WrapsUnit](needs: Set[Class[_ <: Building]],
+                                               incomplete: Set[Class[_ <: Building]],
+                                               planned: Set[Class[_ <: Building]])
   extends PreHiringResult[T] {
   def success = false
   def canHire = CanHireInfo.empty
   override def notExistingMissingRequiments = needs
   override def inProgressMissingRequirements = incomplete
+  override def plannedMissingRequirements = planned
 }
 
 trait AtLeastOneSuccess[T <: WrapsUnit] extends PreHiringResult[T] {
@@ -616,7 +628,7 @@ abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: 
   private  var noCommandsForTicks = 0
   private var dead = false
   private var lastOrder: Seq[UnitOrder] = Nil
-  def renderDebug(renderer: Renderer): Unit = {}
+
   def resetTimer_!(): Unit = {
     startTick = 0
   }
@@ -637,6 +649,11 @@ abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: 
   def isIdle: Boolean = false
   def lastIssuedOrder = lastOrder
 
+  private var lastNonInterruptedOrderGiven  = Option.empty[Int]
+  private var firstNonInterruptedOrderGiven = Option.empty[Int]
+
+  def ageSinceFirstNonInterceptedOrder = firstNonInterruptedOrderGiven.fold(0)(currentTick - _)
+
   def ordersForThisTick = {
     if (hasFailed) {
       Nil
@@ -647,11 +664,24 @@ abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: 
       } else {
 
         noCommandsForTicks = everyNth
+        var sourceIsOriginal = false
         def injectedOrMine = {
           val maybe = higherPriorityOrder
-          if (maybe.isEmpty) ordersForTick else maybe
+          if (maybe.isEmpty) {
+            sourceIsOriginal = false
+            ordersForTick
+          } else
+            maybe
         }
         val nextOrder = injectedOrMine
+
+        if (sourceIsOriginal) {
+          lastNonInterruptedOrderGiven = Some(currentTick)
+          firstNonInterruptedOrderGiven.forNone {
+            firstNonInterruptedOrderGiven = lastNonInterruptedOrderGiven
+          }
+        }
+
         val shouldRepeat = !nextOrder.exists(_.forceRepetition) &&
                            omitRepeatedOrders &&
                            nextOrder == lastOrder &&
@@ -666,7 +696,6 @@ abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: 
     }
   }
   protected def omitRepeatedOrders = false
-  def higherPriorityOrder: Seq[UnitOrder] = Nil
   def everyNth = 0
   def noCommandsForTicks_!(n: Int): Unit = {
     noCommandsForTicks = n
@@ -882,16 +911,85 @@ class ResearchUpgrade[U <: Upgrader](employer: Employer[U],
 
 trait JobOrSubJob[+T <: WrapsUnit] extends HasUniverse {
   def unit: T
-  protected def higherPriorityOrder: Seq[UnitOrder]
+  protected def higherPriorityOrder = Seq.empty[UnitOrder]
+
+  def renderDebug(renderer: Renderer) = {}
+
+
+}
+
+trait PathfindingSupport[T <: Mobile] extends JobOrSubJob[T] {
+  private var myPath    = BWFuture.none[MigrationPath]
+  private val needsPath = oncePer(Primes.prime23) {
+    val target = pathTargetPosition
+    def areaOfTarget = target.flatMap(mapLayers.rawWalkableMap.areaWhichContainsAsFree)
+    def areaOfUnit = unit.currentArea
+
+
+    target match {
+      case Some(where) =>
+        val far = unit.currentTile.distanceToIsMore(where, 15)
+        far && (unit match {
+          case g: GroundUnit if g.onGround && areaOfTarget == areaOfUnit &&
+                                areaOfTarget.isDefined =>
+            !mapLayers.rawWalkableMap.connectedByLine(unit.currentTile, where)
+          case a: AirUnit => true
+          case _ => false
+        })
+      case None =>
+        false
+    }
+  }
+
+  override def renderDebug(renderer: Renderer) = {
+    super.renderDebug(renderer)
+    myPath.ifDone(_.foreach(_.renderDebug(renderer)))
+
+  }
+  override def higherPriorityOrder = {
+    def newPathRequired(where: MapTilePosition): Unit = {
+      trace(s"Unit $unit needs paths to $where")
+      val pf = pathfinder.safeFor(unit)
+      val task = pf.findPath(unit.currentTile, where).imap(_.toMigration)
+      myPath = task
+    }
+    val myOrder = {
+      if (needsPath.get) {
+        pathTargetPosition.map { where =>
+          if (myPath.isDone && myPath.assumeDoneAndGet.isEmpty) {
+            newPathRequired(where)
+          }
+
+          myPath.foldOpt(List.empty[UnitOrder]) { mig =>
+            val outdated = mig.finalDestination.distanceToIsMore(where, 3)
+            if (outdated) {
+              newPathRequired(where)
+              Nil
+            } else {
+              mig.nextPositionFor(unit)
+              .map(Orders.MoveToTile(unit, _))
+              .toList
+            }
+          }
+        }.getOrElse(Nil)
+      } else {
+        myPath = BWFuture.none
+        Nil
+      }
+    }
+    if (myOrder.isEmpty) super.higherPriorityOrder else myOrder
+  }
+
+  protected def pathTargetPosition: Option[MapTilePosition]
 }
 
 trait FerrySupport[T <: GroundUnit] extends JobOrSubJob[T] {
 
   override def higherPriorityOrder: Seq[UnitOrder] = {
     val where = unit.currentTile
-    val toOpt = suggestFerryDropPosition
+    val target = ferryDropTarget
 
-    toOpt.map { to =>
+    val myOrder = target.map { to =>
       val needsFerry = !unit.currentArea.exists(_.free(to))
       if (needsFerry && mapLayers.rawWalkableMap.free(to)) {
         ferryManager.requestFerry(unit, to) match {
@@ -906,9 +1004,10 @@ trait FerrySupport[T <: GroundUnit] extends JobOrSubJob[T] {
         }
       } else Nil
     }.getOrElse(Nil)
+    if (myOrder.isEmpty) super.higherPriorityOrder else myOrder
   }
 
-  protected def suggestFerryDropPosition: Option[MapTilePosition]
+  protected def ferryDropTarget: Option[MapTilePosition]
 }
 
 class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, buildingType: Class[_ <: B],
@@ -921,11 +1020,16 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, bu
           with CreatesUnit[W]
           with CanAcceptUnitSwitch[W]
           with FerrySupport[W]
+          with PathfindingSupport[W]
           with IssueOrderNTimes[W] {
   self =>
 
   assert(universe.mapLayers.rawWalkableMap.insideBounds(buildWhere),
     s"Target building spot is outside of map: $buildWhere, check $self")
+
+  override protected def pathTargetPosition = {
+    buildWhere.toSome
+  }
 
   val area = {
     val unitType = buildingType.toUnitType
@@ -956,15 +1060,18 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, bu
       mapLayers.unblockBuilding_!(area)
     }
   }
-  override def getOrder: Seq[UnitOrder] =
+
+  override def getOrder: Seq[UnitOrder] = {
     Orders.ConstructBuilding(worker, buildingType, buildWhere).toSeq
+  }
   override def shortDebugString: String = s"Build ${buildingType.className}"
   override def proofForFunding = funding
   override def canSwitchNow = !startedActualConstruction
   override def couldSwitchInTheFuture = !startedActualConstruction
   override def jobHasFailedWithoutDeath: Boolean = {
     if (unit.onGround) {
-      val fail = !worker.isInConstructionProcess && ageSinceLastReset > times + 10 && !isFinished
+      val fail = !worker.isInConstructionProcess && ageSinceFirstNonInterceptedOrder > times + 10 &&
+                 !isFinished
       warn(s"Construction of ${typeOfBuilding.className} failed, worker $worker didn't manange", fail)
       fail
     } else {
@@ -1013,7 +1120,7 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, bu
   }
   override def newFor(replacement: W) = new
       ConstructBuilding(replacement, buildingType, employer, buildWhere, funding, belongsTo)
-  override protected def suggestFerryDropPosition = area.centerTile.toSome
+  override protected def ferryDropTarget = area.centerTile.toSome
 }
 
 sealed trait Behaviour
@@ -1035,13 +1142,7 @@ case class SingleUnitBehaviourMeta(priority: SecondPriority, refuseCommandsForTi
 abstract class SingleUnitBehaviour[+T <: WrapsUnit](val unit: T, meta: SingleUnitBehaviourMeta)
   extends JobOrSubJob[T] {
 
-  protected def higherPriorityOrder = Seq.empty[UnitOrder]
-
   override def universe = unit.universe
-
-  def renderDebug(r: Renderer) = {
-    // nop
-  }
 
   def onStealUnit(): Unit = {}
 

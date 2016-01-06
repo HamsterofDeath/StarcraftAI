@@ -894,14 +894,14 @@ class ResourceAnalyzer(map: AnalyzedMap, all: AllUnits) {
     info(s"Calculating mineral groups...")
     val patchGroups = ArrayBuffer.empty[MineralPatchGroup]
     val allMins = ArrayBuffer.empty ++= myUnits.minerals
-    val pathFinder = PathFinder.on(map.walkableGrid)
+    val pathFinder = PathFinder.on(map.walkableGrid, isOnGround = true)
     allMins.foreach { mp =>
       print(".")
       patchGroups.find { g =>
         def isNew = !g.contains(mp)
         def isClose = {
           g.allTiles.exists { check =>
-            val path = pathFinder.findPathNow(check, mp.tilePosition, false)
+            val path = pathFinder.findSimplePathNow(check, mp.tilePosition, tryFixPath = false)
             path.exists { p =>
               p.isPerfectSolution && p.length < 20
             }
