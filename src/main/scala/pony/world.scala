@@ -637,7 +637,13 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
     areaWhichContainsAsFree(a).exists(_.free(b))
   def emptySameSize(blocked: Boolean) = new MutableGrid2D(cols, rows, mutable.BitSet.empty, blocked)
   def nearestFree(p: MapTilePosition) = {
-    spiralAround(p, 100).find(free)
+    spiralAround(p, 80).find(free)
+  }
+  def nearestFreeNoGap(p: MapTilePosition) = {
+    spiralAround(p, 80).filter { candidate =>
+      val stats = countBlockedOnLine(Line(p, candidate))
+      stats.free > stats.blocked
+    }.find(free)
   }
   def blockedMutableCopy = new MutableGrid2D(cols, rows, mutable.BitSet.empty, false)
   def guaranteeImmutability = this
@@ -668,6 +674,22 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
     AreaHelper.traverseTilesOfLine(line.a, line.b, (x, y) => {
       if (inBounds(x, y) && blocked(x, y)) Some(true) else None
     }, false)
+  }
+
+  case class LineInfo(line: Line, blocked: Int, free: Int)
+  def countBlockedOnLine(line: Line) = {
+    var blockedCount = 0
+    var freeCount = 0
+    AreaHelper.traverseTilesOfLine(line.a, line.b, (x, y) => {
+      if (inBounds(x, y)) {
+        if (blocked(x, y)) {
+          blockedCount += 1
+        } else {
+          freeCount += 1
+        }
+      }
+    })
+    LineInfo(line, blockedCount, freeCount)
   }
   def blocked(x: Int, y: Int): Boolean = !free(x, y)
   def connectedByLine(a: MapTilePosition, b: MapTilePosition) = AreaHelper

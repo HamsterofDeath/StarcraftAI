@@ -103,7 +103,7 @@ class ProvideExpansions(universe: Universe) extends OrderlessAIModule[WorkerUnit
 
   override def renderDebug(renderer: Renderer) = {
     plannedExpansionPoint.foreach { res =>
-      renderer.in_!(Color.White).drawTextAtTile("Expansion planned here", res.center)
+      renderer.in_!(Color.White).drawTextAtTile("   Ex", res.center)
     }
   }
 
@@ -519,6 +519,7 @@ class GatherGas(universe: Universe) extends OrderlessAIModule[WorkerUnit](univer
 
     override def onTick(): Unit = {
       super.onTick()
+      refinery = refinery.filter(_.isInGame)
       refinery match {
         case None =>
           if (ownUnits.allByType[WorkerUnit].size >= workerCountBeforeWantingGas) {
@@ -561,6 +562,10 @@ class GatherGas(universe: Universe) extends OrderlessAIModule[WorkerUnit](univer
         } else {
           geysir.centerTile.toSome
         }
+      }
+
+      override def jobHasFailedWithoutDeath = {
+        super.jobHasFailedWithoutDeath || refinery.isEmpty || refinery.exists(_.isDead)
       }
 
       private val freeNearGeysir = {

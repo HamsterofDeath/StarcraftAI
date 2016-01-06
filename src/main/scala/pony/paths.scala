@@ -83,7 +83,7 @@ case class Paths(paths: Seq[Path], isGroundPath: Boolean) {
       singlePath.waypoints.zipWithIndex.foreach { case (tile, index) =>
         renderer.drawTextAtTile(s"P$index", tile)
         prev.foreach { p =>
-          renderer.drawLine(p, tile)
+          renderer.drawLineInTile(p, tile)
         }
         prev = Some(tile)
       }
@@ -210,7 +210,7 @@ class PathFinder(on: Grid2D, isOnGround: Boolean) {
     val toFixed = {
       if (tryFixPath) {
         fromFixed.flatMap { e =>
-          on.areaWhichContainsAsFree(e).flatMap(_.nearestFree(to))
+          on.areaWhichContainsAsFree(e).flatMap(_.nearestFreeNoGap(to))
         }
       } else {Some(to)}
     }

@@ -10,8 +10,8 @@ package object pony {
 
   // milestone 2.5:
   // TODO fix expansion delay
-  // TODO pathfinding trait for jobs (construct building, collect minerals)
   // TODO collect minerals/gas from far away if out of resources in bases
+  // TODO fix magic resource problem
 
   // milestone 3:
   // TODO send only necessary units for defenses, use "battle simulator" to estimate which units

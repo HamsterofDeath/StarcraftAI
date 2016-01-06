@@ -63,7 +63,8 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
     val isForced = lockedWithoutFunds.exists(_.reqs.sum.equalValue(proofForFunding))
     if (isForced) {
       lockedWithoutFunds.removeFirstMatch(_.reqs.sum.equalValue(proofForFunding))
-      assert(!locked.exists(_.proof.contains(proofForFunding)), s"Duplicate lock: $proofForFunding")
+      //assert(!locked.exists(_.proof.contains(proofForFunding)), s"Duplicate lock:
+      // $proofForFunding")
     } else {
       locked.removeFirstMatch(_.proof.contains(proofForFunding))
       assert(!locked.exists(_.proof.contains(proofForFunding)), s"Duplicate lock: $proofForFunding")
@@ -80,6 +81,7 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
     val lock = LockedResources(requests, None, employer)
     assert(isAlreadyForceLocked(requests, employer))
     lockedWithoutFunds -= LockedResources(requests, None, employer)
+    lockedSums.invalidate()
   }
   def isAlreadyForceLocked[T <: WrapsUnit](req: ResourceRequests, employer: Employer[T]) = {
     val compareTo = LockedResources(req, None, employer)
@@ -170,6 +172,7 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
     if (!isAlreadyForceLocked(req, employer)) {
       lockedWithoutFunds += LockedResources(req, None, employer)
     }
+    lockedSums.invalidate()
   }
   private def lock_![T <: WrapsUnit](requests: ResourceRequests, proof: Option[ResourceApprovalSuccess],
                                      employer: Employer[T]): Unit = {

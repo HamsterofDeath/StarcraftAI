@@ -668,7 +668,7 @@ abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: 
         def injectedOrMine = {
           val maybe = higherPriorityOrder
           if (maybe.isEmpty) {
-            sourceIsOriginal = false
+            sourceIsOriginal = true
             ordersForTick
           } else
             maybe
@@ -919,6 +919,9 @@ trait JobOrSubJob[+T <: WrapsUnit] extends HasUniverse {
 }
 
 trait PathfindingSupport[T <: Mobile] extends JobOrSubJob[T] {
+
+  protected def waitForPath: Boolean = true
+
   private var myPath    = BWFuture.none[MigrationPath]
   private val needsPath = oncePer(Primes.prime23) {
     val target = pathTargetPosition
@@ -953,6 +956,14 @@ trait PathfindingSupport[T <: Mobile] extends JobOrSubJob[T] {
       val task = pf.findPath(unit.currentTile, where).imap(_.toMigration)
       myPath = task
     }
+    // must return noop instead of nil to cause a waitig behaviour
+    def noopFallback: List[UnitOrder] = {
+      if (waitForPath) {
+        Orders.NoUpdate(unit).toList
+      } else {
+        Nil
+      }
+    }
     val myOrder = {
       if (needsPath.get) {
         pathTargetPosition.map { where =>
@@ -960,7 +971,7 @@ trait PathfindingSupport[T <: Mobile] extends JobOrSubJob[T] {
             newPathRequired(where)
           }
 
-          myPath.foldOpt(List.empty[UnitOrder]) { mig =>
+          myPath.foldOpt(noopFallback) { mig =>
             val outdated = mig.finalDestination.distanceToIsMore(where, 3)
             if (outdated) {
               newPathRequired(where)
@@ -971,7 +982,7 @@ trait PathfindingSupport[T <: Mobile] extends JobOrSubJob[T] {
               .toList
             }
           }
-        }.getOrElse(Nil)
+        }.getOrElse(noopFallback)
       } else {
         myPath = BWFuture.none
         Nil

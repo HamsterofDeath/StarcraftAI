@@ -17,6 +17,10 @@ class Renderer(game: Game, private var color: bwapi.Color) {
     game.drawLineMap(from.mapX, from.mapY, to.mapX, to.mapY, color)
   }
 
+  def drawLineInTile(from: MapTilePosition, to: MapTilePosition): Unit = {
+    game.drawLineMap(from.mapX + 16, from.mapY + 16, to.mapX + 16, to.mapY + 16, color)
+  }
+
   def drawStar(where: MapTilePosition, size: Int = 3): Unit = {
     game.drawLineMap(where.movedBy(-size, -size).nativeMapPosition,
       where.movedBy(size, size).nativeMapPosition, color)
