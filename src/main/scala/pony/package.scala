@@ -17,6 +17,7 @@ package object pony {
   // TODO send only necessary units for defenses, use "battle simulator" to estimate which units
   // are required for each attack/defense
   // TODO optimize worker paths -> might be impossible
+  // TODO cover island maps
 
   // milestone 4:
   // TODO cover all zerg units (as enemy)
