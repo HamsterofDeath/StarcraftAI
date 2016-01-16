@@ -254,7 +254,7 @@ class PathFinder(on: Grid2D, isOnGround: Boolean) {
 
     def findPaths(from: MapTilePosition, to: MapTilePosition, width: Int,
                   unsafeTarget: MapTilePosition) = {
-      debug(s"Searching path from $from to $to", tick > 1)
+      trace(s"Searching path from $from to $to", tick > 10)
       val finder = new AStarSearch[GridNode2DInt](from, to)
       var first = Option.empty[Path]
       def pathFrom(seq: Seq[MapTilePosition]) = {

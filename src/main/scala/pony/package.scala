@@ -1,5 +1,6 @@
 import bwapi.Game
 import org.pmw.tinylog
+import org.pmw.tinylog.writers.FileWriter
 import org.pmw.tinylog.{Configurator, Level}
 
 import scala.collection.mutable
@@ -90,7 +91,13 @@ package object pony {
   setTinyLogLevel_!(Level.TRACE)
 
   def setTinyLogLevel_!(newLevel: Level) = {
-    Configurator.defaultConfig().level(newLevel).formatPattern("{level}:{message}").activate()
+    val ok = Configurator.defaultConfig()
+             .removeAllWriters()
+             .level(newLevel)
+             .formatPattern("{level}:{message}")
+             .addWriter(new FileWriter("log/match.log", true), newLevel, "{level}:{message}")
+             .activate()
+    assert(ok)
   }
 
   def !!! : Nothing = !!!("Something is not as it should be")

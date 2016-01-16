@@ -66,15 +66,19 @@ object MapTilePosition {
   }
 
   val max          = 256 * 4
-  val points       = if (memoryHog) {
-    Array.tabulate(max * 2, max * 2)((x, y) => MapTilePosition(x - max, y - max))
-  } else {Array.empty[Array[MapTilePosition]]}
-  val nativePoints = if (memoryHog) {
-    Array.tabulate(max * 2, max * 2)((x, y) => new Position(x - max, y - max))
-  } else {Array.empty[Array[Position]]}
+  val points       = {
+    if (memoryHog) {
+      Array.tabulate(max * 2, max * 2)((x, y) => MapTilePosition(x - max, y - max))
+    } else {Array.empty[Array[MapTilePosition]]}
+  }
+  val nativePoints = {
+    if (memoryHog) {
+      Array.tabulate(max * 2, max * 2)((x, y) => new Position(x - max, y - max))
+    } else {Array.empty[Array[Position]]}
+  }
   val zero         = MapTilePosition.shared(0, 0)
-  private val strange       = new ConcurrentHashMap[(Int, Int), MapTilePosition]
-  private val nativeStrange = new ConcurrentHashMap[(Int, Int), Position]
+  private val strange        = new ConcurrentHashMap[(Int, Int), MapTilePosition]
+  private val nativeStrange  = new ConcurrentHashMap[(Int, Int), Position]
   private val computer       = new Function[(Int, Int), MapTilePosition] {
     override def apply(t: (Int, Int)) = MapTilePosition(t._1, t._2)
   }
@@ -82,7 +86,7 @@ object MapTilePosition {
     override def apply(t: (Int, Int)) = new Position(t._1, t._2)
   }
   def shared(xy: (Int, Int)): MapTilePosition = shared(xy._1, xy._2)
-  def shared(x: Int, y: Int): MapTilePosition =
+  def shared(x: Int, y: Int): MapTilePosition = {
     if (memoryHog) {
       if (inRange(x, y))
         points(x + max)(y + max)
@@ -92,8 +96,9 @@ object MapTilePosition {
     } else {
       MapTilePosition(x, y)
     }
+  }
   def nativeShared(xy: (Int, Int)): Position = nativeShared(xy._1, xy._2)
-  def nativeShared(x: Int, y: Int): Position =
+  def nativeShared(x: Int, y: Int): Position = {
     if (memoryHog) {
       if (inRange(x, y))
         nativePoints(x + max)(y + max)
@@ -103,6 +108,7 @@ object MapTilePosition {
     } else {
       new Position(x, y)
     }
+  }
   private def inRange(x: Int, y: Int) = x > -max && y > -max && x < max && y < max
 
 }
@@ -120,7 +126,9 @@ case class Size(x: Int, y: Int) extends HasXY {
 }
 
 object Size {
-  val sizes = if (memoryHog) {Array.tabulate(20, 20)((x, y) => Size(x, y))} else {Array.empty[Array[Size]]}
+  val sizes = if (memoryHog) {Array.tabulate(20, 20)((x, y) => Size(x, y))} else {
+    Array.empty[Array[Size]]
+  }
   def shared(x: Int, y: Int) = if (memoryHog) {sizes(x)(y)} else {Size(x, y)}
 }
 
@@ -133,15 +141,15 @@ case class Line(a: MapTilePosition, b: MapTilePosition) {
   def split = Line(a, center) -> Line(center, b)
 }
 
-
 case class Area(upperLeft: MapTilePosition, sizeOfArea: Size) {
   val lowerRight = upperLeft.movedBy(sizeOfArea).movedBy(-1, -1)
-  val edges = upperLeft ::
-              MapTilePosition(lowerRight.x, upperLeft.y) ::
-              lowerRight ::
-              MapTilePosition(upperLeft.x, lowerRight.y) ::
-              Nil
-  val center     = MapPosition((upperLeft.mapX + lowerRight.mapX) / 2, (upperLeft.mapY + lowerRight.mapY) / 2)
+  val edges      = upperLeft ::
+                   MapTilePosition(lowerRight.x, upperLeft.y) ::
+                   lowerRight ::
+                   MapTilePosition(upperLeft.x, lowerRight.y) ::
+                   Nil
+  val center     = MapPosition((upperLeft.mapX + lowerRight.mapX) / 2,
+    (upperLeft.mapY + lowerRight.mapY) / 2)
   val centerTile = MapTilePosition((upperLeft.x + lowerRight.x) / 2, (upperLeft.y + lowerRight.y)
                                                                      / 2)
   def moveTo(e: MapTilePosition) = copy(upperLeft = e)
@@ -201,11 +209,10 @@ case class Area(upperLeft: MapTilePosition, sizeOfArea: Size) {
 }
 
 object Area {
-  def apply(upperLeft:MapTilePosition, lowerRight:MapTilePosition):Area = {
+  def apply(upperLeft: MapTilePosition, lowerRight: MapTilePosition): Area = {
     Area(upperLeft, Size.shared(lowerRight.x - upperLeft.x + 1, lowerRight.y - upperLeft.y + 1))
   }
 }
-
 
 class MultiArea(areas: Seq[Area])
 
