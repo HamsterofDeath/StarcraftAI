@@ -150,7 +150,7 @@ sealed trait SCRace {
     } else if (classOf[TransporterUnit].isAssignableFrom(unitType)) {
       transporterClass
     } else
-      unitType).asInstanceOf[Class[_ <: T]]
+      unitType).asInstanceOf[Class[T]]
   }
   def resourceDepositClass: Class[_ <: MainBuilding]
   def workerClass: Class[_ <: WorkerUnit]

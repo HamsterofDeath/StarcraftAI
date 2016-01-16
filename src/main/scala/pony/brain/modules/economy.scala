@@ -3,6 +3,7 @@ package brain
 package modules
 
 import bwapi.Color
+import pony.brain.UnitRequest.CherryPickers
 
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
@@ -257,9 +258,9 @@ class DefaultBehaviours(universe: Universe) extends OrderlessAIModule[WrapsUnit]
   }
 }
 
-class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
+class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule(universe) {
 
-  private val gatheringJobs = ArrayBuffer.empty[GetMinerals]
+  private val gatheringJobs = ArrayBuffer.empty[ManageMiningAtPatchGroup]
 
   override def onTick(): Unit = {
     createJobsForBases()
@@ -272,7 +273,7 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
               .filterNot(_.mainBuilding.isBeingCreated)
               .flatMap { base =>
                 base.myMineralGroup.map { minerals =>
-                  new GetMinerals(base, minerals)
+                  new ManageMiningAtPatchGroup(base, minerals)
                 }
               }
     info(
@@ -282,7 +283,8 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
     gatheringJobs ++= add
   }
 
-  class GetMinerals(base: Base, minerals: MineralPatchGroup) extends Employer[WorkerUnit](universe) {
+  class ManageMiningAtPatchGroup(base: Base, minerals: MineralPatchGroup)
+    extends Employer[WorkerUnit](universe) {
     emp =>
 
     override def onTick(): Unit = {
@@ -295,7 +297,7 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
         val jobs = result.units.flatMap { worker =>
           Micro.MiningOrganization.findBestPatch(worker).map { patch =>
             info(s"Added $worker to mining team of $patch")
-            val job = new Micro.GatherMineralsAtPatch(worker, patch)
+            val job = new Micro.MineMineralsAtPatch(worker, patch)
             patch.lockToPatch_!(job)
             job
           }
@@ -314,7 +316,7 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
 
       class MinedPatch(val patch: MineralPatch) {
 
-        private val miningTeam            = ArrayBuffer.empty[GatherMineralsAtPatch]
+        private val miningTeam            = ArrayBuffer.empty[MineMineralsAtPatch]
         private val workerCountByDistance = LazyVal.from {
           val distance = math.round(patch.area.distanceTo(base.mainBuilding.area)).toInt
           distance match {
@@ -330,7 +332,7 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
         def estimateRequiredWorkers = {
           if (patch.remainingMinerals > 0) workerCountByDistance.get else 0
         }
-        def lockToPatch_!(job: GatherMineralsAtPatch): Unit = {
+        def lockToPatch_!(job: MineMineralsAtPatch): Unit = {
           info(s"Added ${job.unit} to mining team of $patch")
           miningTeam += job
         }
@@ -345,9 +347,10 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
         }
       }
 
-      class GatherMineralsAtPatch(myWorker: WorkerUnit, miningTarget: MinedPatch)
+      class MineMineralsAtPatch(myWorker: WorkerUnit, miningTarget: MinedPatch)
         extends UnitWithJob(emp, myWorker, Priority.Default)
                 with GatherMineralsAtSinglePatch
+                with CanAcceptUnitSwitch[WorkerUnit]
                 with Interruptable[WorkerUnit]
                 with FerrySupport[WorkerUnit]
                 with PathfindingSupport[WorkerUnit] {
@@ -359,6 +362,20 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
         })
 
         import States._
+
+        override def newFor(replacement: WorkerUnit) = new
+            MineMineralsAtPatch(replacement, miningTarget)
+        override def asRequest = {
+          val picker = CherryPickers.cherryPickerForWorkerByDistance[WorkerUnit](
+            miningTarget.patch.centerTile)
+          UnitJobRequest.idleOfType(emp, myWorker.getClass)
+          .withRequest(_.withCherryPicker_!(picker))
+        }
+
+        override def couldSwitchInTheFuture = miningTarget.patch.hasRemainingMinerals
+        override def canSwitchNow = !worker.isWaitingForMinerals &&
+                                    !worker.isCarryingMinerals &&
+                                    !worker.isInMiningProcess
 
         override protected def pathTargetPosition = {
           if (worker.isCarryingMinerals) {
@@ -492,20 +509,21 @@ class GatherMinerals(universe: Universe) extends OrderlessAIModule(universe) {
   }
 }
 
-class GatherGas(universe: Universe) extends OrderlessAIModule[WorkerUnit](universe) with BuildingRequestHelper {
-  private val gatheringJobs = ArrayBuffer.empty[GetGas]
+class ManageMiningAtGeysirs(universe: Universe)
+  extends OrderlessAIModule[WorkerUnit](universe) with BuildingRequestHelper {
+  private val gatheringJobs = ArrayBuffer.empty[ManageMiningAtGeysir]
   override def onTick(): Unit = {
     val unattended = unitManager.bases.bases.filter(base => !gatheringJobs.exists(_.covers(base)))
     unattended.foreach { base =>
       base.myGeysirs.map { geysir =>
-        new GetGas(base, geysir)
+        new ManageMiningAtGeysir(base, geysir)
       }.foreach {gatheringJobs += _}
     }
 
     gatheringJobs.retain(_.keep).foreach(_.onTick())
   }
 
-  class GetGas(base: Base, geysir: Geysir) extends Employer[WorkerUnit](universe) {
+  class ManageMiningAtGeysir(base: Base, geysir: Geysir) extends Employer[WorkerUnit](universe) {
     self =>
     private val idealWorkerCount            = 3 + (base.mainBuilding.area.distanceTo(geysir.area) / 3).toInt
     private val workerCountBeforeWantingGas = universe.mapLayers
@@ -544,18 +562,27 @@ class GatherGas(universe: Universe) extends OrderlessAIModule[WorkerUnit](univer
                        .acceptOnly_!(_.isCarryingNothing)
           val result = unitManager.request(ofType)
           result.units.foreach { freeWorker =>
-            assignJob_!(new GatherGasAtRefinery(freeWorker))
+            assignJob_!(new MineGasAtGeysir(freeWorker, geysir))
           }
       }
     }
     def covers(base: Base) = this.base.mainBuilding == base.mainBuilding
 
-    class GatherGasAtRefinery(worker: WorkerUnit)
+    class MineGasAtGeysir(worker: WorkerUnit, targetGeysir: Geysir)
       extends UnitWithJob[WorkerUnit](self, worker, Priority.ConstructBuilding)
               with Interruptable[WorkerUnit]
+              with CanAcceptUnitSwitch[WorkerUnit]
               with FerrySupport[WorkerUnit]
               with PathfindingSupport[WorkerUnit] {
-
+      override def newFor(replacement: WorkerUnit) = new MineGasAtGeysir(replacement, targetGeysir)
+      override def asRequest = {
+        val picker = CherryPickers.cherryPickerForWorkerByDistance[WorkerUnit](
+          targetGeysir.centerTile)
+        UnitJobRequest.idleOfType(employer, worker.getClass)
+        .withRequest(_.withCherryPicker_!(picker))
+      }
+      override def couldSwitchInTheFuture = geysir.nonEmpty
+      override def canSwitchNow = !worker.isCarryingGas && !worker.isGatheringGas
       override protected def pathTargetPosition = {
         if (worker.isCarryingGas) {
           nearestReachableBase.get.map(_.mainBuilding.centerTile)

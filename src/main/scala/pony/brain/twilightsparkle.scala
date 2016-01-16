@@ -217,8 +217,8 @@ class TwilightSparkle(world: DefaultWorld) {
   private val worldDomination  = new WorldDominationPlan(universe)
   private val aiModules              = List(
     new DefaultBehaviours(universe),
-    new GatherMinerals(universe),
-    new GatherGas(universe),
+    new ManageMiningAtBases(universe),
+    new ManageMiningAtGeysirs(universe),
     new ProvideNewUnits(universe),
     new ProvideSpareSCVs(universe),
     new ProvideNewSupply(universe),

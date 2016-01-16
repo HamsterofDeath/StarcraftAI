@@ -1048,12 +1048,25 @@ trait CanBuildAddons extends Building {
   }
 }
 
-trait WorkerUnit extends Killable with Mobile with GroundUnit with GroundWeapon with Floating {
-  def isGatheringGas = currentOrder == Order.HarvestGas || currentOrder == Order.MoveToGas ||
-                       currentOrder == Order.ReturnGas || currentOrder == Order.WaitForGas ||
-                       currentOrder == Order.Harvest1 || currentOrder == Order.Harvest2 ||
-                       currentOrder == Order.Harvest3 || currentOrder == Order.Harvest4
+object WorkerUnit {
+  def currentPriority[T <: WorkerUnit](w: UnitWithJob[T]) = {
+    var valueOfExcuses = 0
+    if (!w.isIdle) valueOfExcuses += 1
+    if (w.unit.isCarryingMinerals) valueOfExcuses += 2
+    if (w.unit.isInMiningProcess) valueOfExcuses += 1
+    PriorityChain(valueOfExcuses)
+  }
 
+  val gasMiningOrders = {
+    Set(Order.HarvestGas,
+      Order.MoveToGas, Order.ReturnGas, Order.WaitForGas,
+      Order.Harvest1, Order.Harvest2, Order.Harvest3, Order.Harvest4)
+  }
+}
+
+trait WorkerUnit extends Killable with Mobile with GroundUnit with GroundWeapon with Floating {
+
+  def isGatheringGas = WorkerUnit.gasMiningOrders(currentOrder)
   def isMagic = currentOrder == Order.ResetCollision
   def isInMiningProcess = currentOrder == Order.MiningMinerals
   def isWaitingForMinerals = currentOrder == Order.WaitForMinerals
@@ -1064,16 +1077,6 @@ trait WorkerUnit extends Killable with Mobile with GroundUnit with GroundWeapon 
   def isCarryingMinerals = nativeUnit.isCarryingMinerals
   def isCarryingGas = nativeUnit.isCarryingGas
 
-}
-
-object WorkerUnit {
-  def currentPriority[T <: WorkerUnit](w: UnitWithJob[T]) = {
-    var valueOfExcuses = 0
-    if (!w.isIdle) valueOfExcuses += 1
-    if (w.unit.isCarryingMinerals) valueOfExcuses += 2
-    if (w.unit.isInMiningProcess) valueOfExcuses += 1
-    PriorityChain(valueOfExcuses)
-  }
 }
 
 trait TransporterUnit extends AirUnit {
@@ -1105,6 +1108,8 @@ trait Resource extends BlockingTiles {
   private val remainingResources = oncePerTick
                                    {if (nativeUnit.exists) nativeUnit.getResources else 0}
   def remaining = remainingResources.get
+
+  def nonEmpty = remaining > 8
 }
 
 trait ArmedBuilding extends Building with RangeWeapon
@@ -1120,6 +1125,8 @@ class MineralPatch(unit: APIUnit) extends AnyUnit(unit) with Resource {
   def isBeingMined = nativeUnit.isBeingGathered
   def remainingMinerals = remaining
   myTilePosition.lockValueForever()
+
+  def hasRemainingMinerals = remainingMinerals > 8
 }
 
 class VespeneGeysir(unit: APIUnit) extends AnyUnit(unit) with Geysir with Resource {

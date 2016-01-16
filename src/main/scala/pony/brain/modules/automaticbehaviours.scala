@@ -532,7 +532,6 @@ object Terran {
         }.toList
       }
     }
-
   }
 
   class RepairDamagedBuilding(universe: Universe) extends DefaultBehaviour[SCV](universe) {
@@ -542,7 +541,7 @@ object Terran {
     private val helper = new NonConflictingTargets[TerranBuilding, SCV](universe = universe,
       rateTarget = m => PriorityChain(m.percentageHPOk),
       validTargetTest = _.isDamaged,
-      subAccept = (m, t) => m.currentArea == t.areaOnMap,
+      subAccept = (m, t) => m.currentArea.contains(t.areaOnMap),
       subRate = (m, t) => PriorityChain(-m.currentTile.distanceSquaredTo(t.centerTile)),
       own = true,
       allowReplacements = true)

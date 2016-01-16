@@ -3,6 +3,7 @@ package brain
 
 import bwapi.Order
 import pony.Orders.Stop
+import pony.brain.UnitRequest.CherryPickers
 import pony.brain.modules.AlternativeBuildingSpot
 
 import scala.collection.mutable
@@ -48,6 +49,7 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
     ret
   }
   def tryFindBetterEmployeeFor[T <: WrapsUnit](anyJob: CanAcceptUnitSwitch[T]): Unit = {
+    trace(s"Queued $anyJob for optimization")
     reorganizeJobQueue += anyJob
   }
   def plannedToBuild(c: Class[_ <: Building]): Boolean = plannedToBuild
@@ -529,9 +531,9 @@ class UnitCollector[T <: WrapsUnit : Manifest](req: UnitJobRequest[T], override 
   def priorityRule = req.priorityRule
   def missingAsRequest: UnitJobRequest[T] = {
     val typesAndAmounts =
-      BuildUnitRequest[T](universe, req.request.typeOfRequestedUnit, remainingOpenSpots, ResourceApprovalFail,
+      BuildUnitRequest[T](req.request.typeOfRequestedUnit, remainingOpenSpots, ResourceApprovalFail,
         Priority.Default,
-        AlternativeBuildingSpot.useDefault)
+        AlternativeBuildingSpot.useDefault)(universe)
 
     UnitJobRequest[T](typesAndAmounts, req.employer, req.priority)
   }
@@ -1070,6 +1072,12 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, bu
       resourcesUnlocked = true
       mapLayers.unblockBuilding_!(area)
     }
+
+    if (!startedMovingToSite) {
+      ifNth(Primes.prime23) {
+        unitManager.tryFindBetterEmployeeFor(this)
+      }
+    }
   }
 
   override def getOrder: Seq[UnitOrder] = {
@@ -1114,20 +1122,9 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, bu
   override def times = 50
   def building = constructs
   override def asRequest: UnitJobRequest[W] = {
-    val request = AnyUnitRequest[W](worker.getClass, 1)
-    val anyUnitRequest = request.withCherryPicker_! { hijackFromThis =>
-      val altUnit = hijackFromThis.unit
-      val sameArea = mapLayers.rawWalkableMap.areInSameWalkableArea(altUnit.currentTile, buildWhere)
-
-      val canSee = mapLayers.rawWalkableMap.connectedByLine(altUnit.currentTile, buildWhere)
-
-      val distance = area.distanceTo(altUnit.currentTile)
-      val busyness = WorkerUnit.currentPriority(hijackFromThis)
-      val weightedDistance = distance * busyness.sum
-
-      PriorityChain(sameArea.ifElse(0, 1), canSee.ifElse(0, 1), weightedDistance)
-    }
-    UnitJobRequest(anyUnitRequest, employer, priority)
+    UnitJobRequest.idleOfType(employer, worker.getClass)
+    .withRequest(
+      _.withCherryPicker_!(CherryPickers.cherryPickerForWorkerByDistance(area.centerTile)))
   }
   override def newFor(replacement: W) = new
       ConstructBuilding(replacement, buildingType, employer, buildWhere, funding, belongsTo)
@@ -1301,6 +1298,24 @@ object PriorityChain {
 }
 
 object UnitRequest {
+
+  object CherryPickers {
+    def cherryPickerForWorkerByDistance[W <: WorkerUnit](target: MapTilePosition) = (job:
+                                                                                     UnitWithJob[W]) => {
+      val u = job.universe
+      val altUnit = job.unit
+      val map = u.mapLayers.rawWalkableMap
+      val sameArea = map.areInSameWalkableArea(altUnit.currentTile, target)
+      val canSee = map.connectedByLine(altUnit.currentTile, target)
+      val distance = target.distanceTo(altUnit.currentTile)
+      val busyness = WorkerUnit.currentPriority(job)
+      val weightedDistance = distance * busyness.sum
+
+      PriorityChain(sameArea.ifElse(0, 1), canSee.ifElse(0, 1), weightedDistance)
+    }
+  }
+
+
   private var counter = 0
   def nextId() = {
     counter += 1
@@ -1308,7 +1323,7 @@ object UnitRequest {
   }
 }
 
-trait UnitRequest[T <: WrapsUnit] {
+trait UnitRequest[T <: WrapsUnit] extends HasUniverse {
 
   private val id                  = UnitRequest.nextId()
   private val onDisposeActions    = ArrayBuffer.empty[OnClearAction]
@@ -1365,13 +1380,17 @@ trait UnitRequest[T <: WrapsUnit] {
   override def toString = s"UnitRequest($typeOfRequestedUnit, $amount)"
 }
 
-case class AnyUnitRequest[T <: WrapsUnit](typeOfRequestedUnit: Class[_ <: T], amount: Int) extends UnitRequest[T] {
+case class AnyUnitRequest[T <: WrapsUnit](typeOfRequestedUnit: Class[_ <: T], amount: Int)
+                                         (override val universe: Universe) extends UnitRequest[T] {
   override def priority: Priority = Priority.Default
 
 }
 
-case class AnyFactoryRequest[T <: UnitFactory, U <: Mobile](typeOfRequestedUnit: Class[_ <: T], amount: Int,
-                                                            buildThis: Class[_ <: U]) extends UnitRequest[T] {
+case class AnyFactoryRequest[T <: UnitFactory, U <: Mobile](typeOfRequestedUnit: Class[_ <: T],
+                                                            amount: Int,
+                                                            buildThis: Class[_ <: U])
+                                                           (override val universe: Universe)
+  extends UnitRequest[T] {
   override def acceptable(unit: T): Boolean = {
     super.acceptable(unit) && unit.canBuild(buildThis)
   }
@@ -1382,10 +1401,11 @@ trait OnClearAction {
   def onClear(): Unit
 }
 
-case class BuildUnitRequest[T <: WrapsUnit](universe: Universe, typeOfRequestedUnit: Class[_ <: T], amount: Int,
+case class BuildUnitRequest[T <: WrapsUnit](typeOfRequestedUnit: Class[_ <: T], amount: Int,
                                             funding: ResourceApproval, override val priority: Priority,
                                             customBuildingPosition: AlternativeBuildingSpot,
                                             belongsTo: Option[ResourceArea] = None)
+                                           (override val universe: Universe)
   extends UnitRequest[T] with HasFunding with HasUniverse {
 
   self =>
@@ -1431,10 +1451,15 @@ trait RateCandidate[T <: WrapsUnit] {
   def giveRating(forThatOne: UnitWithJob[T]): PriorityChain
 }
 
-case class UnitJobRequest[T <: WrapsUnit : Manifest](request: UnitRequest[T], employer: Employer[T],
+case class UnitJobRequest[T <: WrapsUnit : Manifest](request: UnitRequest[T],
+                                                     employer: Employer[T],
                                                      priority: Priority,
-                                                     makeSureDependenciesCleared: Set[Class[_ <: WrapsUnit]] = Set
-                                                                                                               .empty) {
+                                                     makeSureDependenciesCleared: Set[Class[_ <: WrapsUnit]] =
+                                                     Set.empty) {
+
+  def withRequest(f: UnitRequest[T] => UnitRequest[T]) = {
+    copy(request = f(request))
+  }
 
   assert(requestedUnitType.isAssignableFrom(moreSpecificType), s"$moreSpecificType > $requestedUnitType")
 
@@ -1472,7 +1497,7 @@ case class UnitJobRequest[T <: WrapsUnit : Manifest](request: UnitRequest[T], em
 object UnitJobRequest {
   def upgraderFor(upgrade: Upgrade, employer: Employer[Upgrader], priority: Priority = Priority.Upgrades) = {
     val actualClass = employer.race.techTree.upgraderFor(upgrade).asInstanceOf[Class[Upgrader]]
-    val req = AnyUnitRequest(actualClass, 1)
+    val req = AnyUnitRequest(actualClass, 1)(employer.universe)
     UnitJobRequest(req, employer, priority).acceptOnly_!(!_.isDoingResearch)
   }
 
@@ -1482,7 +1507,7 @@ object UnitJobRequest {
                                                                                .Default): UnitJobRequest[F] = {
 
     val actualClass = employer.universe.myRace.specialize(manifest[F].runtimeClass.asInstanceOf[Class[F]])
-    val req = AnyFactoryRequest[F, T](actualClass, 1, wantedType)
+    val req = AnyFactoryRequest[F, T](actualClass, 1, wantedType)(employer.universe)
 
     UnitJobRequest(req, employer, priority)
   }
@@ -1491,7 +1516,8 @@ object UnitJobRequest {
                                               priority: Priority = Priority.ConstructBuilding): UnitJobRequest[T] = {
 
     val actualClass = employer.universe.myRace.specialize(manifest[T].runtimeClass).asInstanceOf[Class[T]]
-    val req = AnyUnitRequest(actualClass, 1).withCherryPicker_!(WorkerUnit.currentPriority)
+    val req = AnyUnitRequest(actualClass, 1)(employer.universe)
+              .withCherryPicker_!(WorkerUnit.currentPriority)
 
     UnitJobRequest(req, employer, priority)
   }
@@ -1503,7 +1529,7 @@ object UnitJobRequest {
 
     val actualClass = employer.universe.myRace.specialize(what)
     val mainType = employer.race.techTree.mainBuildingOf(what).asInstanceOf[Class[T]]
-    val req = AnyUnitRequest(mainType, 1)
+    val req = AnyUnitRequest(mainType, 1)(employer.universe)
               .withFilter_!(e => !e.isBeingCreated && !e.hasAddonAttached && !e.isBuildingAddon)
 
     UnitJobRequest(req, employer, priority, Set(what))
@@ -1512,23 +1538,26 @@ object UnitJobRequest {
   def idleOfType[T <: WrapsUnit : Manifest](employer: Employer[T], ofType: Class[_ <: T], amount: Int = 1,
                                             priority: Priority = Priority.Default) = {
     val realType = employer.universe.myRace.specialize(ofType)
-    val req: AnyUnitRequest[T] = AnyUnitRequest(realType, amount)
+    val req: AnyUnitRequest[T] = AnyUnitRequest(realType, amount)(employer.universe)
 
-    UnitJobRequest[T](req, employer, priority)
+    UnitJobRequest(req, employer, priority)
   }
 
   def newOfType[T <: WrapsUnit : Manifest](universe: Universe, employer: Employer[T], ofType: Class[_ <: T],
                                            funding: ResourceApprovalSuccess, amount: Int = 1,
                                            priority: Priority = Priority.Default,
-                                           customBuildingPosition: AlternativeBuildingSpot = AlternativeBuildingSpot
+                                           customBuildingPosition: AlternativeBuildingSpot =
+                                           AlternativeBuildingSpot
                                                                                              .useDefault,
                                            belongsTo: Option[ResourceArea] = None) = {
     val actualType = universe.myRace.specialize(ofType)
-    val req: BuildUnitRequest[T] = BuildUnitRequest(universe, actualType, amount, funding, priority,
-      customBuildingPosition, belongsTo)
+    val req = {
+      BuildUnitRequest(actualType, amount, funding, priority,
+        customBuildingPosition, belongsTo)(universe)
+    }
     // this one needs to survive across ticks
     req.persistant_!()
-    UnitJobRequest[T](req, employer, priority)
+    UnitJobRequest(req, employer, priority)
   }
 }
 
