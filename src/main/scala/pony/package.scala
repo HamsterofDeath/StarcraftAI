@@ -13,6 +13,7 @@ package object pony {
   // TODO fix expansion delay
   // TODO collect minerals/gas from far away if out of resources in bases
   // TODO fix magic resource problem
+  // TODO fix unit switching bug, enable switching for repairs & resource gathering as well
 
   // milestone 3:
   // TODO send only necessary units for defenses, use "battle simulator" to estimate which units
