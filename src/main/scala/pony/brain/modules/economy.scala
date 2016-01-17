@@ -115,6 +115,7 @@ class ProvideExpansions(universe: Universe) extends OrderlessAIModule[WorkerUnit
     ifNth(Primes.prime241) {
       plannedExpansionPoint = plannedExpansionPoint.filter { where =>
         universe.mapLayers.slightlyDangerousAsBlocked.free(where.center) &&
+        universe.unitGrid.enemy.allInRange(where.center, 12).isEmpty
         !bases.isCovered(where)
       }.orElse(strategy.current.suggestNextExpansion)
       info(s"AI wants to expand to ${plannedExpansionPoint.get}", plannedExpansionPoint.isDefined)
