@@ -148,10 +148,7 @@ trait BackgroundComputation[T <: WrapsUnit] extends AIModule[T] {
                 if (replacement != switch.unit) {
                   val newRequest = switch.copyOfJobForNewUnit(replacement)
                   switch.markObsolete_!()
-                  trace(s"Unit ${
-                    switch.unit
-                  } is not used for intended job after background calculation, instead
-                    $replacement is used")
+                  trace(s"Unit ${switch.unit} replaced by $replacement")
                   assignJob_!(newRequest)
                 } else {
                   trace(s"Unit ${switch.unit} kept its job after a background calculation",
