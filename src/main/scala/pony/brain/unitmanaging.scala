@@ -1156,7 +1156,13 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, bu
       val paths = in.candidates.flatMap { case (id, where) =>
         in.pathfinder.findSimplePathNow(where, in.target, tryFixPath = true)
       }
-      new ClosestPaths(paths)
+      val data = new ClosestPaths(paths)
+      in.candidates.foreach { case (_, pos) =>
+        mapLayers.rawWalkableMap.spiralAround(pos, 5).foreach { precalcThis =>
+          data.closestPathFrom(precalcThis)
+        }
+      }
+      data
     }
   }
   override def onTick(): Unit = {
