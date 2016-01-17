@@ -7,6 +7,7 @@ import pony.brain.modules._
 import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, Future}
+import scala.reflect.ManifestFactory
 
 trait HasUniverse extends HasLazyVals {
   def pathfinder = universe.pathfinder
@@ -106,7 +107,7 @@ object BackgroundComputationResult {
   }
 }
 
-trait ComputationIntensive[T <: WrapsUnit] extends AIModule[T] {
+trait BackgroundComputation[T <: WrapsUnit] extends AIModule[T] {
   type ComputationInput
 
   private var backgroundOp           = Future.successful(BackgroundComputationResult.nothing[T](() => {}))
@@ -130,8 +131,42 @@ trait ComputationIntensive[T <: WrapsUnit] extends AIModule[T] {
           info(s"Background computation finished, result is $computationResult")
           currentResult = Some(computationResult)
           waitingForBackgroundOp = false
-          computationResult.jobs.foreach(assignJob_!)
-          computationResult.orders
+          computationResult.jobs.foreach {
+            case switch: CanAcceptUnitSwitch[T] =>
+              // time has passed, pick a new unit for this job if possible
+              val req = switch.asRequest
+              implicit val summonedManifest: Manifest[T] =
+                ManifestFactory.classType(switch.unit.getClass)
+              val candidates = {
+                def recycle = {
+                  Set(switch: UnitWithJob[T])
+                  .filter(job => unitManager.jobOptOf(switch.unit).contains(job))
+                }
+                unitManager.requestWithoutTracking[T](req, recycle)
+              }
+              candidates.headOption.foreach { replacement =>
+                if (replacement != switch.unit) {
+                  val newRequest = switch.copyOfJobForNewUnit(replacement)
+                  switch.markObsolete_!()
+                  trace(s"Unit ${
+                    switch.unit
+                  } is not used for intended job after background calculation, instead
+                    $replacement is used")
+                  assignJob_!(newRequest)
+                } else {
+                  trace(s"Unit ${switch.unit} kept its job after a background calculation",
+                    replacement == switch.unit)
+                  assignJob_!(switch)
+                }
+              }
+              warn(
+                s"Background calculation finished, but no unit could do the job anymore: $switch",
+                candidates.isEmpty)
+            case job =>
+              trace(s"Unit ${job.unit} kept its job after a background calculation")
+              assignJob_!(job)
+          }
+          Nil
         } else {
           // we are not waiting
           calculationInput match {

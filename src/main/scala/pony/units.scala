@@ -20,7 +20,7 @@ abstract class AnyUnit(val nativeUnit: APIUnit)
 
 trait OrderHistorySupport extends WrapsUnit {
   private val history    = ListBuffer.empty[HistoryElement]
-  private val maxHistory = if (memoryHog) 1000 else 2
+  private val maxHistory = if (memoryHog) 1000 else 24
   def trackOrder(order: UnitOrder): Unit = {
     history.lastOption.foreach(_.trackOrder_!(order))
   }
@@ -234,7 +234,7 @@ trait Building extends BlockingTiles with MaybeCanDie {
   def incomplete = currentNativeOrder == Order.IncompleteBuilding || remainingBuildTime > 0
 
   private val myAbandoned = oncePerTick {
-    isBeingCreated && incomplete && {
+    isBeingCreated && incomplete && !isInstanceOf[Addon] && {
       val myClass = getClass
       val takenCareOf = unitManager.constructionsInProgress(myClass).exists { job =>
         job.building.contains(self)

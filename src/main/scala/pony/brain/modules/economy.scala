@@ -9,7 +9,7 @@ import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
 class ProvideNewBuildings(universe: Universe)
-  extends AIModule[WorkerUnit](universe) with ComputationIntensive[WorkerUnit] {
+  extends AIModule[WorkerUnit](universe) with BackgroundComputation[WorkerUnit] {
   self =>
 
   override type ComputationInput = Data
@@ -55,7 +55,9 @@ class ProvideNewBuildings(universe: Universe)
   }
 
   override def calculationInput = {
-    // we do them one by one, it's simpler
+    // we do them one by one, it's simpler. in the current tick, the same missing buildings will
+    // still be
+    // requested, so the queue will be refilled
     val buildingRelated = unitManager.failedToProvideByType[Building]
     val constructionRequests = buildingRelated.iterator.collect {
       case buildIt: BuildUnitRequest[Building]
@@ -80,7 +82,8 @@ class ProvideNewBuildings(universe: Universe)
       unitManager.request(request) match {
         case success: ExactlyOneSuccess[WorkerUnit] =>
           req.customPosition.init_!()
-          new Data(success.onlyOne, req.typeOfRequestedUnit,
+          val randomWorker = success.onlyOne
+          new Data(randomWorker, req.typeOfRequestedUnit,
             unitManager.bases.mainBase.getOr("All your base are belong to us"),
             new ConstructionSiteFinder(universe), req).toSome
         case _ => None
@@ -111,16 +114,22 @@ class ProvideExpansions(universe: Universe) extends OrderlessAIModule[WorkerUnit
   override def onTick(): Unit = {
     ifNth(Primes.prime241) {
       plannedExpansionPoint = plannedExpansionPoint.filter { where =>
-        universe.unitGrid.enemy.allInRange[Mobile](where.center, 15).isEmpty
+        universe.mapLayers.slightlyDangerousAsBlocked.free(where.center) &&
+        !bases.isCovered(where)
       }.orElse(strategy.current.suggestNextExpansion)
       info(s"AI wants to expand to ${plannedExpansionPoint.get}", plannedExpansionPoint.isDefined)
     }
 
-    plannedExpansionPoint.foreach { resources =>
+    plannedExpansionPoint.filter { _ =>
+      // only build one at a time
+      unitManager.plannedToBuildByType[MainBuilding] == 0 &&
+      unitManager.constructionsInProgress[MainBuilding].isEmpty
+    }.foreach { resources =>
       val plannedMainBuildings = unitManager.constructionsInProgress(race.resourceDepositClass)
       plannedMainBuildings.find(_.belongsTo.contains(resources)) match {
         case Some(planned) =>
           if (planned.building.isDefined) {
+            trace(s"New expansion exists, resetting expansion plans")
             plannedExpansionPoint = None
           }
         case None =>
@@ -363,7 +372,7 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule(universe
 
         import States._
 
-        override def newFor(replacement: WorkerUnit) = new
+        override def copyOfJobForNewUnit(replacement: WorkerUnit) = new
             MineMineralsAtPatch(replacement, miningTarget)
         override def asRequest = {
           val picker = CherryPickers.cherryPickerForWorkerByDistance[WorkerUnit](
@@ -461,7 +470,7 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule(universe
           order.toList.filterNot(_.isNoop)
         }
         override def isFinished = !miningTarget.patch.isInGame
-        override def hasFailed: Boolean = super.hasFailed || base.mainBuilding.isDead
+        override def failedOrObsolete: Boolean = super.failedOrObsolete || base.mainBuilding.isDead
         override protected def ferryDropTarget = {
           targetPatch.tilePosition.middleBetween(base.mainBuilding.tilePosition).toSome
         }
@@ -545,15 +554,18 @@ class ManageMiningAtGeysirs(universe: Universe)
                                 .exists(_.customPosition.predefined.contains(geysir.tilePosition))
             def jobExists = unitManager.constructionsInProgress[Refinery]
                             .exists(_.buildWhere == geysir.tilePosition)
-            if (!requestExists && !jobExists) {
+            def findAndRememberRefinery() = refinery.orElse(ownUnits.allByType[Refinery]
+                                                            .find(
+                                                              _.tilePosition == geysir.tilePosition)
+                                                            .filterNot(_.isBeingCreated)
+                                                            .flatMap { refinery =>
+                                                              self.refinery = Some(refinery)
+                                                              self.refinery
+                                                            })
+
+            if (!requestExists && !jobExists && findAndRememberRefinery().isEmpty) {
               val where = AlternativeBuildingSpot.fromPreset(geysir.tilePosition)
               requestBuilding(classOf[Refinery], customBuildingPosition = where)
-            }
-            ownUnits.allByType[Refinery]
-            .find(_.tilePosition == geysir.tilePosition)
-            .filterNot(_.isBeingCreated)
-            .foreach { refinery =>
-              self.refinery = Some(refinery)
             }
           }
         case Some(ref) =>
@@ -574,7 +586,8 @@ class ManageMiningAtGeysirs(universe: Universe)
               with CanAcceptUnitSwitch[WorkerUnit]
               with FerrySupport[WorkerUnit]
               with PathfindingSupport[WorkerUnit] {
-      override def newFor(replacement: WorkerUnit) = new MineGasAtGeysir(replacement, targetGeysir)
+      override def copyOfJobForNewUnit(replacement: WorkerUnit) = new
+          MineGasAtGeysir(replacement, targetGeysir)
       override def asRequest = {
         val picker = CherryPickers.cherryPickerForWorkerByDistance[WorkerUnit](
           targetGeysir.centerTile)

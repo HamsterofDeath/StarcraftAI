@@ -96,7 +96,7 @@ package object pony {
              .removeAllWriters()
              .level(newLevel)
              .formatPattern("{level}:{message}")
-             .addWriter(new FileWriter("log/match.log", true), newLevel, "{level}:{message}")
+             .addWriter(new FileWriter("log/match.log", false), newLevel, "{level}:{message}")
              .activate()
     assert(ok)
   }

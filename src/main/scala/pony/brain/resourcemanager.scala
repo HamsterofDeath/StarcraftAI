@@ -19,12 +19,13 @@ object ResourceManager {
 
 class ResourceManager(override val universe: Universe) extends HasUniverse {
   def informUsage[T <: WrapsUnit](proofForFunding: ResourceApproval, funded: HasFunding) = {
+    assert(hasStillLocked(proofForFunding), s"$funded expected to have access to $proofForFunding")
     if (resourceAssignmentInfos.contains(proofForFunding)) {
       trace(s"Holder of $proofForFunding changes from ${resourceAssignmentInfos(proofForFunding)}",
         marker = "MONEY")
     }
     resourceAssignmentInfos.put(proofForFunding, funded)
-    trace(s"Holder of $proofForFunding changed to ${funded}", marker = "MONEY")
+    trace(s"Holder of $proofForFunding changed to $funded", marker = "MONEY")
   }
 
   private val resourceAssignmentInfos = mutable.HashMap.empty[ResourceApproval, HasFunding]
@@ -142,7 +143,7 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
             if (ok) {
               trace(s"Unlocking a bunch of resources ${
                 requiredToFree.map(_._2).mkString(", ")
-              } to satisfy ${requests} of $employer")
+              } to satisfy $requests of $employer")
               requiredToFree.foreach { case (j, unlockable) =>
                 val before = detailedLocks.count(_ == unlockable)
                 j.notifyResourcesDisapproved_!()

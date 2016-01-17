@@ -620,7 +620,7 @@ class SetupAntiCloakDefenses(universe: Universe)
     val exposure = -counts.values.sum
 
     if (exposure > 0) {
-      // find the next spot that minimized the exposure
+      // find the next spot that minimizes the exposure
       val byPriority = counts.keySet.toVector.sortBy { candidate =>
         val covered = {
           geoHelper.circle(candidate, 8).asTiles.count { tile =>
@@ -657,17 +657,18 @@ class SetupAntiCloakDefenses(universe: Universe)
     analyzed.mostRecent.foreach { bestBuildingLocation =>
       if (active) {
         val buildingInProgress = {
-          unitManager.requestedConstructions[MissileTurret]
-          .exists(_.customPosition.predefined == bestBuildingLocation)
+          unitManager.constructionsInProgress[DetectorBuilding].nonEmpty
         }
         def buildingExists = {
-          bestBuildingLocation.exists(where => ownUnits.buildingAt(where).isDefined)
+          bestBuildingLocation.exists { where =>
+            ownUnits.buildingAt(where).isDefined
+          }
         }
         def outdated = {
           analyzed.lastUsedFeed.map(_.age).getOrElse(0) > 80
         }
 
-        if (outdated || buildingInProgress || buildingExists) {
+        if (buildingInProgress || outdated || buildingExists) {
           analyzed.prepareNextIfDone()
         } else {
           bestBuildingLocation.foreach { where =>
@@ -815,8 +816,11 @@ class EnqueueArmy(universe: Universe)
       val existingRatio = p.existing.getOrElse(t, 0.0)
       existingRatio / idealRatio
       }
-    val (canBuild, needsSomething) =
-      mostMissing.partition { case (c, _) => universe.unitManager.allRequirementsFulfilled(c) }
+    val needsSomething = {
+      val (_, later) = mostMissing.partition
+      { case (c, _) => universe.unitManager.allRequirementsFulfilled(c) }
+      later.toSet
+    }
 
     val canBuildNow = mostMissing.filterNot
     { case (c, _) => universe.unitManager.requirementsQueuedToBuild(c) }
@@ -829,7 +833,7 @@ class EnqueueArmy(universe: Universe)
                         resources.unlockedResources.gas > 400
       rich || mineralsOverflow || gasOverflow
     }
-    buildThese.foreach { case (thisOne, _) =>
+    buildThese.filterNot(needsSomething.contains).foreach { case (thisOne, _) =>
       requestUnit(thisOne, takeCareOfDependencies = false)
     }
 
