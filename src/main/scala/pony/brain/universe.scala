@@ -22,7 +22,7 @@ trait Pathfinders {
 }
 
 trait Universe extends HasLazyVals {
-  def pathfinder: Pathfinders
+  def pathfinders: Pathfinders
 
   private val myTime = new Time(this)
   def allUnits = AllUnits(ownUnits, enemyUnits)

@@ -10,7 +10,7 @@ import scala.concurrent.{Await, Future}
 import scala.reflect.ManifestFactory
 
 trait HasUniverse extends HasLazyVals {
-  def pathfinder = universe.pathfinder
+  def pathfinders = universe.pathfinders
   def ferryManager = universe.ferryManager
   def unitGrid = universe.unitGrid
   def upgrades = universe.upgrades
@@ -147,7 +147,6 @@ trait BackgroundComputation[T <: WrapsUnit] extends AIModule[T] {
               candidates.headOption.foreach { replacement =>
                 if (replacement != switch.unit) {
                   val newRequest = switch.copyOfJobForNewUnit(replacement)
-                  switch.markObsolete_!()
                   trace(s"Unit ${switch.unit} replaced by $replacement")
                   assignJob_!(newRequest)
                 } else {
@@ -223,7 +222,7 @@ class TwilightSparkle(world: DefaultWorld) {
 
   val universe: Universe = new Universe {
 
-    override def pathfinder = new Pathfinders {
+    override def pathfinders = new Pathfinders {
       override def groundSafe = myPathFinderGroundSafe.get
       override def ground = myPathFinderGround.get
       override def airSafe = myPathFinderAirSafe.get

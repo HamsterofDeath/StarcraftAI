@@ -183,7 +183,7 @@ object Terran {
           val maybeCalculatedPath = paths.getOrElseUpdate(transporterTarget, {
             val future = FutureIterator.feed(transporterTarget).produceAsync { target =>
               universe
-              pathfinder.airSafe.findPathNow(unit.currentTile, target.where).map(_.toMigration)
+              pathfinders.airSafe.findPathNow(unit.currentTile, target.where).map(_.toMigration)
             }
             MaybePath(future)
           })

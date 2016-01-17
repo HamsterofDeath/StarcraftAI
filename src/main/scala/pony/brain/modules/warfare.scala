@@ -211,7 +211,7 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
       .getOrElse(realCenter)
     }
 
-    private val pathToFollow = universe.pathfinder.groundSafe
+    private val pathToFollow = universe.pathfinders.groundSafe
                                .findPaths(currentCenter, meetingPoint.where)
     private val migration    = pathToFollow.map(_.map(_.toMigration))
 

@@ -67,11 +67,29 @@ class MigrationPath(follow: Paths, override val universe: Universe)
 case class Path(waypoints: Seq[MapTilePosition], solved: Boolean, solvable: Boolean,
                 bestEffort: MapTilePosition, requestedTarget: MapTilePosition,
                 unsafeTarget: MapTilePosition) {
+  def closestWaypoint(of: MapTilePosition) = waypoints.minByOpt(_.distanceSquaredTo(of))
+
+  private val cache = mutable.HashMap.empty[MapTilePosition, Option[Double]]
+
+  def distanceToFinalTargetViaPath(from: MapTilePosition) = {
+    cache.getOrElseUpdate(from, {
+      closestWaypoint(from).map { first =>
+        lengthOf(waypoints.iterator.dropWhile(_ != first)) + first.distanceTo(from)
+      }
+    })
+  }
+
+  def head = waypoints.head
+
+  private def lengthOf(path: Iterator[MapTilePosition]) = {
+    path.sliding(2, 1).map {
+      case Seq(a, b) => a.distanceTo(b)
+      case Seq(singleElement) => 0.0
+    }.sum
+  }
+
   lazy val length = {
-    if (waypoints.size <= 1)
-      0
-    else
-      waypoints.sliding(2, 1).map { case Seq(a, b) => a.distanceTo(b) }.sum
+    lengthOf(waypoints.iterator)
   }
   def isPerfectSolution = solved
 }
@@ -236,22 +254,6 @@ class PathFinder(on: Grid2D, isOnGround: Boolean) {
 
     def basedOn = on
 
-    def findPathBestEffort(from: MapTilePosition, to: MapTilePosition,
-                           unsafeTarget: MapTilePosition) = {
-      val fromSafe = basedOn.nearestFree(from).getOr(s"Sorry, could not find alternative for $from")
-      val toSafe = basedOn.areaWhichContainsAsFree(fromSafe).flatMap(_.nearestFree(to))
-                   .getOr(s"Sorry, could not find alternative for $to")
-      findPath(fromSafe, toSafe, unsafeTarget)
-    }
-
-    def findPath(from: MapTilePosition, to: MapTilePosition, unsafeTarget: MapTilePosition) = {
-      val a = new AStarSearch[GridNode2DInt](from, to).performSearch()
-      Path(a.getSolution.asScala
-           .map(e => MapTilePosition.shared(e.getX, e.getY))
-           .toVector,
-        a.isSolved, !a.isUnsolvable, a.getTargetOrNearestReachable, to, unsafeTarget)
-    }
-
     def findPaths(from: MapTilePosition, to: MapTilePosition, width: Int,
                   unsafeTarget: MapTilePosition) = {
       trace(s"Searching path from $from to $to", tick > 10)
@@ -271,7 +273,8 @@ class PathFinder(on: Grid2D, isOnGround: Boolean) {
                         .toVector
         //block the path, then search again to get streets
         finder.getFullSolution.asScala.drop(15).dropRight(10).foreach(_.remove())
-        if (first.isEmpty) first = Some(pathFrom(waypoints))
+        if (first.isEmpty) first = Some(
+          pathFrom(waypoints :+ (finder.getTargetOrNearestReachable: MapTilePosition)))
         waypoints
       }.takeWhile { candidate =>
         candidate.forall { pointOnLine =>

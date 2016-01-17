@@ -1,6 +1,8 @@
 package pony
 package brain
 
+import java.util.Comparator
+
 import bwapi.Order
 import pony.Orders.Stop
 import pony.brain.UnitRequest.CherryPickers
@@ -25,7 +27,7 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
   }
   def hasJob(support: OrderHistorySupport) = assignments.contains(support)
   def allIdleMobiles = allJobsByType[BusyDoingNothing[Mobile]].filter(_.unit.isInstanceOf[Mobile])
-  def allIdles = allJobsByType[BusyDoingNothing[WrapsUnit]].filter(_.unit.isInstanceOf[WrapsUnit])
+  def allIdles = allJobsByType[BusyDoingNothing[WrapsUnit]]
   def allJobsWithPotentialFunding = assignments.values.collect { case f: JobHasFunding[_] => f }
   def allJobsWithReleaseableResources = allJobsWithPotentialFunding.filter(_.canReleaseResources)
   def existsOrPlanned(c: Class[_ <: WrapsUnit]) = {
@@ -47,7 +49,7 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
       reorganizeJobQueue.remove(0)
     }
     trace(s"${reorganizeJobQueue.size} jobs left to optimize")
-    ret.filterNot(_.failedOrObsolete)
+    ret
   }
   def tryFindBetterEmployeeFor[T <: WrapsUnit](anyJob: CanAcceptUnitSwitch[T]): Unit = {
     trace(s"Queued $anyJob for optimization")
@@ -619,6 +621,7 @@ trait CanAcceptSwitchAndHasFunding[T <: WrapsUnit]
 }
 
 trait CanAcceptUnitSwitch[T <: WrapsUnit] extends UnitWithJob[T] {
+  def stillWantsOptimization = !failedOrObsolete
   def copyOfJobForNewUnit(replacement: T): UnitWithJob[T]
   def asRequest: UnitJobRequest[T]
   def canSwitchNow: Boolean
@@ -1006,7 +1009,7 @@ trait PathfindingSupport[T <: Mobile] extends JobOrSubJob[T] {
   override def higherPriorityOrder = {
     def newPathRequired(where: MapTilePosition): Unit = {
       trace(s"Unit $unit needs paths to $where")
-      val pf = pathfinder.safeFor(unit)
+      val pf = pathfinders.safeFor(unit)
       val task = pf.findPath(unit.currentTile, where).imap(_.toMigration)
       myPath = task
     }
@@ -1090,12 +1093,18 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, bu
           with IssueOrderNTimes[W] {
   self =>
 
+
   assert(universe.mapLayers.rawWalkableMap.insideBounds(buildWhere),
     s"Target building spot is outside of map: $buildWhere, check $self")
 
   override protected def pathTargetPosition = {
     buildWhere.toSome
   }
+
+  override def stillWantsOptimization = canSwitchNow &&
+                                        buildWhere.distanceToIsMore(unit.currentTile, 3) &&
+                                        stillLocksResources &&
+                                        !failedOrObsolete
 
   val area = {
     val unitType = buildingType.toUnitType
@@ -1116,6 +1125,40 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, bu
   private var finishedConstruction      = false
   private var resourcesUnlocked         = false
   private var constructs                = Option.empty[Building]
+
+  private class ClosestPaths(source: Traversable[Path]) {
+    private val cache = mutable.HashMap.empty[MapTilePosition, Double]
+
+    def closestPathFrom(here: MapTilePosition) = {
+      cache.getOrElseUpdate(here, {
+        val candidates = source.map { path =>
+          if (path.waypoints.nonEmpty) {
+            path -> path.distanceToFinalTargetViaPath(here).getOr(s"Should never happen")
+          } else {
+            path -> 0.0
+          }
+        }
+        candidates.minBy(_._2)._2
+      })
+    }
+  }
+
+  private val alternativeWorkers = {
+    class Input {
+      val target     = buildWhere
+      val pathfinder = pathfinders.groundSafe
+      val candidates = unitManager.ownUnits.allByType[W].map { w =>
+        w.unitId -> w.currentTile
+      }
+    }
+
+    FutureIterator.feed(new Input).produceAsyncLater { in =>
+      val paths = in.candidates.flatMap { case (id, where) =>
+        in.pathfinder.findSimplePathNow(where, in.target, tryFixPath = true)
+      }
+      new ClosestPaths(paths)
+    }
+  }
   override def onTick(): Unit = {
     super.onTick()
     if (unit.gotUnloaded) resetTimer_!()
@@ -1126,12 +1169,13 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, bu
       mapLayers.unblockBuilding_!(area)
     }
 
-    if (!startedMovingToSite) {
-      // regulary try to optimize
-      ifNth(Primes.prime23) {
-        if (!wasInterceptedLastTick && age > 5) {
-          unitManager.tryFindBetterEmployeeFor(this)
-        }
+    if (stillWantsOptimization) {
+      // regularly try to optimize
+      ifNth(Primes.prime43) {
+        alternativeWorkers.prepareNextIfDone()
+      }
+      if (alternativeWorkers.hasResult) {
+        unitManager.tryFindBetterEmployeeFor(this)
       }
     }
   }
@@ -1181,11 +1225,21 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W, bu
   override def times = 50
   def building = constructs
   override def asRequest: UnitJobRequest[W] = {
-    val picker = CherryPickers.cherryPickerForWorkerByDistance[W](area.centerTile)
+    val picker = alternativeWorkers.mostRecent match {
+      case Some(data) =>
+        CherryPickers.cherryPickWorkerByDistance[W](area.centerTile) { from =>
+          data.closestPathFrom(from)
+        }
+      case None =>
+        CherryPickers.cherryPickWorkerByDistance[W](area.centerTile)()
+    }
+
     UnitJobRequest.constructor[W](employer).withRequest(_.withCherryPicker_!(picker))
   }
   override def copyOfJobForNewUnit(replacement: W) = {
+    assert(!failedOrObsolete)
     stopManagingResource_!()
+    markObsolete_!()
     new ConstructBuilding(replacement, buildingType, employer, buildWhere, funding, belongsTo)
   }
   override protected def ferryDropTarget = area.centerTile.toSome
@@ -1340,10 +1394,21 @@ case class PriorityChain(data: Vector[Double]) {
 object PriorityChain {
 
   implicit val ordOnPriorities: Ordering[PriorityChain] = {
-    implicit val ordOnVectorWithDoubles: Ordering[Vector[Double]] = Ordering.fromLessThan { (a,
-                                                                                             b) =>
-      assert(a.size == b.size)
-      a.indices.forall(i => a(i) < b(i))
+    implicit val ordOnVectorWithDoubles: Ordering[Vector[Double]] = {
+      val cmp = new Comparator[Vector[Double]] {
+        override def compare(a: Vector[Double], b: Vector[Double]): Int = {
+          var i = 0
+          while (i < a.size) {
+            val left = a(i)
+            val right = b(i)
+            if (left < right) return -1
+            if (left > right) return 1
+            i += 1
+          }
+          0
+        }
+      }
+      Ordering.comparatorToOrdering(cmp)
     }
     Ordering.by(_.data)
   }
@@ -1354,19 +1419,23 @@ object PriorityChain {
 object UnitRequest {
 
   object CherryPickers {
-    def cherryPickerForWorkerByDistance[W <: WorkerUnit](target: MapTilePosition) = (job:
-                                                                                     UnitWithJob[W]) => {
-      val u = job.universe
-      val altUnit = job.unit
-      val map = u.mapLayers.rawWalkableMap
-      val sameArea = map.areInSameWalkableArea(altUnit.currentTile, target)
-      val canSee = map.connectedByLine(altUnit.currentTile, target)
-      val distance = target.distanceTo(altUnit.currentTile)
-      val busyness = WorkerUnit.currentPriority(job)
-      val weightedDistance = distance * busyness.sum
+    def cherryPickWorkerByDistance[W <: WorkerUnit](target: MapTilePosition)
+                                                   (distanceEvaluation: MapTilePosition => Double
+                                                    = _
+                                                                                                    .distanceSquaredTo(
+                                                                                                      target)) =
+      (job: UnitWithJob[W]) => {
+        val u = job.universe
+        val altUnit = job.unit
+        val walkMap = u.mapLayers.rawWalkableMap
 
-      PriorityChain(sameArea.ifElse(0, 1), canSee.ifElse(0, 1), weightedDistance)
-    }
+        val sameArea = walkMap.areInSameWalkableArea(altUnit.currentTile, target)
+        val canSee = walkMap.connectedByLine(altUnit.currentTile, target)
+        val distance = distanceEvaluation(altUnit.currentTile)
+        val busyness = WorkerUnit.currentPriority(job)
+        val weightedDistance = distance * busyness.sum
+        PriorityChain(sameArea.ifElse(0, 1), canSee.ifElse(0, 1), weightedDistance)
+      }
   }
 
 
@@ -1627,7 +1696,9 @@ class SendOrdersToStarcraft(universe: Universe) extends AIModule[Controllable](u
 
 class JobReAssignments(universe: Universe) extends OrderlessAIModule[Controllable](universe) {
   override def onTick(): Unit = {
-    unitManager.nextJobReorganisationRequest.foreach { optimizeMe =>
+    unitManager.nextJobReorganisationRequest
+    .filter(_.stillWantsOptimization)
+    .foreach { optimizeMe =>
       trace(s"Trying to find better unit for job $optimizeMe")
       if (optimizeMe.hasToSwitchLater) {
         // try again later
@@ -1640,7 +1711,6 @@ class JobReAssignments(universe: Universe) extends OrderlessAIModule[Controllabl
             case Some(replacement) if replacement.hasOneMember && replacement.onlyMember == optimizeMe.unit =>
               trace(s"Same unit chosen as best worker")
             case Some(replacement) if replacement.hasOneMember && replacement.onlyMember != optimizeMe.unit =>
-              assert(!old.failedOrObsolete)
               info(s"Replacement found: ${replacement.onlyMember}")
               //someone else might have already done this somewhere else
               val nobody = unitManager.Nobody

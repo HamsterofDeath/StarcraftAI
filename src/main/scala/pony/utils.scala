@@ -267,6 +267,8 @@ class BWFuture[+T](val future: Future[T], incomplete: T) {
 }
 
 class FutureIterator[IN, T](feed: => IN, produce: IN => T, startNow: Boolean) {
+  def hasResult = mostRecent.isDefined
+
   private var lastFeed = Option.empty[IN]
 
   private val lock = new ReentrantReadWriteLock()
@@ -298,6 +300,8 @@ class FutureIterator[IN, T](feed: => IN, produce: IN => T, startNow: Boolean) {
     lock.readLock().unlock()
     x
   }
+
+  def mostRecentAssumeCalculated = mostRecent.get
 
   def mostRecent = {
     lock.readLock().lock()

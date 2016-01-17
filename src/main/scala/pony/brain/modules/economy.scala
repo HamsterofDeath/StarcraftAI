@@ -115,7 +115,7 @@ class ProvideExpansions(universe: Universe) extends OrderlessAIModule[WorkerUnit
     ifNth(Primes.prime241) {
       plannedExpansionPoint = plannedExpansionPoint.filter { where =>
         universe.mapLayers.slightlyDangerousAsBlocked.free(where.center) &&
-        universe.unitGrid.enemy.allInRange(where.center, 12).isEmpty
+        universe.unitGrid.enemy.allInRange(where.center, 12).isEmpty &&
         !bases.isCovered(where)
       }.orElse(strategy.current.suggestNextExpansion)
       info(s"AI wants to expand to ${plannedExpansionPoint.get}", plannedExpansionPoint.isDefined)
@@ -249,6 +249,7 @@ class DefaultBehaviours(universe: Universe) extends OrderlessAIModule[WrapsUnit]
   override def renderDebug(renderer: Renderer): Unit = {
     rules.foreach(_.renderDebug(renderer))
   }
+
   override def onTick(): Unit = {
     rules.foreach(_.onTick())
     // fetch all idles and assign "always on" background tasks to them
@@ -278,7 +279,8 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule(universe
   }
 
   private def createJobsForBases(): Unit = {
-    val add = universe.bases.bases
+    val add = universe.bases
+              .bases
               .filterNot(e => gatheringJobs.exists(_.covers(e)))
               .filterNot(_.mainBuilding.isBeingCreated)
               .flatMap { base =>
@@ -376,8 +378,9 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule(universe
         override def copyOfJobForNewUnit(replacement: WorkerUnit) = new
             MineMineralsAtPatch(replacement, miningTarget)
         override def asRequest = {
-          val picker = CherryPickers.cherryPickerForWorkerByDistance[WorkerUnit](
-            miningTarget.patch.centerTile)
+          val picker = {
+            CherryPickers.cherryPickWorkerByDistance[WorkerUnit](miningTarget.patch.centerTile)()
+          }
           UnitJobRequest.idleOfType(emp, myWorker.getClass)
           .withRequest(_.withCherryPicker_!(picker))
         }
@@ -590,8 +593,9 @@ class ManageMiningAtGeysirs(universe: Universe)
       override def copyOfJobForNewUnit(replacement: WorkerUnit) = new
           MineGasAtGeysir(replacement, targetGeysir)
       override def asRequest = {
-        val picker = CherryPickers.cherryPickerForWorkerByDistance[WorkerUnit](
-          targetGeysir.centerTile)
+        val picker = {
+          CherryPickers.cherryPickWorkerByDistance[WorkerUnit](targetGeysir.centerTile)()
+        }
         UnitJobRequest.idleOfType(employer, worker.getClass)
         .withRequest(_.withCherryPicker_!(picker))
       }
