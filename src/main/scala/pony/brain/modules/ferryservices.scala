@@ -3,87 +3,78 @@ package brain.modules
 
 import pony.brain._
 
+import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
 class FerryManager(override val universe: Universe) extends HasUniverse {
 
-  private val ferryPlans = ArrayBuffer.empty[FerryPlan]
+  private val ferryPlans = mutable.HashMap.empty[TransporterUnit, FerryPlan]
 
   private val employer = new Employer[TransporterUnit](universe)
 
   def planFor(ferry: TransporterUnit) = {
-    ferryPlans.find(_.ferry == ferry)
+    ferryPlans.get(ferry)
   }
 
   universe.register_!(() => {
-    ferryPlans.foreach(_.afterTick_!())
+    ferryPlans.valuesIterator.foreach(_.afterTick_!())
   })
 
-  def requestFerry(forWhat: GroundUnit, dropTarget: MapTilePosition, buildNewIfRequired: Boolean = false) = {
-    val to = {
-      dropTarget
-      /*universe.mapLayers.reallyFreeBuildingTiles.nearestFreeBlock(dropTarget, 1)
-      .getOr(s"Could not find free spot of size 3*3 around $dropTarget. Anywhere. At all.")*/
-    }
+  def requestFerry(forWhat: GroundUnit, dropTarget: MapTilePosition,
+                   buildNewIfRequired: Boolean = false) = {
+    val to = dropTarget
     trace(s"Requested ferry for $forWhat to go to $to")
-    val job = ferryPlans.find { plan =>
-      def canAdd = {
-        val area = mapLayers.rawWalkableMap.areaWhichContainsAsFree(to)
-        plan.targetArea == area && plan.hasSpaceFor(forWhat)
-      }
-      if (plan.covers(forWhat)) {
-        true
-      } else if (canAdd) {
-        plan.withMore_!(forWhat)
-        true
-      } else {
-        false
-      }
-    }.orElse(requestFerriesAddPlan_!(forWhat.toSet, to, buildNewIfRequired).headOption)
+    val job = {
+      ferryPlans.valuesIterator.find { plan =>
+        def canAdd = {
+          val area = mapLayers.rawWalkableMap.areaWhichContainsAsFree(to)
+          plan.targetArea == area && plan.hasSpaceFor(forWhat)
+        }
+        if (plan.covers(forWhat)) {
+          true
+        } else if (canAdd) {
+          plan.withMore_!(forWhat)
+          true
+        } else {
+          false
+        }
+      }.orElse(newPlanFor(forWhat, to, buildNewIfRequired).headOption)
+    }
     job.foreach(_.notifyRequested_!(forWhat))
     job
-
   }
 
-  private def requestFerriesAddPlan_!(forWhat: Set[GroundUnit], to: MapTilePosition,
-                                      buildNewIfRequired: Boolean = false) = {
-    assert(forWhat.forall(_.currentArea != mapLayers.rawWalkableMap.areaWhichContainsAsFree(to)),
+  private def newPlanFor(forWhat: GroundUnit, to: MapTilePosition,
+                         buildNewIfRequired: Boolean = false) = {
+    assert(forWhat.currentArea != mapLayers.rawWalkableMap.areaWhichContainsAsFree(to),
       s"One of the units is already in the target area")
-    assert(mapLayers.rawWalkableMap.free(to), s"$to is supposed to be a free ground tile")
-    val groups = ArrayBuffer.empty[FerryCargoBuilder]
-    val remaining = forWhat.toBuffer
 
-    while (remaining.nonEmpty) {
-      var open = new FerryCargoBuilder
-      remaining.iterator.takeWhile(open.canAdd).foreach(open.add_!)
-      remaining --= open.cargo
-      groups += open
-    }
+    assert(mapLayers.rawWalkableMap.free(to), s"$to is supposed to be a free ground tile")
+
     trace(s"Calculating new ferry job for $forWhat to $to")
 
-    val selector = UnitJobRequest.idleOfType(employer, race.transporterClass, groups.size)
-                   .acceptOnly_! { tu =>
-                     !ferryPlans.exists(_.ferry == tu)
+
+    val selector = UnitJobRequest.idleOfType(employer, race.transporterClass, 1)
+                   .acceptOnly_! { ferry =>
+                     !ferryPlans.contains(ferry)
                    }
-    val result = unitManager
-                 .request(selector, buildNewIfRequired)
-    val newPlans = result.ifNotZero(seq => {
-      seq.zip(groups).map {
-        case (transporter, cargo) => new FerryPlan(transporter, cargo.cargo.toSet, to,
-          mapLayers.rawWalkableMap.areaWhichContainsAsFree(to))
-      }
+    val result = unitManager.request(selector, buildNewIfRequired)
+    val newPlans = result.ifNotZero(_.map { transporter =>
+      new FerryPlan(transporter, forWhat, to,
+        mapLayers.rawWalkableMap.areaWhichContainsAsFree(to))
     }, Nil)
-    ferryPlans ++= newPlans
+
+    ferryPlans ++= newPlans.map(e => e.ferry -> e)
     trace(s"New plans: ${newPlans.mkString(", ")}")
     newPlans
   }
 
   override def onTick(): Unit = {
     super.onTick()
-    val done = ferryPlans.filterNot(_.unfinished)
+    val done = ferryPlans.valuesIterator.filterNot(_.unfinished)
     trace(s"Ferry plans done: $done")
-    ferryPlans --= done
-    ferryPlans.foreach(_.onTick())
+    ferryPlans --= done.map(_.ferry)
+    ferryPlans.valuesIterator.foreach(_.onTick())
   }
 }
 
@@ -112,9 +103,10 @@ object PlanIdCounter {
 
 }
 
-class FerryPlan(val ferry: TransporterUnit, initial: Set[GroundUnit], val toWhere: MapTilePosition,
+class FerryPlan(val ferry: TransporterUnit, initial: GroundUnit, val toWhere: MapTilePosition,
                 val targetArea: Option[Grid2D]) extends HasUniverse {
-  private val currentPlannedCargo  = collection.mutable.HashMap.empty ++= initial.map(e => e -> ferry.currentTick)
+  private val currentPlannedCargo = collection.mutable.HashMap.empty ++=
+                                    initial.toSet.map(e => e -> ferry.currentTick)
 
   private val dropTheseImmediately = collection.mutable.HashSet.empty[GroundUnit]
   private val planId               = PlanIdCounter.nextId()
@@ -196,6 +188,7 @@ class FerryPlan(val ferry: TransporterUnit, initial: Set[GroundUnit], val toWher
 
   def pickupTargetsLeft = myPickupTargets.get
 
-  assert(toTransport.map(_.transportSize).sum <= 8, s"Too many units for single transport: $toTransport")
+  assert(toTransport.map(_.transportSize).sum <= 8,
+    s"Too many units for single transport: $toTransport")
 
 }
