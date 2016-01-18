@@ -16,6 +16,7 @@ package object pony {
   // TODO improve dance (fix + future iterator maybe?)
   // TODO fix upgrade building counts (too many engineering bays, not enough of the other one)
   // TODO cover all zerg units (as enemy)
+  // TODO stay away from stationary things if tanks are available
 
   // milestone 4:
   // TODO send only necessary units for defenses, use "battle simulator" to estimate which units

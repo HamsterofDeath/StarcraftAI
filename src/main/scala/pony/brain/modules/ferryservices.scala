@@ -20,13 +20,18 @@ class FerryManager(override val universe: Universe) extends HasUniverse {
     ferryPlans.valuesIterator.foreach(_.afterTick_!())
   })
 
+  private val nearestFreeCache = oncePer(Primes.prime67) {
+    mutable.HashMap.empty[MapTilePosition, MapTilePosition]
+  }
+
   def requestFerry(forWhat: GroundUnit, dropTarget: MapTilePosition,
                    buildNewIfRequired: Boolean = false) = {
     val job = {
       lazy val to = {
-        val fixed = universe.mapLayers.freeWalkableTiles.nearestFreeBlock(dropTarget, 1)
-                    .getOr(
-                      s"Could not find free spot of size 3*3 around $dropTarget. Anywhere. At all.")
+        val fixed = nearestFreeCache.get.getOrElseUpdate(dropTarget, {
+          universe.mapLayers.freeWalkableTiles.nearestFreeBlock(dropTarget, 1).getOr(
+            s"Could not find free spot of size 3*3 around $dropTarget. Anywhere. At all.")
+        })
         trace(s"Requested ferry for $forWhat to go to $fixed")
         fixed
       }
