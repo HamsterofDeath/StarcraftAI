@@ -879,26 +879,28 @@ object Terran {
                 inBattle = true
                 // drop mines on sight of enemy
                 val on = freeArea
-                val freeTarget = on.spiralAround(unit.currentTile).filter(on.free)
-                                 .maxByOpt { where =>
-                                   def ownUnitsCost = {
-                                     universe.unitGrid.own.allInRange[GroundUnit](where, 5)
-                                     .view
-                                     .filter(
-                                       e => !e.isInstanceOf[HasSpiderMines] && !e.isAutoPilot)
-                                     .map(_.buildPrice)
-                                     .fold(Price.zero)(_ + _)
-                                   }
-                                   def enemyUnitsCost = {
-                                     universe.unitGrid.enemy.allInRange[GroundUnit](where, 5)
-                                     .view
-                                     .filter(
-                                       e => !e.isInstanceOf[HasSpiderMines] && !e.isAutoPilot)
-                                     .map(_.buildPrice)
-                                     .fold(Price.zero)(_ + _)
-                                   }
-                                   enemyUnitsCost - ownUnitsCost
-                                 }
+                val freeTarget = {
+                  on.spiralAround(unit.currentTile).filter(on.free)
+                  .maxByOpt { where =>
+                    def ownUnitsCost = {
+                      universe.unitGrid.own.allInRange[GroundUnit](where, 5)
+                      .view
+                      .filter(
+                        e => !e.isInstanceOf[HasSpiderMines] && !e.isAutoPilot)
+                      .map(_.buildPrice)
+                      .fold(Price.zero)(_ + _)
+                    }
+                    def enemyUnitsCost = {
+                      universe.unitGrid.enemy.allInRange[GroundUnit](where, 5)
+                      .view
+                      .filter(
+                        e => !e.isInstanceOf[HasSpiderMines] && !e.isAutoPilot)
+                      .map(_.buildPrice)
+                      .fold(Price.zero)(_ + _)
+                    }
+                    enemyUnitsCost - ownUnitsCost
+                  }
+                }
                 freeTarget.map { where =>
                   on.block_!(where.asArea.extendedBy(1))
                   plannedDrops += where.asArea.extendedBy(1) -> universe.currentTick

@@ -69,7 +69,7 @@ class UpgradeManager(override val universe: Universe) extends HasUniverse {
     researched.put(up, 1)
   }
 
-  private def isTechResearchInNativeGame(t: TechType) = {
+  def isTechResearchInNativeGame(t: TechType) = {
     universe.world.nativeGame.self().hasResearched(t)
   }
 
