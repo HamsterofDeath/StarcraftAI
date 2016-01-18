@@ -1095,7 +1095,7 @@ trait TransporterUnit extends AirUnit {
   def isPickingUp = myPickingUp.get
   def loaded = myLoaded.get
   def isCarrying(gu: GroundUnit) = myLoaded.get(gu)
-  def canDropHere = mapLayers.freeWalkableTiles.anyFreeInSpiral(currentTile, 3)
+  def canDropHere = mapLayers.freeWalkableTiles.free(currentTile)
 
   def hasUnitsLoaded = myLoaded.get.nonEmpty
 }

@@ -776,7 +776,8 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
     }
     ret
   }
-  private def evalOnlyMobileBlockingUnits = evalOnlyMobileUnits(ownUnits.allByType[GroundUnit])
+  private def evalOnlyMobileBlockingUnits = evalOnlyMobileUnits(
+    ownUnits.allByType[GroundUnit].iterator.filter(_.onGround))
   private def evalOnlyMines = evalOnlyMobileUnits(ownUnits.allByType[SpiderMine])
   private def evalOnlyMobileUnits(units: TraversableOnce[GroundUnit]) = {
     val ret = emptyCopy

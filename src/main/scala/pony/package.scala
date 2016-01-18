@@ -9,20 +9,21 @@ import scala.collection.mutable
  */
 package object pony {
 
-  // milestone 2.5:
-  // TODO fix expansion delay
-  // TODO collect minerals/gas from far away if out of resources in bases
-  // TODO fix magic resource problem
-  // TODO fix unit switching bug, enable switching for repairs & resource gathering as well
-
   // milestone 3:
+  // TODO collect minerals/gas from far away if out of resources in bases
+  // TODO enable switching for repairs
+  // TODO fix remaining transporter bugs
+  // TODO improve dance (fix + future iterator maybe?)
+  // TODO fix upgrade building counts (too many engineering bays, not enough of the other one)
+  // TODO cover all zerg units (as enemy)
+
+  // milestone 4:
   // TODO send only necessary units for defenses, use "battle simulator" to estimate which units
   // are required for each attack/defense
   // TODO optimize worker paths -> might be impossible
   // TODO cover island maps
 
   // milestone 4:
-  // TODO cover all zerg units (as enemy)
   //  ...
 
   // milestone 5:
