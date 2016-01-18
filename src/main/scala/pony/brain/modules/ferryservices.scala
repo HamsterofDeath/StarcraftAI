@@ -26,9 +26,15 @@ class FerryManager(override val universe: Universe) extends HasUniverse {
     trace(s"Requested ferry for $forWhat to go to $to")
     val job = {
       ferryPlans.valuesIterator.find { plan =>
-        def canAdd = {
+        lazy val sameArea = {
           val area = mapLayers.rawWalkableMap.areaWhichContainsAsFree(to)
-          plan.targetArea == area && plan.hasSpaceFor(forWhat)
+          plan.targetArea == area
+        }
+        def canAdd = {
+          sameArea && plan.hasSpaceFor(forWhat)
+        }
+        def tryReplace_!() = {
+          sameArea && plan.replaceQueuedUnitIfPossible_!(forWhat)
         }
         if (plan.covers(forWhat)) {
           true
@@ -36,11 +42,10 @@ class FerryManager(override val universe: Universe) extends HasUniverse {
           plan.withMore_!(forWhat)
           true
         } else {
-          false
+          tryReplace_!()
         }
       }.orElse(newPlanFor(forWhat, to, buildNewIfRequired).headOption)
     }
-    job.foreach(_.notifyRequested_!(forWhat))
     job
   }
 
@@ -105,6 +110,19 @@ object PlanIdCounter {
 
 class FerryPlan(val ferry: TransporterUnit, initial: GroundUnit, val toWhere: MapTilePosition,
                 val targetArea: Option[Grid2D]) extends HasUniverse {
+  def replaceQueuedUnitIfPossible_!(maybeTransportThis: GroundUnit) = {
+    val removeFromPlan = queuedForPickUp.iterator
+                         .filter(_.transportSize >= maybeTransportThis.transportSize)
+                         .minByOpt(_.currentTile.distanceSquaredTo(ferry.currentTile))
+    removeFromPlan.foreach { old =>
+      currentPlannedCargo.remove(old)
+      withMore_!(maybeTransportThis)
+    }
+    removeFromPlan.isDefined
+  }
+
+  def queuedForPickUp = myQueuedForPickup.get
+
   private val currentPlannedCargo = collection.mutable.HashMap.empty ++=
                                     initial.toSet.map(e => e -> ferry.currentTick)
 
@@ -128,6 +146,9 @@ class FerryPlan(val ferry: TransporterUnit, initial: GroundUnit, val toWhere: Ma
 
   def notifyRequested_!(gu: GroundUnit): Unit = {
     currentPlannedCargo.put(gu, ferry.currentTick)
+    myNextPickUp.invalidate()
+    myQueuedForPickup.invalidate()
+    assert(takenSpace <= 8)
   }
 
   def withMore_!(gu: GroundUnit) = {
@@ -139,11 +160,11 @@ class FerryPlan(val ferry: TransporterUnit, initial: GroundUnit, val toWhere: Ma
   def toTransport = currentPlannedCargo.keySet
 
   def afterTick_!(): Unit = {
-    val maxTick = currentPlannedCargo.valuesIterator.max
+    val maxTick = currentPlannedCargo.valuesIterator.maxOpt.getOrElse(Integer.MAX_VALUE)
 
-    val thoseChangedTheirMinds = currentPlannedCargo.iterator
-                                 .filter(_._2 < maxTick)
-                                 .map(_._1)
+    val thoseChangedTheirMinds = currentPlannedCargo
+                                 .filter(_._2 + 12 < maxTick)
+                                 .keySet
 
 
     dropTheseImmediately ++= thoseChangedTheirMinds
@@ -153,7 +174,7 @@ class FerryPlan(val ferry: TransporterUnit, initial: GroundUnit, val toWhere: Ma
     val loadedButNotPlanned = ferry.loaded.filterNot(currentPlannedCargo.keySet)
     dropTheseImmediately ++= loadedButNotPlanned
 
-    dropTheseImmediately.retain(ferry.isCarrying)
+    dropTheseImmediately.retain(e => ferry.isCarrying(e) && thoseChangedTheirMinds(e))
   }
 
   def nextToDrop = {
@@ -180,13 +201,15 @@ class FerryPlan(val ferry: TransporterUnit, initial: GroundUnit, val toWhere: Ma
     currentPlannedCargo.contains(forWhat)
   }
 
-  private val myPickupTargets = oncePerTick {
-    toTransport.exists { e =>
-      e.onGround && e.currentArea != targetArea
-    }
+  private def needsToPickThatUp(gu: GroundUnit) = {
+    assert(toTransport(gu))
+    gu.onGround && gu.currentArea != targetArea
+  }
+  private val myQueuedForPickup = oncePerTick {
+    toTransport.filter(needsToPickThatUp)
   }
 
-  def pickupTargetsLeft = myPickupTargets.get
+  def pickupTargetsLeft = queuedForPickUp.nonEmpty
 
   assert(toTransport.map(_.transportSize).sum <= 8,
     s"Too many units for single transport: $toTransport")

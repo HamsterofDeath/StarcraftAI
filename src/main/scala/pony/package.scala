@@ -185,6 +185,13 @@ package object pony {
         Some(t.minBy(cmp))
       }
     }
+    def maxOpt(implicit cmp2: Ordering[T]) = {
+      if (t.isEmpty) None else t.max.toSome
+    }
+    def minOpt(implicit cmp2: Ordering[T]) = {
+      if (t.isEmpty) None else t.min.toSome
+    }
+
     def maxByOpt[C](cmp: T => C)(implicit cmp2: Ordering[C]) = {
       if (t.isEmpty) {
         None

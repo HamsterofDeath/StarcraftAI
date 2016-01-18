@@ -66,8 +66,13 @@ class MigrationPath(follow: Paths, override val universe: Universe)
 
 case class Path(waypoints: Seq[MapTilePosition], solved: Boolean, solvable: Boolean,
                 bestEffort: MapTilePosition, requestedTarget: MapTilePosition,
-                unsafeTarget: MapTilePosition) {
-  def closestWaypoint(of: MapTilePosition) = waypoints.minByOpt(_.distanceSquaredTo(of))
+                unsafeTarget: MapTilePosition)(basedOn: Grid2D) {
+  def closestWaypoint(of: MapTilePosition) = {
+    // not perfect, but good enough
+    waypoints.iterator
+    .filter(e => basedOn.connectedByLine(e, of))
+    .minByOpt(_.distanceSquaredTo(of))
+  }
 
   private val cache = mutable.HashMap.empty[MapTilePosition, Option[Double]]
 
@@ -261,7 +266,7 @@ class PathFinder(on: Grid2D, isOnGround: Boolean) {
       var first = Option.empty[Path]
       def pathFrom(seq: Seq[MapTilePosition]) = {
         Path(seq, finder.isSolved, !finder.isUnsolvable, finder.getTargetOrNearestReachable, to,
-          unsafeTarget)
+          unsafeTarget)(on)
       }
       val paths = (0 until width).iterator.map { _ =>
         finder.performSearch()
