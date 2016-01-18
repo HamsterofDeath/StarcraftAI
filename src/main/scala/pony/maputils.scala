@@ -7,6 +7,10 @@ import scala.collection.mutable
 class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitSet,
              protected val containsBlocked: Boolean = true) extends Serializable {
   self =>
+  def anyFreeInSpiral(tile: MapTilePosition, size: Int) = {
+    spiralAround(tile, 3).exists(free)
+  }
+
   private val lazyAreas = LazyVal.from {new AreaHelper(self).findFreeAreas}
 
   def invertedMutable = { reverseView.mutableCopy }

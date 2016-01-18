@@ -1080,20 +1080,24 @@ trait WorkerUnit extends Killable with Mobile with GroundUnit with GroundWeapon 
 }
 
 trait TransporterUnit extends AirUnit {
+  def nearestDropTile = {
+    mapLayers.freeWalkableTiles.nearestFree(currentTile)
+  }
+
   private val myPickingUp = oncePerTick {
     nativeUnit.getOrderTarget != null
   }
-  private val carrying    = oncePerTick {
+  private val myLoaded    = oncePerTick {
     nativeUnit.getLoadedUnits.asScala.flatMap { u =>
       ownUnits.byNative(u).asInstanceOf[Option[GroundUnit]]
     }.toSet
   }
   def isPickingUp = myPickingUp.get
-  def loaded = carrying.get
-  def isCarrying(gu: GroundUnit) = carrying.get(gu)
-  def isAboveWalkable = mapLayers.rawWalkableMap.free(currentTile)
+  def loaded = myLoaded.get
+  def isCarrying(gu: GroundUnit) = myLoaded.get(gu)
+  def canDropHere = mapLayers.freeWalkableTiles.anyFreeInSpiral(currentTile, 3)
 
-  def hasUnitsLoaded = carrying.get.nonEmpty
+  def hasUnitsLoaded = myLoaded.get.nonEmpty
 }
 
 trait Ignored extends WrapsUnit
