@@ -1658,10 +1658,11 @@ case class UnitJobRequest[T <: WrapsUnit : Manifest](request: UnitRequest[T],
       }
     }
   }
-  def acceptOnly_!(only: T => Boolean) = {
-    request.withFilter_!(only)
-    this
+
+  def withOnlyAccepting(these: T => Boolean) = {
+    copy(request = request.withFilter_!(these))
   }
+
   def clearable = request.clearable
   def wantsUnit(existingUnit: WrapsUnit) = moreSpecificType.isInstance(existingUnit) &&
                                            request.acceptableUntyped(existingUnit)
@@ -1676,7 +1677,7 @@ object UnitJobRequest {
                   priority: Priority = Priority.Upgrades) = {
     val actualClass = employer.race.techTree.upgraderFor(upgrade).asInstanceOf[Class[Upgrader]]
     val req = AnyUnitRequest(actualClass, 1)
-    UnitJobRequest(req, employer, priority).acceptOnly_!(!_.isDoingResearch)
+    UnitJobRequest(req, employer, priority).withOnlyAccepting(!_.isDoingResearch)
   }
 
   def builderOf[T <: Mobile, F <: UnitFactory : Manifest](wantedType: Class[_ <: T],

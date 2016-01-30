@@ -71,7 +71,7 @@ class FerryManager(override val universe: Universe) extends HasUniverse {
 
 
     val selector = UnitJobRequest.idleOfType(employer, race.transporterClass, 1)
-                   .acceptOnly_! { ferry =>
+                   .withOnlyAccepting { ferry =>
                      !ferryPlans.contains(ferry)
                    }
     val result = unitManager.request(selector, buildNewIfRequired)

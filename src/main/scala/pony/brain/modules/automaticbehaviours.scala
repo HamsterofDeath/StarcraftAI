@@ -268,6 +268,96 @@ object Terran {
     override def canControl(u: WrapsUnit): Boolean = super.canControl(u) &&
                                                      !u.isInstanceOf[BadDancer]
     override def refuseCommandsForTicks = 6
+
+    case class UnitIdPosition(id: Int, where: MapTilePosition)
+    case class Dancer(me: UnitIdPosition, partners: Seq[UnitIdPosition])
+    case class Feed(dancers: Seq[Dancer], freeMap: Grid2D)
+
+    private def feed = {
+      val dancers = ownUnits.allMobilesWithWeapons
+                    .flatMap { own =>
+                      val dancePartners = {
+                        def take(enemy: ArmedMobile) = {
+                          enemy.initialNativeType.topSpeed <= own.initialNativeType.topSpeed &&
+                          enemy.weaponRangeRadius <= own.weaponRangeRadius &&
+                          own.canAttack(enemy)
+                        }
+                        unitGrid.allInRangeOf[ArmedMobile](own.currentTile,
+                          own.weaponRangeRadiusTiles, friendly = false, take)
+                        .map { unit =>
+                          UnitIdPosition(unit.unitId, unit.currentTile)
+                        }
+                      }
+
+                      if (dancePartners.nonEmpty) {
+                        Dancer(UnitIdPosition(own.unitId, own.currentTile), dancePartners.toVector)
+                        .toSome
+                      } else {
+                        None
+                      }
+                    }.toVector
+      Feed(dancers, immutableMapLayer.get)
+    }
+
+    case class DancePlan(data: Map[ArmedMobile, MapTilePosition])
+
+    private val dropAtFirst = 36
+    private val tries       = 100
+    private val range       = 10
+    private val takeNth     = 7
+
+    private val dancePlan = FutureIterator.feed(feed).produceAsyncLater { in =>
+      // second try: consider slipping through enemy lines
+      val on = in.freeMap
+      in.dancers.map { dancer =>
+        val center = MapTilePosition.average(dancer.partners.iterator.map(_.where))
+
+        val myArea = universe.mapLayers.rawWalkableMap.areaWhichContainsAsFree(dancer.me.where)
+        dancer -> myArea.flatMap { a =>
+          val antiGrav = {
+            var xSum = 0
+            var ySum = 0
+
+            for (dp <- dancer.partners) {
+              val diff = dp.where.diffTo(dancer.me.where)
+              xSum += diff.x
+              ySum += diff.y
+            }
+
+            val ref = dancer.me.where.movedBy(MapTilePosition(xSum, ySum))
+            on.spiralAround(dancer.me.where, range)
+            .drop(dropAtFirst)
+            .sliding(1, takeNth)
+            .flatten
+            .take(tries)
+            .filter { c =>
+              c.distanceSquaredTo(ref) <= dancer.me.where.distanceSquaredTo(center)
+            }.find {on.free}
+          }
+
+          def secondTry = on.spiralAround(dancer.me.where, range)
+                          .drop(dropAtFirst)
+                          .sliding(1, takeNth)
+                          .flatten
+                          .take(tries)
+                          .filter(on.free)
+                          .filter(a.free)
+                          .maxByOpt(center.distanceSquaredTo)
+
+          antiGrav.orElse(secondTry)
+        }
+      }.collect { case (k, v) if v.isDefined =>
+        k.me.id -> v.get
+      }.toMap
+    }
+
+    override def onTick() = {
+      super.onTick()
+      ifNth(Primes.prime5) {
+        dancePlan.prepareNextIfDone()
+      }
+    }
+
     override protected def wrapBase(unit: ArmedMobile): SingleUnitBehaviour[ArmedMobile] = new
         SingleUnitBehaviour[ArmedMobile](unit, meta) {
 
@@ -277,82 +367,21 @@ object Terran {
 
       private var state: State    = Idle
       private var runningCommands = List.empty[UnitOrder]
-      private val beLazy          = (Idle, List.empty[UnitOrder])
-      private val dropAtFirst     = 36
-      private val tries           = 100
-      private val range           = 10
-      private val takeNth         = 7
+      private val noop            = (Idle, List.empty[UnitOrder])
 
       override def describeShort: String = "Dance"
       override def toOrder(what: Objective) = {
         val (newState, newOrder) = {
           state match {
             case Idle =>
-              val coolingDown = !unit.isReadyToFireWeapon
-              lazy val dancePartners = {
-                val allEnemies = universe.unitGrid.enemy.allInRange[Mobile](unit.currentTile,
-                  unit.weaponRangeRadius / 32)
-                allEnemies
-                .collect { case enemy: Weapon if
-                enemy.initialNativeType.topSpeed <= unit.initialNativeType.topSpeed &&
-                enemy.weaponRangeRadius <= unit.weaponRangeRadius &&
-                unit.canAttack(enemy) =>
-                  enemy
-                }
-              }
-              if (coolingDown && dancePartners.nonEmpty) {
-                val on = immutableMapLayer.get
-                var xSum = 0
-                var ySum = 0
-                var xSumCenter = 0
-                var ySumCenter = 0
-                for (dp <- dancePartners) {
-                  val diff = dp.currentTile.diffTo(unit.currentTile)
-                  xSum += diff.x
-                  ySum += diff.y
-                  xSumCenter += dp.currentTile.x
-                  ySumCenter += dp.currentTile.y
-                }
-                val ref = unit.currentTile.movedBy(MapTilePosition(xSum, ySum))
-                val dpSize = dancePartners.size
-                val whereToGo = {
-                  // first try: just escape antigravity style
-                  on.spiralAround(unit.currentTile, range)
-                  .drop(dropAtFirst)
-                  .sliding(1, takeNth)
-                  .flatten
-                  .take(tries)
-                  .filter { c =>
-                    c.distanceSquaredTo(ref) <= unit.currentTile.distanceSquaredTo(ref)
-                  }.find {on.free}
-                  .orElse {
-                    // second try: consider slipping through enemy lines
-                    val center = MapTilePosition(xSumCenter / dpSize, ySumCenter / dpSize)
-                    val map = on
-                    val myArea = map.areaWhichContainsAsFree(unit.currentTile)
-                    myArea.flatMap { a =>
-                      on.spiralAround(unit.currentTile, range)
-                      .drop(dropAtFirst)
-                      .sliding(1, takeNth)
-                      .flatten
-                      .take(tries)
-                      .filter(map.free)
-                      .filter(a.free)
-                      .maxByOpt(center.distanceSquaredTo)
-                    }
-                  }
-                }
-
-                whereToGo.map { where =>
-                  Fallback(where, universe.currentTick) -> Orders.MoveToTile(unit, where).toList
-                }.getOrElse(beLazy)
-              } else {
-                beLazy
-              }
+              dancePlan.mostRecent.flatMap { plan =>
+                plan.get(unit.unitId)
+              }.map { where =>
+                Fallback(where, universe.currentTick) -> Orders.MoveToTile(unit, where).toList
+              }.getOrElse(noop)
             case current@Fallback(where, startedWhen) =>
-              if (unit.isReadyToFireWeapon || startedWhen + 24 < universe.currentTick ||
-                  unit.currentTile == where) {
-                beLazy
+              if (unit.isReadyToFireWeapon || unit.currentTile == where) {
+                noop
               } else {
                 (current, runningCommands)
               }

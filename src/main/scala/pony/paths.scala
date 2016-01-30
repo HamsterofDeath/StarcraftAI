@@ -536,7 +536,8 @@ class UnitGrid(override val universe: Universe) extends HasUniverse {
 
   }
   def allInRangeOf[T <: Mobile : Manifest](position: MapTilePosition, radius: Int,
-                                           friendly: Boolean): Traversable[T] = {
+                                           friendly: Boolean,
+                                           customFilter: T => Boolean = (_: T) => true): Traversable[T] = {
     val onWhat = on(!friendly)
 
     geoHelper
@@ -553,6 +554,7 @@ class UnitGrid(override val universe: Universe) extends HasUniverse {
       xx * xx + yy * yy
     }
 
+
     new Traversable[T] {
       override def foreach[U](f: (T) => U): Unit = {
         val filter = manifest[T].runtimeClass
@@ -560,7 +562,9 @@ class UnitGrid(override val universe: Universe) extends HasUniverse {
              if dstSqr(x, y) <= radSqr) {
           val mobiles = onWhat(x)(y)
           if (mobiles != null) {
-            val byType = mobiles.iterator.filter(filter.isInstance)
+            val byType = mobiles.iterator
+                         .filter(filter.isInstance)
+                         .filter(e => customFilter(e.asInstanceOf[T]))
             byType.foreach { e =>
               f(e.asInstanceOf[T])
             }

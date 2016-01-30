@@ -958,9 +958,12 @@ trait Weapon extends Controllable with ArmedUnit {
       case b: Building => ifBuilding(b)
       case x => !!!(s"Check this $x")
     }
+  // needs to be overridden
   def isInWeaponRange(target: MaybeCanDie): Boolean = false
-  // needs to be overriden to return true
-  def weaponRangeRadius = 0
+  // needs to be overridden
+  def weaponRangeRadius: Int = 0
+
+  def weaponRangeRadiusTiles = weaponRangeRadius / 32
   protected def evalDamage(weapon: WeaponType, damageType: DamageType, hitCount: Int,
                            targetsAir: Boolean) = {
     val level = universe.upgrades.weaponLevelOf(self)

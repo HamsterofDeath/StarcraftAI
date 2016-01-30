@@ -575,7 +575,7 @@ class ManageMiningAtGeysirs(universe: Universe)
         case Some(ref) =>
           val missing = idealWorkerCount - teamSize
           val ofType = UnitJobRequest.idleOfType(self, classOf[WorkerUnit], missing, Priority.CollectGas)
-                       .acceptOnly_!(_.isCarryingNothing)
+                       .withOnlyAccepting(_.isCarryingNothing)
           val result = unitManager.request(ofType)
           result.units.foreach { freeWorker =>
             assignJob_!(new MineGasAtGeysir(freeWorker, geysir))
