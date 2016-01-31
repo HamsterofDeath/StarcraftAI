@@ -243,12 +243,12 @@ object Terran {
 
         val order = ferryManager.planFor(unit) match {
           case Some(plan) =>
-            if (plan.instantDropRequested && unit.canDropHere) {
+            if ((plan.instantDropRequested || plan.dropUnitsNow) && !unit.canDropHere) {
+              unit.nearestDropTile.flatMap(orderByTile)
+            } else if (plan.instantDropRequested && unit.canDropHere) {
               plan.asapDrop.map { dropIt =>
                 Orders.UnloadUnit(unit, dropIt)
               }
-            } else if (plan.dropUnitsNow && !unit.canDropHere) {
-              unit.nearestDropTile.flatMap(orderByTile)
             } else if (plan.dropUnitsNow) {
               plan.nextToDrop.map { drop =>
                 Orders.UnloadUnit(unit, drop)
