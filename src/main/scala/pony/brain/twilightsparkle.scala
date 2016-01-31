@@ -23,19 +23,20 @@ trait HasUniverse extends HasLazyVals {
   def resources = universe.resources
   def bases = universe.bases
   def currentTick = universe.currentTick
-  def mapLayers = universe.mapLayers
+
   def nativeGame = world.nativeGame
+
   def world = universe.world
+
   def strategicMap = universe.strategicMap
+
   def strategy = universe.strategy
+
   def worldDominationPlan = universe.worldDominationPlan
-  def ifNth(prime: PrimeNumber)(u: => Unit) = {
-    if (universe.currentTick % prime.i == 0) {
-      u
-    }
-  }
 
   def geoHelper = mapLayers.rawWalkableMap.geoHelper
+
+  def mapLayers = universe.mapLayers
 
   def mapNth[T](prime: PrimeNumber, orElse: T, condition: Boolean = true)(body: => T): T = {
     ifNth(prime) {
@@ -46,13 +47,19 @@ trait HasUniverse extends HasLazyVals {
     orElse
   }
 
+  def ifNth(prime: PrimeNumber)(u: => Unit) = {
+    if (universe.currentTick % prime.i == 0) {
+      u
+    }
+  }
+
   protected implicit def implicitUniverse = universe
 
 }
 
 trait HasLazyVals {
-  private val lazyVals  = ArrayBuffer.empty[LazyVal[_]]
-  protected def currentTick: Int
+  private val lazyVals = ArrayBuffer.empty[LazyVal[_]]
+
   def oncePer[T](prime: PrimeNumber)(t: => T) = {
     var store: T = null.asInstanceOf[T]
     oncePerTick {
@@ -63,19 +70,21 @@ trait HasLazyVals {
     }
   }
 
-  def once[T](t: => T) = {
-    LazyVal.from(t)
-  }
-
   def oncePerTick[T](t: => T) = {
     val l = LazyVal.from(t)
     lazyVals += l
     l
   }
 
+  def once[T](t: => T) = {
+    LazyVal.from(t)
+  }
+
   def onTick(): Unit = {
     lazyVals.foreach(_.invalidate())
   }
+
+  protected def currentTick: Int
 }
 
 trait BackgroundComputationResult[T <: WrapsUnit] {
@@ -91,7 +100,9 @@ object BackgroundComputationResult {
   def nothing[T <: WrapsUnit](cleanUp: () => Unit): BackgroundComputationResult[T] = new
       BackgroundComputationResult[T] {
     override def repeatOrderIssue: Boolean = false
+
     override def afterComputation(): Unit = cleanUp()
+
     override def jobs: Traversable[UnitWithJob[T]] = Nil
   }
 
@@ -101,8 +112,11 @@ object BackgroundComputationResult {
       BackgroundComputationResult[T] {
 
     override def jobs = myJobs
+
     override def repeatOrderIssue = checkValidityNow()
+
     override def afterComputation() = afterComputationDone()
+
     override def orders = jobs.flatMap(_.ordersForThisTick)
   }
 }
@@ -110,7 +124,8 @@ object BackgroundComputationResult {
 trait BackgroundComputation[T <: WrapsUnit] extends AIModule[T] {
   type ComputationInput
 
-  private var backgroundOp           = Future.successful(BackgroundComputationResult.nothing[T](() => {}))
+  private var backgroundOp           = Future
+                                       .successful(BackgroundComputationResult.nothing[T](() => {}))
   private var currentResult          = Option.empty[BackgroundComputationResult[T]]
   private var waitingForBackgroundOp = false
 
@@ -180,14 +195,15 @@ trait BackgroundComputation[T <: WrapsUnit] extends AIModule[T] {
   def calculationInput: Option[ComputationInput]
 
   /**
-   * do not access the universe here, it's running in another thread!
-   */
+    * do not access the universe here, it's running in another thread!
+    */
   def evaluateNextOrders(in: ComputationInput): BackgroundComputationResult[T]
 }
 
 abstract class AIModule[T <: WrapsUnit : Manifest](override val universe: Universe)
   extends Employer[T](universe) with HasUniverse {
   def ordersForTick: Traversable[UnitOrder]
+
   def onNth: Int = 1
 
   override def toString = s"Module ${getClass.className}"
@@ -198,7 +214,8 @@ abstract class AIModule[T <: WrapsUnit : Manifest](override val universe: Univer
 abstract class OrderlessAIModule[T <: WrapsUnit : Manifest](universe: Universe)
   extends AIModule[T](universe) with Orderless[T]
 
-class HelperAIModule[T <: WrapsUnit : Manifest](universe: Universe) extends OrderlessAIModule[T](universe) {
+class HelperAIModule[T <: WrapsUnit : Manifest](universe: Universe)
+  extends OrderlessAIModule[T](universe) {
   override def onTick(): Unit = {}
 }
 
@@ -224,29 +241,45 @@ class TwilightSparkle(world: DefaultWorld) {
 
     override def pathfinders = new Pathfinders {
       override def groundSafe = myPathFinderGroundSafe.get
+
       override def ground = myPathFinderGround.get
+
       override def airSafe = myPathFinderAirSafe.get
     }
+
     override def bases = self.bases
+
     override def world = self.world
+
     override def upgrades = self.upgradeManager
+
     override def resources = self.resources
+
     override def unitManager = self.unitManager
+
     override def currentTick = world.tickCount
+
     override def mapLayers = self.maps
+
     override def ownUnits = world.ownUnits
+
     override def enemyUnits = world.enemyUnits
+
     override def strategicMap = world.strategicMap
+
     override def strategy = self.strategy
+
     override def worldDominationPlan = self.worldDomination
+
     override def unitGrid = self.unitGrid
+
     override def ferryManager = self.ferryManager
   }
-  private val bases            = new Bases(world)
-  private val resources        = new ResourceManager(universe)
-  private val strategy         = new Strategies(universe)
-  private val worldDomination  = new WorldDominationPlan(universe)
-  private val aiModules              = List(
+  private val bases           = new Bases(world)
+  private val resources       = new ResourceManager(universe)
+  private val strategy        = new Strategies(universe)
+  private val worldDomination = new WorldDominationPlan(universe)
+  private val aiModules       = List(
     new DefaultBehaviours(universe),
     new ManageMiningAtBases(universe),
     new ManageMiningAtGeysirs(universe),
@@ -284,11 +317,14 @@ class TwilightSparkle(world: DefaultWorld) {
   world.ownUnits.registerKill_!(onKillOrCreate)
   world.enemyUnits.registerAdd_!(onKillOrCreate)
   world.ownUnits.registerAdd_!(onKillOrCreate)
+
   def plugins = aiModules
-  def pluginByType[T <: AIModule[_]:Manifest] = {
+
+  def pluginByType[T <: AIModule[_] : Manifest] = {
     val c = manifest[T].runtimeClass
     aiModules.find(e => c.isAssignableFrom(e.getClass)).get.asInstanceOf[T]
   }
+
   def queueOrdersForTick(): Unit = {
 
     world.ownUnits.consumeFresh_! {_.init_!(universe)}
@@ -312,6 +348,7 @@ class TwilightSparkle(world: DefaultWorld) {
     universe.afterTick()
 
   }
+
   private def onKillOrCreate = (unit: WrapsUnit) =>
     unit match {
       case _: StaticallyPositioned =>
@@ -323,24 +360,32 @@ class TwilightSparkle(world: DefaultWorld) {
 }
 
 class Bases(world: DefaultWorld) {
-  def richBases = bases.filter(_.resourceArea.rich)
-
   private val myBases          = ArrayBuffer.empty[Base]
   private val newBaseListeners = ArrayBuffer.empty[NewBaseListener]
+
   def isCovered(field: ResourceArea) = myBases.exists(_.resourceArea == field)
+
   def rich = {
-    def singleValuable = myMineralFields.exists(_.value > 15000) && myMineralFields.exists(_.patches.size >= 10)
+    def singleValuable = myMineralFields.exists(_.value > 15000) &&
+                         myMineralFields.exists(_.patches.size >= 10)
     def multipleIncomes = myMineralFields.size >= 2 && myMineralFields.map(_.value).sum > 5000
     def muchGas = myGeysirs.map(_.remaining).sum > 3000
     (singleValuable || multipleIncomes) && muchGas
   }
 
-  def richBasesCount = richBases.size
   def myMineralFields = myBases.flatMap(_.myMineralGroup).toSeq
+
   def myGeysirs = myBases.flatMap(_.myGeysirs).toSeq
-  def mainBase = myBases.headOption
+
+  def richBasesCount = richBases.size
+
+  def richBases = bases.filter(_.resourceArea.rich)
+
   def bases = myBases.toSeq
-  def tick():Unit = {
+
+  def mainBase = myBases.headOption
+
+  def tick(): Unit = {
     val all = world.ownUnits.allByType[MainBuilding]
     all.filterNot(known).foreach { main =>
       val newBase = new Base(main)(world)
@@ -350,7 +395,9 @@ class Bases(world: DefaultWorld) {
 
     myBases.retain(!_.mainBuilding.isDead)
   }
+
   def known(mb: MainBuilding) = myBases.exists(_.mainBuilding == mb)
+
   def register(newBaseListener: NewBaseListener, notifyForExisting: Boolean): Unit = {
     newBaseListeners += newBaseListener
     if (notifyForExisting) {
@@ -358,14 +405,15 @@ class Bases(world: DefaultWorld) {
     }
   }
 }
+
 trait NewBaseListener {
   def newBase(base: Base): Unit
 }
 
-
 case class Base(mainBuilding: MainBuilding)(world: DefaultWorld) {
 
-  val resourceArea = world.resourceAnalyzer.resourceAreas.minBy(c => mainBuilding.area.distanceTo(c.center))
+  val resourceArea = world.resourceAnalyzer.resourceAreas
+                     .minBy(c => mainBuilding.area.distanceTo(c.center))
 
   val myMineralGroup = resourceArea.patches
   val myGeysirs      = resourceArea.geysirs
@@ -374,6 +422,7 @@ case class Base(mainBuilding: MainBuilding)(world: DefaultWorld) {
     s"""
        |Found base/minerals $mainBuilding: $myMineralGroup
      """.stripMargin)
+
   override def toString: String = s"Base@$mainBuilding"
 }
 

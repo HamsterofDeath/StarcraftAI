@@ -24,7 +24,8 @@ class ProvideNewBuildings(universe: Universe)
 
       val customPosition = in.jobRequest.customPosition.predefined
                            .orElse(in.jobRequest.customPosition.evaluateCostly)
-                           .orElse(helper.findSpotFor(in.base.mainBuilding.tilePosition, in.buildingType))
+                           .orElse(
+                             helper.findSpotFor(in.base.mainBuilding.tilePosition, in.buildingType))
 
       customPosition
       .foreach(e => assert(mapLayers.rawWalkableMap.insideBounds(e), s"$e was not inside map :("))
@@ -45,7 +46,9 @@ class ProvideNewBuildings(universe: Universe)
         })
       case Some(startJob) =>
         BackgroundComputationResult.result(startJob.toSeq, () => false, () => {
-          info(s"Planning to build ${in.buildingType.className} at ${startJob.buildWhere} by ${in.worker}")
+          info(s"Planning to build ${in.buildingType.className} at ${startJob.buildWhere} by ${
+            in.worker
+          }")
           in.jobRequest.clearableInNextTick_!()
           mapLayers.blockBuilding_!(startJob.area)
           //maybe there is a better worker for this than the one that was initially chosen
@@ -91,13 +94,16 @@ class ProvideNewBuildings(universe: Universe)
     }
   }
 
-  case class Data(worker: WorkerUnit, buildingType: Class[_ <: Building], base: Base, helper: ConstructionSiteFinder,
+  case class Data(worker: WorkerUnit, buildingType: Class[_ <: Building], base: Base,
+                  helper: ConstructionSiteFinder,
                   jobRequest: BuildUnitRequest[Building])
+
 }
 
-
-class ProvideExpansions(universe: Universe) extends OrderlessAIModule[WorkerUnit](universe) with BuildingRequestHelper {
+class ProvideExpansions(universe: Universe)
+  extends OrderlessAIModule[WorkerUnit](universe) with BuildingRequestHelper {
   private var plannedExpansionPoint = Option.empty[ResourceArea]
+
   def forceExpand(patch: MineralPatchGroup) = {
     plannedExpansionPoint = {
       val all = world.resourceAnalyzer.resourceAreas
@@ -136,8 +142,11 @@ class ProvideExpansions(universe: Universe) extends OrderlessAIModule[WorkerUnit
         case None =>
           if (!unitManager.plannedToBuild(race.resourceDepositClass)) {
             val buildingSpot = AlternativeBuildingSpot
-                               .fromExpensive(new ConstructionSiteFinder(universe).forResourceArea(resources))(_.find)
-            requestBuilding(race.resourceDepositClass, takeCareOfDependencies = false, saveMoneyIfPoor = true,
+                               .fromExpensive(
+                                 new ConstructionSiteFinder(universe).forResourceArea(resources))(
+                                 _.find)
+            requestBuilding(race.resourceDepositClass, takeCareOfDependencies = false,
+              saveMoneyIfPoor = true,
               buildingSpot, belongsTo = plannedExpansionPoint, priority = Priority.Expand)
           }
       }
@@ -147,6 +156,7 @@ class ProvideExpansions(universe: Universe) extends OrderlessAIModule[WorkerUnit
 
 class ProvideNewSupply(universe: Universe) extends OrderlessAIModule[WorkerUnit](universe) {
   private val supplyEmployer = new Employer[SupplyProvider](universe)
+
   override def onTick() = {
 
     val cur = plannedSupplies
@@ -156,11 +166,13 @@ class ProvideNewSupply(universe: Universe) extends OrderlessAIModule[WorkerUnit]
     if (needsMore) {
       // can't use helper because overlords are not buildings :|
       val race = universe.myRace
-      val result = resources.request(ResourceRequests.forUnit(race, classOf[SupplyProvider], Priority.Supply), this)
+      val result = resources.request(
+        ResourceRequests.forUnit(race, classOf[SupplyProvider], Priority.Supply), this)
       result.ifSuccess { suc =>
         trace(s"More supply approved! $suc, requesting ${race.supplyClass.className}")
         val ofType = UnitJobRequest
-                     .newOfType(universe, supplyEmployer, classOf[SupplyProvider], suc, priority = Priority.Supply)
+                     .newOfType(universe, supplyEmployer, classOf[SupplyProvider], suc,
+                       priority = Priority.Supply)
 
         // this will always be unfulfilled
         val result = unitManager.request(ofType)
@@ -168,6 +180,7 @@ class ProvideNewSupply(universe: Universe) extends OrderlessAIModule[WorkerUnit]
       }
     }
   }
+
   private def plannedSupplies = {
     val real = resources.supplies
     val planned = unitManager.plannedSupplyAdditions
@@ -212,9 +225,12 @@ class ProvideNewUnits(universe: Universe) extends OrderlessAIModule[UnitFactory]
                   Nil
                 case _ =>
                   val res = req match {
-                    case hf: HasFunding if resources.hasStillLocked(hf.proofForFunding) => hf.proofForFunding
+                    case hf: HasFunding if resources.hasStillLocked(hf.proofForFunding) => hf
+                                                                                           .proofForFunding
                     case _ => resources
-                              .request(ResourceRequests.forUnit(universe.myRace, typeFixed, req.priority), self)
+                              .request(
+                                ResourceRequests.forUnit(universe.myRace, typeFixed, req.priority),
+                                self)
                   }
                   res match {
                     case suc: ResourceApprovalSuccess =>
@@ -305,7 +321,8 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule(universe
       Micro.MiningOrganization.onTick()
       val missing = idealNumberOfWorkers - teamSize
       if (missing > 0) {
-        val result = universe.unitManager.request(UnitJobRequest.idleOfType(emp, classOf[WorkerUnit], missing))
+        val result = universe.unitManager
+                     .request(UnitJobRequest.idleOfType(emp, classOf[WorkerUnit], missing))
         val jobs = result.units.flatMap { worker =>
           Micro.MiningOrganization.findBestPatch(worker).map { patch =>
             info(s"Added $worker to mining team of $patch")
@@ -332,18 +349,23 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule(universe
         private val workerCountByDistance = LazyVal.from {
           val distance = math.round(patch.area.distanceTo(base.mainBuilding.area)).toInt
           distance match {
-            case 0  => 1
-            case 1|2|3|4  => 2
-            case 5|6|7  => 3
+            case 0 => 1
+            case 1 | 2 | 3 | 4 => 2
+            case 5 | 6 | 7 => 3
             case x => (x / 2.5).toInt
           }
         }
+
         override def toString: String = s"(Mined) $patch"
+
         def hasOpenSpot: Boolean = miningTeam.size < estimateRequiredWorkers
+
         def openSpotCount = estimateRequiredWorkers - miningTeam.size
+
         def estimateRequiredWorkers = {
           if (patch.remainingMinerals > 0) workerCountByDistance.get else 0
         }
+
         def lockToPatch_!(job: MineMineralsAtPatch): Unit = {
           info(s"Added ${job.unit} to mining team of $patch")
           miningTeam += job
@@ -375,8 +397,18 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule(universe
 
         import States._
 
+        private val nearestReachableBase = oncePer(Primes.prime71) {
+          bases.bases.filter { b =>
+            worker.currentArea.contains(b.mainBuilding.areaOnMap)
+          }.minByOpt { base =>
+            base.mainBuilding.area.distanceTo(worker.currentTile)
+          }
+        }
+        private var state: State         = Idle
+
         override def copyOfJobForNewUnit(replacement: WorkerUnit) = new
             MineMineralsAtPatch(replacement, miningTarget)
+
         override def asRequest = {
           val picker = {
             CherryPickers.cherryPickWorkerByDistance[WorkerUnit](miningTarget.patch.centerTile)()
@@ -386,33 +418,18 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule(universe
         }
 
         override def couldSwitchInTheFuture = miningTarget.patch.hasRemainingMinerals
+
         override def canSwitchNow = !worker.isWaitingForMinerals &&
                                     !worker.isCarryingMinerals &&
                                     !worker.isInMiningProcess
 
-        override protected def pathTargetPosition = {
-          if (worker.isCarryingMinerals) {
-            nearestReachableBase.get.map(_.mainBuilding.centerTile)
-          } else {
-            miningTarget.patch.centerTile.toSome
-          }
-        }
-
-        private val nearestReachableBase = oncePer(Primes.prime71) {
-          bases.bases.filter { b =>
-            worker.currentArea.contains(b.mainBuilding.areaOnMap)
-          }.minByOpt { base =>
-            base.mainBuilding.area.distanceTo(worker.currentTile)
-          }
-        }
-
-        private var state: State = Idle
         override def onStealUnit(): Unit = {
           super.onStealUnit()
           miningTarget.removeFromPatch_!(myWorker)
         }
-        override def worker = myWorker
+
         override def requiredWorkers: Int = miningTarget.estimateRequiredWorkers
+
         override def shortDebugString: String = state match {
           case States.Idle => s"Idle/${unit.nativeUnit.getOrder}"
           case States.ApproachingMinerals => "Locked"
@@ -420,6 +437,7 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule(universe
           case States.ReturningMinerals => "Delivering"
           case States.ReturningMineralsAfterInterruption => "Delivering (really)"
         }
+
         override def ordersForTick: Seq[UnitOrder] = {
           def sendWorkerToPatch = ApproachingMinerals -> Orders.Gather(myWorker, miningTarget.patch)
           def returnDelivery = Orders.ReturnMinerals(myWorker, base.mainBuilding)
@@ -440,7 +458,8 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule(universe
               // repeat the order to prevent the worker from moving away
               sendWorkerToPatch
 
-            case ApproachingMinerals if myWorker.isWaitingForMinerals || myWorker.isInMiningProcess =>
+            case ApproachingMinerals if myWorker.isWaitingForMinerals ||
+                                        myWorker.isInMiningProcess =>
               // let the poor worker alone now
               Mining -> noop
 
@@ -454,7 +473,8 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule(universe
               // the worker is done mining
               ReturningMinerals -> returnDelivery
 
-            case ReturningMineralsAfterInterruption if myWorker.isCarryingMinerals && !myWorker.isMoving =>
+            case ReturningMineralsAfterInterruption if myWorker.isCarryingMinerals &&
+                                                       !myWorker.isMoving =>
               noCommandsForTicks_!(10)
               ReturningMineralsAfterInterruption -> returnDelivery
             case ReturningMineralsAfterInterruption if myWorker.isCarryingMinerals =>
@@ -473,11 +493,25 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule(universe
           state = newState
           order.toList.filterNot(_.isNoop)
         }
+
         override def isFinished = !miningTarget.patch.isInGame
+
         override def failedOrObsolete: Boolean = super.failedOrObsolete || base.mainBuilding.isDead
+
+        override protected def pathTargetPosition = {
+          if (worker.isCarryingMinerals) {
+            nearestReachableBase.get.map(_.mainBuilding.centerTile)
+          } else {
+            miningTarget.patch.centerTile.toSome
+          }
+        }
+
+        override def worker = myWorker
+
         override protected def ferryDropTarget = {
           targetPatch.tilePosition.middleBetween(base.mainBuilding.tilePosition).toSome
         }
+
         override def targetPatch = miningTarget.patch
       }
 
@@ -510,21 +544,31 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule(universe
       }
 
       object States {
+
         sealed trait State
 
         case object Idle extends State
+
         case object ApproachingMinerals extends State
+
         case object Mining extends State
+
         case object ReturningMinerals extends State
+
         case object ReturningMineralsAfterInterruption extends State
+
       }
+
     }
+
   }
+
 }
 
 class ManageMiningAtGeysirs(universe: Universe)
   extends OrderlessAIModule[WorkerUnit](universe) with BuildingRequestHelper {
   private val gatheringJobs = ArrayBuffer.empty[ManageMiningAtGeysir]
+
   override def onTick(): Unit = {
     val unattended = unitManager.bases.bases.filter(base => !gatheringJobs.exists(_.covers(base)))
     unattended.foreach { base =>
@@ -538,7 +582,9 @@ class ManageMiningAtGeysirs(universe: Universe)
 
   class ManageMiningAtGeysir(base: Base, geysir: Geysir) extends Employer[WorkerUnit](universe) {
     self =>
-    private val idealWorkerCount            = 3 + (base.mainBuilding.area.distanceTo(geysir.area) / 3).toInt
+    private val idealWorkerCount            = 3 +
+                                              (base.mainBuilding.area.distanceTo(geysir.area) / 3)
+                                              .toInt
     private val workerCountBeforeWantingGas = universe.mapLayers
                                               .isOnIsland(base.mainBuilding.tilePosition)
                                               .ifElse(8, 14)
@@ -574,7 +620,8 @@ class ManageMiningAtGeysirs(universe: Universe)
           }
         case Some(ref) =>
           val missing = idealWorkerCount - teamSize
-          val ofType = UnitJobRequest.idleOfType(self, classOf[WorkerUnit], missing, Priority.CollectGas)
+          val ofType = UnitJobRequest
+                       .idleOfType(self, classOf[WorkerUnit], missing, Priority.CollectGas)
                        .withOnlyAccepting(_.isCarryingNothing)
           val result = unitManager.request(ofType)
           result.units.foreach { freeWorker =>
@@ -582,6 +629,7 @@ class ManageMiningAtGeysirs(universe: Universe)
           }
       }
     }
+
     def covers(base: Base) = this.base.mainBuilding == base.mainBuilding
 
     class MineGasAtGeysir(worker: WorkerUnit, targetGeysir: Geysir)
@@ -590,33 +638,9 @@ class ManageMiningAtGeysirs(universe: Universe)
               with CanAcceptUnitSwitch[WorkerUnit]
               with FerrySupport[WorkerUnit]
               with PathfindingSupport[WorkerUnit] {
-      override def copyOfJobForNewUnit(replacement: WorkerUnit) = new
-          MineGasAtGeysir(replacement, targetGeysir)
-      override def asRequest = {
-        val picker = {
-          CherryPickers.cherryPickWorkerByDistance[WorkerUnit](targetGeysir.centerTile)()
-        }
-        UnitJobRequest.idleOfType(employer, worker.getClass)
-        .withRequest(_.withCherryPicker_!(picker))
-      }
-      override def couldSwitchInTheFuture = geysir.nonEmpty
-      override def canSwitchNow = !worker.isCarryingGas && !worker.isGatheringGas
-      override protected def pathTargetPosition = {
-        if (worker.isCarryingGas) {
-          nearestReachableBase.get.map(_.mainBuilding.centerTile)
-        } else {
-          geysir.centerTile.toSome
-        }
-      }
-
-      override def jobHasFailedWithoutDeath = {
-        super.jobHasFailedWithoutDeath || refinery.isEmpty || refinery.exists(_.isDead)
-      }
-
-      private val freeNearGeysir = {
+      private val freeNearGeysir       = {
         mapLayers.rawWalkableMap.nearestFreeBlock(geysir.tilePosition, 1)
       }
-
       private val nearestReachableBase = oncePer(Primes.prime71) {
         bases.bases.filter { b =>
           worker.currentArea.contains(b.mainBuilding.areaOnMap)
@@ -624,9 +648,31 @@ class ManageMiningAtGeysirs(universe: Universe)
           base.mainBuilding.area.distanceTo(worker.currentTile)
         }
       }
-      private var state: State = Idle
+      private var state: State         = Idle
+
+      override def copyOfJobForNewUnit(replacement: WorkerUnit) = new
+          MineGasAtGeysir(replacement, targetGeysir)
+
+      override def asRequest = {
+        val picker = {
+          CherryPickers.cherryPickWorkerByDistance[WorkerUnit](targetGeysir.centerTile)()
+        }
+        UnitJobRequest.idleOfType(employer, worker.getClass)
+        .withRequest(_.withCherryPicker_!(picker))
+      }
+
+      override def couldSwitchInTheFuture = geysir.nonEmpty
+
+      override def canSwitchNow = !worker.isCarryingGas && !worker.isGatheringGas
+
+      override def jobHasFailedWithoutDeath = {
+        super.jobHasFailedWithoutDeath || refinery.isEmpty || refinery.exists(_.isDead)
+      }
+
       override def shortDebugString: String = state.getClass.className
+
       override def isFinished = false
+
       override def ordersForTick: Seq[UnitOrder] = {
         val (newState, order) = state match {
           case Idle =>
@@ -639,17 +685,32 @@ class ManageMiningAtGeysirs(universe: Universe)
         state = newState
         order.toSeq
       }
+
+      override protected def pathTargetPosition = {
+        if (worker.isCarryingGas) {
+          nearestReachableBase.get.map(_.mainBuilding.centerTile)
+        } else {
+          geysir.centerTile.toSome
+        }
+      }
+
       override protected def ferryDropTarget = {
         freeNearGeysir.forNone {
           warn(s"No free tile around $geysir")
         }
         freeNearGeysir
       }
+
       trait State
+
       case object Idle extends State
+
       case object Gathering extends State
+
     }
+
   }
+
 }
 
 // need this for instanceof checks

@@ -3,14 +3,18 @@ package pony
 case class Priority(importance: Double) {
 
   def <(priority: Priority) = importance < priority.importance
+
   def >(priority: Priority) = importance > priority.importance
+
   def <=(priority: Priority) = importance <= priority.importance
 }
 
 case class SecondPriority(importance: Double) {
 
   def <(priority: SecondPriority) = importance < priority.importance
+
   def >(priority: SecondPriority) = importance > priority.importance
+
   def <=(priority: SecondPriority) = importance <= priority.importance
 }
 

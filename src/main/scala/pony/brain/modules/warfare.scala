@@ -87,6 +87,7 @@ class FormationAtFrontLineHelper(override val universe: Universe, distance: Int 
       .filter(map.free)
     }
   }
+
   def blacklisted(e: MapTilePosition) = blocked.contains(e)
 
   def defenseLines = myDefenseLines.get
@@ -99,17 +100,22 @@ class FormationAtFrontLineHelper(override val universe: Universe, distance: Int 
     val map = mapLayers.freeWalkableTiles
     defenseLines.iterator.flatMap(_.pointsInside).filterNot(blacklisted).filter(map.free)
   }
+
   def cleanBlacklist(dispose: (MapTilePosition, BlacklistReason) => Boolean) = {
     blocked.filter(e => dispose(e._1, e._2))
     .foreach(e => whiteList_!(e._1))
   }
+
   def whiteList_!(tilePosition: MapTilePosition): Unit = {
     blocked.remove(tilePosition)
   }
+
   def blackList_!(tile: MapTilePosition): Unit = {
     blocked.put(tile, BlacklistReason(universe.currentTick))
   }
+
   def reasonForBlacklisting(tilePosition: MapTilePosition) = blocked.get(tilePosition)
+
   case class BlacklistReason(when: Int)
 
 }
@@ -119,7 +125,9 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
   private           val attacks                                   = ArrayBuffer.empty[Attack]
   private           var planInProgress: BWFuture[Option[Attacks]] = BWFuture(None)
   @volatile private var thinking                                  = false
+
   def allAttacks = attacks.toVector
+
   override def onTick(): Unit = {
     super.onTick()
     attacks.foreach(_.onTick())
@@ -133,7 +141,9 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
       }
     }
   }
+
   def attackOf(m: Mobile) = attacks.find(_.force(m))
+
   def initiateAttack(where: MapTilePosition, complete: Boolean = true): Unit = {
     majorInfo(s"Initiating attack of $where")
     assert(!thinking, s"Cannot multitask yet, sorry")
@@ -149,6 +159,7 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
       initiateAttack(where, seq)
     }
   }
+
   def initiateAttack(where: MapTilePosition, units: Seq[Mobile]): Unit = {
     debug(s"Attacking $where with $units")
     val helper = new GroupingHelper(universe.mapLayers.rawWalkableMap, units, universe.allUnits)
@@ -173,23 +184,24 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
     }
     thinking = true
   }
+
   trait Action {
     def asOrder: UnitOrder
   }
+
   case class MoveToPosition(who: Mobile, where: MapTilePosition) extends Action {
     override def asOrder = Orders.MoveToTile(who, where)
   }
+
   case class AttackToPosition(who: Mobile, where: MapTilePosition) extends Action {
     override def asOrder = Orders.AttackMove(who, where)
   }
+
   case class StayInPosition(who: Mobile) extends Action {
     override def asOrder = Orders.NoUpdate(who)
   }
+
   class Attack(private var currentForce: Set[Mobile], meetingPoint: TargetPosition) {
-    def destination = meetingPoint
-
-    assert(currentForce.nonEmpty, "WTF?")
-
     private val area = {
       currentForce.map { unit =>
         mapLayers.rawWalkableMap
@@ -201,6 +213,7 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
       ._1
     }
 
+    assert(currentForce.nonEmpty, "WTF?")
     private val centerOfForce = oncePerTick {
       val realCenter = {
         currentForce.foldLeft(MapTilePosition.shared(0, 0))((acc, e) =>
@@ -210,22 +223,32 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
       area.flatMap(_.nearestFree(realCenter))
       .getOrElse(realCenter)
     }
-
     private val pathToFollow = universe.pathfinders.groundSafe
                                .findPaths(currentCenter, meetingPoint.where)
     private val migration    = pathToFollow.map(_.map(_.toMigration))
 
+    def destination = meetingPoint
+
     def migrationPlan = migration.result
+
     def hasNotEnded = !hasEnded
+
     def hasEnded = !hasMembers || allReachedDestination
+
     def hasMembers = currentForce.nonEmpty
+
     def allReachedDestination = migration.result.exists(_.allReachedDestination)
+
     def onTick(): Unit = {
       currentForce = currentForce.filter(_.isInGame)
     }
+
     def force = currentForce
+
     def currentCenter = centerOfForce.get
+
     def completePath = pathToFollow
+
     def suggestActionFor(t: Mobile) = {
       migration.result match {
         case None =>
@@ -259,7 +282,9 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
       }
     }
   }
+
   case class Attacks(parts: Seq[Attack])
+
 }
 
 case class UnitGroup[T <: WrapsUnit](members: Seq[T], center: MapTilePosition)
@@ -295,6 +320,7 @@ class GroupingHelper[T <: WrapsUnit](val map: Grid2D, seq: TraversableOnce[T], s
 
   /**
     * can/should be run asynchronously
+    *
     * @return
     */
   def evaluateUnitGroups = {
@@ -314,6 +340,10 @@ class GroupingHelper[T <: WrapsUnit](val map: Grid2D, seq: TraversableOnce[T], s
 }
 
 class Group[T <: WrapsUnit](map: Grid2D, source: AllUnits) {
+  private val maxDst    = 10 * 10
+  private val myMembers = ArrayBuffer.empty[((Int, MapTilePosition))]
+  private var myCenter  = MapTilePosition.zero
+
   def memberUnits = {
     val typed = (memberIds.flatMap(source.own.byId) ++
                  memberIds.flatMap(source.other.byId)).toVector
@@ -322,18 +352,17 @@ class Group[T <: WrapsUnit](map: Grid2D, source: AllUnits) {
     typed.asInstanceOf[Vector[T]]
   }
 
-  private val maxDst = 10 * 10
-
   def size = myMembers.size
 
-  private val myMembers = ArrayBuffer.empty[((Int, MapTilePosition))]
-  private var myCenter  = MapTilePosition.zero
   def memberIds = myMembers.iterator.map(_._1)
+
   def center = myCenter
+
   def add_!(elem: (Int, MapTilePosition)): Unit = {
     myMembers += elem
     myCenter = evalCenter
   }
+
   private def evalCenter = {
     var x = 0
     var y = 0
@@ -345,6 +374,7 @@ class Group[T <: WrapsUnit](map: Grid2D, source: AllUnits) {
     y /= myMembers.size
     MapTilePosition.shared(x, y)
   }
+
   def canJoin(e: (Int, MapTilePosition)) = {
     e._2.distanceSquaredTo(myCenter) < maxDst && map.connectedByLine(myCenter, e._2)
   }
@@ -405,24 +435,33 @@ trait AlternativeBuildingSpot {
 object AlternativeBuildingSpot {
   val useDefault = new AlternativeBuildingSpot {
     override def evaluateCostly = None
+
     override def shouldUse = false
+
     override def predefined = None
+
     override def init_!(): Unit = {}
   }
+
   def fromExpensive[X](initOnMainThread: => X)
                       (evalPosition: (X) => Option[MapTilePosition]): AlternativeBuildingSpot = new
       AlternativeBuildingSpot {
     private var initPackage: X = _
+
     override def init_!(): Unit = {
       initPackage = initOnMainThread
     }
 
     override def shouldUse = true
+
     override def evaluateCostly = evalPosition(initPackage)
+
     override def predefined = None
   }
+
   def fromPreset(fixedPosition: MapTilePosition): AlternativeBuildingSpot = fromPreset(
     Some(fixedPosition))
+
   def fromPreset(fixedPosition: Option[MapTilePosition]): AlternativeBuildingSpot = new
       AlternativeBuildingSpot {
 
@@ -430,9 +469,13 @@ object AlternativeBuildingSpot {
       assert(where.x < 1000)
       assert(where.y < 1000)
     }
+
     override def shouldUse = true
+
     override def evaluateCostly = throw new RuntimeException("This should not be called")
+
     override def predefined = fixedPosition
+
     override def init_!(): Unit = {}
   }
 }
@@ -559,6 +602,7 @@ class ProvideSuggestedAndRequestedAddons(universe: Universe)
     }
 
   }
+
   private def canBuildMoreOf(addon: Class[_ <: Addon]) = {
     val existing = ownUnits.allByClass(addon)
     if (existing.isEmpty) {
@@ -581,22 +625,6 @@ class SetupAntiCloakDefenses(universe: Universe)
   private val richBaseCount = oncePerTick {
     bases.richBasesCount
   }
-
-  private def targetBuildingType = race.detectorBuildingClass
-
-  class Input {
-    def age = currentTick - created
-    val created                = currentTick
-    val buildingType           = targetBuildingType
-    val existing               = ownUnits.allByClass(buildingType)
-    val planned                = unitManager.plannedToBuildByClass(buildingType)
-    val exposed                = mapLayers.exposedToCloakedUnits
-    val ownArea                = mapLayers.defendedTiles
-    val constructionSiteFinder = new ConstructionSiteFinder(universe)
-  }
-
-  private def input = new Input
-
   private val analyzed = FutureIterator.feed(input) produceAsyncLater { in =>
     val limit = richBaseCount.get min 3
     val counts = mutable.HashMap.empty[MapTilePosition, Int]
@@ -644,12 +672,6 @@ class SetupAntiCloakDefenses(universe: Universe)
     }
   }
 
-  private def kickOffOn24thTick(): Unit = {
-    if (currentTick == 24) {
-      analyzed.prepareNextIfDone()
-    }
-  }
-
   override def onTick() = {
     super.onTick()
     kickOffOn24thTick()
@@ -679,11 +701,34 @@ class SetupAntiCloakDefenses(universe: Universe)
       }
     }
   }
+
+  private def targetBuildingType = race.detectorBuildingClass
+
+  private def kickOffOn24thTick(): Unit = {
+    if (currentTick == 24) {
+      analyzed.prepareNextIfDone()
+    }
+  }
+
+  private def input = new Input
+
+  class Input {
+    val created                = currentTick
+    val buildingType           = targetBuildingType
+    val existing               = ownUnits.allByClass(buildingType)
+    val planned                = unitManager.plannedToBuildByClass(buildingType)
+    val exposed                = mapLayers.exposedToCloakedUnits
+    val ownArea                = mapLayers.defendedTiles
+    val constructionSiteFinder = new ConstructionSiteFinder(universe)
+
+    def age = currentTick - created
+  }
 }
 
 class HandleDefenses(universe: Universe) extends OrderlessAIModule[Mobile](universe) {
 
   private var backgroundOp = BWFuture.none[Seq[Group[Mobile]]]
+
   override def onTick(): Unit = {
     if (backgroundOp.result.isEmpty) {
       ifNth(Primes.prime43) {
@@ -709,16 +754,18 @@ class HandleDefenses(universe: Universe) extends OrderlessAIModule[Mobile](unive
         resetBackgroundOp()
       }, {})
     }
-    }
+  }
+
   private def resetBackgroundOp(): Unit = {
     backgroundOp = BWFuture.none
-    }
   }
+}
 
 class ProvideUpgrades(universe: Universe) extends OrderlessAIModule[Upgrader](universe) {
   self =>
   private val helper     = new HelperAIModule[WorkerUnit](universe) with BuildingRequestHelper
   private val researched = collection.mutable.Map.empty[Upgrade, Int]
+
   override def onTick(): Unit = {
     val maxLimitEnabled = hasLimitDisabler
     val requested = {
@@ -740,8 +787,11 @@ class ProvideUpgrades(universe: Universe) extends OrderlessAIModule[Upgrader](un
         result.units.foreach { up =>
           val price = new UpgradePrice {
             private val current = researched.getOrElse(wantedUpgrade, 0)
+
             override def nextMineralPrice = wantedUpgrade.mineralPriceForStep(current)
+
             override def forUpgrade = wantedUpgrade
+
             override def nextGasPrice = wantedUpgrade.gasPriceForStep(current)
           }
           val result = resources.request(ResourceRequests.forUpgrade(up, price), self)
@@ -765,10 +815,11 @@ class ProvideUpgrades(universe: Universe) extends OrderlessAIModule[Upgrader](un
         } to be build in order for $wantedUpgrade to be researched")
         helper.requestBuilding(needs, takeCareOfDependencies = true)
       }
-      }
     }
-  private def hasLimitDisabler = universe.ownUnits.allByType[UpgradeLimitLifter].nonEmpty
   }
+
+  private def hasLimitDisabler = universe.ownUnits.allByType[UpgradeLimitLifter].nonEmpty
+}
 
 class EnqueueFactories(universe: Universe)
   extends OrderlessAIModule[WorkerUnit](universe) with BuildingRequestHelper {
@@ -779,9 +830,9 @@ class EnqueueFactories(universe: Universe)
                            unitManager.plannedToBuildByClass(cap.typeOfFactory).size
       if (existingByType < cap.maximumSustainable) {
         requestBuilding(cap.typeOfFactory, takeCareOfDependencies = true)
-        }
       }
     }
+  }
 
   private def evaluateCapacities = {
     strategy.current.suggestProducers
@@ -792,20 +843,21 @@ class EnqueueFactories(universe: Universe)
       val copy = IdealProducerCount(elems.head.typeOfFactory, sum)(active = true)
       copy
     }
-    }
   }
+}
 
 case class IdealProducerCount[T <: UnitFactory](typeOfFactory: Class[_ <: UnitFactory],
                                                 maximumSustainable: Int)
                                                (active: => Boolean) {
-    def isActive = active
-  }
+  def isActive = active
+}
+
 case class IdealUnitRatio[T <: Mobile](unitType: Class[_ <: Mobile], amount: Int)
                                       (active: => Boolean) {
   def fixedAmount = amount max 1
 
-    def isActive = active
-  }
+  def isActive = active
+}
 
 class EnqueueArmy(universe: Universe)
   extends OrderlessAIModule[UnitFactory](universe) with UnitRequestHelper {
@@ -815,7 +867,7 @@ class EnqueueArmy(universe: Universe)
     val mostMissing = p.wanted.toVector.sortBy { case (t, idealRatio) =>
       val existingRatio = p.existing.getOrElse(t, 0.0)
       existingRatio / idealRatio
-      }
+    }
     val needsSomething = {
       val (_, later) = mostMissing.partition
       { case (c, _) => universe.unitManager.allRequirementsFulfilled(c) }
@@ -840,7 +892,8 @@ class EnqueueArmy(universe: Universe)
     needsSomething.foreach { case (thisOne, _) =>
       requestUnit(thisOne, takeCareOfDependencies = true)
     }
-    }
+  }
+
   def percentages = {
     val ratios = strategy.current.suggestUnits.filter(_.isActive)
     val summed = ratios.groupBy(_.unitType)
@@ -864,45 +917,65 @@ class EnqueueArmy(universe: Universe)
                               }
     Percentages(percentagesWanted, percentagesExisting)
   }
+
   case class Percentages(wanted: Map[Class[_ <: Mobile], Double],
                          existing: Map[Class[_ <: Mobile], Double])
-  }
+
+}
 
 object Strategy {
 
   trait LongTermStrategy extends HasUniverse {
+    val timingHelpers = new TimingHelpers
+
     def buildAntiCloakNow: Boolean
 
-    val timingHelpers = new TimingHelpers
     def suggestNextExpansion: Option[ResourceArea]
     def suggestUpgrades: Seq[UpgradeToResearch]
     def suggestUnits: Seq[IdealUnitRatio[_ <: Mobile]]
     def suggestProducers: Seq[IdealProducerCount[_ <: UnitFactory]]
     def suggestAddons: Seq[AddonToAdd] = Nil
     def determineScore: Int
+
     class TimingHelpers {
 
       def phase = new Phase
+
       class Phase {
         def isLate = isBetween(20, 9999)
+
         def isLateMid = isBetween(13, 20)
+
         def isMid = isBetween(9, 13)
+
         def isEarlyMid = isBetween(5, 9)
-        def isEarly = isBetween(0, 5)
+
         def isBetween(from: Int, to: Int) = time.minutes >= from && time.minutes < to
+
+        def isEarly = isBetween(0, 5)
+
         def isSinceVeryEarlyMid = time.minutes >= 4
+
         def isSinceEarlyMid = time.minutes >= 5
+
         def isSinceAlmostMid = time.minutes >= 7
+
         def isSinceMid = time.minutes >= 8
+
         def isSincePostMid = time.minutes >= 9
+
         def isSinceLateMid = time.minutes >= 13
+
         def isSinceVeryLateMid = time.minutes >= 16
+
         def isBeforeLate = time.minutes <= 20
 
         def isAnyTime = true
       }
+
     }
-    }
+
+  }
 
   trait TerranDefaults extends LongTermStrategy {
 
@@ -956,17 +1029,18 @@ object Strategy {
       poor.size >= rich.size && rich.size <= 2
     }
     protected def expansionThreshold = 0.5
-    }
+  }
 
   case class UpgradeToResearch(upgrade: Upgrade)(active: => Boolean) {
     val maxLevel = upgrade.nativeType.fold(_.maxRepeats, _ => 1)
 
     def isActive = active
-    }
+  }
+
   case class AddonToAdd(addon: Class[_ <: Addon], requestNewBuildings: Boolean)
                        (active: => Boolean) {
     def isActive = active
-    }
+  }
 
   class Strategies(override val universe: Universe) extends HasUniverse {
     private val available              = new TerranHeavyMetal(universe) ::
@@ -975,19 +1049,27 @@ object Strategy {
                                          new TerranFootSoldiers(universe) ::
                                          Nil
     private var best: LongTermStrategy = new IdleAround(universe)
+
     def current = best
+
     def tick(): Unit = {
       ifNth(Primes.prime251) {
         best = available.maxBy(_.determineScore)
       }
     }
   }
+
   class IdleAround(override val universe: Universe) extends LongTermStrategy {
     override def buildAntiCloakNow = false
+
     override def determineScore = -1
+
     override def suggestProducers = Nil
+
     override def suggestUnits = Nil
+
     override def suggestUpgrades = Nil
+
     override def suggestNextExpansion = None
   }
 
@@ -1004,6 +1086,7 @@ object Strategy {
         timingHelpers.phase.isSincePostMid) ::
       Nil
     }
+
     override def suggestUnits = {
       IdealUnitRatio(classOf[Marine], 3)(timingHelpers.phase.isMid) ::
       IdealUnitRatio(classOf[Medic], 1)(timingHelpers.phase.isLateMid) ::
@@ -1016,6 +1099,7 @@ object Strategy {
       IdealUnitRatio(classOf[Wraith], 1)(timingHelpers.phase.isSinceLateMid) ::
       Nil
     }
+
     override def suggestUpgrades: Seq[UpgradeToResearch] =
       UpgradeToResearch(Upgrades.Terran.SpiderMines)(timingHelpers.phase.isAnyTime) ::
       UpgradeToResearch(Upgrades.Terran.VultureSpeed)(timingHelpers.phase.isSinceEarlyMid) ::
@@ -1041,7 +1125,7 @@ object Strategy {
       UpgradeToResearch(Upgrades.Terran.GhostVisiblityRange)(
         timingHelpers.phase.isSinceVeryLateMid) ::
       Nil
-    }
+  }
 
   class TerranHeavyAir(override val universe: Universe)
     extends TerranAirSuperiority(universe) with TerranDefaults {
@@ -1050,6 +1134,7 @@ object Strategy {
       IdealUnitRatio(classOf[Battlecruiser], 10)(timingHelpers.phase.isAnyTime) ::
       super.suggestUnits
     }
+
     override def determineScore: Int = {
       super.determineScore + bases.rich.ifElse(10, -10)
     }
@@ -1062,7 +1147,7 @@ object Strategy {
       UpgradeToResearch(Upgrades.Terran.ShipArmor)(timingHelpers.phase.isAnyTime) ::
       super.suggestUpgrades
 
-    }
+  }
 
   class TerranAirSuperiority(override val universe: Universe)
     extends LongTermStrategy with TerranDefaults {
@@ -1096,6 +1181,7 @@ object Strategy {
       IdealProducerCount(classOf[Starport], myBases * 3)(timingHelpers.phase.isAnyTime) ::
       Nil
     }
+
     override def suggestUpgrades =
       UpgradeToResearch(Upgrades.Terran.WraithCloak)(timingHelpers.phase.isAnyTime) ::
       UpgradeToResearch(Upgrades.Terran.ShipWeapons)(timingHelpers.phase.isAnyTime) ::
@@ -1128,7 +1214,7 @@ object Strategy {
       UpgradeToResearch(Upgrades.Terran.GhostVisiblityRange)(
         timingHelpers.phase.isSinceVeryLateMid) ::
       Nil
-    }
+  }
 
   class TerranFootSoldiers(override val universe: Universe)
     extends LongTermStrategy with TerranDefaults {
@@ -1167,6 +1253,6 @@ object Strategy {
       Nil
     }
 
-    }
-
   }
+
+}

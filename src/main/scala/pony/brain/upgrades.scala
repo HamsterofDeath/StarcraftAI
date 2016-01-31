@@ -13,9 +13,7 @@ trait OnResearchComplete {
 }
 
 class ArmorWeaponLevels(override val universe: Universe) extends HasUniverse {
-  def currentWeaponLevelOf(weaponOwner: WrapsUnit) = {
-    getUpgradesOf(weaponOwner).weapon
-  }
+  private val cache = new java.util.HashMap[Player, java.util.HashMap[UnitType, Levels]]
 
   universe.register_!(() => {
     ifNth(Primes.prime23) {
@@ -23,8 +21,13 @@ class ArmorWeaponLevels(override val universe: Universe) extends HasUniverse {
     }
   })
 
-  case class Levels(armor: Int, weapon: Int)
-  private val cache = new java.util.HashMap[Player, java.util.HashMap[UnitType, Levels]]
+  def currentWeaponLevelOf(weaponOwner: WrapsUnit) = {
+    getUpgradesOf(weaponOwner).weapon
+  }
+
+  def currentArmorLevelOf(unit: WrapsUnit) = {
+    getUpgradesOf(unit).armor
+  }
 
   private def getUpgradesOf(unit: WrapsUnit) = {
     val p = unit.nativeUnit.getPlayer
@@ -44,13 +47,13 @@ class ArmorWeaponLevels(override val universe: Universe) extends HasUniverse {
     armor
   }
 
-  def currentArmorLevelOf(unit: WrapsUnit) = {
-    getUpgradesOf(unit).armor
-  }
+  case class Levels(armor: Int, weapon: Int)
 }
 
 class UpgradeManager(override val universe: Universe) extends HasUniverse {
-  private val armorLevels = new ArmorWeaponLevels(universe)
+  private val armorLevels                = new ArmorWeaponLevels(universe)
+  private val onResearchCompleteListener = ArrayBuffer.empty[OnResearchComplete]
+  private val researched                 = mutable.HashMap.empty[Upgrade, Int]
 
   def armorForUnitType(unit: WrapsUnit) = {
     armorLevels.currentArmorLevelOf(unit)
@@ -59,22 +62,10 @@ class UpgradeManager(override val universe: Universe) extends HasUniverse {
   def weaponLevelOf(weaponOwner: WrapsUnit) = {
     armorLevels.currentWeaponLevelOf(weaponOwner)
   }
-
-  private val onResearchCompleteListener = ArrayBuffer.empty[OnResearchComplete]
-
-  private val researched = mutable.HashMap.empty[Upgrade, Int]
   researched += ((Upgrades.Fake.BuildingArmor, 1))
 
   Upgrades.allTech.filter(t => isTechResearchInNativeGame(t.nativeTech)).foreach { up =>
     researched.put(up, 1)
-  }
-
-  def isTechResearchInNativeGame(t: TechType) = {
-    universe.world.nativeGame.self().hasResearched(t)
-  }
-
-  def upgradeLevelOf(u: UpgradeType) = {
-    researched.getOrElse(new Upgrade(u), 0)
   }
 
   def notifyResearched_!(upgrade: Upgrade): Unit = {
@@ -85,10 +76,19 @@ class UpgradeManager(override val universe: Universe) extends HasUniverse {
       u => {
         val actual = universe.world.nativeGame.self().getUpgradeLevel(u)
         val expected = upgradeLevelOf(u)
-        assert(actual == expected, s"Expected level $expected for $upgrade, but game said it was $actual")
+        assert(actual == expected,
+          s"Expected level $expected for $upgrade, but game said it was $actual")
       },
       t => assert(isTechResearchInNativeGame(t), s"Out of sync! $upgrade"))
 
+  }
+
+  def isTechResearchInNativeGame(t: TechType) = {
+    universe.world.nativeGame.self().hasResearched(t)
+  }
+
+  def upgradeLevelOf(u: UpgradeType) = {
+    researched.getOrElse(new Upgrade(u), 0)
   }
 
   def hasResearched(upgrade: Upgrade) = researched.contains(upgrade)

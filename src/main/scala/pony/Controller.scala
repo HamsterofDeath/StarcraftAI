@@ -3,8 +3,8 @@ package pony
 import bwapi.{BWEventListener, Mirror, Player, Position, Unit => NUnit}
 
 /**
- * Created by HoD on 01.08.2015.
- */
+  * Created by HoD on 01.08.2015.
+  */
 object Controller {
 
   def main(args: Array[String]) {
@@ -16,7 +16,8 @@ object Controller {
         System.exit(0)
     }
   }
-  def hookOnToBroodwar(aiGenerator:(DefaultWorld) => AIAPI) = {
+
+  def hookOnToBroodwar(aiGenerator: (DefaultWorld) => AIAPI) = {
     val mirror = new Mirror
 
     var ai = Option.empty[AIAPI]
@@ -40,7 +41,7 @@ object Controller {
         world.foreach(_.onUnitDiscover(unit))
       }
 
-      override def onUnitComplete(unit: NUnit): Unit =  {
+      override def onUnitComplete(unit: NUnit): Unit = {
         world.foreach(_.onUnitComplete(unit))
       }
 
@@ -90,6 +91,7 @@ object Controller {
         world.foreach(_.onPlayerLeft(player))
         ai.foreach(_.onPlayerLeft(player))
       }
+
       override def onNukeDetect(position: Position): Unit = {
         world.foreach(_.onNukeDetect(position))
       }

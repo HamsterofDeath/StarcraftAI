@@ -54,45 +54,56 @@ class Renderer(game: Game, private var color: bwapi.Color) {
   }
 
   def drawTextAtMobileUnit(u: Mobile, text: String, lineOffset: Int = 0): Unit = {
-    game.drawTextMap(u.currentPositionNative.getX, u.currentPositionNative.getY + lineOffset * 10, text)
+    game
+    .drawTextMap(u.currentPositionNative.getX, u.currentPositionNative.getY + lineOffset * 10, text)
   }
 
   def drawTextAtStaticUnit(u: StaticallyPositioned, text: String, lineOffset: Int = 0): Unit = {
     game.drawTextMap(u.nativeMapPosition.getX, u.nativeMapPosition.getY + lineOffset * 10, text)
   }
 
-  def indicateTarget(currentPosition: MapPosition, to: MapTilePosition): Unit = {
-    game.drawLineMap(currentPosition.x, currentPosition.y, to.mapX + tileSize / 2, to.mapY + tileSize / 2, color)
-    drawCircleAroundTile(to)
-  }
   def indicateTarget(currentPosition: MapTilePosition, to: MapTilePosition): Unit = {
     indicateTarget(currentPosition.asMapPosition, to)
   }
+
+  def indicateTarget(currentPosition: MapPosition, to: MapTilePosition): Unit = {
+    game.drawLineMap(currentPosition.x, currentPosition.y, to.mapX + tileSize / 2,
+      to.mapY + tileSize / 2, color)
+    drawCircleAroundTile(to)
+  }
+
   def drawCircleAroundTile(around: MapTilePosition): Unit = {
     game.drawCircleMap(around.mapX + tileSize / 2, around.mapY + tileSize / 2, tileSize / 2, color)
   }
+
   def indicateTarget(currentPosition: MapPosition, to: MapPosition): Unit = {
     game.drawLineMap(currentPosition.x, currentPosition.y, to.x, to.y, color)
     drawCircleAround(to)
   }
+
   def drawCircleAround(around: MapPosition): Unit = {
     drawCircleAround(around, tileSize / 2)
   }
+
   def drawCircleAround(around: MapTilePosition): Unit = {
     drawCircleAround(around.asMapPosition, tileSize / 2)
   }
+
   def drawCircleAround(around: MapPosition, radiusPixels: Int): Unit = {
     game.drawCircleMap(around.x, around.y, radiusPixels, color)
   }
+
   def indicateTarget(currentPosition: MapPosition, area: Area): Unit = {
     game.drawLineMap(currentPosition.x, currentPosition.y, area.center.x, area.center.y, color)
     markTarget(area)
   }
+
   def markTarget(area: Area): Unit = {
     val center = area.center
     val radius = (area.sizeOfArea.x + area.sizeOfArea.y) / 2
     game.drawCircleMap(center.x, center.y, radius, color)
   }
+
   def writeText(position: MapTilePosition, msg: Any): Unit = {
     game.drawTextMap(position.x * 32, position.y * 32, msg.toString)
   }
@@ -114,13 +125,14 @@ class Renderer(game: Game, private var color: bwapi.Color) {
 }
 
 class LazyVal[T](gen: => T, onValueChange: Option[() => Unit] = None) extends Serializable {
-  private var locked = false
+  private var locked    = false
+  private var evaluated = false
+  private var value: T  = _
+
   def lockValueForever(): Unit = {
     locked = true
   }
 
-  private var evaluated = false
-  private var value: T  = _
   def invalidate(): Unit = {
     if (!locked) {
       evaluated = false
@@ -153,17 +165,20 @@ class LazyVal[T](gen: => T, onValueChange: Option[() => Unit] = None) extends Se
 
 object LazyVal {
   def from[T](t: => T) = new LazyVal(t, None)
+
   def from[T](t: => T, onValueChange: => Unit) = new LazyVal(t, Some(() => onValueChange))
 }
 
 class FileStorageLazyVal[T](gen: => T, fileName: String) extends LazyVal(gen, None) {
 
   private var loaded = false
+
   override def invalidate(): Unit = {
     loaded = false
     file.delete()
     super.invalidate()
   }
+
   override def get: T = {
     if (loaded) {
       super.get
@@ -187,6 +202,7 @@ class FileStorageLazyVal[T](gen: => T, fileName: String) extends LazyVal(gen, No
       }
     }
   }
+
   def fromZippedBytes(bytes: Array[Byte]) = {
     val zi = new ZipInputStream(new ByteArrayInputStream(bytes))
     val nextEntry = zi.getNextEntry
@@ -197,7 +213,9 @@ class FileStorageLazyVal[T](gen: => T, fileName: String) extends LazyVal(gen, No
       ret
     }.toOption
   }
+
   private def file = FileStorageLazyVal.fileByName(fileName)
+
   private def toZippedBytes(t: T): Array[Byte] = {
     val bytes = new ByteArrayOutputStream()
     val o = new ObjectOutputStream(bytes)
@@ -242,20 +260,24 @@ class BWFuture[+T](val future: Future[T], incomplete: T) {
     result
   }
 
+  def idle = isDone
+
   def isDone = future.isCompleted
 
-  def idle = isDone
   def map[X](f: T => X) = new BWFuture(future.map(f), f(incomplete))
+
   def ifDone[X](ifDone: T => X): Unit = {
     if (future.isCompleted) {
       ifDone(result)
     }
   }
+
   def result = future.value match {
     case Some(Success(x)) => x
     case Some(Failure(e)) => throw e
     case _ => incomplete
   }
+
   def matchOnSelf[X](ifDone: T => X, ifRunning: => X) = {
     if (future.isCompleted) {
       ifDone(result)
@@ -267,18 +289,41 @@ class BWFuture[+T](val future: Future[T], incomplete: T) {
 }
 
 class FutureIterator[IN, T](feed: => IN, produce: IN => T, startNow: Boolean) {
-  def hasResult = mostRecent.isDefined
-
-  private var lastFeed = Option.empty[IN]
-
-  private val lock = new ReentrantReadWriteLock()
-
-  private var done = Option.empty[T]
-
+  private val lock       = new ReentrantReadWriteLock()
+  private var lastFeed   = Option.empty[IN]
+  private var done       = Option.empty[T]
   private var inProgress = if (startNow) nextFuture else BWFuture.none
   private var thinking   = startNow
 
+  def hasResult = mostRecent.isDefined
+
+  def mostRecent = {
+    lock.readLock().lock()
+    val x = done
+    lock.readLock().unlock()
+    x
+  }
+
   def feedObj = feed
+
+  def lastUsedFeed = {
+    lock.readLock().lock()
+    val x = lastFeed
+    lock.readLock().unlock()
+    x
+  }
+
+  def mostRecentAssumeCalculated = mostRecent.get
+
+  def prepareNextIfDone(): Unit = {
+    lock.writeLock().lock()
+    if (!thinking) {
+      thinking = true
+      lastFeed = None
+      inProgress = nextFuture
+    }
+    lock.writeLock().unlock()
+  }
 
   private def nextFuture = {
     val input = feed
@@ -293,32 +338,6 @@ class FutureIterator[IN, T](feed: => IN, produce: IN => T, startNow: Boolean) {
     }
     fut
   }
-
-  def lastUsedFeed = {
-    lock.readLock().lock()
-    val x = lastFeed
-    lock.readLock().unlock()
-    x
-  }
-
-  def mostRecentAssumeCalculated = mostRecent.get
-
-  def mostRecent = {
-    lock.readLock().lock()
-    val x = done
-    lock.readLock().unlock()
-    x
-  }
-
-  def prepareNextIfDone(): Unit = {
-    lock.writeLock().lock()
-    if (!thinking) {
-      thinking = true
-      lastFeed = None
-      inProgress = nextFuture
-    }
-    lock.writeLock().unlock()
-  }
 }
 
 object FutureIterator {
@@ -326,6 +345,7 @@ object FutureIterator {
     def produceAsync[T](produce: IN => T) = {
       new FutureIterator(in, produce, true)
     }
+
     def produceAsyncLater[T](produce: IN => T) = {
       new FutureIterator(in, produce, false)
     }
@@ -335,16 +355,20 @@ object FutureIterator {
 object BWFuture {
 
   def none[T] = apply(Option.empty[T])
+
   def apply[T](produce: => Option[T]): BWFuture[Option[T]] = BWFuture(produce, None)
+
   def apply[T](produce: => T, ifIncomplete: T) = {
     val fut = Future {produce}
     new BWFuture(fut, ifIncomplete)
   }
+
   def from[T](produce: => T): BWFuture[Option[T]] = {
     BWFuture(Some(produce), None)
   }
 
   def produceFrom[T](produce: => T) = BWFuture(Some(produce))
+
   implicit class Result[T](val fut: BWFuture[Option[T]]) extends AnyVal {
     def orElse(other: T) = if (fut.isDone) fut.result.get else other
 
@@ -365,4 +389,5 @@ object BWFuture {
       }, ifRunning)
     }
   }
+
 }

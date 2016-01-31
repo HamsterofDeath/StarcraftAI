@@ -14,22 +14,28 @@ class UnitData(in: bwapi.Unit) {
   // todo use this
 }
 
-
-
 case class Resources(minerals: Int, gas: Int, supply: Supplies) {
   val asSum = ResourceRequestSum(minerals, gas, supply.available)
+
   def moreGasThanMinerals = minerals < gas
+
   def >(min: Int, gas: Int, supply: Int) = {
     minerals >= min && this.gas >= gas && this.supplyRemaining >= supply
   }
+
   def supplyRemaining = supply.available
+
   def moreMineralsThanGas = minerals > gas * 1.5
+
   def supplyTotal = supply.total
+
   def -(sums: ResourceRequestSum) = {
     val supplyUpdated = supply.copy(supplyUsed + sums.supply)
     copy(minerals - sums.minerals, gas - sums.gas, supply = supplyUpdated)
   }
+
   def supplyUsed = supply.used
+
   def supplyUsagePercent = supply.supplyUsagePercent
 }
 
@@ -50,15 +56,20 @@ class DefaultWorld(game: Game) extends WorldListener with WorldEventDispatcher {
   private val removeQueueOwn   = ArrayBuffer.empty[bwapi.Unit]
   private val removeQueueEnemy = ArrayBuffer.empty[bwapi.Unit]
   private var ticks            = 0
+
   def nativeGame = game
+
   def currentResources = {
     val self = game.self()
     val total = self.supplyTotal()
     val used = self.supplyUsed()
     Resources(self.minerals(), self.gas(), Supplies(used, total))
   }
+
   def isFirstTick = ticks == 0
+
   def tickCount = ticks
+
   override def onUnitDestroy(unit: bwapi.Unit): Unit = {
     super.onUnitDestroy(unit)
     if (unit.getPlayer.isEnemy(game.self())) {
@@ -90,17 +101,22 @@ class Debugger(game: Game) {
   private var debugging     = true
   private var fullDebugMode = false
   private var countTicks    = 0
+
   def isFullDebug = fullDebugMode
+
   def off(): Unit = {
     debugging = false
   }
+
   def fullOn(): Unit = {
     on()
     fullDebugMode = true
   }
+
   def on(): Unit = {
     debugging = true
   }
+
   def fullOff(): Unit = {
     fullDebugMode = false
   }
@@ -110,21 +126,26 @@ class Debugger(game: Game) {
   def speed(int: Int): Unit = {
     game.setLocalSpeed(int)
   }
+
   def fastest(): Unit = {
     game.setLocalSpeed(0)
   }
+
   def debugRender(whatToDo: Renderer => Any): Unit = {
     countTicks += 1
     if (debugging && countTicks > 5) {
       whatToDo(renderer)
     }
   }
+
   def chat(msg: String): Unit = {
     game.sendText(msg)
   }
+
   def tick() = {
     renderer.in_!(Color.Green)
   }
+
   def revealMap(): Unit = {
     game.setRevealAll()
   }
@@ -142,10 +163,12 @@ object OnKillListener {
 
 abstract class OnKillListener[T <: WrapsUnit](val unit: T) {
   def onKill(t: T)
+
   def onKillUnTyped(t: WrapsUnit) = {
     assert(unit == t)
     onKill(unit)
   }
+
   def nativeUnitId = unit.nativeUnitId
 }
 
@@ -164,23 +187,31 @@ class Units(game: Game, hostile: Boolean) {
     Forces(me, friends.asScala.toSet)
   }
   private var initial            = true
+
   def byNative(nativeUnit: bwapi.Unit) = if (nativeUnit == null) None else byId(nativeUnit.getID)
+
   def byId(nativeId: Int) = nativeIdToUnit.get(nativeId)
+
   def byIdExpectExisting(nativeId: Int) = nativeIdToUnit(nativeId)
+
   def consumeFresh_![X](f: WrapsUnit => X) = {
     fresh.foreach(f)
     fresh.clear()
   }
+
   def registerKill_![T <: WrapsUnit](listener: OnKillListener[T]): Unit = {
     // this will always replace the latest listener
     killListeners += ((listener.nativeUnitId, listener))
   }
+
   def registerKill_!(listener: WrapsUnit => Unit): Unit = {
     killListenersOnAll += listener
   }
+
   def registerAdd_!(listener: WrapsUnit => Unit): Unit = {
     newUnitListeners += listener
   }
+
   def dead_!(dead: Seq[bwapi.Unit]) = {
     dead.foreach { u =>
       nativeIdToUnit.get(u.getID).foreach { died =>
@@ -205,6 +236,7 @@ class Units(game: Game, hostile: Boolean) {
       }
     }
   }
+
   private def removeUnit(u: bwapi.Unit) = {
     val removed = nativeIdToUnit.remove(u.getID)
     removed.foreach { what =>
@@ -215,39 +247,46 @@ class Units(game: Game, hostile: Boolean) {
     removed.foreach(_.notifyRemoved_!())
     removed
   }
+
   def buildingAt(upperLeft: MapTilePosition) = {
     allBuildings.find(_.area.upperLeft == upperLeft)
   }
+
   def allBuildings = allByType[Building]
+
   def allBuildingsWithWeapons = allByType[ArmedBuilding]
+
   def allDetectors = allByType[Detector]
+
   def allCompletedMobiles = allMobiles.filterNot(_.isBeingCreated)
+
   def allWithGroundWeapon = allByType[GroundWeapon]
+
   def allMobilesWithWeapons = allByType[ArmedMobile]
+
   def allWithAirWeapon = allByType[AirWeapon]
+
   def allMobiles = allByType[Mobile]
+
   def allAddonBuilders = allByType[CanBuildAddons]
+
   def allAddons = allByType[Addon]
+
   def existsIncomplete(c: Class[_ <: WrapsUnit]) = allByClass(c).exists(_.isBeingCreated)
+
   def existsComplete(c: Class[_ <: WrapsUnit]) = allByClass(c).exists(!_.isBeingCreated)
+
   def ownsByType(c: Class[_ <: WrapsUnit]) = {
     nativeIdToUnit.values.exists(c.isInstance)
   }
-  def geysirs = allByType[Geysir]
-  def allCanDie = allByType[MaybeCanDie]
-  def firstByType[T: Manifest]: Option[T] = {
-    val lookFor = manifest[T].runtimeClass
-    inFaction.find(lookFor.isInstance).map(_.asInstanceOf[T])
-  }
-  def inFaction = all.filter(_.nativeUnit.getPlayer == game.self())
-  def minerals = allByType[MineralPatch]
 
-  import scala.collection.JavaConverters._
+  def geysirs = allByType[Geysir]
 
   def allByType[T <: WrapsUnit : Manifest] = {
     val lookFor = manifest[T].runtimeClass.asInstanceOf[Class[T]]
     allByClass(lookFor)
   }
+
   def allByClass[T <: WrapsUnit](lookFor: Class[T]) = {
     def lazyCreate = {
       classIndexes += lookFor
@@ -256,8 +295,24 @@ class Units(game: Game, hostile: Boolean) {
     val cached = preparedByClass.getOrElseUpdate(lookFor, lazyCreate)
     cached.asInstanceOf[collection.Set[T]]
   }
-  def allMobilesAndBuildings = allCompletedMobiles ++ allBuildings
+
   def all = nativeIdToUnit.valuesIterator
+
+  def allCanDie = allByType[MaybeCanDie]
+
+  import scala.collection.JavaConverters._
+
+  def firstByType[T: Manifest]: Option[T] = {
+    val lookFor = manifest[T].runtimeClass
+    inFaction.find(lookFor.isInstance).map(_.asInstanceOf[T])
+  }
+
+  def inFaction = all.filter(_.nativeUnit.getPlayer == game.self())
+
+  def minerals = allByType[MineralPatch]
+
+  def allMobilesAndBuildings = allCompletedMobiles ++ allBuildings
+
   def tick(): Unit = {
     if (initial) {
       initial = false
@@ -271,6 +326,7 @@ class Units(game: Game, hostile: Boolean) {
     }
     addThese.foreach {addUnit}
   }
+
   def registerUnit(u: bwapi.Unit, lifted: WrapsUnit) = {
     newUnitListeners.foreach {_.apply(lifted)}
     nativeIdToUnit.put(u.getID, lifted)
@@ -280,12 +336,14 @@ class Units(game: Game, hostile: Boolean) {
       }
     }
   }
+
   private def init(): Unit = {
     if (ownAndNeutral) {
       game.getMinerals.asScala.foreach {addUnit}
       game.getGeysers.asScala.foreach {addUnit}
     }
   }
+
   private def addUnit(u: bwapi.Unit): Unit = {
     val record = {
       if (ownAndNeutral) {
@@ -324,24 +382,26 @@ class Units(game: Game, hostile: Boolean) {
       }
     }
   }
+
   private def ownAndNeutral = !hostile
+
   case class Forces(me: Player, allies: Set[Player]) {
     def isNotEnemy(u: bwapi.Unit) = !isEnemy(u)
+
     def isEnemy(u: bwapi.Unit) = !isNeutral(u) && !isFriend(u)
+
     def isFriend(u: bwapi.Unit) = {
       u.getPlayer == me || allies(u.getPlayer)
     }
+
     def isNeutral(u: bwapi.Unit) = u.getPlayer.getType == PlayerType.None
   }
+
 }
-
-
 
 case class SerializablePatchGroup(areas: Seq[Area])
 
 class ResourceAnalyzer(map: AnalyzedMap, all: AllUnits) {
-
-  val myUnits = all.own
 
   lazy    val groups        = myGroups.get.zipWithIndex.map { case (serializable, index) =>
     val pg = new MineralPatchGroup(index)
@@ -377,6 +437,7 @@ class ResourceAnalyzer(map: AnalyzedMap, all: AllUnits) {
     }
     allAreas
   }
+  val myUnits = all.own
   private val myGroups      = FileStorageLazyVal.fromFunction({
     info(s"Calculating mineral groups...")
     val patchGroups = ArrayBuffer.empty[MineralPatchGroup]
@@ -406,6 +467,7 @@ class ResourceAnalyzer(map: AnalyzedMap, all: AllUnits) {
 
     patchGroups.toSeq.map(e => SerializablePatchGroup(e.patches.map(_.area).toSeq))
   }, s"mineralgroups_${map.game.suggestFileName}")
+
   def nearestTo(position: MapTilePosition) = {
     if (groups.nonEmpty)
       Some(groups.minBy(_.center.distanceTo(position)))
@@ -425,10 +487,13 @@ case class MineralPatchGroup(patchId: Int) {
   private val myValue        = new
       LazyVal[Int](myPatches.foldLeft(0)((acc, mp) => acc + mp.remaining))
   private val myInitialValue = LazyVal.from(myPatches.foldLeft(0)((acc, mp) => acc + mp.remaining))
+
   def allTiles = myPatches.iterator.flatMap(_.area.tiles)
+
   def tick() = {
     myValue.invalidate()
   }
+
   def addPatch(mp: MineralPatch): Unit = {
     myPatches += mp
     myCenter.invalidate()
@@ -438,10 +503,15 @@ case class MineralPatchGroup(patchId: Int) {
   def remainingPercentage = myValue.get / myInitialValue.get.toDouble
 
   override def toString = s"Minerals#$patchId($value)@$center"
+
   def center = myCenter.get
+
   def value = myValue.get
+
   def patches = myPatches.toSet
+
   def contains(mp: MineralPatch): Boolean = myPatches(mp)
+
   private def calcCenter = {
     val (x, y) = myPatches.foldLeft((0, 0)) {
       case ((x, y), mp) => (x + mp.tilePosition.x, y + mp.tilePosition.y)

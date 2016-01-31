@@ -7,22 +7,31 @@ import scala.collection.mutable.ArrayBuffer
 import scala.util.Try
 
 abstract class UnitOrder {
-  private var myGame:Game = _
+  private var myGame: Game      = _
   private var locks             = 0
   private var forceAllowRepeats = false
+
   def forceRepetition = forceAllowRepeats
+
   def forceRepeat_!(forceRepeats: Boolean) = {
     forceAllowRepeats = forceRepeats
     this
   }
+
   def lockTicks = locks
+
   def obsolete = !myUnit.isInGame
-  def setGame_!(game: Game):Unit = {
+
+  def setGame_!(game: Game): Unit = {
     myGame = game
   }
+
   def game = myGame
+
   def isNoop = false
+
   def myUnit: WrapsUnit
+
   def record(): Unit = {
     myUnit match {
       case his: OrderHistorySupport =>
@@ -30,8 +39,11 @@ abstract class UnitOrder {
       case _ =>
     }
   }
+
   def issueOrderToGame(): Unit
+
   def renderDebug(renderer: Renderer): Unit
+
   def lockingFor_!(ticks: Int) = {
     locks = ticks
     this
@@ -40,6 +52,7 @@ abstract class UnitOrder {
 }
 
 object Orders {
+
   case class ScanWithComsat(comsat: Comsat, where: MapTilePosition) extends UnitOrder {
     override def myUnit = comsat
 
@@ -59,16 +72,22 @@ object Orders {
   case class AttackUnit(attacker: MobileRangeWeapon, target: MaybeCanDie) extends UnitOrder {
 
     override def obsolete = super.obsolete || target.isDead
+
     override def myUnit: WrapsUnit = attacker
+
     override def issueOrderToGame(): Unit = attacker.nativeUnit.attack(target.nativeUnit)
+
     override def renderDebug(renderer: Renderer): Unit = {
       renderer.in_!(Color.Red).indicateTarget(attacker.currentPosition, target.center)
     }
   }
 
-  case class TechOnSelf(caster: HasSingleTargetSpells, tech: SingleTargetMagicSpell) extends UnitOrder {
+  case class TechOnSelf(caster: HasSingleTargetSpells, tech: SingleTargetMagicSpell)
+    extends UnitOrder {
     override def myUnit: WrapsUnit = caster
+
     override def issueOrderToGame(): Unit = caster.nativeUnit.useTech(tech.nativeTech)
+
     override def renderDebug(renderer: Renderer): Unit = {}
   }
 
@@ -89,7 +108,8 @@ object Orders {
     }
   }
 
-  case class TechOnTile[T <: HasSinglePointMagicSpell](caster: HasSinglePointMagicSpell, target: MapTilePosition,
+  case class TechOnTile[T <: HasSinglePointMagicSpell](caster: HasSinglePointMagicSpell,
+                                                       target: MapTilePosition,
                                                        tech: SinglePointMagicSpell)
     extends UnitOrder {
 
@@ -106,36 +126,45 @@ object Orders {
 
   case class Research(basis: Upgrader, what: Upgrade) extends UnitOrder {
     override def myUnit: WrapsUnit = basis
+
     override def issueOrderToGame(): Unit = {
       what.nativeType match {
         case Left(upgrade) => basis.nativeUnit.upgrade(upgrade)
         case Right(tech) => basis.nativeUnit.research(tech)
       }
     }
+
     override def renderDebug(renderer: Renderer): Unit = {}
   }
 
   case class ConstructAddon(basis: CanBuildAddons, builtWhat: Class[_ <: Addon]) extends UnitOrder {
     assert(Try(builtWhat.toUnitType).isSuccess)
+
     override def myUnit: WrapsUnit = basis
+
     override def issueOrderToGame(): Unit = {
       basis.nativeUnit.buildAddon(builtWhat.toUnitType)
     }
+
     override def renderDebug(renderer: Renderer): Unit = {
       renderer.in_!(Color.White).drawOutline(basis.addonArea)
     }
   }
 
-  case class ConstructBuilding(myUnit: WorkerUnit, buildingType: Class[_ <: Building], where: MapTilePosition)
+  case class ConstructBuilding(myUnit: WorkerUnit, buildingType: Class[_ <: Building],
+                               where: MapTilePosition)
     extends UnitOrder {
     val area = {
       val size = Size.shared(buildingUnitType.tileWidth(), buildingUnitType.tileHeight())
       Area(where, size)
     }
+
     override def issueOrderToGame(): Unit = {
       myUnit.nativeUnit.build(buildingUnitType, where.asTilePosition)
     }
+
     private def buildingUnitType = buildingType.toUnitType
+
     override def renderDebug(renderer: Renderer): Unit = {
       renderer.in_!(Color.White).drawOutline(area)
       renderer.in_!(Color.White).drawLine(myUnit.currentPosition, area.center)
@@ -176,7 +205,9 @@ object Orders {
     override def issueOrderToGame(): Unit = {
       myUnit.nativeUnit.rightClick(loadThis.nativeUnit)
     }
+
     override def myUnit: WrapsUnit = ferry
+
     override def renderDebug(renderer: Renderer): Unit = {
       renderer.indicateTarget(ferry.currentPosition, loadThis.currentPosition)
     }
@@ -184,7 +215,9 @@ object Orders {
 
   case class UnloadUnit(ferry: TransporterUnit, dropThis: GroundUnit) extends UnitOrder {
     override def myUnit: WrapsUnit = ferry
+
     override def issueOrderToGame(): Unit = ferry.nativeUnit.unload(dropThis.nativeUnit)
+
     override def renderDebug(renderer: Renderer): Unit = {}
   }
 
@@ -192,7 +225,9 @@ object Orders {
     override def issueOrderToGame(): Unit = {
       myUnit.nativeUnit.unloadAll(at.asMapPosition.toNative)
     }
+
     override def myUnit: WrapsUnit = ferry
+
     override def renderDebug(renderer: Renderer): Unit = {
       renderer.indicateTarget(ferry.currentPosition, at)
     }
@@ -230,6 +265,7 @@ object Orders {
       renderer.in_!(Color.Teal).indicateTarget(myUnit.currentPosition, minsOrGas.area)
     }
   }
+
   case class MoveToPatch(myUnit: WorkerUnit, patch: MineralPatch) extends UnitOrder {
     override def issueOrderToGame(): Unit = {
       myUnit.nativeUnit.move(patch.nativeMapPosition)
@@ -239,6 +275,7 @@ object Orders {
       renderer.in_!(Color.Blue).indicateTarget(myUnit.currentPosition, patch.area)
     }
   }
+
   case class Stop(myUnit: Mobile) extends UnitOrder {
     override def issueOrderToGame(): Unit = {
       myUnit.nativeUnit.stop()
@@ -248,6 +285,7 @@ object Orders {
 
     }
   }
+
   case class ReturnMinerals(myUnit: WorkerUnit, to: MainBuilding) extends UnitOrder {
     override def issueOrderToGame(): Unit = {
       // for some reason, other commands are not reliable
@@ -284,9 +322,12 @@ object Orders {
     override def isNoop: Boolean = true
 
     override def issueOrderToGame(): Unit = {}
+
     override def renderDebug(renderer: Renderer): Unit = {}
+
     override def myUnit = unit
   }
+
 }
 
 class OrderQueue(game: Game, debugger: Debugger) {
@@ -299,7 +340,7 @@ class OrderQueue(game: Game, debugger: Debugger) {
     queue += order
   }
 
-  def debugAll():Unit = {
+  def debugAll(): Unit = {
     if (debugger.isDebugging) {
       debugger.debugRender { renderer =>
         delegatedToBasicAI.foreach(_._2.renderDebug(renderer))
@@ -307,7 +348,7 @@ class OrderQueue(game: Game, debugger: Debugger) {
     }
   }
 
-  def issueAll():Unit = {
+  def issueAll(): Unit = {
     val tickOrders = queue.filterNot(_.isNoop)
     trace(s"Orders: ${tickOrders.mkString(", ")}", queue.nonEmpty)
     tickOrders.foreach(_.record())

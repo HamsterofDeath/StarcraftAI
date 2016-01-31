@@ -7,118 +7,46 @@ import scala.collection.mutable.ArrayBuffer
 
 case class ResourceArea(patches: Option[MineralPatchGroup], geysirs: Set[Geysir]) {
   assert(patches.isDefined || geysirs.nonEmpty)
-  val resources = patches.map(_.patches).getOrElse(Nil) ++ geysirs
-  def mineralsAndGas = resources.iterator.map(_.remaining).sum
-  def center = patches.map(_.center).getOrElse(geysirs.head.tilePosition)
-  def isPatchId(id: Int) = patches.fold(false)(_.patchId == id)
   lazy val coveredTiles             = resources.flatMap(_.area.tiles).toSet
   lazy val mostAnnoyingMinePosition = center
+  val resources = patches.map(_.patches).getOrElse(Nil) ++ geysirs
+
+  def mineralsAndGas = resources.iterator.map(_.remaining).sum
+
+  def center = patches.map(_.center).getOrElse(geysirs.head.tilePosition)
+
+  def isPatchId(id: Int) = patches.fold(false)(_.patchId == id)
+
   def rich = {
     geysirs.iterator.map(_.remaining).sum > 1500 && patches.fold(0)(_.value) > 5000
   }
 }
 
 case class PotentialDomain(coveredOnLand: Seq[ResourceArea], needsToControl: Seq[MapTilePosition])
+
 case class ChokePoint(center: MapTilePosition, lines: Seq[CuttingLine], index: Int = -1)
+
 case class NarrowPoint(where: MapTilePosition, index: Int)
 
 case class RelativePoint(xOff: Int, yOff: Int) extends HasXY {
   lazy val opposite = RelativePoint(-xOff, -yOff)
+
   def asMapTile = MapTilePosition.shared(x, y)
+
   override def x = xOff
+
   override def y = yOff
 }
 
 case class CuttingLine(line: Line) {
   def center = line.center
+
   def absoluteFrom = line.a
+
   def absoluteTo = line.b
 }
 
 class StrategicMap(val resources: Seq[ResourceArea], walkable: Grid2D, game: Game) {
-
-  case class FrontLine(chokePoint: ChokePoint,
-                       defendedAreas: Map[Grid2D, Set[ResourceArea]],
-                       defended: Grid2D,
-                       outerTerritory: Grid2D,
-                       distanceBetweenTiles: Int) {
-    def center = chokePoint.center
-
-    def isDefenseLine = outerTerritory.freeCount > defended.freeCount
-
-    def tileDistance(distance: Int) = copy(distanceBetweenTiles = distance)
-
-    lazy val mergedArea = {
-      val mut = walkable.blockedMutableCopy
-      mut.or_!(defended.mutableCopy)
-      mut.asReadOnlyView
-    }
-
-    private def evalScatteredPoints(valid: MapTilePosition => Boolean) = {
-      val blocked = walkable.mutableCopy
-      val pf = PathFinder.on(walkable, isOnGround = true)
-      val outsidePoints = walkable.spiralAround(chokePoint.center, 20)
-                          .filter(blocked.free)
-                          .filter(valid)
-                          .filter { e =>
-                            val solution = pf.findSimplePathNow(e, chokePoint.center,
-                              tryFixPath = false)
-                            solution.exists { p =>
-                              p.isPerfectSolution && p.length <= 20
-                            }
-                          }
-      val mineTiles = ArrayBuffer.empty[MapTilePosition]
-      outsidePoints.foreach { p =>
-        if (blocked.free(p)) {
-          p.asArea.extendedBy(distanceBetweenTiles).tiles.foreach(blocked.block_!)
-          mineTiles += p
-        }
-      }
-      mineTiles.sortBy(_.distanceSquaredTo(chokePoint.center)).toVector
-    }
-
-    private lazy val scatteredPointsOutside = BWFuture(evalScatteredPoints(mergedArea.blocked), Vector.empty)
-    private lazy val scatteredPointsInside  = BWFuture(evalScatteredPoints(mergedArea.free), Vector.empty)
-
-    def pointsOutside = scatteredPointsOutside.result
-
-    def pointsInside = scatteredPointsInside.result
-  }
-
-  def defenseLineOf(base: Base): Option[FrontLine] = defenseLineOf(base.mainBuilding.area.centerTile)
-
-  def defenseLineOf(tile: MapTilePosition): Option[FrontLine] = {
-    val cutOffBy = {
-      val candidates = domains.filter(_._2.keysIterator.exists(_.free(tile)))
-      if (candidates.nonEmpty) {
-        val smallest = candidates.minBy(_._2.keysIterator.find(_.free(tile)).get.freeCount)
-        Some(smallest)
-      } else {
-        None
-      }
-    }
-
-    val defLine = cutOffBy.map { case (choke, areas) =>
-      val (inside, outside) = areas.partition(_._1.free(tile))
-      val insideArea = {
-        val ret = walkable.emptySameSize(false)
-        inside.keys.foreach { section =>
-          ret.or_!(section.mutableCopy)
-        }
-        ret
-      }
-      val outsideArea = {
-        val ret = walkable.emptySameSize(false)
-        outside.keys.foreach { section =>
-          ret.or_!(section.mutableCopy)
-        }
-        ret
-      }
-      FrontLine(choke, areas, insideArea.guaranteeImmutability, outsideArea.guaranteeImmutability,
-        1)
-    }.filter {_.isDefenseLine}
-    defLine
-  }
 
   private val myNarrowPassages = FileStorageLazyVal.fromFunction({
     info(s"Calculating narrow passages...")
@@ -151,16 +79,6 @@ class StrategicMap(val resources: Seq[ResourceArea], walkable: Grid2D, game: Gam
     }
 
   }, s"narrow_${game.suggestFileName}")
-
-  private def tryCutters(size: Int) = {
-    val lineLength = size
-    (-lineLength, -lineLength) ::(0, -lineLength) ::(lineLength, -lineLength) ::(lineLength, 0) :: Nil map
-    { case (x, y) =>
-      val point = RelativePoint(x, y)
-      Line(point.asMapTile, point.opposite.asMapTile)
-    }
-  }
-
   private val mapData = FileStorageLazyVal.fromFunction({
     val charsInLine = 80
     val tilesPerChunk = 100
@@ -244,14 +162,14 @@ class StrategicMap(val resources: Seq[ResourceArea], walkable: Grid2D, game: Gam
       }
       manyWithSameValue.minBy(_._1.center.distanceSquaredTo(center))
     }.toVector
-    val complete = reduced.zipWithIndex.map { case ((choke, value), index) => choke.copy(index = index) -> value }
+    val complete = reduced.zipWithIndex
+                   .map { case ((choke, value), index) => choke.copy(index = index) -> value }
     val ret = complete.map { case (choke, map) =>
       choke -> map.map { case (area, res) => area -> res.map(_.coveredTiles) }
     }
     println("Done!")
     ret
   }, s"chokepoints_${game.suggestFileName}")
-
   private val myDomains = LazyVal.from {
     val raw = mapData.get
     raw.map { case (choke, map) =>
@@ -259,6 +177,42 @@ class StrategicMap(val resources: Seq[ResourceArea], walkable: Grid2D, game: Gam
         area -> coveredTiles.map(tiles => resources.find(_.coveredTiles == tiles).get)
       }
     }
+  }
+
+  def defenseLineOf(base: Base): Option[FrontLine] = defenseLineOf(
+    base.mainBuilding.area.centerTile)
+
+  def defenseLineOf(tile: MapTilePosition): Option[FrontLine] = {
+    val cutOffBy = {
+      val candidates = domains.filter(_._2.keysIterator.exists(_.free(tile)))
+      if (candidates.nonEmpty) {
+        val smallest = candidates.minBy(_._2.keysIterator.find(_.free(tile)).get.freeCount)
+        Some(smallest)
+      } else {
+        None
+      }
+    }
+
+    val defLine = cutOffBy.map { case (choke, areas) =>
+      val (inside, outside) = areas.partition(_._1.free(tile))
+      val insideArea = {
+        val ret = walkable.emptySameSize(false)
+        inside.keys.foreach { section =>
+          ret.or_!(section.mutableCopy)
+        }
+        ret
+      }
+      val outsideArea = {
+        val ret = walkable.emptySameSize(false)
+        outside.keys.foreach { section =>
+          ret.or_!(section.mutableCopy)
+        }
+        ret
+      }
+      FrontLine(choke, areas, insideArea.guaranteeImmutability, outsideArea.guaranteeImmutability,
+        1)
+    }.filter {_.isDefenseLine}
+    defLine
   }
 
   def domains = myDomains.get
@@ -282,5 +236,63 @@ class StrategicMap(val resources: Seq[ResourceArea], walkable: Grid2D, game: Gam
     }
   }
 
+  private def tryCutters(size: Int) = {
+    val lineLength = size
+    (-lineLength, -lineLength) ::(0, -lineLength) ::(lineLength, -lineLength) ::(lineLength, 0) ::
+    Nil map { case (x, y) =>
+      val point = RelativePoint(x, y)
+      Line(point.asMapTile, point.opposite.asMapTile)
+    }
+  }
+
   private def fileName = s"${game.mapFileName()}_${game.mapHash()}"
+
+  case class FrontLine(chokePoint: ChokePoint,
+                       defendedAreas: Map[Grid2D, Set[ResourceArea]],
+                       defended: Grid2D,
+                       outerTerritory: Grid2D,
+                       distanceBetweenTiles: Int) {
+    lazy         val mergedArea             = {
+      val mut = walkable.blockedMutableCopy
+      mut.or_!(defended.mutableCopy)
+      mut.asReadOnlyView
+    }
+    private lazy val scatteredPointsOutside = BWFuture(evalScatteredPoints(mergedArea.blocked),
+      Vector.empty)
+    private lazy val scatteredPointsInside  = BWFuture(evalScatteredPoints(mergedArea.free),
+      Vector.empty)
+
+    def center = chokePoint.center
+
+    def isDefenseLine = outerTerritory.freeCount > defended.freeCount
+
+    def tileDistance(distance: Int) = copy(distanceBetweenTiles = distance)
+
+    def pointsOutside = scatteredPointsOutside.result
+
+    def pointsInside = scatteredPointsInside.result
+
+    private def evalScatteredPoints(valid: MapTilePosition => Boolean) = {
+      val blocked = walkable.mutableCopy
+      val pf = PathFinder.on(walkable, isOnGround = true)
+      val outsidePoints = walkable.spiralAround(chokePoint.center, 20)
+                          .filter(blocked.free)
+                          .filter(valid)
+                          .filter { e =>
+                            val solution = pf.findSimplePathNow(e, chokePoint.center,
+                              tryFixPath = false)
+                            solution.exists { p =>
+                              p.isPerfectSolution && p.length <= 20
+                            }
+                          }
+      val mineTiles = ArrayBuffer.empty[MapTilePosition]
+      outsidePoints.foreach { p =>
+        if (blocked.free(p)) {
+          p.asArea.extendedBy(distanceBetweenTiles).tiles.foreach(blocked.block_!)
+          mineTiles += p
+        }
+      }
+      mineTiles.sortBy(_.distanceSquaredTo(chokePoint.center)).toVector
+    }
+  }
 }

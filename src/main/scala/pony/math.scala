@@ -15,55 +15,63 @@ trait HasXY {
 
   def distanceToIsMore(other: HasXY, dst: Int) = distanceSquaredTo(other) > dst * dst
 
-  def distanceTo(other: HasXY) = math.sqrt(distanceSquaredTo(other))
-
   def distanceSquaredTo(other: HasXY) = {
     val xDiff = x - other.x
     val yDiff = y - other.y
     xDiff * xDiff + yDiff * yDiff
   }
 
+  def distanceTo(other: HasXY) = math.sqrt(distanceSquaredTo(other))
+
 }
+
 case class MapTilePosition(x: Int, y: Int) extends HasXY {
   def asTuple = (x, y)
-  def asMapPosition = MapPosition(x * tileSize, y * tileSize)
+
   def middleBetween(center: MapTilePosition) = {
     movedBy(center) / 2
   }
+
   def /(i: Int) = MapTilePosition.shared(x / i, y / i)
+
   def movedBy(other: HasXY) = MapTilePosition.shared(x + other.x, y + other.y)
+
   def isAtStorePosition = x >= 1000 && y >= 1000
+
   def diffTo(other: MapTilePosition) = {
     MapTilePosition.shared(other.x - x, other.y - y)
   }
+
   def leftRightUpDown = (movedBy(-1, 0), movedBy(1, 0), movedBy(0, -1), movedBy(0, 1))
+
   def movedBy(offX: Int, offY: Int) = MapTilePosition.shared(x + offX, y + offY)
+
   def asArea = Area(this, this)
+
   def nativeMapPosition = asMapPosition.toNative
+
+  def asMapPosition = MapPosition(x * tileSize, y * tileSize)
+
   def randomized(shuffle: Int) = {
     val xRand = math.random * shuffle - shuffle * 0.5
     val yRand = math.random * shuffle - shuffle * 0.5
     movedBy(xRand.toInt, yRand.toInt)
   }
+
   def asTilePosition = new TilePosition(x, y)
+
   def asNative = MapTilePosition.nativeShared(x, y)
+
   def mapX = tileSize * x
+
   def mapY = tileSize * y
+
   def movedByNew(other: HasXY) = MapTilePosition(x + other.x, y + other.y)
+
   override def toString = s"($x,$y)"
 }
-object MapTilePosition {
 
-  def average(ps: TraversableOnce[MapTilePosition]) = {
-    var size = 0
-    ps.foldLeft(MapTilePosition.zero)((acc, e) => {
-      size += 1
-      acc movedBy e
-    }) / size
-  }
-  def averageOpt(ps: TraversableOnce[MapTilePosition]) = {
-    if (ps.isEmpty) None else Some(average(ps))
-  }
+object MapTilePosition {
 
   val max          = 256 * 4
   val points       = {
@@ -85,7 +93,21 @@ object MapTilePosition {
   private val nativeComputer = new Function[(Int, Int), Position] {
     override def apply(t: (Int, Int)) = new Position(t._1, t._2)
   }
+
+  def averageOpt(ps: TraversableOnce[MapTilePosition]) = {
+    if (ps.isEmpty) None else Some(average(ps))
+  }
+
+  def average(ps: TraversableOnce[MapTilePosition]) = {
+    var size = 0
+    ps.foldLeft(MapTilePosition.zero)((acc, e) => {
+      size += 1
+      acc movedBy e
+    }) / size
+  }
+
   def shared(xy: (Int, Int)): MapTilePosition = shared(xy._1, xy._2)
+
   def shared(x: Int, y: Int): MapTilePosition = {
     if (memoryHog) {
       if (inRange(x, y))
@@ -97,7 +119,9 @@ object MapTilePosition {
       MapTilePosition(x, y)
     }
   }
+
   def nativeShared(xy: (Int, Int)): Position = nativeShared(xy._1, xy._2)
+
   def nativeShared(x: Int, y: Int): Position = {
     if (memoryHog) {
       if (inRange(x, y))
@@ -109,6 +133,7 @@ object MapTilePosition {
       new Position(x, y)
     }
   }
+
   private def inRange(x: Int, y: Int) = x > -max && y > -max && x < max && y < max
 
 }
@@ -129,15 +154,18 @@ object Size {
   val sizes = if (memoryHog) {Array.tabulate(20, 20)((x, y) => Size(x, y))} else {
     Array.empty[Array[Size]]
   }
+
   def shared(x: Int, y: Int) = if (memoryHog) {sizes(x)(y)} else {Size(x, y)}
 }
 
 case class Line(a: MapTilePosition, b: MapTilePosition) {
   val length = a.distanceTo(b)
   val center = MapTilePosition.shared((a.x + b.x) / 2, (a.y + b.y) / 2)
+
   def movedBy(center: HasXY) = {
     Line(a.movedBy(center), b.movedBy(center))
   }
+
   def split = Line(a, center) -> Line(center, b)
 }
 
@@ -152,23 +180,29 @@ case class Area(upperLeft: MapTilePosition, sizeOfArea: Size) {
     (upperLeft.mapY + lowerRight.mapY) / 2)
   val centerTile = MapTilePosition((upperLeft.x + lowerRight.x) / 2, (upperLeft.y + lowerRight.y)
                                                                      / 2)
+
   def moveTo(e: MapTilePosition) = copy(upperLeft = e)
+
   def extendedBy(tiles: Int) = {
     growBy(tiles)
   }
+
   def growBy(tiles: Int) = {
     tiles match {
       case 0 => this
       case n => Area(upperLeft.movedBy(-n, -n), lowerRight.movedBy(n, n))
     }
   }
+
   def distanceTo(tilePosition: MapTilePosition) = {
     // TODO optimize
     outline.minBy(_.distanceSquaredTo(tilePosition)).distanceTo(tilePosition)
   }
+
   def distanceTo(area: Area) = {
     closestDirectConnection(area).length
   }
+
   def closestDirectConnection(area: Area): Line = {
     // TODO optimize
     val from = outline.minBy { p =>
@@ -181,6 +215,7 @@ case class Area(upperLeft: MapTilePosition, sizeOfArea: Size) {
     Line(from, to)
 
   }
+
   def outline: Traversable[MapTilePosition] = {
     new Traversable[MapTilePosition] {
       override def foreach[U](f: (MapTilePosition) => U): Unit = {
@@ -193,18 +228,23 @@ case class Area(upperLeft: MapTilePosition, sizeOfArea: Size) {
           f(MapTilePosition.shared(upperLeft.x + sizeOfArea.x, upperLeft.y + y))
         }
       }
+
       override def isEmpty = false
     }
 
   }
+
   def anyTile = upperLeft
+
   def closestDirectConnection(elem: StaticallyPositioned): Line =
     closestDirectConnection(elem.area)
+
   def tiles: Traversable[MapTilePosition] = new Traversable[MapTilePosition] {
     override def foreach[U](f: (MapTilePosition) => U): Unit = {
       sizeOfArea.points.map { p => f(p.movedBy(upperLeft)) }
     }
   }
+
   def describe = s"$upperLeft/$lowerRight"
 }
 
@@ -250,6 +290,56 @@ class GeometryHelpers(maxX: Int, maxY: Int) {
     }.flatten
   }
 
+  def blockSpiralClockWise(origin: MapTilePosition,
+                           blockSize: Int = 45): Traversable[MapTilePosition] = new
+      Traversable[MapTilePosition] {
+    override def foreach[U](f: (MapTilePosition) => U): Unit = {
+      iterateBlockSpiralClockWise(origin, blockSize)
+      .foreach(e => f(MapTilePosition.shared(e.x, e.y)))
+    }
+  }
+
+  def iterateBlockSpiralClockWise(origin: MapTilePosition, blockSize: Int = 45) = {
+    class MutableXY {
+      private var turns                       = 0
+      private var remainingInCurrentDirection = 1
+      private var myX                         = origin.x
+      private var myY                         = origin.y
+
+      def next_!(): MutableXY = {
+        if (remainingInCurrentDirection > 0) {
+          remainingInCurrentDirection -= 1
+          if (remainingInCurrentDirection == 0) {
+            turns += 1
+            remainingInCurrentDirection = if (turns % 2 == 0) turns / 2 else (turns + 1) / 2
+          }
+        }
+        (turns - 1) % 4 match {
+          case 0 => myX += 1
+          case 1 => myY += 1
+          case 2 => myX -= 1
+          case 3 => myY -= 1
+        }
+        this
+      }
+
+      def x = myX
+
+      def y = myY
+    }
+
+    val maxDst = blockSize * blockSize
+    Iterator.iterate(new MutableXY)(_.next_!())
+    .take(blockSize * blockSize)
+    .filter(e => e.x >= 0 && e.x < maxX && e.y >= 0 && e.y < maxY)
+    .filter { e =>
+      val a = e.x - origin.x
+      val b = e.y - origin.y
+      a * a + b * b <= maxDst
+    }
+    .map(mut => MapTilePosition.shared(mut.x, mut.y))
+  }
+
   object intersections {
     def tilesInCircle(seq: TraversableOnce[MapTilePosition], range: Int, times: Int) = {
       val counts = mutable.HashMap.empty[MapTilePosition, Int]
@@ -276,53 +366,5 @@ class GeometryHelpers(maxX: Int, maxY: Int) {
         count >= times
       }.map(_._1)
     }
-  }
-
-  def blockSpiralClockWise(origin: MapTilePosition,
-                           blockSize: Int = 45): Traversable[MapTilePosition] = new
-      Traversable[MapTilePosition] {
-    override def foreach[U](f: (MapTilePosition) => U): Unit = {
-      iterateBlockSpiralClockWise(origin, blockSize)
-      .foreach(e => f(MapTilePosition.shared(e.x, e.y)))
-    }
-  }
-  def iterateBlockSpiralClockWise(origin: MapTilePosition, blockSize: Int = 45) = {
-    class MutableXY {
-      private var turns                       = 0
-      private var remainingInCurrentDirection = 1
-      private var myX                         = origin.x
-      private var myY                         = origin.y
-
-      def next_!(): MutableXY = {
-        if (remainingInCurrentDirection > 0) {
-          remainingInCurrentDirection -= 1
-          if (remainingInCurrentDirection == 0) {
-            turns += 1
-            remainingInCurrentDirection = if (turns % 2 == 0) turns / 2 else (turns + 1) / 2
-          }
-        }
-        (turns - 1) % 4 match {
-          case 0 => myX += 1
-          case 1 => myY += 1
-          case 2 => myX -= 1
-          case 3 => myY -= 1
-        }
-        this
-      }
-
-      def x = myX
-      def y = myY
-    }
-
-    val maxDst = blockSize * blockSize
-    Iterator.iterate(new MutableXY)(_.next_!())
-    .take(blockSize * blockSize)
-    .filter(e => e.x >= 0 && e.x < maxX && e.y >= 0 && e.y < maxY)
-    .filter { e =>
-      val a = e.x - origin.x
-      val b = e.y - origin.y
-      a * a + b * b <= maxDst
-    }
-    .map(mut => MapTilePosition.shared(mut.x, mut.y))
   }
 }

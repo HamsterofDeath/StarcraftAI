@@ -114,24 +114,29 @@ class UnitJobRenderer(override val universe: Universe) extends AIPlugIn with Has
       }
 
       renderUs.foreach { job =>
-        renderer.drawTextAtMobileUnit(job.unit, s"${job.shortDebugString} -> ${job.unit.nativeUnit.getOrder}", 1)
+        renderer.drawTextAtMobileUnit(job.unit,
+          s"${job.shortDebugString} -> ${job.unit.nativeUnit.getOrder}", 1)
         job.renderDebug(renderer)
       }
       unitManager.allJobsByUnitType[Building].foreach { job =>
-        renderer.drawTextAtStaticUnit(job.unit, s"${job.shortDebugString} -> ${job.unit.nativeUnit.getOrder}", 1)
+        renderer.drawTextAtStaticUnit(job.unit,
+          s"${job.shortDebugString} -> ${job.unit.nativeUnit.getOrder}", 1)
       }
     }
   }
+
   override def lazyWorld: DefaultWorld = universe.world
 }
 
-class UnitSecondLevelJobRenderer(override val universe: Universe) extends AIPlugIn with HasUniverse {
+class UnitSecondLevelJobRenderer(override val universe: Universe)
+  extends AIPlugIn with HasUniverse {
 
   override protected def tickPlugIn(): Unit = {
     lazyWorld.debugger.debugRender { renderer =>
 
     }
   }
+
   override def lazyWorld: DefaultWorld = universe.world
 }
 
@@ -181,6 +186,7 @@ class StatsRenderer(override val universe: Universe) extends AIPlugIn with HasUn
   override val lazyWorld     = universe.world
   private  val df            = new DecimalFormat("#0.00")
   private  var lastTickNanos = System.nanoTime()
+
   override protected def tickPlugIn(): Unit = {
     lazyWorld.debugger.debugRender { renderer =>
       val current = System.nanoTime()
@@ -208,7 +214,7 @@ class StatsRenderer(override val universe: Universe) extends AIPlugIn with HasUn
         val allLocks = forceLocked ++ locks
         val counts = allLocks.map(_.whatFor).groupBy(identity).map { case (c, am) => c -> am.size }
         val details = counts.toList.map { case (k, v) => s"${k.className}*$v" }.mkString(", ")
-        s"${locked.minerals}m, ${locked.gas}g, ${locked.supply}s locked, ${allLocks.size} locks, $details"
+        s"Plan: ${locked.minerals}m, ${locked.gas}g, ${locked.supply}s, ${allLocks.size}L, $details"
       }
 
       debugString += {
@@ -229,8 +235,10 @@ class StatsRenderer(override val universe: Universe) extends AIPlugIn with HasUn
 
       debugString += {
 
-        val missingUnits = unitManager.failedToProvideFlat.groupBy(_.typeOfRequestedUnit).mapValues(_.size)
-        val formatted = missingUnits.map { case (unitClass, howMany) => s"${unitClass.className}/$howMany" }
+        val missingUnits = unitManager.failedToProvideFlat.groupBy(_.typeOfRequestedUnit)
+                           .mapValues(_.size)
+        val formatted = missingUnits
+                        .map { case (unitClass, howMany) => s"${unitClass.className}/$howMany" }
         s"Type/missing: ${formatted.toList.sorted.mkString(", ")}"
       }
 
@@ -269,7 +277,8 @@ class StatsRenderer(override val universe: Universe) extends AIPlugIn with HasUn
   }
 }
 
-class BlockedBuildingSpotsRenderer(override val universe: Universe) extends AIPlugIn with HasUniverse {
+class BlockedBuildingSpotsRenderer(override val universe: Universe)
+  extends AIPlugIn with HasUniverse {
   override val lazyWorld = universe.world
 
   override protected def tickPlugIn(): Unit = {
@@ -331,7 +340,8 @@ class MineralDebugRenderer(override val universe: Universe) extends AIPlugIn wit
         }
       }
 
-      universe.unitManager.allJobsByType[GatherMineralsAtSinglePatch].groupBy(_.targetPatch).foreach { case (k, v) =>
+      universe.unitManager.allJobsByType[GatherMineralsAtSinglePatch].groupBy(_.targetPatch)
+      .foreach { case (k, v) =>
         val estimatedWorkerCount = v.head.requiredWorkers
         renderer.drawTextAtStaticUnit(v.head.targetPatch, estimatedWorkerCount.toString, 1)
       }
@@ -344,6 +354,7 @@ class DebugHelper(main: MainAI) extends AIPlugIn with HasUniverse {
 
   main.listen_!(new AIAPI {
     override def world: DefaultWorld = main.world
+
     override def onSendText(s: String): Unit = {
       super.onSendText(s)
       val words = s.split(' ').toList
@@ -355,19 +366,20 @@ class DebugHelper(main: MainAI) extends AIPlugIn with HasUniverse {
                 case List(logLevel) =>
 
                   setLogLevel_!(logLevel match {
-                    case "0" => LogLevels.Off
-                    case "1" => LogLevels.Error
-                    case "2" => LogLevels.Warn
-                    case "3" => LogLevels.Info
-                    case "4" => LogLevels.Debug
-                    case "5" => LogLevels.Trace
+                    case "0" => LogLevels.LogOff
+                    case "1" => LogLevels.LogError
+                    case "2" => LogLevels.LogWarn
+                    case "3" => LogLevels.LogInfo
+                    case "4" => LogLevels.LogDebug
+                    case "5" => LogLevels.LogTrace
                     case _ => !!!(logLevel)
                   })
               }
             case "expand" | "e" =>
               params match {
                 case List(mineralsId) =>
-                  val patch = world.resourceAnalyzer.groups.find(_.patchId.toString == mineralsId).get
+                  val patch = world.resourceAnalyzer.groups.find(_.patchId.toString == mineralsId)
+                              .get
                   main.brain.pluginByType[ProvideExpansions].forceExpand(patch)
               }
 
@@ -416,7 +428,9 @@ class DebugHelper(main: MainAI) extends AIPlugIn with HasUniverse {
   })
 
   override def lazyWorld: DefaultWorld = main.world
+
   override def universe: Universe = main.universe
+
   override protected def tickPlugIn(): Unit = {
     // nop
   }
@@ -428,12 +442,15 @@ class DebugHelper(main: MainAI) extends AIPlugIn with HasUniverse {
 
 class MainAI extends AIPlugIn with HasUniverse with AIAPIEventDispatcher {
   lazy val brain = new TwilightSparkle(lazyWorld)
+
   override def universe = brain.universe
+
   override protected def tickPlugIn(): Unit = {
     brain.queueOrdersForTick()
     if (debugger.isDebugging) {
       brain.plugins.foreach(_.renderDebug(debugger.renderer))
     }
   }
+
   override def debugger = world.debugger
 }
