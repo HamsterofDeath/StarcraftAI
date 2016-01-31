@@ -7,12 +7,143 @@ import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
 class FerryManager(override val universe: Universe) extends HasUniverse {
+  def nearestDropPointTo(where: MapTilePosition) = {
+    nearestFree.flatMapOnContent(_.proposeFix(where))
+  }
 
   private val ferryPlans = mutable.HashMap.empty[TransporterUnit, FerryPlan]
 
   private val employer         = new Employer[TransporterUnit](universe)
-  private val nearestFreeCache = oncePer(Primes.prime67) {
-    mutable.HashMap.empty[MapTilePosition, MapTilePosition]
+
+  case class Feed(walkableRaw: Grid2D, walkableNow: Grid2D, previous: AltDropPositions)
+
+  private def feed = Feed(mapLayers.rawWalkableMap, mapLayers.freeWalkableTiles,
+    Option(nearestFree).flatMap(_.mostRecent).getOrElse(AltDropPositions.empty))
+
+  case class AltDropPositions(fixes: Map[MapTilePosition, MapTilePosition],
+                              blockedImpossibles: Grid2D, passThrough: Grid2D) {
+    def proposeFix(tile: MapTilePosition) = {
+      if (passThrough.free(tile)) {
+        tile.toSome
+      } else if (blockedImpossibles.free(tile)) {
+        fixes.get(tile)
+      } else {
+        None
+      }
+    }
+  }
+
+  object AltDropPositions {
+    val empty = AltDropPositions(Map.empty, mapLayers.rawWalkableMap, mapLayers.rawWalkableMap)
+  }
+
+  private val nearestFree: FutureIterator[Feed, AltDropPositions] = FutureIterator.feed(feed)
+                                                                    .produceAsyncLater { in =>
+                                                                      val impossibleCache = in
+                                                                                            .previous
+                                                                                            .blockedImpossibles
+                                                                                            .mutableCopy
+                                                                      val passThrough = in
+                                                                                        .walkableRaw
+                                                                                        .mutableCopy
+
+                                                                      val fixes = in.walkableRaw
+                                                                                  .allFree
+                                                                                  .flatMap { tile =>
+                                                                                    val result = {
+                                                                                      in.previous
+                                                                                      .proposeFix(
+                                                                                        tile)
+                                                                                      .filter
+                                                                                      { old =>
+                                                                                        universe
+                                                                                        .mapLayers
+                                                                                        .rawWalkableMap
+                                                                                        .freeAndInBounds(
+                                                                                          old.asArea
+                                                                                          .growBy(
+                                                                                            2))
+                                                                                      }
+                                                                                      .orElse {
+                                                                                        if (impossibleCache
+                                                                                            .free(
+                                                                                              tile)) {
+                                                                                          val
+                                                                                          maybePossible = in
+                                                                                                              .walkableRaw
+                                                                                                              .spiralAround(
+                                                                                                                tile,
+                                                                                                                10)
+                                                                                                              .filter
+                                                                                                              { alt =>
+                                                                                                                val free = universe
+                                                                                                                           .mapLayers
+                                                                                                                           .rawWalkableMap
+                                                                                                                           .freeAndInBounds(
+                                                                                                                             alt
+                                                                                                                             .asArea
+                                                                                                                             .growBy(
+                                                                                                                               2))
+                                                                                                                def sameArea = universe
+                                                                                                                               .mapLayers
+                                                                                                                               .rawWalkableMap
+                                                                                                                               .areInSameWalkableArea(
+                                                                                                                                 alt,
+                                                                                                                                 tile)
+                                                                                                                free &&
+                                                                                                                sameArea
+                                                                                                              }
+                                                                                                              .toSet
+
+                                                                                          if (maybePossible
+                                                                                              .isEmpty) {
+                                                                                            impossibleCache
+                                                                                            .block_!(
+                                                                                              tile)
+                                                                                            None
+                                                                                          } else {
+                                                                                            maybePossible
+                                                                                            .find
+                                                                                            { alt =>
+                                                                                              universe
+                                                                                              .mapLayers
+                                                                                              .freeWalkableTiles
+                                                                                              .freeAndInBounds(
+                                                                                                alt)
+                                                                                            }
+                                                                                          }
+                                                                                        } else {
+                                                                                          None
+                                                                                        }
+                                                                                      }.map(
+                                                                                        e => tile ->
+                                                                                             e)
+                                                                                    }
+
+                                                                                    result.flatMap
+                                                                                    { case tup@(from, to) =>
+                                                                                      if (from ==
+                                                                                          to) {
+                                                                                        // covered by pass through
+                                                                                        None
+                                                                                      } else {
+                                                                                        passThrough
+                                                                                        .block_!(
+                                                                                          from)
+                                                                                        tup.toSome
+                                                                                      }
+                                                                                    }
+                                                                                  }.toMap
+
+                                                                      AltDropPositions(fixes,
+                                                                        impossibleCache
+                                                                        .guaranteeImmutability,
+                                                                        passThrough
+                                                                        .guaranteeImmutability)
+                                                                    }
+
+  def canDropHere(where: MapTilePosition) = {
+    nearestDropPointTo(where).contains(where)
   }
 
   universe.register_!(() => {
@@ -23,21 +154,25 @@ class FerryManager(override val universe: Universe) extends HasUniverse {
     ferryPlans.get(ferry)
   }
 
-  def requestFerry(forWhat: GroundUnit, dropTarget: MapTilePosition,
-                   buildNewIfRequired: Boolean = false) = {
+  def requestFerry_!(forWhat: GroundUnit, dropTarget: MapTilePosition,
+                     buildNewIfRequired: Boolean = false) = {
     val job = {
-      lazy val to = {
-        val fixed = nearestFreeCache.get.getOrElseUpdate(dropTarget, {
-          universe.mapLayers.freeWalkableTiles.nearestFreeBlock(dropTarget, 1).getOr(
-            s"Could not find free spot of size 3*3 around $dropTarget. Anywhere. At all.")
-        })
+      val fixedDropTarget = {
+        val fixed = nearestFree.flatMapOnContent { data =>
+          data.proposeFix(dropTarget)
+        }
         trace(s"Requested ferry for $forWhat to go to $fixed")
         fixed
       }
 
+      def newPlan = {
+        fixedDropTarget.flatMap { dropHere =>
+          newPlanFor(forWhat, dropHere, buildNewIfRequired).headOption
+        }
+      }
       ferryPlans.valuesIterator.find { plan =>
         lazy val sameArea = {
-          val area = mapLayers.rawWalkableMap.areaWhichContainsAsFree(to)
+          val area = fixedDropTarget.flatMap(mapLayers.rawWalkableMap.areaWhichContainsAsFree)
           plan.targetArea == area
         }
         def canAdd = {
@@ -54,19 +189,20 @@ class FerryManager(override val universe: Universe) extends HasUniverse {
         } else {
           tryReplace_!()
         }
-      }.orElse(newPlanFor(forWhat, to, buildNewIfRequired).headOption)
+      }.orElse(newPlan)
     }
     job
   }
 
-  private def newPlanFor(forWhat: GroundUnit, to: MapTilePosition,
+  private def newPlanFor(forWhat: GroundUnit, dropTarget: MapTilePosition,
                          buildNewIfRequired: Boolean = false) = {
-    assert(forWhat.currentArea != mapLayers.rawWalkableMap.areaWhichContainsAsFree(to),
+    assert(forWhat.currentArea != mapLayers.rawWalkableMap.areaWhichContainsAsFree(dropTarget),
       s"One of the units is already in the target area")
 
-    assert(mapLayers.rawWalkableMap.free(to), s"$to is supposed to be a free ground tile")
+    assert(mapLayers.rawWalkableMap.free(dropTarget),
+      s"$dropTarget is supposed to be a free ground tile")
 
-    trace(s"Calculating new ferry job for $forWhat to $to")
+    trace(s"Calculating new ferry job for $forWhat to $dropTarget")
 
 
     val selector = UnitJobRequest.idleOfType(employer, race.transporterClass, 1)
@@ -75,8 +211,8 @@ class FerryManager(override val universe: Universe) extends HasUniverse {
                    }
     val result = unitManager.request(selector, buildNewIfRequired)
     val newPlans = result.ifNotZero(_.map { transporter =>
-      new FerryPlan(transporter, forWhat, to,
-        mapLayers.rawWalkableMap.areaWhichContainsAsFree(to))
+      new FerryPlan(transporter, forWhat, dropTarget,
+        mapLayers.rawWalkableMap.areaWhichContainsAsFree(dropTarget))
     }, Nil)
 
     ferryPlans ++= newPlans.map(e => e.ferry -> e)
@@ -84,12 +220,15 @@ class FerryManager(override val universe: Universe) extends HasUniverse {
     newPlans
   }
 
-  override def onTick(): Unit = {
-    super.onTick()
+  override def onTick_!(): Unit = {
+    super.onTick_!()
     val done = ferryPlans.valuesIterator.filterNot(_.unfinished)
     trace(s"Ferry plans done: $done")
     ferryPlans --= done.map(_.ferry)
-    ferryPlans.valuesIterator.foreach(_.onTick())
+    ferryPlans.valuesIterator.foreach(_.onTick_!())
+    ifNth(Primes.prime67) {
+      nearestFree.prepareNextIfDone()
+    }
   }
 }
 
@@ -118,8 +257,13 @@ object PlanIdCounter {
 
 }
 
-class FerryPlan(val ferry: TransporterUnit, initial: GroundUnit, val toWhere: MapTilePosition,
+class FerryPlan(val ferry: TransporterUnit, initial: GroundUnit,
+                initiallyPlannedToDropHere: MapTilePosition,
                 val targetArea: Option[Grid2D]) extends HasUniverse {
+
+  def toWhere = ferryManager.nearestDropPointTo(initiallyPlannedToDropHere)
+                .getOr(s"No drop spot available anywhere near $initiallyPlannedToDropHere")
+
   private val currentPlannedCargo  = collection.mutable.HashMap.empty ++=
                                      initial.toSet.map(e => e -> ferry.currentTick)
   private val dropTheseImmediately = collection.mutable.HashSet.empty[GroundUnit]

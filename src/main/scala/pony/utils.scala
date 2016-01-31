@@ -67,8 +67,11 @@ class Renderer(game: Game, private var color: bwapi.Color) {
   }
 
   def indicateTarget(currentPosition: MapPosition, to: MapTilePosition): Unit = {
-    game.drawLineMap(currentPosition.x, currentPosition.y, to.mapX + tileSize / 2,
-      to.mapY + tileSize / 2, color)
+    game.drawLineMap(currentPosition.x + tileSize / 2,
+      currentPosition.y + tileSize / 2,
+      to.mapX + tileSize / 2,
+      to.mapY + tileSize / 2,
+      color)
     drawCircleAroundTile(to)
   }
 
@@ -125,9 +128,16 @@ class Renderer(game: Game, private var color: bwapi.Color) {
 }
 
 class LazyVal[T](gen: => T, onValueChange: Option[() => Unit] = None) extends Serializable {
-  private var locked    = false
-  private var evaluated = false
-  private var value: T  = _
+  private var allowUnsafe    = false
+  private val creationThread = Thread.currentThread()
+  private var locked         = false
+  private var evaluated      = false
+  private var value: T       = _
+
+  def allowMultithreading_!() = {
+    allowUnsafe = true
+    this
+  }
 
   def lockValueForever(): Unit = {
     locked = true
@@ -145,6 +155,7 @@ class LazyVal[T](gen: => T, onValueChange: Option[() => Unit] = None) extends Se
   override def toString = s"LazyVal($get)"
 
   def get = {
+    assert(allowUnsafe || Thread.currentThread() == creationThread)
     if (!evaluated)
       if (onValueChange.isDefined) {
         val newVal = gen
@@ -294,6 +305,14 @@ class FutureIterator[IN, T](feed: => IN, produce: IN => T, startNow: Boolean) {
   private var done       = Option.empty[T]
   private var inProgress = if (startNow) nextFuture else BWFuture.none
   private var thinking   = startNow
+
+  def mapOnContent[X](f: T => X) = {
+    mostRecent.map(f)
+  }
+
+  def flatMapOnContent[X](f: T => Option[X]) = {
+    mostRecent.flatMap(f)
+  }
 
   def hasResult = mostRecent.isDefined
 

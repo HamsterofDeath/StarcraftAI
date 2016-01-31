@@ -163,9 +163,9 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
     unfulfilledRequestsThisTick.clear()
 
     //clean/update
-    ownUnits.all.foreach(_.onTick())
-    assignments.valuesIterator.foreach(_.onTick())
-    enemies.all.foreach(_.onTick())
+    ownUnits.all.foreach(_.onTick_!())
+    assignments.valuesIterator.foreach(_.onTick_!())
+    enemies.all.foreach(_.onTick_!())
     val removeUs = {
       val done = assignments.filter { case (_, job) => job.isFinished }.values
       val failed = assignments.filter { case (_, job) => job.failedOrObsolete }.values
@@ -762,8 +762,8 @@ abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: 
 
   def hasNotYetSpendResources: Boolean = true
 
-  override def onTick(): Unit = {
-    super.onTick()
+  override def onTick_!(): Unit = {
+    super.onTick_!()
   }
 
   def onStealUnit() = {}
@@ -971,8 +971,8 @@ Employer[F],
     Orders.Train(unit, trainType).toSeq
   }
 
-  override def onTick(): Unit = {
-    super.onTick()
+  override def onTick_!(): Unit = {
+    super.onTick_!()
 
     if (!startedToProduce && ageSinceLastReset > patience && factory.isProducing) {
       startedToProduce = true
@@ -1019,8 +1019,8 @@ class ConstructAddon[W <: CanBuildAddons, A <: Addon](employer: Employer[W],
     startedConstruction && stoppedConstruction
   }
 
-  override def onTick(): Unit = {
-    super.onTick()
+  override def onTick_!(): Unit = {
+    super.onTick_!()
     assert(failedOrObsolete || resources.hasStillLocked(proofForFunding),
       s"Someone stole $proofForFunding from $this")
     if (!startedConstruction) {
@@ -1073,8 +1073,8 @@ class ResearchUpgrade[U <: Upgrader](employer: Employer[U],
     }
   }
 
-  override def onTick(): Unit = {
-    super.onTick()
+  override def onTick_!(): Unit = {
+    super.onTick_!()
     if (!startedResearch && basis.isDoingResearch) {
       startedResearch = true
     }
@@ -1202,7 +1202,7 @@ trait FerrySupport[T <: GroundUnit] extends JobOrSubJob[T] {
     val myOrder = target.map { to =>
       val needsFerry = !unit.currentArea.exists(_.free(to))
       if (needsFerry && mapLayers.rawWalkableMap.free(to)) {
-        ferryManager.requestFerry(unit, to) match {
+        ferryManager.requestFerry_!(unit, to) match {
           case Some(plan) if unit.onGround =>
             Orders.BoardFerry(unit, plan.ferry).toList
           case _ if unit.loaded =>
@@ -1286,8 +1286,8 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W,
   private var resourcesUnlocked         = false
   private var constructs                = Option.empty[Building]
 
-  override def onTick(): Unit = {
-    super.onTick()
+  override def onTick_!(): Unit = {
+    super.onTick_!()
     if (unit.gotUnloaded) resetTimer_!()
     if (startedActualConstruction && !resourcesUnlocked && constructs.isDefined) {
       trace(s"Construction job $this no longer needs to lock resources")
@@ -1919,7 +1919,7 @@ class SendOrdersToStarcraft(universe: Universe) extends AIModule[Controllable](u
 }
 
 class JobReAssignments(universe: Universe) extends OrderlessAIModule[Controllable](universe) {
-  override def onTick(): Unit = {
+  override def onTick_!(): Unit = {
     unitManager.nextJobReorganisationRequest
     .filter(_.stillWantsOptimization)
     .foreach { optimizeMe =>

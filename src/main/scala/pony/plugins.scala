@@ -412,6 +412,9 @@ class DebugHelper(main: MainAI) extends AIPlugIn with HasUniverse {
 
                 case List(x, id) if x == "n" || x == "narrow" =>
                   strategicMap.narrowPoints.find(_.index.toString == id).map(_.where)
+
+                case List(x, id) if x == "u" || x == "unit" =>
+                  enemies.allMobilesAndBuildings.find(_.unitIdText == id).map(_.centerTile)
               }
               target.foreach { where =>
                 main.brain.universe.worldDominationPlan.initiateAttack(where, true)

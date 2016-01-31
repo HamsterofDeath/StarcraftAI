@@ -134,6 +134,13 @@ package object pony {
     def toBase36 = Integer.toString(i, 36)
   }
 
+  implicit class RichTraversable[T](val t: Traversable[T]) extends AnyVal {
+    def headAssert = {
+      assert(t.size == 1)
+      t.head
+    }
+  }
+
   implicit class RichTraversableOnce[T](val t: TraversableOnce[T]) extends AnyVal {
     def minByOpt[C](cmp: T => C)(implicit cmp2: Ordering[C]) = {
       if (t.isEmpty) {

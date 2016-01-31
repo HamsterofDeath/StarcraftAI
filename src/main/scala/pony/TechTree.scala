@@ -149,36 +149,56 @@ sealed trait SCRace {
 
 case object Terran extends SCRace {
   override val techTree = new TerranTechTree
+
   override def workerClass = classOf[SCV]
+
   override def transporterClass = classOf[Dropship]
+
   override def supplyClass = classOf[SupplyDepot]
+
   override def resourceDepositClass = classOf[CommandCenter]
+
   override def detectorBuildingClass = classOf[MissileTurret]
 }
 
 case object Zerg extends SCRace {
   override val techTree = ???
+
   override def workerClass = classOf[Drone]
+
   override def transporterClass = classOf[Overlord]
+
   override def supplyClass = classOf[Overlord]
+
   override def resourceDepositClass = classOf[Hive]
+
   override def detectorBuildingClass = classOf[SporeColony]
 }
 
 case object Protoss extends SCRace {
   override val techTree = ???
+
   override def workerClass = classOf[Probe]
+
   override def transporterClass = classOf[Shuttle]
+
   override def supplyClass = classOf[Pylon]
+
   override def resourceDepositClass = classOf[Nexus]
+
   override def detectorBuildingClass = classOf[PhotonCannon]
 }
 
 case object Other extends SCRace {
   override val techTree = ???
+
   override def workerClass = ???
+
   override def transporterClass = ???
+
   override def supplyClass = ???
+
   override def resourceDepositClass = ???
+
   override def detectorBuildingClass = ???
 }

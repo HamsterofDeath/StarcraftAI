@@ -7,13 +7,15 @@ import scala.collection.mutable.ArrayBuffer
 
 case class ResourceArea(patches: Option[MineralPatchGroup], geysirs: Set[Geysir]) {
   assert(patches.isDefined || geysirs.nonEmpty)
-  lazy val coveredTiles             = resources.flatMap(_.area.tiles).toSet
-  lazy val mostAnnoyingMinePosition = center
-  val resources = patches.map(_.patches).getOrElse(Nil) ++ geysirs
+  val resources                = patches.map(_.patches).getOrElse(Nil) ++ geysirs
+  val coveredTiles             = resources.flatMap(_.area.tiles).toSet
+  val center                   = patches.map(_.center).getOrElse(geysirs.head.tilePosition)
+  val mostAnnoyingMinePosition = center
 
   def mineralsAndGas = resources.iterator.map(_.remaining).sum
 
-  def center = patches.map(_.center).getOrElse(geysirs.head.tilePosition)
+  val allPatchTiles  = patches.map(_.allTiles).getOrElse(Nil).toVector
+  val allGeysirTiles = geysirs.flatMap(_.area.tiles).toVector
 
   def isPatchId(id: Int) = patches.fold(false)(_.patchId == id)
 
@@ -79,7 +81,7 @@ class StrategicMap(val resources: Seq[ResourceArea], walkable: Grid2D, game: Gam
     }
 
   }, s"narrow_${game.suggestFileName}")
-  private val mapData = FileStorageLazyVal.fromFunction({
+  private val mapData          = FileStorageLazyVal.fromFunction({
     val charsInLine = 80
     val tilesPerChunk = 100
 
@@ -90,11 +92,15 @@ class StrategicMap(val resources: Seq[ResourceArea], walkable: Grid2D, game: Gam
 
       val findSubAreasOfThis = walkable
       val myAreas = findSubAreasOfThis.areas
-      myAreas.par.flatMap { area =>
-
+      myAreas
+      .map { area =>
         val relevantResources = resources.filter { r =>
           r.resources.exists(p => area.free(p.area.anyTile))
         }
+        area -> relevantResources
+      }
+      .par
+      .flatMap { case (area, relevantResources) =>
 
         val freeSpotsToCheck = area.allFree.toVector
         freeSpotsToCheck.par.flatMap { center =>
@@ -170,7 +176,7 @@ class StrategicMap(val resources: Seq[ResourceArea], walkable: Grid2D, game: Gam
     println("Done!")
     ret
   }, s"chokepoints_${game.suggestFileName}")
-  private val myDomains = LazyVal.from {
+  private val myDomains        = LazyVal.from {
     val raw = mapData.get
     raw.map { case (choke, map) =>
       choke -> map.map { case (area, coveredTiles) =>
@@ -295,4 +301,5 @@ class StrategicMap(val resources: Seq[ResourceArea], walkable: Grid2D, game: Gam
       mineTiles.sortBy(_.distanceSquaredTo(chokePoint.center)).toVector
     }
   }
+
 }

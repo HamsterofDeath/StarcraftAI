@@ -7,7 +7,7 @@ import scala.collection.mutable
 class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitSet,
              protected val containsBlocked: Boolean = true) extends Serializable {
   self =>
-  private val lazyAreas = LazyVal.from {new AreaHelper(self).findFreeAreas}
+  private lazy val lazyAreas = new AreaHelper(self).findFreeAreas
 
   def anyFreeInSpiral(tile: MapTilePosition, size: Int) = {
     spiralAround(tile, 3).exists(free)
@@ -29,7 +29,7 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
   def areaWhichContainsAsFree(tile: MapTilePosition) = areas
                                                        .find(e => e.inBounds(tile) && e.free(tile))
 
-  def areas = lazyAreas.get
+  def areas = lazyAreas
 
   def inBounds(p: MapTilePosition): Boolean = inBounds(p.x, p.y)
 
@@ -289,6 +289,10 @@ class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet,
 
   def block_!(a: MapTilePosition, b: MapTilePosition): Unit = {
     AreaHelper.traverseTilesOfLine(a, b, block_!)
+  }
+
+  def block_!(center: MapTilePosition, grow: Int): Unit = {
+    block_!(Area(center, Size(1, 1).growBy(grow)))
   }
 
   def block_!(center: MapTilePosition, from: HasXY, to: HasXY): Unit = {

@@ -17,15 +17,15 @@ abstract class DefaultBehaviour[T <: WrapsUnit : Manifest](override val universe
 
   def employer = asEmployer
 
-  override def onTick(): Unit = {
-    super.onTick()
+  override def onTick_!(): Unit = {
+    super.onTick_!()
     val remove = controlledUnits.filterNot(_.isInGame)
     controlledUnits --= remove
     unit2behaviour --= remove
 
   }
 
-  def renderDebug(renderer: Renderer): Unit = {}
+  def renderDebug_!(renderer: Renderer): Unit = {}
 
   def behaviourOf(unit: T) = {
     ifControlsOpt(unit) {identity}
@@ -155,19 +155,22 @@ object Terran {
         def unit: Option[GroundUnit]
       }
 
+      case class Feed(transporterWhere: MapTilePosition, pickupTarget: PositionOrUnit,
+                      pathfinder: PathFinder)
+
       case class IsPosition(where: MapTilePosition) extends PositionOrUnit {
         override def unit = None
       }
 
       case class IsUnit(basedOn: GroundUnit) extends PositionOrUnit {
-        override def where = basedOn.currentTile
+        override val where = basedOn.currentTile
 
         private val u = basedOn.toSome
 
         override def unit = u
       }
 
-      case class MaybePath(path: FutureIterator[PositionOrUnit, Option[MigrationPath]]) {
+      case class MaybePath(path: FutureIterator[Feed, Option[MigrationPath]]) {
         private var lastTouched = currentTick
 
         def age = currentTick - lastTouched
@@ -196,16 +199,18 @@ object Terran {
 
         def currentSafeOrder(transporterTarget: PositionOrUnit): Option[UnitOrder] = {
           val maybeCalculatedPath = paths.getOrElseUpdate(transporterTarget, {
-            val future = FutureIterator.feed(transporterTarget).produceAsync { target =>
-              universe
-              pathfinders.airSafe.findPathNow(unit.currentTile, target.where).map(_.toMigration)
+            def feed = Feed(unit.currentTile, transporterTarget, pathfinders.airSafe)
+
+            val future = FutureIterator.feed(feed).produceAsync { in =>
+              in.pathfinder.findPathNow(in.transporterWhere, in.pickupTarget.where)
+              .map(_.toMigration)
             }
             MaybePath(future)
           })
           if (maybeCalculatedPath.age > timeBetweenUpdates) {
             maybeCalculatedPath.updateFuture()
           }
-          maybeCalculatedPath.path.mostRecent.flatMap { maybeFoundPath =>
+          maybeCalculatedPath.path.flatMapOnContent { maybeFoundPath =>
             maybeFoundPath.map { safePath =>
               def simpleCommand = {
                 transporterTarget.unit match {
@@ -335,8 +340,8 @@ object Terran {
 
     override def refuseCommandsForTicks = 6
 
-    override def onTick() = {
-      super.onTick()
+    override def onTick_!() = {
+      super.onTick_!()
       ifNth(Primes.prime5) {
         dancePlan.prepareNextIfDone()
       }
@@ -361,7 +366,7 @@ object Terran {
         val (newState, newOrder) = {
           state match {
             case Idle =>
-              dancePlan.mostRecent.flatMap { plan =>
+              dancePlan.flatMapOnContent { plan =>
                 plan.get(unit.unitId)
               }.map { where =>
                 Fallback(where, universe.currentTick) -> Orders.MoveToTile(unit, where).toList
@@ -419,49 +424,61 @@ object Terran {
   class MoveAwayFromConstructionSite(universe: Universe)
     extends DefaultBehaviour[Mobile](universe) {
 
-    private val freeAlternativeTiles = FutureIterator.feed().produceAsyncLater { in =>
+    case class Feed(planned: Grid2D, free: Grid2D)
 
+    private def feed = Feed(mapLayers.blockedByPlannedBuildings, mapLayers.freeWalkableTiles)
+
+    private val freeAlternativeTiles = FutureIterator.feed(feed).produceAsyncLater { in =>
+      val tolerance = 3
+
+      val allBlocked = in.planned.allBlocked.toList
+      val mut = in.planned.mutableCopy
+      allBlocked.foreach { where =>
+        mut.block_!(where.asArea.growBy(tolerance))
+      }
+
+      mut.allBlocked.toVector.flatMap { blocked =>
+        val extended = blocked.asArea.growBy(1)
+        val ret = in.free.spiralAround(blocked).find { tile =>
+          in.free.freeAndInBounds(tile) &&
+          in.planned.freeAndInBounds(tile)
+        }
+        // block solution for next try
+        ret.foreach { found =>
+          mut.block_!(found.asArea.growBy(1))
+        }
+        ret.map(e => blocked -> e)
+      }.toMap
     }
 
-    override protected def wrapBase(unit: Mobile) = new SingleUnitBehaviour[Mobile](unit, meta) {
-      private var lastTarget = Option.empty[MapTilePosition]
-
-      override def describeShort: String = "<>"
-
-      override def toOrder(what: Objective): Seq[UnitOrder] = {
-        def secondLayer = mapLayers.freeWalkableTiles
-        def layer = mapLayers.blockedByPlannedBuildings
-        val extendedSizeToBeSafe = unit.unitTileSize.growBy(tolerance + 2)
-        def shouldAttempt = {
-          universe.unitGrid.own.allInRange[Mobile](unit.currentTile, 4).size < 12
+    override def renderDebug_!(renderer: Renderer) = {
+      super.renderDebug_!(renderer)
+      freeAlternativeTiles.mostRecent.foreach { data =>
+        data.foreach { case (from, to) =>
+          renderer.in_!(Color.Green).indicateTarget(from, to)
         }
-        val needsToMove = layer.anyBlocked(unit.blockedArea.growBy(tolerance)) && shouldAttempt
-
-        val order = lastTarget.filter { where =>
-          needsToMove &&
-          layer.freeAndInBounds(where, extendedSizeToBeSafe) &&
-          secondLayer.freeAndInBounds(where, extendedSizeToBeSafe)
-        }.map { where =>
-          Orders.MoveToTile(unit, where)
-        }.orElse {
-          if (needsToMove) {
-            val myLayer = layer
-            myLayer.spiralAround(unit.currentTile).find { tile =>
-              myLayer.freeAndInBounds(tile, extendedSizeToBeSafe) &&
-              secondLayer.freeAndInBounds(tile, extendedSizeToBeSafe)
-            }.map { target =>
-              Orders.MoveToTile(unit, target)
-            }
-          } else {
-            None
-          }
-        }
-        lastTarget = order.map(_.to)
-        order.toList
       }
     }
 
-    private def tolerance = 2
+    override def onTick_!() = {
+      super.onTick_!()
+      ifNth(Primes.prime31) {
+        freeAlternativeTiles.prepareNextIfDone()
+      }
+    }
+
+    override protected def wrapBase(unit: Mobile) = new SingleUnitBehaviour[Mobile](unit, meta) {
+      override def describeShort: String = "<>"
+
+      override def toOrder(what: Objective): Seq[UnitOrder] = {
+        freeAlternativeTiles.flatMapOnContent { result =>
+          result.get(unit.currentTile)
+        }.map { target =>
+          Orders.MoveToTile(unit, target)
+        }.toList
+      }
+
+    }
   }
 
   class PreventBlockades(universe: Universe) extends DefaultBehaviour[Mobile](universe) {
@@ -503,8 +520,8 @@ object Terran {
 
     override def forceRepeatedCommands: Boolean = false
 
-    override def onTick() = {
-      super.onTick()
+    override def onTick_!() = {
+      super.onTick_!()
       newBlockingUnits.get.ifDoneOpt { locking =>
         val problems = locking.flatMap { case (_, id) =>
           ownUnits.byId(id).asInstanceOf[Option[Mobile]]
@@ -577,9 +594,9 @@ object Terran {
 
     override def priority = SecondPriority.More
 
-    override def onTick() = {
-      super.onTick()
-      helper.onTick()
+    override def onTick_!() = {
+      super.onTick_!()
+      helper.onTick_!()
     }
 
     override protected def wrapBase(unit: SCV) = new SingleUnitBehaviour[SCV](unit, meta) {
@@ -611,9 +628,9 @@ object Terran {
 
     override def priority = SecondPriority.More
 
-    override def onTick() = {
-      super.onTick()
-      helper.onTick()
+    override def onTick_!() = {
+      super.onTick_!()
+      helper.onTick_!()
     }
 
     override protected def wrapBase(unit: SCV) = new SingleUnitBehaviour[SCV](unit, meta) {
@@ -649,9 +666,9 @@ object Terran {
 
     override def priority = SecondPriority.More
 
-    override def onTick() = {
-      super.onTick()
-      helper.onTick()
+    override def onTick_!() = {
+      super.onTick_!()
+      helper.onTick_!()
     }
 
     override protected def wrapBase(unit: SCV) = new SingleUnitBehaviour[SCV](unit, meta) {
@@ -688,12 +705,12 @@ object Terran {
                                                      !u.isInstanceOf[TransporterUnit] &&
                                                      !u.isInstanceOf[AutoPilot]
 
-    override def onTick(): Unit = {
-      super.onTick()
+    override def onTick_!(): Unit = {
+      super.onTick_!()
     }
 
-    override def renderDebug(renderer: Renderer) = {
-      super.renderDebug(renderer)
+    override def renderDebug_!(renderer: Renderer) = {
+      super.renderDebug_!(renderer)
       worldDominationPlan.allAttacks.foreach { plan =>
         plan.migrationPlan.foreach { p =>
           p.targetFormationTiles.foreach { tile =>
@@ -867,8 +884,8 @@ object Terran {
   class UseComsat(universe: Universe) extends DefaultBehaviour[Comsat](universe) {
     private val detectThese = ArrayBuffer.empty[Group[CanCloak]]
 
-    override def onTick() = {
-      super.onTick()
+    override def onTick_!() = {
+      super.onTick_!()
       detectThese ++= {
         mapNth(Primes.prime31, Seq.empty[Group[CanCloak]]) {
           val dangerous = {
@@ -920,7 +937,7 @@ object Terran {
       area
     }
 
-    override def renderDebug(renderer: Renderer): Unit = {
+    override def renderDebug_!(renderer: Renderer): Unit = {
       suggestMinePositions.foreach { tile =>
         renderer.in_!(Color.White).drawCircleAroundTile(tile)
       }
@@ -934,8 +951,8 @@ object Terran {
       defense //++ neutralResourceFields
     }
 
-    override def onTick(): Unit = {
-      super.onTick()
+    override def onTick_!(): Unit = {
+      super.onTick_!()
       ifNth(Primes.prime137) {
         helper.cleanBlacklist((_, reason) => reason.when + 240 < universe.currentTick)
       }
@@ -1054,8 +1071,8 @@ object Terran {
       helper.afterTick()
     })
 
-    override def onTick() = {
-      super.onTick()
+    override def onTick_!() = {
+      super.onTick_!()
     }
 
     override def refuseCommandsForTicks = 12
@@ -1104,9 +1121,9 @@ object Terran {
 
     private val helper = new FocusFireOrganizer(universe)
 
-    override def onTick() = {
-      super.onTick()
-      helper.onTick()
+    override def onTick_!() = {
+      super.onTick_!()
+      helper.onTick_!()
     }
 
     override protected def wrapBase(unit: MobileRangeWeapon) = new
@@ -1138,8 +1155,8 @@ class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
     prioritized
   }
 
-  override def onTick() = {
-    super.onTick()
+  override def onTick_!() = {
+    super.onTick_!()
     enemy2Attackers.filter(_._1.isDead).foreach { case (dead, attackers) =>
       trace(s"Unit $dead died, reorganizing attackers")
       enemy2Attackers.remove(dead)
@@ -1329,8 +1346,8 @@ class NonConflictingTargets[T <: WrapsUnit : Manifest, M <: Mobile : Manifest]
     .map(_._1)
   }
 
-  override def onTick() = {
-    super.onTick()
+  override def onTick_!() = {
+    super.onTick_!()
     val noLongerValid = assignments.filter { case (m, t) =>
       !m.isInGame || !validTarget(t)
     }

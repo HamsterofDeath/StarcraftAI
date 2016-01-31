@@ -24,8 +24,8 @@ trait OrderHistorySupport extends WrapsUnit {
   def trackOrder(order: UnitOrder): Unit = {
     history.lastOption.foreach(_.trackOrder_!(order))
   }
-  override def onTick(): Unit = {
-    super.onTick()
+  override def onTick_!(): Unit = {
+    super.onTick_!()
     if (universe.world.debugger.isDebugging) {
       if (universe.unitManager.hasJob(this)) {
         history += HistoryElement(nativeUnit.getOrder, nativeUnit.getOrderTarget,
@@ -55,7 +55,7 @@ trait WrapsUnit extends HasUniverse with AfterTickListener {
   val unitId            = WrapsUnit.nextId
   val nativeUnitId      = nativeUnit.getID
   val initialNativeType = nativeUnit.getType
-  val nativeType = oncePerTick {
+  val nativeType        = oncePerTick {
     val ret = nativeUnit.getType
     morphed = morphed || ret != initialNativeType
     ret
@@ -145,8 +145,8 @@ trait WrapsUnit extends HasUniverse with AfterTickListener {
     }
   }
   def isBeingCreated = unfinished.get
-  override def onTick() = {
-    super.onTick()
+  override def onTick_!() = {
+    super.onTick_!()
   }
 
   object surroundings {
@@ -250,11 +250,11 @@ trait TerranBuilding extends Building {
 
 trait Building extends BlockingTiles with MaybeCanDie {
   self =>
-  override val armorType = Building
-  private  val myFlying  = oncePerTick {
+  override val armorType            = Building
+  private  val myFlying             = oncePerTick {
     nativeUnit.isFlying
   }
-  private val myAbandoned = oncePerTick {
+  private  val myAbandoned          = oncePerTick {
     isBeingCreated && incomplete && !isInstanceOf[Addon] && {
       val myClass = getClass
       val takenCareOf = unitManager.constructionsInProgress(myClass).exists { job =>
@@ -264,7 +264,7 @@ trait Building extends BlockingTiles with MaybeCanDie {
     }
 
   }
-  private val myRemainingBuildTime = oncePerTick {
+  private  val myRemainingBuildTime = oncePerTick {
     nativeUnit.getRemainingBuildTime
   }
 
@@ -821,8 +821,8 @@ trait Mobile extends WrapsUnit with Controllable {
 
   override def toString = s"${super.toString}@$currentTile"
 
-  override def onTick(): Unit = {
-    super.onTick()
+  override def onTick_!(): Unit = {
+    super.onTick_!()
     defenseMatrix.invalidate()
   }
   override protected def onUniverseSet(universe: Universe): Unit = {
@@ -868,12 +868,12 @@ trait GroundWeapon extends Weapon {
   val groundCanAttackGround  = groundWeapon.targetsGround()
   val groundDamageMultiplier = groundWeapon.damageFactor()
   val groundDamageType: DamageType
-  protected val groundWeapon          = initialNativeType.groundWeapon()
-  private   val damage                = LazyVal.from {
+  protected lazy val groundWeapon          = initialNativeType.groundWeapon()
+  private        val damage                = LazyVal.from {
     // will be invalidated on upgrade
     evalDamage(groundWeapon, groundDamageType, groundDamageMultiplier, targetsAir = false)
   }
-  private   val myInGroundWeaponRange = oncePerTick {
+  private        val myInGroundWeaponRange = oncePerTick {
     geoHelper.circle(centerTile, math.round(groundRange.toDouble / 32).toInt)
   }
 
@@ -1007,8 +1007,8 @@ trait AirWeapon extends Weapon {
   val airCanAttackGround  = airWeapon.targetsGround()
   val airDamageMultiplier = airWeapon.damageFactor()
   val airDamageType: DamageType
-  protected val airWeapon = initialNativeType.airWeapon()
-  private   val damage    = LazyVal.from {
+  protected lazy val airWeapon = initialNativeType.airWeapon()
+  private        val damage    = LazyVal.from {
     // will be invalidated on upgrade
     evalDamage(airWeapon, airDamageType, airDamageMultiplier, targetsAir = true)
   }
@@ -1177,8 +1177,8 @@ trait CanBuildAddons extends Building {
     attached = Some(addon)
   }
   def hasAddonAttached = attached.isDefined
-  override def onTick(): Unit = {
-    super.onTick()
+  override def onTick_!(): Unit = {
+    super.onTick_!()
     attached.filter(_.isDead).foreach { dead =>
       notifyDetach_!(dead)
     }
@@ -1233,13 +1233,13 @@ trait TransporterUnit extends AirUnit {
   }
 
   def nearestDropTile = {
-    mapLayers.freeWalkableTiles.nearestFree(currentTile)
+    ferryManager.nearestDropPointTo(currentTile)
   }
 
   def isPickingUp = myPickingUp.get
   def loaded = myLoaded.get
   def isCarrying(gu: GroundUnit) = myLoaded.get(gu)
-  def canDropHere = mapLayers.freeWalkableTiles.free(currentTile)
+  def canDropHere = ferryManager.canDropHere(currentTile)
 
   def hasUnitsLoaded = myLoaded.get.nonEmpty
 }

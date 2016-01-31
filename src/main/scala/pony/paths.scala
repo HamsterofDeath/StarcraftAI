@@ -510,8 +510,8 @@ class UnitGrid(override val universe: Universe) extends HasUniverse {
     if (set != null) set else Set.empty[Mobile]
   }
 
-  override def onTick(): Unit = {
-    super.onTick()
+  override def onTick_!(): Unit = {
+    super.onTick_!()
     //reset
     touched.foreach { modified =>
       modified.clear()
@@ -645,17 +645,14 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   def rawWalkableMap = rawMapWalk
 
   def defendedTiles = {
-    update()
     justAreasToDefend.mostRecent.getOrElse(empty)
   }
 
   def exposedToCloakedUnits = {
-    update()
     exposedToCloaked.mostRecent.getOrElse(full)
   }
 
   def blockedByPotentialAddons = {
-    update()
     justAddonLocations.asReadOnlyView
   }
 
@@ -666,52 +663,42 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   def slightlyDangerousAsBlocked = coveredByAnythingWithWeapons.mostRecent.getOrElse(emptyGrid)
 
   def freeTilesForConstruction = {
-    update()
     withEverythingStaticBuildable.asReadOnlyView
   }
 
   def buildableBlockedByNothingTiles = {
-    update()
     withEverythingBlockingBuildable.asReadOnlyView
   }
 
   def freeWalkableTiles = {
-    update()
     withEverythingBlockingWalkable.asReadOnlyView
   }
 
   def freeWalkableIgnoringMobiles = {
-    update()
     withEverythingStaticWalkable.asReadOnlyView
   }
 
   def blockedByBuildingTiles = {
-    update()
     justBuildings.asReadOnlyView
   }
 
   def blockedByResources = {
-    update()
     justMineralsAndGas.asReadOnlyView
   }
 
   def blockedByMines = {
-    update()
     justMines.asReadOnlyView
   }
 
   def blockedForResourceDeposit = {
-    update()
     justBlockedForMainBuilding.mostRecent.getOrElse(emptyCopy)
   }
 
   def blockedByWorkerPaths = {
-    update()
     justWorkerPaths.asReadOnlyView
   }
 
   def blockedByMobileUnits = {
-    update()
     justBlockingMobiles.asReadOnlyView
   }
 
@@ -728,7 +715,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   }
 
   def tick(): Unit = {
-    // nop... remove?
+    update()
   }
 
   def emptyGrid = world.map.emptyZoomed
@@ -807,9 +794,9 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
 
   private def evalOnlyUnitsAsync(units: => TraversableOnce[StaticallyPositioned], growBy: Int) = {
     def areas = units.map(_.area)
-    FutureIterator.feed(areas).produceAsync { areas =>
+    FutureIterator.feed(areas.toVector).produceAsync { unitAreas =>
       val ret = emptyCopy
-      areas.foreach { a =>
+      unitAreas.foreach { a =>
         val by = a.growBy(growBy)
         ret.block_!(by)
       }
@@ -996,17 +983,13 @@ class ConstructionSiteFinder(universe: Universe) {
                            grid.inBounds(area) && grid.free(area)
                          }
                          def lineOfSight = {
-                           def fromPatch = resources.patches.exists { mpg =>
-                             mpg.patches.exists { p =>
-                               AreaHelper.directLineOfSight(p.area.centerTile, candidate,
+                           def fromPatch = resources.allPatchTiles.exists { p =>
+                             AreaHelper.directLineOfSight(p, candidate,
                                  universe.mapLayers.rawWalkableMap)
                              }
-                           }
-                           def fromGeysir = resources.geysirs.exists { geysir =>
-                             geysir.area.outline.exists { p =>
+                           def fromGeysir = resources.allGeysirTiles.exists { p =>
                                AreaHelper.directLineOfSight(p, candidate,
                                  universe.mapLayers.rawWalkableMap)
-                             }
                            }
                            fromPatch || fromGeysir
                          }
@@ -1019,9 +1002,8 @@ class ConstructionSiteFinder(universe: Universe) {
         } else {
           val closest = possible.minBy { elem =>
             val area = Area(elem, size)
-            val distanceToPatches = resources.patches
-                                    .map(_.patches.map(_.area.distanceTo(area)).sum).getOrElse(0.0)
-            val distanceToGeysirs = resources.geysirs.map(_.area.distanceTo(area)).sum
+            val distanceToPatches = resources.allPatchTiles.map(e => area.distanceTo(e)).sum
+            val distanceToGeysirs = resources.allGeysirTiles.map(e => area.distanceTo(area)).sum
             distanceToPatches + distanceToGeysirs
           }
           Some(closest)

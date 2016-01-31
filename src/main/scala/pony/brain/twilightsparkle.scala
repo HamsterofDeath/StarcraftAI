@@ -77,10 +77,10 @@ trait HasLazyVals {
   }
 
   def once[T](t: => T) = {
-    LazyVal.from(t)
+    LazyVal.from(t).allowMultithreading_!()
   }
 
-  def onTick(): Unit = {
+  def onTick_!(): Unit = {
     lazyVals.foreach(_.invalidate())
   }
 
@@ -106,16 +106,18 @@ object BackgroundComputationResult {
     override def jobs: Traversable[UnitWithJob[T]] = Nil
   }
 
-  def result[T <: WrapsUnit](myJobs: Traversable[UnitWithJob[T]],
-                             checkValidityNow: () => Boolean,
-                             afterComputationDone: () => Unit): BackgroundComputationResult[T] = new
+  def result[T <: WrapsUnit, J <: UnitWithJob[T]](myJobs: Traversable[() => J],
+                                                  checkValidityNow: () => Boolean)
+                                                 (afterComputationDone: Traversable[J] => Unit) = new
       BackgroundComputationResult[T] {
 
-    override def jobs = myJobs
+    private lazy val executed = myJobs.map(_.apply())
+
+    override def jobs = executed
 
     override def repeatOrderIssue = checkValidityNow()
 
-    override def afterComputation() = afterComputationDone()
+    override def afterComputation() = afterComputationDone(jobs)
 
     override def orders = jobs.flatMap(_.ordersForThisTick)
   }
@@ -160,14 +162,18 @@ trait BackgroundComputation[T <: WrapsUnit] extends AIModule[T] {
                 unitManager.requestWithoutTracking[T](req, recycle)
               }
               candidates.headOption.foreach { replacement =>
-                if (replacement != switch.unit) {
-                  val newRequest = switch.copyOfJobForNewUnit(replacement)
-                  trace(s"Unit ${switch.unit} replaced by $replacement")
-                  assignJob_!(newRequest)
+                if (switch.failedOrObsolete) {
+                  warn(s"Construction job failed while calculations were ongoing")
                 } else {
-                  trace(s"Unit ${switch.unit} kept its job after a background calculation",
-                    replacement == switch.unit)
-                  assignJob_!(switch)
+                  if (replacement != switch.unit) {
+                    val newRequest = switch.copyOfJobForNewUnit(replacement)
+                    trace(s"Unit ${switch.unit} replaced by $replacement")
+                    assignJob_!(newRequest)
+                  } else {
+                    trace(s"Unit ${switch.unit} kept its job after a background calculation",
+                      replacement == switch.unit)
+                    assignJob_!(switch)
+                  }
                 }
               }
               warn(
@@ -216,16 +222,16 @@ abstract class OrderlessAIModule[T <: WrapsUnit : Manifest](universe: Universe)
 
 class HelperAIModule[T <: WrapsUnit : Manifest](universe: Universe)
   extends OrderlessAIModule[T](universe) {
-  override def onTick(): Unit = {}
+  override def onTick_!(): Unit = {}
 }
 
 trait Orderless[T <: WrapsUnit] extends AIModule[T] {
   override def ordersForTick: Traversable[UnitOrder] = {
-    onTick()
+    onTick_!()
     Nil
   }
 
-  def onTick(): Unit
+  def onTick_!(): Unit
 }
 
 object AIModule {
@@ -330,15 +336,15 @@ class TwilightSparkle(world: DefaultWorld) {
     world.ownUnits.consumeFresh_! {_.init_!(universe)}
     world.enemyUnits.consumeFresh_! {_.init_!(universe)}
 
-    universe.onTick()
+    universe.onTick_!()
     maps.tick()
     resources.tick()
     unitManager.tick()
     strategy.tick()
     bases.tick()
-    worldDomination.onTick()
-    unitGrid.onTick()
-    ferryManager.onTick()
+    worldDomination.onTick_!()
+    unitGrid.onTick_!()
+    ferryManager.onTick_!()
 
     val tick = world.tickCount
 

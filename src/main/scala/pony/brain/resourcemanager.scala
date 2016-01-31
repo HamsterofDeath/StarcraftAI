@@ -23,13 +23,31 @@ object ResourceManager {
 class ResourceManager(override val universe: Universe) extends HasUniverse {
   private val resourceAssignmentInfos = mutable.HashMap.empty[ResourceApproval, HasFunding]
   private val resourceHistory         = ArrayBuffer.empty[MinsGas]
-  private val empty                   = Resources(0, 0, Supplies(0, 0))
-  private val locked                  = ArrayBuffer.empty[LockedResources[_ <: WrapsUnit]]
-  private val lockedWithoutFunds      = ArrayBuffer.empty[LockedResources[_ <: WrapsUnit]]
-  private val lockedSums              = LazyVal.from(calcLockedSums)
-  private val failedToProvideThisTick = ArrayBuffer.empty[ResourceRequests]
-  private var myResources             = empty
-  private var failedToProvideLastTick = Vector.empty[ResourceRequests]
+  private val empty                       = Resources(0, 0, Supplies(0, 0))
+  private val locked                      = ArrayBuffer.empty[LockedResources[_ <: WrapsUnit]]
+  private val lockedWithoutFunds          = ArrayBuffer.empty[LockedResources[_ <: WrapsUnit]]
+  private val lockedSums                  = LazyVal.from(calcLockedSums)
+  private val failedToProvideThisTick     = ArrayBuffer.empty[ResourceRequests]
+  private var myResources                 = empty
+  private var failedToProvideLastTick     = Vector.empty[ResourceRequests]
+  private val lastResortGarbageCollection = mutable.HashSet.empty[(JobHasFunding[_], Int)]
+
+  override def onTick_!() = {
+    super.onTick_!()
+
+    lastResortGarbageCollection.filter(_._2 + 24 < currentTick)
+    .filter(_._1.stillLocksResources)
+    .foreach { unlock =>
+      unlock._1.unlockManually_!()
+      warn(s"Had to force unlock resources of garbage job ${unlock._1}")
+    }
+
+    val obsolete = resourceAssignmentInfos.values
+                   .collect { case j: JobHasFunding[_] if j.failedOrObsolete => j }
+
+    val newObsolete = obsolete.filterNot(e => lastResortGarbageCollection.exists(_._1 == e))
+    lastResortGarbageCollection ++= newObsolete.map(e => e -> currentTick)
+  }
 
   def informUsage[T <: WrapsUnit](proofForFunding: ResourceApproval, funded: HasFunding) = {
     assert(hasStillLocked(proofForFunding), s"$funded expected to have access to $proofForFunding")

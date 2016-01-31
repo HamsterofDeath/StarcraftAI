@@ -25,11 +25,11 @@ class ProvideNewBuildings(universe: Universe)
       val customPosition = in.jobRequest.customPosition.predefined
                            .orElse(in.jobRequest.customPosition.evaluateCostly)
                            .orElse(
-                             helper.findSpotFor(in.base.mainBuilding.tilePosition, in.buildingType))
+                             helper.findSpotFor(in.mainBuildingwhere, in.buildingType))
 
       customPosition
       .foreach(e => assert(mapLayers.rawWalkableMap.insideBounds(e), s"$e was not inside map :("))
-      customPosition.map(newJob)
+      customPosition.map(where => () => newJob(where))
     }
 
     job match {
@@ -44,16 +44,20 @@ class ProvideNewBuildings(universe: Universe)
             warn(s"Why is the same request processed again? -> ${in.jobRequest}")
           }
         })
-      case Some(startJob) =>
-        BackgroundComputationResult.result(startJob.toSeq, () => false, () => {
-          info(s"Planning to build ${in.buildingType.className} at ${startJob.buildWhere} by ${
+      case Some(newJobFactory) =>
+        BackgroundComputationResult
+        .result[WorkerUnit, ConstructBuilding[WorkerUnit, _ <: Building]](
+          myJobs = newJobFactory.toSeq,
+          checkValidityNow = () => false) { jobs =>
+          val job = jobs.headAssert
+          info(s"Planning to build ${in.buildingType.className} at ${job.buildWhere} by ${
             in.worker
           }")
           in.jobRequest.clearableInNextTick_!()
-          mapLayers.blockBuilding_!(startJob.area)
+          mapLayers.blockBuilding_!(job.area)
           //maybe there is a better worker for this than the one that was initially chosen
-          unitManager.tryFindBetterEmployeeFor(startJob)
-        })
+          unitManager.tryFindBetterEmployeeFor(job)
+        }
     }
   }
 
@@ -96,7 +100,9 @@ class ProvideNewBuildings(universe: Universe)
 
   case class Data(worker: WorkerUnit, buildingType: Class[_ <: Building], base: Base,
                   helper: ConstructionSiteFinder,
-                  jobRequest: BuildUnitRequest[Building])
+                  jobRequest: BuildUnitRequest[Building]) {
+    val mainBuildingwhere = base.mainBuilding.tilePosition
+  }
 
 }
 
@@ -117,7 +123,7 @@ class ProvideExpansions(universe: Universe)
     }
   }
 
-  override def onTick(): Unit = {
+  override def onTick_!(): Unit = {
     ifNth(Primes.prime241) {
       plannedExpansionPoint = plannedExpansionPoint.filter { where =>
         universe.mapLayers.slightlyDangerousAsBlocked.free(where.center) &&
@@ -157,7 +163,7 @@ class ProvideExpansions(universe: Universe)
 class ProvideNewSupply(universe: Universe) extends OrderlessAIModule[WorkerUnit](universe) {
   private val supplyEmployer = new Employer[SupplyProvider](universe)
 
-  override def onTick() = {
+  override def onTick_!() = {
 
     val cur = plannedSupplies
     val needsMore = cur.supplyUsagePercent >= 0.8 && cur.total < 400
@@ -192,8 +198,8 @@ class ProvideSpareSCVs(universe: Universe) extends OrderlessAIModule[CommandCent
 
   private val emp = new Employer[WorkerUnit](universe)
 
-  override def onTick() = {
-    super.onTick()
+  override def onTick_!() = {
+    super.onTick_!()
     ifNth(Primes.prime37) {
       // only for terran!
       val ok = unitManager.allJobsByUnitType[SCV].exists(_.isIdle)
@@ -207,7 +213,7 @@ class ProvideSpareSCVs(universe: Universe) extends OrderlessAIModule[CommandCent
 class ProvideNewUnits(universe: Universe) extends OrderlessAIModule[UnitFactory](universe) {
   self =>
 
-  override def onTick(): Unit = {
+  override def onTick_!(): Unit = {
     unitManager.failedToProvideFlat.distinct.flatMap { req =>
       trace(s"Trying to satisfy $req somehow")
       val wantedType = req.typeOfRequestedUnit
@@ -263,11 +269,11 @@ class DefaultBehaviours(universe: Universe) extends OrderlessAIModule[WrapsUnit]
   private val ignore = mutable.HashSet.empty[WrapsUnit]
 
   override def renderDebug(renderer: Renderer): Unit = {
-    rules.foreach(_.renderDebug(renderer))
+    rules.foreach(_.renderDebug_!(renderer))
   }
 
-  override def onTick(): Unit = {
-    rules.foreach(_.onTick())
+  override def onTick_!(): Unit = {
+    rules.foreach(_.onTick_!())
     // fetch all idles and assign "always on" background tasks to them
     val hireUs = unitManager.allIdles.filterNot(e => ignore(e.unit)).flatMap { free =>
       val unit = free.unit
@@ -289,9 +295,9 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule(universe
 
   private val gatheringJobs = ArrayBuffer.empty[ManageMiningAtPatchGroup]
 
-  override def onTick(): Unit = {
+  override def onTick_!(): Unit = {
     createJobsForBases()
-    gatheringJobs.foreach(_.onTick())
+    gatheringJobs.foreach(_.onTick_!())
   }
 
   private def createJobsForBases(): Unit = {
@@ -315,8 +321,8 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule(universe
     extends Employer[WorkerUnit](universe) {
     emp =>
 
-    override def onTick(): Unit = {
-      super.onTick()
+    override def onTick_!(): Unit = {
+      super.onTick_!()
       minerals.tick()
       Micro.MiningOrganization.onTick()
       val missing = idealNumberOfWorkers - teamSize
@@ -569,7 +575,7 @@ class ManageMiningAtGeysirs(universe: Universe)
   extends OrderlessAIModule[WorkerUnit](universe) with BuildingRequestHelper {
   private val gatheringJobs = ArrayBuffer.empty[ManageMiningAtGeysir]
 
-  override def onTick(): Unit = {
+  override def onTick_!(): Unit = {
     val unattended = unitManager.bases.bases.filter(base => !gatheringJobs.exists(_.covers(base)))
     unattended.foreach { base =>
       base.myGeysirs.map { geysir =>
@@ -577,7 +583,7 @@ class ManageMiningAtGeysirs(universe: Universe)
       }.foreach {gatheringJobs += _}
     }
 
-    gatheringJobs.retain(_.keep).foreach(_.onTick())
+    gatheringJobs.retain(_.keep).foreach(_.onTick_!())
   }
 
   class ManageMiningAtGeysir(base: Base, geysir: Geysir) extends Employer[WorkerUnit](universe) {
@@ -594,8 +600,8 @@ class ManageMiningAtGeysirs(universe: Universe)
 
     def keep = geysir.isInGame
 
-    override def onTick(): Unit = {
-      super.onTick()
+    override def onTick_!(): Unit = {
+      super.onTick_!()
       refinery = refinery.filter(_.isInGame)
       refinery match {
         case None =>

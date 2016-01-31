@@ -122,19 +122,19 @@ class FormationAtFrontLineHelper(override val universe: Universe, distance: Int 
 
 class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
 
-  private           val attacks                                   = ArrayBuffer.empty[Attack]
-  private           var planInProgress: BWFuture[Option[Attacks]] = BWFuture(None)
-  @volatile private var thinking                                  = false
+  private           val attacks                                             = ArrayBuffer.empty[Attack]
+  private           var planInProgress: BWFuture[Option[IncompleteAttacks]] = BWFuture(None)
+  @volatile private var thinking                                            = false
 
   def allAttacks = attacks.toVector
 
-  override def onTick(): Unit = {
-    super.onTick()
+  override def onTick_!(): Unit = {
+    super.onTick_!()
     attacks.foreach(_.onTick())
     attacks.retain(_.hasNotEnded)
     if (thinking) {
       planInProgress.result.foreach { plan =>
-        attacks ++= plan.parts
+        attacks ++= plan.complete.parts
         thinking = false
         planInProgress = BWFuture.none
         majorInfo(s"Attack plan finished!")
@@ -177,10 +177,10 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
                       }
 
 
-        new Attack(asUnits.toSet, TargetPosition(where, 10))
+        new IncompleteAttack(asUnits.toSet, TargetPosition(where, 10))
       }
       debug(s"Attack calculation finished, results: $newAttacks")
-      Attacks(newAttacks)
+      IncompleteAttacks(newAttacks)
     }
     thinking = true
   }
@@ -199,6 +199,10 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
 
   case class StayInPosition(who: Mobile) extends Action {
     override def asOrder = Orders.NoUpdate(who)
+  }
+
+  class IncompleteAttack(private var currentForce: Set[Mobile], meetingPoint: TargetPosition) {
+    def complete = new Attack(currentForce, meetingPoint)
   }
 
   class Attack(private var currentForce: Set[Mobile], meetingPoint: TargetPosition) {
@@ -285,6 +289,11 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
 
   case class Attacks(parts: Seq[Attack])
 
+  case class IncompleteAttacks(parts: Seq[IncompleteAttack]) {
+    def complete = Attacks(parts.map(_.complete))
+  }
+
+
 }
 
 case class UnitGroup[T <: WrapsUnit](members: Seq[T], center: MapTilePosition)
@@ -316,7 +325,7 @@ object GroupingHelper {
 }
 
 class GroupingHelper[T <: WrapsUnit](val map: Grid2D, seq: TraversableOnce[T], source: AllUnits) {
-  private val immutable = seq.map { u => u.nativeUnitId -> u.centerTile }
+  private val immutable = seq.map { u => u.nativeUnitId -> u.centerTile }.toVector
 
   /**
     * can/should be run asynchronously
@@ -566,7 +575,7 @@ trait UpgradePrice {
 class ProvideSuggestedAndRequestedAddons(universe: Universe)
   extends OrderlessAIModule[CanBuildAddons](universe) with AddonRequestHelper {
 
-  override def onTick(): Unit = {
+  override def onTick_!(): Unit = {
     val suggested = {
       val buildUs = strategy.current.suggestAddons
                     .filter(_.isActive)
@@ -626,7 +635,7 @@ class SetupAntiCloakDefenses(universe: Universe)
     bases.richBasesCount
   }
   private val analyzed = FutureIterator.feed(input) produceAsyncLater { in =>
-    val limit = richBaseCount.get min 3
+
     val counts = mutable.HashMap.empty[MapTilePosition, Int]
 
     // goal: position detectors so that all values are >= 0
@@ -634,11 +643,11 @@ class SetupAntiCloakDefenses(universe: Universe)
     .filter(in.ownArea.blocked)
     .foreach { where =>
       val isIsland = mapLayers.isOnIsland(where)
-      counts.put(where, -limit - (if (isIsland) 2 else 0))
+      counts.put(where, -in.limit - (if (isIsland) 2 else 0))
     }
 
-    in.existing.foreach { detector =>
-      detector.detectionArea.asTiles.foreach { where =>
+    in.existing.foreach { case (detector, circle) =>
+      circle.asTiles.foreach { where =>
         if (counts.contains(where)) {
           counts.insertReplace(where, _ + 1 min 0, 0)
         }
@@ -672,8 +681,8 @@ class SetupAntiCloakDefenses(universe: Universe)
     }
   }
 
-  override def onTick() = {
-    super.onTick()
+  override def onTick_!() = {
+    super.onTick_!()
     kickOffOn24thTick()
     val active = strategy.current.buildAntiCloakNow
     analyzed.mostRecent.foreach { bestBuildingLocation =>
@@ -713,9 +722,12 @@ class SetupAntiCloakDefenses(universe: Universe)
   private def input = new Input
 
   class Input {
+    val limit                  = richBaseCount.get min 3
     val created                = currentTick
     val buildingType           = targetBuildingType
-    val existing               = ownUnits.allByClass(buildingType)
+    val existing               = ownUnits.allByClass(buildingType).map { det =>
+      det -> det.detectionArea
+    }
     val planned                = unitManager.plannedToBuildByClass(buildingType)
     val exposed                = mapLayers.exposedToCloakedUnits
     val ownArea                = mapLayers.defendedTiles
@@ -729,7 +741,7 @@ class HandleDefenses(universe: Universe) extends OrderlessAIModule[Mobile](unive
 
   private var backgroundOp = BWFuture.none[Seq[Group[Mobile]]]
 
-  override def onTick(): Unit = {
+  override def onTick_!(): Unit = {
     if (backgroundOp.result.isEmpty) {
       ifNth(Primes.prime43) {
         val allEnemies = mapLayers.defendedTiles.allBlocked.flatMap { tile =>
@@ -766,7 +778,7 @@ class ProvideUpgrades(universe: Universe) extends OrderlessAIModule[Upgrader](un
   private val helper     = new HelperAIModule[WorkerUnit](universe) with BuildingRequestHelper
   private val researched = collection.mutable.Map.empty[Upgrade, Int]
 
-  override def onTick(): Unit = {
+  override def onTick_!(): Unit = {
     val maxLimitEnabled = hasLimitDisabler
     val requested = {
       strategy.current.suggestUpgrades
@@ -824,7 +836,7 @@ class ProvideUpgrades(universe: Universe) extends OrderlessAIModule[Upgrader](un
 class EnqueueFactories(universe: Universe)
   extends OrderlessAIModule[WorkerUnit](universe) with BuildingRequestHelper {
 
-  override def onTick(): Unit = {
+  override def onTick_!(): Unit = {
     evaluateCapacities.foreach { cap =>
       val existingByType = ownUnits.allByClass(cap.typeOfFactory).size +
                            unitManager.plannedToBuildByClass(cap.typeOfFactory).size
@@ -862,7 +874,7 @@ case class IdealUnitRatio[T <: Mobile](unitType: Class[_ <: Mobile], amount: Int
 class EnqueueArmy(universe: Universe)
   extends OrderlessAIModule[UnitFactory](universe) with UnitRequestHelper {
 
-  override def onTick(): Unit = {
+  override def onTick_!(): Unit = {
     val p = percentages
     val mostMissing = p.wanted.toVector.sortBy { case (t, idealRatio) =>
       val existingRatio = p.existing.getOrElse(t, 0.0)
