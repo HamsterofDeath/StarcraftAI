@@ -4,6 +4,7 @@ import org.pmw.tinylog.writers.FileWriter
 import org.pmw.tinylog.{Configurator, Level}
 import pony.LogLevels.{LogError, LogWarn}
 
+import scala.annotation.elidable
 import scala.collection.mutable
 import scala.concurrent.ExecutionContext
 
@@ -66,11 +67,13 @@ package object pony {
     assert(ok)
   }
 
+  @elidable(LOGLEVEL)
   def error(a: => Any, doIt: Boolean = true): Unit = {
     if (doIt && LogError.includes(setTinyLogLevel_!))
       tinylog.Logger.error(s"[$tick] ${a.toString}")
   }
 
+  @elidable(LOGLEVEL)
   def warn(a: => Any, doIt: Boolean = true): Unit = {
     if (doIt && LogWarn.includes(setTinyLogLevel_!))
       tinylog.Logger.warn(s"[$tick] ${a.toString}")
@@ -80,6 +83,7 @@ package object pony {
 
   import LogLevels._
 
+  @elidable(LOGLEVEL)
   def info(a: => Any, doIt: Boolean = true): Unit = {
     if (doIt && LogInfo.includes(setTinyLogLevel_!))
       tinylog.Logger.info(s"[$tick] ${a.toString}")
@@ -87,16 +91,21 @@ package object pony {
 
   def tick = tickCount
 
+  @elidable(LOGLEVEL)
   def majorInfo(a: => Any, doIt: Boolean = true): Unit = {
     if (doIt && LogInfo.includes(setTinyLogLevel_!))
       tinylog.Logger.info(s"<MAJOR> [$tick] ${a.toString}")
   }
 
+  @elidable(LOGLEVEL)
   def debug(a: => Any, doIt: Boolean = true): Unit = {
     if (LogDebug.includes(setTinyLogLevel_!))
       tinylog.Logger.debug(s"[$tick] ${a.toString}")
   }
 
+  private val LOGLEVEL = 500
+
+  @elidable(LOGLEVEL)
   def trace(a: => Any, doIt: Boolean = true, marker: String = ""): Unit = {
     if (doIt && LogTrace.includes(setTinyLogLevel_!))
       tinylog.Logger.trace(s"[$tick] ${if (marker.isEmpty) "" else s"[$marker] "}${a.toString}")

@@ -234,16 +234,21 @@ class PathFinder(on: Grid2D, isOnGround: Boolean) {
 
   def findSimplePathNow(from: MapTilePosition, to: MapTilePosition,
                         tryFixPath: Boolean = true) = {
-    findPathNow(from, to, tryFixPath).flatMap(_.paths.headOption)
+    findPathNow(from, to, 1, tryFixPath).flatMap(_.paths.headOption)
   }
 
   def findPathNow(from: MapTilePosition, to: MapTilePosition,
-                  tryFixPath: Boolean = true): Option[Paths] = {
-    findPaths(from, to, 1, tryFixPath).blockAndGet
+                  paths: Int = 1, tryFixPath: Boolean = true): Option[Paths] = {
+    evalPath(from, to, paths, tryFixPath)
   }
 
   def findPaths(from: MapTilePosition, to: MapTilePosition, paths: Int = 10,
                 tryFixPath: Boolean = true) = BWFuture {
+    findPathNow(from, to, paths, tryFixPath)
+  }
+
+  private def evalPath(from: MapTilePosition, to: MapTilePosition, paths: Int,
+                       tryFixPath: Boolean): Option[Paths] = {
     val fromFixed = {if (tryFixPath) on.nearestFree(from) else Some(from)}
     val toFixed = {
       if (tryFixPath) {
@@ -948,24 +953,30 @@ trait SubFinder {
 class ConstructionSiteFinder(universe: Universe) {
 
   // initialisation happens in the main thread
-  private val freeToBuildOn            = universe.mapLayers.buildableBlockedByNothingTiles
-                                         .mutableCopy
-                                         .or_!(
-                                           universe.mapLayers.blockedByPotentialAddons.mutableCopy)
-                                         .or_!(
-                                           universe.mapLayers.blockedByPlannedBuildings.mutableCopy)
-  private val freeToBuildOnIgnoreUnits = universe.mapLayers.freeTilesForConstruction.mutableCopy
-                                         .or_!(universe.mapLayers.blockedByPotentialAddons
-                                               .mutableCopy)
-                                         .or_!(
-                                           universe.mapLayers.blockedByPlannedBuildings.mutableCopy)
-                                         .guaranteeImmutability
+  private val freeToBuildOn            = {
+    universe.mapLayers.buildableBlockedByNothingTiles
+    .mutableCopy
+    .or_!(
+      universe.mapLayers.blockedByPotentialAddons.mutableCopy)
+    .or_!(
+      universe.mapLayers.blockedByPlannedBuildings.mutableCopy)
+  }
+  private val freeToBuildOnIgnoreUnits = {
+    universe.mapLayers.freeTilesForConstruction.mutableCopy
+    .or_!(universe.mapLayers.blockedByPotentialAddons
+          .mutableCopy)
+    .or_!(
+      universe.mapLayers.blockedByPlannedBuildings.mutableCopy)
+    .guaranteeImmutability
+  }
 
-  private val outlineTouchCountArea = universe.mapLayers.blockedByBuildingTiles.mutableCopy
-                                      .or_!(universe.mapLayers.blockedByPotentialAddons.mutableCopy)
-                                      .or_!(
-                                        universe.mapLayers.blockedByPlannedBuildings.mutableCopy)
-                                      .guaranteeImmutability
+  private val outlineTouchCountArea = {
+    universe.mapLayers.blockedByBuildingTiles.mutableCopy
+    .or_!(universe.mapLayers.blockedByPotentialAddons.mutableCopy)
+    .or_!(
+      universe.mapLayers.blockedByPlannedBuildings.mutableCopy)
+    .guaranteeImmutability
+  }
 
   private val helper = new GeometryHelpers(universe.world.map.sizeX, universe.world.map.sizeY)
 
@@ -976,26 +987,28 @@ class ConstructionSiteFinder(universe: Universe) {
     new SubFinder {
       override def find: Option[MapTilePosition] = {
         // background
-        val possible = helper.iterateBlockSpiralClockWise(resources.center, 35)
-                       .filter { candidate =>
-                         def correctArea = {
-                           val area = Area(candidate, size)
-                           grid.inBounds(area) && grid.free(area)
-                         }
-                         def lineOfSight = {
-                           def fromPatch = resources.allPatchTiles.exists { p =>
-                             AreaHelper.directLineOfSight(p, candidate,
-                                 universe.mapLayers.rawWalkableMap)
-                             }
-                           def fromGeysir = resources.allGeysirTiles.exists { p =>
-                               AreaHelper.directLineOfSight(p, candidate,
-                                 universe.mapLayers.rawWalkableMap)
-                           }
-                           fromPatch || fromGeysir
-                         }
-                         correctArea && lineOfSight
-                       }
-                       .toVector
+        val possible = {
+          helper.iterateBlockSpiralClockWise(resources.center, 35)
+          .filter { candidate =>
+            def correctArea = {
+              val area = Area(candidate, size)
+              grid.inBounds(area) && grid.free(area)
+            }
+            def lineOfSight = {
+              def fromPatch = resources.allPatchTiles.exists { p =>
+                AreaHelper.directLineOfSight(p, candidate,
+                  universe.mapLayers.rawWalkableMap)
+              }
+              def fromGeysir = resources.allGeysirTiles.exists { p =>
+                AreaHelper.directLineOfSight(p, candidate,
+                  universe.mapLayers.rawWalkableMap)
+              }
+              fromPatch || fromGeysir
+            }
+            correctArea && lineOfSight
+          }
+          .toVector
+        }
 
         if (possible.isEmpty) {
           None

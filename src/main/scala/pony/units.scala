@@ -763,7 +763,7 @@ trait AutoPilot extends Mobile {
 }
 
 trait Mobile extends WrapsUnit with Controllable {
-
+  def canSee(tile: MapTilePosition) = mapLayers.rawWalkableMap.connectedByLine(tile, currentTile)
   val buildPrice = Price(nativeUnit.getType.mineralPrice(), nativeUnit.getType.gasPrice())
   private val myCurrentArea         = oncePer(Primes.prime11) {
     mapLayers.rawWalkableMap.areaWhichContainsAsFree(currentTile).orElse {
@@ -1063,7 +1063,9 @@ trait AirWeapon extends Weapon {
 
 }
 
-trait ArmedMobile extends Mobile with Weapon
+trait ArmedMobile extends Mobile with Weapon {
+
+}
 
 trait Weapon extends Controllable with ArmedUnit {
   self: WrapsUnit =>

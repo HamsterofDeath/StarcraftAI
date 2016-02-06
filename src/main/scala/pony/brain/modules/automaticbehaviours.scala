@@ -95,8 +95,8 @@ object Terran {
                       new PreventBlockades(universe) ::
                       new ContinueInterruptedConstruction(universe) ::
                       new UseComsat(universe) ::
+                      new Scout(universe) ::
                       /*
-                                           new Scout ::
                                            new DoNotStray ::
                                            new HealDamagedUnit ::
                                            new FixMedicalProblem ::
@@ -284,11 +284,11 @@ object Terran {
     private val immutableMapLayer = oncePerTick {
       mapLayers.freeWalkableTiles.guaranteeImmutability
     }
-    private val dropAtFirst = 36
-    private val tries       = 100
-    private val range       = 10
-    private val takeNth     = 7
-    private val dancePlan = FutureIterator.feed(feed).produceAsyncLater { in =>
+    private val dropAtFirst       = 36
+    private val tries             = 100
+    private val range             = 10
+    private val takeNth           = 7
+    private val dancePlan         = FutureIterator.feed(feed).produceAsyncLater { in =>
       // second try: consider slipping through enemy lines
       val on = in.freeMap
       in.dancers.map { dancer =>
@@ -419,6 +419,7 @@ object Terran {
     case class Feed(dancers: Seq[Dancer], freeMap: Grid2D)
 
     case class DancePlan(data: Map[ArmedMobile, MapTilePosition])
+
   }
 
   class MoveAwayFromConstructionSite(universe: Universe)
@@ -652,7 +653,7 @@ object Terran {
   class ContinueInterruptedConstruction(universe: Universe)
     extends DefaultBehaviour[SCV](universe) {
 
-    private val area = oncePerTick {
+    private val area   = oncePerTick {
       mapLayers.rawWalkableMap.guaranteeImmutability
     }
     private val helper = new NonConflictingTargets[Building, SCV](
@@ -751,6 +752,7 @@ object Terran {
         }.getOrElse(Nil)
       }
     }
+
   }
 
   class ReallyReallyLazy(universe: Universe) extends DefaultBehaviour[Mobile](universe) {
@@ -1052,8 +1054,60 @@ object Terran {
 
   }
 
-  class Scout(universe: Universe) extends DefaultBehaviour[Mobile](universe) {
-    override protected def wrapBase(t: Mobile) = ???
+  class Scout(universe: Universe) extends DefaultBehaviour[ArmedMobile](universe) {
+
+    class ScoutPlan(scout: ArmedMobile, toCheck: List[MapTilePosition]) {
+      private val remainingToCheck = mutable.ArrayBuffer.empty ++= toCheck
+      private var aborted          = false
+      private val nextPath         = {
+        FutureIterator.feed((scout.currentTile, remainingToCheck.head))
+        .produceAsync { case (from, to) =>
+          universe.pathfinders.safeFor(scout).findPathNow(from, to).map(_.toMigration)
+        }
+      }
+
+      def toOrder = {
+        nextPath.mostRecent.map { maybePath =>
+          maybePath match {
+            case None =>
+              aborted = true
+              None
+            case Some(paths) =>
+              if (scout.canSee(paths.finalDestination)) {
+                if (remainingToCheck.nonEmpty) {
+                  remainingToCheck.remove(0)
+                  None
+                }
+              } else {
+                paths.nextPositionFor(scout) match {
+                  case None =>
+                    aborted = true
+                    None
+                  case Some(to) =>
+                    Orders.MoveToTile(scout, to).toSome
+                }
+              }
+          }
+        }
+      }
+    }
+
+    class Scouting {
+      private val scouts = mutable.HashMap.empty[ArmedMobile, ScoutPlan]
+
+      def planFor(am: ArmedMobile) = scouts.get(am)
+    }
+
+    private val plan = new Scouting
+
+    override protected def wrapBase(t: ArmedMobile) = new SingleUnitBehaviour[ArmedMobile](t,
+      meta) {
+      override def describeShort = "Scout"
+
+      override protected def toOrder(what: Objective) = {
+        plan.planFor(t).map(_.toOrder)
+      }
+    }
   }
 
   class DoNotStray(universe: Universe) extends DefaultBehaviour[SupportUnit](universe) {
@@ -1211,9 +1265,9 @@ class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
 
   class Attackers(val target: MaybeCanDie) {
 
-    private val attackers     = mutable.HashSet.empty[MobileRangeWeapon]
-    private val plannedDamage = mutable.HashMap
-                                .empty[MobileRangeWeapon, DamageSingleAttack]
+    private val attackers           = mutable.HashSet.empty[MobileRangeWeapon]
+    private val plannedDamage       = mutable.HashMap
+                                      .empty[MobileRangeWeapon, DamageSingleAttack]
     private val hpAfterNextAttacks  = currentHp
     private val plannedDamageMerged = new MutableHP(0, 0)
 
@@ -1332,7 +1386,7 @@ class NonConflictingTargets[T <: WrapsUnit : Manifest, M <: Mobile : Manifest]
  subAccept: (M, T) => Boolean, subRate: (M, T) => PriorityChain, own: Boolean,
  allowReplacements: Boolean) extends HasUniverse {
 
-  private val validTarget = (t: T) => t.isInGame && validTargetTest(t)
+  private val validTarget        = (t: T) => t.isInGame && validTargetTest(t)
   private val locks              = mutable.HashSet.empty[T]
   private val assignments        = mutable.HashMap.empty[M, T]
   private val assignmentsReverse = mutable.HashMap.empty[T, M]
