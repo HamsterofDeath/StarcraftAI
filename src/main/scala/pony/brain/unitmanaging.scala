@@ -1120,7 +1120,7 @@ trait PathfindingSupport[T <: Mobile] extends JobOrSubJob[T] {
 
   private val needsPath = oncePer(Primes.prime23) {
     val target = pathTargetPosition
-    def areaOfTarget = target.flatMap(mapLayers.rawWalkableMap.areaWhichContainsAsFree)
+    def areaOfTarget = target.flatMap(mapLayers.rawWalkableMap.areaOf)
     def areaOfUnit = unit.currentArea
 
 

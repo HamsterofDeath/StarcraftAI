@@ -294,7 +294,7 @@ object Terran {
       in.dancers.map { dancer =>
         val center = MapTilePosition.average(dancer.partners.iterator.map(_.where))
 
-        val myArea = universe.mapLayers.rawWalkableMap.areaWhichContainsAsFree(dancer.me.where)
+        val myArea = universe.mapLayers.rawWalkableMap.areaOf(dancer.me.where)
         dancer -> myArea.flatMap { a =>
           val antiGrav = {
             var xSum = 0
@@ -500,7 +500,7 @@ object Terran {
 
           import scala.collection.breakOut
           val touched: Set[Grid2D] = withOutline.tiles.flatMap { tile =>
-            if (baseArea.inBounds(tile)) baseArea.areaWhichContainsAsFree(tile) else None
+            if (baseArea.inBounds(tile)) baseArea.areaOf(tile) else None
           }(breakOut)
           def nearBuilding = {
             buildingLayer.anyBlocked(where.growBy(5))
@@ -593,7 +593,7 @@ object Terran {
       own = true,
       allowReplacements = true)
 
-    override def priority = SecondPriority.More
+    override def priority = SecondPriority.EvenMore
 
     override def onTick_!() = {
       super.onTick_!()
@@ -627,7 +627,7 @@ object Terran {
       own = true,
       allowReplacements = true)
 
-    override def priority = SecondPriority.More
+    override def priority = SecondPriority.EvenMore
 
     override def onTick_!() = {
       super.onTick_!()
@@ -665,7 +665,7 @@ object Terran {
       allowReplacements = true,
       subAccept = (w, b) => true)
 
-    override def priority = SecondPriority.More
+    override def priority = SecondPriority.Max
 
     override def onTick_!() = {
       super.onTick_!()
@@ -949,7 +949,7 @@ object Terran {
       val defense = helper.allOutsideNonBlacklisted
       val neutralResourceFields = universe.resourceFields.resourceAreas.filterNot { field =>
         universe.bases.isCovered(field)
-      }.map {_.mostAnnoyingMinePosition}
+      }.map {_.nearbyFreeTile}
       defense //++ neutralResourceFields
     }
 
@@ -1056,58 +1056,190 @@ object Terran {
 
   class Scout(universe: Universe) extends DefaultBehaviour[ArmedMobile](universe) {
 
-    class ScoutPlan(scout: ArmedMobile, toCheck: List[MapTilePosition]) {
-      private val remainingToCheck = mutable.ArrayBuffer.empty ++= toCheck
-      private var aborted          = false
+    class ScoutPlan(scout: ArmedMobile, toCheck: List[ResourceArea]) {
+      def valid = scout.isInGame
+
+      private val remainingToCheck = mutable.ArrayBuffer.empty ++= toCheck.map(_.nearbyFreeTile)
       private val nextPath         = {
         FutureIterator.feed((scout.currentTile, remainingToCheck.head))
         .produceAsync { case (from, to) =>
           universe.pathfinders.safeFor(scout).findPathNow(from, to).map(_.toMigration)
         }
       }
+      private var cycle            = 0
 
       def toOrder = {
-        nextPath.mostRecent.map { maybePath =>
-          maybePath match {
-            case None =>
-              aborted = true
-              None
-            case Some(paths) =>
-              if (scout.canSee(paths.finalDestination)) {
-                if (remainingToCheck.nonEmpty) {
-                  remainingToCheck.remove(0)
-                  None
-                }
+        nextPath.mostRecent.flatMap {
+          case Some(paths) =>
+            val close = scout.currentTile.distanceToIsLess(paths.finalDestination, 7) &&
+                        scout.canSee(paths.finalDestination)
+            if (close) {
+              if (remainingToCheck.nonEmpty) {
+                remainingToCheck.remove(0)
               } else {
-                paths.nextPositionFor(scout) match {
-                  case None =>
-                    aborted = true
-                    None
-                  case Some(to) =>
-                    Orders.MoveToTile(scout, to).toSome
-                }
+                remainingToCheck ++= {
+                                       if (cycle % 2 == 0) {
+                                         toCheck.reverse
+                                       } else {
+                                         toCheck
+                                       }
+                                     }.map(_.nearbyFreeTile)
+
+                cycle += 1
               }
-          }
+              None
+            } else {
+              paths.nextPositionFor(scout) match {
+                case None =>
+                  None
+                case Some(to) =>
+                  Orders.MoveToTile(scout, to).toSome
+              }
+            }
+          case None =>
+            None
         }
       }
     }
 
     class Scouting {
-      private val scouts = mutable.HashMap.empty[ArmedMobile, ScoutPlan]
+      private val coveredRightNow = mutable.HashSet.empty[ResourceArea]
+      private val scouts          = mutable.HashMap.empty[ArmedMobile, ScoutPlan]
 
-      def planFor(am: ArmedMobile) = scouts.get(am)
+      case class ScoutingCandidate(id: Int, speed: Double, area: Grid2D, tile: MapTilePosition)
+
+      case class RawScoutingPlan(sc: ScoutingCandidate, resourceAreaIds: List[Int],
+                                 startHere: Int) {
+        def resourceAreaIdsInOrder = startHere :: (resourceAreaIds filterNot (_ == startHere))
+      }
+
+      class Feed {
+        private val resourceAreasUnscouted = strategicMap.resources.filterNot(coveredRightNow)
+                                             .map { ra =>
+                                               ra.uniqueId -> ra.nearbyFreeTile
+                                             }
+
+        val tileToResourceAreaId = resourceAreasUnscouted.map(_.swap).toMap
+
+        val leftToCover        = resourceAreasUnscouted.map(_._2)
+        val map                = mapLayers.rawWalkableMap
+        val scoutingCandidates = {
+          ownUnits.allMobilesWithWeapons
+          .flatMap(_.asGroundUnit)
+          .filter(_.onGround)
+          .map { e =>
+            ScoutingCandidate(e.unitId, e.initialNativeType.topSpeed(), e.currentArea.get,
+              e.currentTile)
+          }
+        }
+
+        val pathfinder = pathfinders.groundSafe
+      }
+
+      private val leftToCover = FutureIterator.feed(new Feed) produceAsync { in =>
+        val candidates = in.scoutingCandidates.groupBy(_.area).mapValuesStrict { who =>
+          val sorted = who.toVector.sortBy(-_.speed)
+          sorted.filter(_.speed == sorted.head.speed)
+        }
+        val coverUs = in.leftToCover.groupBy(in.map.getAreaOf)
+        candidates.flatMap { case (where, who) =>
+          coverUs.get(where).map { pointsToCheck =>
+            val coveredAlready = mutable.HashSet.empty[MapTilePosition]
+
+            def findNextBestPairAndScouter() = {
+              val bestPair = {
+                if (pointsToCheck.size == 1) {
+                  pointsToCheck.toList
+                } else {
+                  val checkUs = pointsToCheck.filterNot(coveredAlready).combinations(2)
+
+                  val bestOption = checkUs.map { seq =>
+                    val Seq(a, b) = seq
+                    (a, b) -> {
+                      in.pathfinder.findSimplePathNow(a, b).map(_.length)
+                    }
+                  }.filter(_._2.isDefined)
+                                   .map { case (a, b) => a -> b.get }
+                                   .minByOpt(_._2)
+                                   .map { case ((from, to), _) =>
+                                     List(from, to)
+                                   }.getOrElse(Nil)
+
+                  bestOption
+                }
+              }
+
+              val bestScouter = {
+                who.iterator
+                .map { groundUnit =>
+                  val bestStartingPoint = {
+                    bestPair.map { tile =>
+                      tile -> in.pathfinder.findSimplePathNow(groundUnit.tile, tile).map(_.length)
+                    }.filter(_._2.isDefined)
+                    .map { case (a, b) => a -> b.get }
+                    .minByOpt(_._2)
+                  }
+                  bestStartingPoint.map { e =>
+                    (groundUnit, e._1, e._2)
+                  }
+                }
+                .flatten
+                .minByOpt(_._3)
+                .map(e => e._1 -> e._2)
+              }
+              bestScouter.foreach { _ =>
+                coveredAlready ++= bestPair
+              }
+              bestScouter.map { bs =>
+                RawScoutingPlan(bs._1, bestPair.map(in.tileToResourceAreaId),
+                  in.tileToResourceAreaId(bs._2))
+              }
+            }
+            Iterator.continually(findNextBestPairAndScouter()).takeWhile(_.isDefined).map(_.get)
+            .toList
+
+          }.getOrElse(Nil)
+        }.toList
+      }
+
+      def onTick_!() = {
+        scouts.retain { (_, v) => v.valid }
+        leftToCover.onceIfDone { plans =>
+          plans.foreach { plan =>
+            ownUnits.byId(plan.sc.id).foreach { stillLiving =>
+              val resourceAreas = plan.resourceAreaIdsInOrder.map(strategicMap.resourceAreaById)
+              val startHere = strategicMap.resourceAreaById(plan.startHere)
+              val unit = stillLiving.asInstanceOf[ArmedMobile]
+              val actualPlan = new ScoutPlan(unit, resourceAreas)
+              scouts.put(unit, actualPlan)
+            }
+          }
+        }
+        ifNth(Primes.prime149) {
+          leftToCover.prepareNextIfDone()
+        }
+      }
+
+      def planFor(am: ArmedMobile) = {
+        scouts.get(am)
+      }
     }
 
     private val plan = new Scouting
 
-    override protected def wrapBase(t: ArmedMobile) = new SingleUnitBehaviour[ArmedMobile](t,
-      meta) {
-      override def describeShort = "Scout"
-
-      override protected def toOrder(what: Objective) = {
-        plan.planFor(t).map(_.toOrder)
-      }
+    override def onTick_!() = {
+      super.onTick_!()
+      plan.onTick_!()
     }
+
+    override protected def wrapBase(t: ArmedMobile) =
+      new SingleUnitBehaviour[ArmedMobile](t, meta) {
+        override def describeShort = "Scout"
+
+        override protected def toOrder(what: Objective) = {
+          plan.planFor(t).flatMap(_.toOrder).toList
+        }
+      }
   }
 
   class DoNotStray(universe: Universe) extends DefaultBehaviour[SupportUnit](universe) {

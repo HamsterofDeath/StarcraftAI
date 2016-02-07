@@ -202,7 +202,7 @@ trait StaticallyPositioned extends WrapsUnit {
   }
 
   private val myAreaOnMap = once {
-    mapLayers.rawWalkableMap.areaWhichContainsAsFree(centerTile)
+    mapLayers.rawWalkableMap.areaOf(centerTile)
     .getOr(s"Building is not on valid ground: $self")
   }
 
@@ -235,10 +235,10 @@ trait IsShip extends WrapsUnit
 
 trait TerranBuilding extends Building {
   private val myCurrentArea = oncePer(Primes.prime59) {
-    mapLayers.rawWalkableMap.areaWhichContainsAsFree(centerTile).orElse {
+    mapLayers.rawWalkableMap.areaOf(centerTile).orElse {
       mapLayers.rawWalkableMap
       .spiralAround(centerTile, 5)
-      .map(mapLayers.rawWalkableMap.areaWhichContainsAsFree)
+      .map(mapLayers.rawWalkableMap.areaOf)
       .find(_.isDefined)
       .map(_.get)
     }
@@ -763,13 +763,16 @@ trait AutoPilot extends Mobile {
 }
 
 trait Mobile extends WrapsUnit with Controllable {
+
+  def isGroundUnit: Boolean
+  def asGroundUnit = if (isGroundUnit) this.asInstanceOf[GroundUnit].toSome else None
   def canSee(tile: MapTilePosition) = mapLayers.rawWalkableMap.connectedByLine(tile, currentTile)
   val buildPrice = Price(nativeUnit.getType.mineralPrice(), nativeUnit.getType.gasPrice())
   private val myCurrentArea         = oncePer(Primes.prime11) {
-    mapLayers.rawWalkableMap.areaWhichContainsAsFree(currentTile).orElse {
+    mapLayers.rawWalkableMap.areaOf(currentTile).orElse {
       mapLayers.rawWalkableMap
       .spiralAround(currentTile, 2)
-      .map(mapLayers.rawWalkableMap.areaWhichContainsAsFree)
+      .map(mapLayers.rawWalkableMap.areaOf)
       .find(_.isDefined)
       .map(_.get)
     }
@@ -1133,10 +1136,11 @@ trait GroundAndAirWeapon extends RangeWeapon with GroundWeapon with AirWeapon {
 }
 
 trait AirUnit extends Killable with Mobile {
-
+  override def isGroundUnit = false
 }
 
 trait GroundUnit extends Killable with Mobile {
+  override def isGroundUnit = true
 
   private val inFerry         = oncePerTick {
     val nu = nativeUnit

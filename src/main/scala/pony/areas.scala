@@ -1,23 +1,45 @@
 package pony
 
 import bwapi.Game
-import pony.brain.Base
+import pony.brain.{Base, HasUniverse}
 
 import scala.collection.mutable.ArrayBuffer
 
-case class ResourceArea(patches: Option[MineralPatchGroup], geysirs: Set[Geysir]) {
-  assert(patches.isDefined || geysirs.nonEmpty)
-  val resources                = patches.map(_.patches).getOrElse(Nil) ++ geysirs
-  val coveredTiles             = resources.flatMap(_.area.tiles).toSet
-  val center                   = patches.map(_.center).getOrElse(geysirs.head.tilePosition)
-  val mostAnnoyingMinePosition = center
+case class ResourceArea(patches: Option[MineralPatchGroup], geysirs: Set[Geysir])
+  extends HasUniverse {
+  self =>
+  private val id = WrapsUnit.nextId
 
-  def mineralsAndGas = resources.iterator.map(_.remaining).sum
+  def uniqueId = id
+
+  private val myArea = LazyVal.from {
+    val ret = coveredTiles.flatMap(mapLayers.rawWalkableMap.areaOf)
+    assert(ret.size == 1, s"Resources cover more than one area: $self")
+    ret.head
+  }
+
+  def area = myArea.get
+
+  assert(patches.isDefined || geysirs.nonEmpty)
+  val resourceUnits = patches.map(_.patches).getOrElse(Nil) ++ geysirs
+  val coveredTiles  = resourceUnits.flatMap(_.area.tiles).toSet
+  val center        = patches.map(_.center).getOrElse(geysirs.head.tilePosition)
+  private val myMostAnnoyingMinePosition = LazyVal.from {
+    val blocked = mapLayers.rawWalkableMap.mutableCopy
+                  .or_!(mapLayers.blockedByResources.mutableCopy)
+    blocked.nearestFreeBlock(center, 2).getOr(s"Could not detect free area near $self")
+  }
+
+  def nearbyFreeTile = myMostAnnoyingMinePosition.get
+
+  def mineralsAndGas = resourceUnits.iterator.map(_.remaining).sum
 
   val allPatchTiles  = patches.map(_.allTiles).getOrElse(Nil).toVector
   val allGeysirTiles = geysirs.flatMap(_.area.tiles).toVector
 
   def isPatchId(id: Int) = patches.fold(false)(_.patchId == id)
+
+  override def universe = resourceUnits.head.universe
 
   def rich = {
     geysirs.iterator.map(_.remaining).sum > 1500 && patches.fold(0)(_.value) > 5000
@@ -49,6 +71,11 @@ case class CuttingLine(line: Line) {
 }
 
 class StrategicMap(val resources: Seq[ResourceArea], walkable: Grid2D, game: Game) {
+  private val resourcesById = resources.map { e =>
+    e.uniqueId -> e
+  }.toMap
+
+  def resourceAreaById(id: Int) = resourcesById(id)
 
   private val myNarrowPassages = FileStorageLazyVal.fromFunction({
     info(s"Calculating narrow passages...")
@@ -95,7 +122,7 @@ class StrategicMap(val resources: Seq[ResourceArea], walkable: Grid2D, game: Gam
       myAreas
       .map { area =>
         val relevantResources = resources.filter { r =>
-          r.resources.exists(p => area.free(p.area.anyTile))
+          r.resourceUnits.exists(p => area.free(p.area.anyTile))
         }
         area -> relevantResources
       }
@@ -135,7 +162,8 @@ class StrategicMap(val resources: Seq[ResourceArea], walkable: Grid2D, game: Gam
             val chokePoint = ChokePoint(center, cuttingLines)
             val grouped = relevantResources.groupBy { r1 =>
               val mainArea = subAreas.find(subArea => r1.coveredTiles.exists(subArea.free))
-              def ok = r1.resources.forall(e => subAreas.find(_.free(e.tilePosition)) == mainArea)
+              def ok = r1.resourceUnits
+                       .forall(e => subAreas.find(_.free(e.tilePosition)) == mainArea)
               if (ok) mainArea else None
             }
             if (grouped.values.forall(_.nonEmpty)) {

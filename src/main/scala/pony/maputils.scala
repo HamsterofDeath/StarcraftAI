@@ -23,11 +23,12 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
 
   def areasIntersecting(area: Area): Set[Grid2D] = {
     import scala.collection.breakOut
-    area.tiles.flatMap(areaWhichContainsAsFree)(breakOut)
+    area.tiles.flatMap(areaOf)(breakOut)
   }
 
-  def areaWhichContainsAsFree(tile: MapTilePosition) = areas
-                                                       .find(e => e.inBounds(tile) && e.free(tile))
+  def areaOf(tile: MapTilePosition) = areas.find(e => e.inBounds(tile) && e.free(tile))
+
+  def getAreaOf(tile: MapTilePosition) = areaOf(tile).getOr(s"$tile not free in $self")
 
   def areas = lazyAreas
 
@@ -38,7 +39,7 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
   def cuttingAreas(area: Area) = {
     var found = Option.empty[Grid2D]
     area.tiles.forall { where =>
-      val check = areaWhichContainsAsFree(where)
+      val check = areaOf(where)
       check.isEmpty || check == found
     }
   }
@@ -58,7 +59,7 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
   }
 
   def areInSameWalkableArea(a: MapTilePosition, b: MapTilePosition) =
-    areaWhichContainsAsFree(a).exists(_.free(b))
+    areaOf(a).exists(_.free(b))
 
   def emptySameSize(blocked: Boolean) = new MutableGrid2D(cols, rows, mutable.BitSet.empty, blocked)
 

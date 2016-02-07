@@ -305,6 +305,17 @@ class FutureIterator[IN, T](feed: => IN, produce: IN => T, startNow: Boolean) {
   private var done       = Option.empty[T]
   private var inProgress = if (startNow) nextFuture else BWFuture.none
   private var thinking   = startNow
+  private var once       = false
+
+  def onceIfDone[X](f: T => X) = {
+    lock.readLock().lock()
+    if (!once && hasResult) {
+      once = true
+      f(mostRecentAssumeCalculated)
+    }
+    lock.readLock().unlock()
+  }
+
 
   def mapOnContent[X](f: T => X) = {
     mostRecent.map(f)
@@ -353,6 +364,7 @@ class FutureIterator[IN, T](feed: => IN, produce: IN => T, startNow: Boolean) {
         thinking = false
         done = any
         lastFeed = Some(input)
+        once = false
         lock.writeLock().unlock()
     }
     fut

@@ -253,7 +253,7 @@ class PathFinder(on: Grid2D, isOnGround: Boolean) {
     val toFixed = {
       if (tryFixPath) {
         fromFixed.flatMap { e =>
-          on.areaWhichContainsAsFree(e).flatMap(_.nearestFreeNoGap(to))
+          on.areaOf(e).flatMap(_.nearestFreeNoGap(to))
         }
       } else {Some(to)}
     }
@@ -636,7 +636,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   private var lastUpdatePerformedInTick = universe.currentTick
 
   def isOnIsland(tilePosition: MapTilePosition) = {
-    val areaInQuestion = rawMapWalk.areaWhichContainsAsFree(tilePosition)
+    val areaInQuestion = rawMapWalk.areaOf(tilePosition)
     val maxArea = rawWalkableMap.areas.sortBy(-_.freeCount)
     if (maxArea.size > 1) {
       val main = maxArea.head

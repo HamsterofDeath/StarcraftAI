@@ -22,7 +22,7 @@ class FormationHelper(override val universe: Universe,
           mapLayers.safeGround.mutableCopy
         }
 
-        val targetArea = walkable.areaWhichContainsAsFree(target).getOr(s"No area contains $target")
+        val targetArea = walkable.areaOf(target).getOr(s"No area contains $target")
         val validTiles = availableArea.spiralAround(target, 80)
                          .filter(availableArea.freeAndInBounds)
                          .filter(targetArea.freeAndInBounds)
@@ -209,7 +209,7 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
     private val area = {
       currentForce.map { unit =>
         mapLayers.rawWalkableMap
-        .areaWhichContainsAsFree(unit.currentTile)
+        .areaOf(unit.currentTile)
       }
       .groupBy(identity)
       .mapValuesStrict(_.size)

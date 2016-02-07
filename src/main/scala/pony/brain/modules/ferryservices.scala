@@ -172,7 +172,7 @@ class FerryManager(override val universe: Universe) extends HasUniverse {
       }
       ferryPlans.valuesIterator.find { plan =>
         lazy val sameArea = {
-          val area = fixedDropTarget.flatMap(mapLayers.rawWalkableMap.areaWhichContainsAsFree)
+          val area = fixedDropTarget.flatMap(mapLayers.rawWalkableMap.areaOf)
           plan.targetArea == area
         }
         def canAdd = {
@@ -196,7 +196,7 @@ class FerryManager(override val universe: Universe) extends HasUniverse {
 
   private def newPlanFor(forWhat: GroundUnit, dropTarget: MapTilePosition,
                          buildNewIfRequired: Boolean = false) = {
-    assert(forWhat.currentArea != mapLayers.rawWalkableMap.areaWhichContainsAsFree(dropTarget),
+    assert(forWhat.currentArea != mapLayers.rawWalkableMap.areaOf(dropTarget),
       s"One of the units is already in the target area")
 
     assert(mapLayers.rawWalkableMap.free(dropTarget),
@@ -212,7 +212,7 @@ class FerryManager(override val universe: Universe) extends HasUniverse {
     val result = unitManager.request(selector, buildNewIfRequired)
     val newPlans = result.ifNotZero(_.map { transporter =>
       new FerryPlan(transporter, forWhat, dropTarget,
-        mapLayers.rawWalkableMap.areaWhichContainsAsFree(dropTarget))
+        mapLayers.rawWalkableMap.areaOf(dropTarget))
     }, Nil)
 
     ferryPlans ++= newPlans.map(e => e.ferry -> e)
