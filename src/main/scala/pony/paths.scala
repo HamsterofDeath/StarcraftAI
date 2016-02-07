@@ -19,7 +19,7 @@ class MigrationPath(follow: Paths, override val universe: Universe)
 
   def isGroundPath = follow.isGroundPath
 
-  def finalDestination = follow.unsafeTarget
+  def originalDestination = follow.unsafeTarget
 
   def safeDestination = follow.requestedTargetSafe
 

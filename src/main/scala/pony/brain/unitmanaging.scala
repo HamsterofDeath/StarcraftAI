@@ -1169,7 +1169,7 @@ trait PathfindingSupport[T <: Mobile] extends JobOrSubJob[T] {
           }
 
           myPath.foldOpt(noopFallback) { mig =>
-            val outdated = mig.finalDestination.distanceToIsMore(where, 3)
+            val outdated = mig.originalDestination.distanceToIsMore(where, 3)
             if (outdated) {
               newPathRequired(where)
               Nil
@@ -1250,16 +1250,16 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W,
       val target     = buildWhere
       val pathfinder = pathfinders.groundSafe
       val candidates = unitManager.ownUnits.allByType[W].map { w =>
-        w.unitId -> w.currentTile
+        w.currentTile
       }
     }
 
     FutureIterator.feed(new Input).produceAsyncLater { in =>
-      val paths = in.candidates.flatMap { case (id, where) =>
+      val paths = in.candidates.flatMap { where =>
         in.pathfinder.findSimplePathNow(where, in.target, tryFixPath = true)
       }
       val data = new ClosestPaths(paths)
-      in.candidates.foreach { case (_, pos) =>
+      in.candidates.foreach { pos =>
         mapLayers.rawWalkableMap.spiralAround(pos, 5).foreach { precalcThis =>
           data.closestPathFrom(precalcThis)
         }

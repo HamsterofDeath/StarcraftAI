@@ -57,7 +57,7 @@ trait WrapsUnit extends HasUniverse with AfterTickListener {
   val initialNativeType = nativeUnit.getType
   val nativeType        = oncePerTick {
     val ret = nativeUnit.getType
-    morphed = morphed || ret != initialNativeType
+    morphed |= ret != initialNativeType
     ret
   }
   private val nativeOrder          = oncePerTick {

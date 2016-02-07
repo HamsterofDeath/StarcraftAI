@@ -307,6 +307,7 @@ object Terran {
             }
 
             val ref = dancer.me.where.movedBy(MapTilePosition(xSum, ySum))
+
             on.spiralAround(dancer.me.where, range)
             .drop(dropAtFirst)
             .sliding(1, takeNth)
@@ -317,14 +318,16 @@ object Terran {
             }.find {on.free}
           }
 
-          def secondTry = on.spiralAround(dancer.me.where, range)
-                          .drop(dropAtFirst)
-                          .sliding(1, takeNth)
-                          .flatten
-                          .take(tries)
-                          .filter(on.free)
-                          .filter(a.free)
-                          .maxByOpt(center.distanceSquaredTo)
+          def secondTry = {
+            on.spiralAround(dancer.me.where, range)
+            .drop(dropAtFirst)
+            .sliding(1, takeNth)
+            .flatten
+            .take(tries)
+            .filter(on.free)
+            .filter(a.free)
+            .maxByOpt(center.distanceSquaredTo)
+          }
 
           antiGrav.orElse(secondTry)
         }
@@ -367,7 +370,7 @@ object Terran {
           state match {
             case Idle =>
               dancePlan.flatMapOnContent { plan =>
-                plan.get(unit.unitId)
+                plan.get(unit.nativeUnitId)
               }.map { where =>
                 Fallback(where, universe.currentTick) -> Orders.MoveToTile(unit, where).toList
               }.getOrElse(noop)
@@ -387,28 +390,30 @@ object Terran {
     }
 
     private def feed = {
-      val dancers = ownUnits.allMobilesWithWeapons
-                    .flatMap { own =>
-                      val dancePartners = {
-                        def take(enemy: ArmedMobile) = {
-                          enemy.initialNativeType.topSpeed <= own.initialNativeType.topSpeed &&
-                          enemy.weaponRangeRadius <= own.weaponRangeRadius &&
-                          own.canAttack(enemy)
-                        }
-                        unitGrid.allInRangeOf[ArmedMobile](own.currentTile,
-                          own.weaponRangeRadiusTiles, friendly = false, take)
-                        .map { unit =>
-                          UnitIdPosition(unit.unitId, unit.currentTile)
-                        }
-                      }
+      val dancers = {
+        ownUnits.allMobilesWithWeapons
+        .flatMap { own =>
+          val dancePartners = {
+            def take(enemy: ArmedMobile) = {
+              enemy.initialNativeType.topSpeed <= own.initialNativeType.topSpeed &&
+              enemy.weaponRangeRadius <= own.weaponRangeRadius &&
+              own.canAttack(enemy)
+            }
+            unitGrid.allInRangeOf[ArmedMobile](own.currentTile,
+              own.weaponRangeRadiusTiles, friendly = false, take)
+            .map { unit =>
+              UnitIdPosition(unit.nativeUnitId, unit.currentTile)
+            }
+          }
 
-                      if (dancePartners.nonEmpty) {
-                        Dancer(UnitIdPosition(own.unitId, own.currentTile), dancePartners.toVector)
-                        .toSome
-                      } else {
-                        None
-                      }
-                    }.toVector
+          if (dancePartners.nonEmpty) {
+            Dancer(UnitIdPosition(own.nativeUnitId, own.currentTile), dancePartners.toVector)
+            .toSome
+          } else {
+            None
+          }
+        }.toVector
+      }
       Feed(dancers, immutableMapLayer.get)
     }
 
@@ -717,7 +722,7 @@ object Terran {
           p.targetFormationTiles.foreach { tile =>
             renderer.in_!(Color.Cyan).drawCircleAround(tile)
           }
-          renderer.in_!(Color.Red).drawStar(p.finalDestination, 3)
+          renderer.in_!(Color.Red).drawStar(p.originalDestination, 3)
           renderer.in_!(Color.Green).drawStar(p.safeDestination, 2)
         }
       }
@@ -1056,34 +1061,63 @@ object Terran {
 
   class Scout(universe: Universe) extends DefaultBehaviour[ArmedMobile](universe) {
 
+    override def renderDebug_!(renderer: Renderer) = {
+      super.renderDebug_!(renderer)
+      renderer.in_!(Color.Blue)
+      plan.plans.foreach { plan =>
+        plan.covered.grouped(2).foreach { seq =>
+          val List(a, b) = seq.toList
+          renderer.drawLine(a.nearbyFreeTile, b.nearbyFreeTile)
+          if (plan.nextTarget.contains(a.nearbyFreeTile)) {
+            renderer.drawLine(a.nearbyFreeTile, plan.scouter.currentTile)
+          } else if (plan.nextTarget.contains(b.nearbyFreeTile)) {
+            renderer.drawLine(b.nearbyFreeTile, plan.scouter.currentTile)
+          } else {
+            // nop
+          }
+        }
+      }
+    }
+
     class ScoutPlan(scout: ArmedMobile, toCheck: List[ResourceArea]) {
+      def scouter = scout
+
       def valid = scout.isInGame
+
+      val covered = toCheck.toSet
 
       private val remainingToCheck = mutable.ArrayBuffer.empty ++= toCheck.map(_.nearbyFreeTile)
       private val nextPath         = {
-        FutureIterator.feed((scout.currentTile, remainingToCheck.head))
-        .produceAsync { case (from, to) =>
-          universe.pathfinders.safeFor(scout).findPathNow(from, to).map(_.toMigration)
+        FutureIterator
+        .feed((scout.currentTile, remainingToCheck.head, universe.pathfinders.safeFor(scout)))
+        .produceAsync { case (from, to, pathfinder) =>
+          pathfinder.findPathNow(from, to).map(_.toMigration)
         }
       }
-      private var cycle            = 0
+
+      private var cycle = 0
+
+      def nextTarget = nextPath.mostRecent.flatMap { e =>
+        e.map(_.originalDestination)
+      }
 
       def toOrder = {
         nextPath.mostRecent.flatMap {
           case Some(paths) =>
-            val close = scout.currentTile.distanceToIsLess(paths.finalDestination, 7) &&
-                        scout.canSee(paths.finalDestination)
+            val close = scout.currentTile.distanceToIsLess(paths.originalDestination, 7) &&
+                        scout.canSee(paths.originalDestination)
             if (close) {
               if (remainingToCheck.nonEmpty) {
                 remainingToCheck.remove(0)
               } else {
-                remainingToCheck ++= {
-                                       if (cycle % 2 == 0) {
-                                         toCheck.reverse
-                                       } else {
-                                         toCheck
-                                       }
-                                     }.map(_.nearbyFreeTile)
+                val nextToCheckInOrder = {
+                  (if (cycle % 2 == 0) {
+                    toCheck.reverse
+                  } else {
+                    toCheck
+                  }).map(_.nearbyFreeTile)
+                }
+                remainingToCheck ++= nextToCheckInOrder
 
                 cycle += 1
               }
@@ -1103,8 +1137,13 @@ object Terran {
     }
 
     class Scouting {
-      private val coveredRightNow = mutable.HashSet.empty[ResourceArea]
-      private val scouts          = mutable.HashMap.empty[ArmedMobile, ScoutPlan]
+      private val scouts = mutable.HashMap.empty[ArmedMobile, ScoutPlan]
+
+      private val coveredRightNow = LazyVal.from {
+        scouts.flatMap(_._2.covered).toSet
+      }
+
+      def plans = scouts.values
 
       case class ScoutingCandidate(id: Int, speed: Double, area: Grid2D, tile: MapTilePosition)
 
@@ -1114,10 +1153,16 @@ object Terran {
       }
 
       class Feed {
-        private val resourceAreasUnscouted = strategicMap.resources.filterNot(coveredRightNow)
-                                             .map { ra =>
-                                               ra.uniqueId -> ra.nearbyFreeTile
-                                             }
+        private val resourceAreasUnscouted = {
+          strategicMap.resources
+          .filter { ra =>
+            mapLayers.dangerousAsBlocked.free(ra.nearbyFreeTile)
+          }
+          .filterNot(coveredRightNow.get)
+          .map { ra =>
+            ra.uniqueId -> ra.nearbyFreeTile
+          }
+        }
 
         val tileToResourceAreaId = resourceAreasUnscouted.map(_.swap).toMap
 
@@ -1128,7 +1173,7 @@ object Terran {
           .flatMap(_.asGroundUnit)
           .filter(_.onGround)
           .map { e =>
-            ScoutingCandidate(e.unitId, e.initialNativeType.topSpeed(), e.currentArea.get,
+            ScoutingCandidate(e.nativeUnitId, e.initialNativeType.topSpeed(), e.currentArea.get,
               e.currentTile)
           }
         }
@@ -1136,7 +1181,7 @@ object Terran {
         val pathfinder = pathfinders.groundSafe
       }
 
-      private val leftToCover = FutureIterator.feed(new Feed) produceAsync { in =>
+      private val leftToCover = FutureIterator.feed(new Feed) produceAsyncLater { in =>
         val candidates = in.scoutingCandidates.groupBy(_.area).mapValuesStrict { who =>
           val sorted = who.toVector.sortBy(-_.speed)
           sorted.filter(_.speed == sorted.head.speed)
@@ -1203,7 +1248,12 @@ object Terran {
       }
 
       def onTick_!() = {
+        val oldSize = scouts.size
         scouts.retain { (_, v) => v.valid }
+        if (oldSize != scouts.size) {
+          coveredRightNow.invalidate()
+        }
+
         leftToCover.onceIfDone { plans =>
           plans.foreach { plan =>
             ownUnits.byId(plan.sc.id).foreach { stillLiving =>
@@ -1213,6 +1263,9 @@ object Terran {
               val actualPlan = new ScoutPlan(unit, resourceAreas)
               scouts.put(unit, actualPlan)
             }
+          }
+          if (plans.nonEmpty) {
+            coveredRightNow.invalidate()
           }
         }
         ifNth(Primes.prime149) {

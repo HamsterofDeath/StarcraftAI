@@ -300,17 +300,17 @@ class BWFuture[+T](val future: Future[T], incomplete: T) {
 }
 
 class FutureIterator[IN, T](feed: => IN, produce: IN => T, startNow: Boolean) {
-  private val lock       = new ReentrantReadWriteLock()
-  private var lastFeed   = Option.empty[IN]
-  private var done       = Option.empty[T]
-  private var inProgress = if (startNow) nextFuture else BWFuture.none
-  private var thinking   = startNow
-  private var once       = false
+  private val lock                   = new ReentrantReadWriteLock()
+  private var lastFeed               = Option.empty[IN]
+  private var done                   = Option.empty[T]
+  private var inProgress             = if (startNow) nextFuture else BWFuture.none
+  private var thinking               = startNow
+  private var calledForCurrentResult = false
 
   def onceIfDone[X](f: T => X) = {
     lock.readLock().lock()
-    if (!once && hasResult) {
-      once = true
+    if (!calledForCurrentResult && hasResult) {
+      calledForCurrentResult = true
       f(mostRecentAssumeCalculated)
     }
     lock.readLock().unlock()
@@ -364,7 +364,7 @@ class FutureIterator[IN, T](feed: => IN, produce: IN => T, startNow: Boolean) {
         thinking = false
         done = any
         lastFeed = Some(input)
-        once = false
+        calledForCurrentResult = false
         lock.writeLock().unlock()
     }
     fut
