@@ -1707,6 +1707,7 @@ class Devourer(unit: APIUnit) extends AnyUnit(unit) with Organic with GroundUnit
 
 class Ultralisk(unit: APIUnit)
   extends AnyUnit(unit) with Organic with IsBig with GroundWeapon with MeleeWeapon with
+          GroundUnit with
           NormalGroundDamage with ArmedMobile with InstantAttackGround
 
 class Defiler(unit: APIUnit) extends AnyUnit(unit) with Organic with GroundUnit with IsMedium
