@@ -1089,7 +1089,8 @@ object Terran {
 
       def valid = {
         scout.isInGame && toCheck.forall { resourceArea =>
-          mapLayers.dangerousAsBlocked.freeAndInBounds(resourceArea.nearbyFreeTile)
+          mapLayers.dangerousAsBlocked.freeAndInBounds(resourceArea.nearbyFreeTile) &&
+          !bases.isCovered(resourceArea)
         }
       }
 
@@ -1171,6 +1172,7 @@ object Terran {
             mapLayers.dangerousAsBlocked.free(ra.nearbyFreeTile)
           }
           .filterNot(coveredRightNow.get)
+          .filteNot(bases.isCovered)
           .map { ra =>
             ra.uniqueId -> ra.nearbyFreeTile
           }
