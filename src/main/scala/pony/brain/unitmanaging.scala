@@ -844,7 +844,14 @@ abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: 
 
   def failedOrObsolete = dead || forceFail || obsolete || jobHasFailedWithoutDeath
 
-  def jobHasFailedWithoutDeath: Boolean = false
+  private val inactive = Set(Order.PlayerGuard)
+
+  def jobHasFailedWithoutDeath: Boolean = {
+    unit match {
+      case ohs: OrderHistorySupport => ohs.unitHistory.take(24).forall(e => inactive(e.order))
+      case _ => false
+    }
+  }
 
   def listen_!(listener: JobFinishedListener[T]): Unit = listeners += listener
 

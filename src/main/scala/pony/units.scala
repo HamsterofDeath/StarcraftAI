@@ -36,7 +36,8 @@ trait OrderHistorySupport extends WrapsUnit {
       }
     }
   }
-  def unitHistory = history.reverse
+
+  def unitHistory = history.reverseIterator
 
   case class HistoryElement(order: Order, target: APIUnit, job: UnitWithJob[_ <: WrapsUnit]) {
     private var issuedOrder: UnitOrder = _
