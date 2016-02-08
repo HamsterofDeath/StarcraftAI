@@ -681,8 +681,8 @@ class ManageMiningAtGeysirs(universe: Universe)
 
       override def ordersForTick: Seq[UnitOrder] = {
         val (newState, order) = state match {
-          case Idle =>
-            Gathering -> Orders.Gather(worker, geysir)
+          case Idle if refinery.isDefined =>
+            Gathering -> Orders.Gather(worker, refinery.get)
           case Gathering if worker.isGatheringGas || worker.isMagic =>
             Gathering -> Orders.NoUpdate(worker)
           case _ =>
