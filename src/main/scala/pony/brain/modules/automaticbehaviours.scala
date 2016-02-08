@@ -1172,7 +1172,7 @@ object Terran {
             mapLayers.dangerousAsBlocked.free(ra.nearbyFreeTile)
           }
           .filterNot(coveredRightNow.get)
-          .filteNot(bases.isCovered)
+          .filterNot(bases.isCovered)
           .map { ra =>
             ra.uniqueId -> ra.nearbyFreeTile
           }
