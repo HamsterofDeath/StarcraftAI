@@ -1009,13 +1009,11 @@ object Strategy {
       val shouldExpand = expandNow
       if (shouldExpand) {
         val covered = bases.bases.map(_.resourceArea).toSet
-        val dangerous = strategicMap.resources.filter { res =>
-          universe.unitGrid.enemy.allInRange[Mobile](res.center, 15).nonEmpty
-        }.toSet
+        val dangerous = mapLayers.slightlyDangerousAsBlocked
         bases.mainBase.map(_.mainBuilding.tilePosition).flatMap { where =>
           val others = strategicMap.resources
                        .filterNot(covered)
-                       .filterNot(dangerous)
+                       .filterNot(ra => dangerous.blocked(ra.nearbyFreeTile))
                        .filter { where =>
                          universe.ownUnits.allByType[TransporterUnit].nonEmpty ||
                          mapLayers.rawWalkableMap

@@ -435,7 +435,7 @@ object Terran {
     private def feed = Feed(mapLayers.blockedByPlannedBuildings, mapLayers.freeWalkableTiles)
 
     private val freeAlternativeTiles = FutureIterator.feed(feed).produceAsyncLater { in =>
-      val tolerance = 3
+      val tolerance = 2
 
       val allBlocked = in.planned.allBlocked.toList
       val mut = in.planned.mutableCopy
@@ -444,14 +444,14 @@ object Terran {
       }
 
       mut.allBlocked.toVector.flatMap { blocked =>
-        val extended = blocked.asArea.growBy(1)
         val ret = in.free.spiralAround(blocked).find { tile =>
           in.free.freeAndInBounds(tile) &&
-          in.planned.freeAndInBounds(tile)
+          mut.freeAndInBounds(tile) &&
+          mapLayers.rawWalkableMap.areInSameWalkableArea(tile, blocked)
         }
         // block solution for next try
         ret.foreach { found =>
-          mut.block_!(found.asArea.growBy(1))
+          mut.block_!(found)
         }
         ret.map(e => blocked -> e)
       }.toMap
@@ -870,19 +870,20 @@ object Terran {
 
     private val ignore = mutable.HashSet.empty[Mobile]
 
-    override protected def wrapBase(unit: Mobile) = new SingleUnitBehaviour[Mobile](unit,
-      meta) {
-      override def describeShort: String = "Goto IP"
+    override protected def wrapBase(unit: Mobile) = {
+      new SingleUnitBehaviour[Mobile](unit, meta) {
+        override def describeShort: String = "Goto IP"
 
-      override def toOrder(what: Objective) = {
-        if (universe.time.minutes <= 5 || ignore(unit) || unit.isBeingCreated) {
-          Nil
-        } else {
-          helper.allInsideNonBlacklisted.toStream.headOption.map { where =>
-            ignore += unit
-            helper.blacklisted(where)
-            Orders.AttackMove(unit, where)
-          }.toList
+        override def toOrder(what: Objective) = {
+          if (universe.time.minutes <= 5 || ignore(unit) || unit.isBeingCreated) {
+            Nil
+          } else {
+            helper.allInsideNonBlacklisted.toStream.headOption.map { where =>
+              ignore += unit
+              helper.blacklisted(where)
+              Orders.AttackMove(unit, where)
+            }.toList
+          }
         }
       }
     }
@@ -896,14 +897,15 @@ object Terran {
       detectThese ++= {
         mapNth(Primes.prime31, Seq.empty[Group[CanCloak]]) {
           val dangerous = {
-                            enemies.allByType[CanCloak]
-                            .iterator
-                            .filterNot(_.isDecloaked)
-                            .filter { cloaked =>
-                              ownUnits.allCompletedMobiles
-                              .exists(_.centerTile.distanceToIsLess(cloaked.centerTile, 8))
-                            }
-                          }.toVector
+            enemies.allByType[CanCloak]
+            .iterator
+            .filterNot(_.isDecloaked)
+            .filter { cloaked =>
+              ownUnits.allCompletedMobiles
+              .exists(_.centerTile.distanceToIsLess(cloaked.centerTile, 8))
+            }
+            .toVector
+          }
 
           val groups = GroupingHelper.groupTheseNow(dangerous, universe)
           groups.sortBy(-_.size)
@@ -931,7 +933,7 @@ object Terran {
   }
 
   class SetupMineField(universe: Universe) extends DefaultBehaviour[Vulture](universe) {
-    val beLazy = Idle -> Nil
+    private val beLazy       = Idle -> Nil
     private val helper       = new FormationAtFrontLineHelper(universe, 2)
     private val plannedDrops = ArrayBuffer.empty[(Area, Int)]
     private val mined        = oncePerTick {
@@ -967,88 +969,91 @@ object Terran {
 
     override def priority = SecondPriority.EvenLess
 
-    override protected def wrapBase(unit: Vulture) = new SingleUnitBehaviour[Vulture](
-      unit, meta) {
+    override protected def wrapBase(unit: Vulture) = {
+      // TODO calculate in background
+      new SingleUnitBehaviour[Vulture](unit, meta) {
 
-      private var state: State            = Idle
-      private var originalSpiderMineCount = unit.spiderMineCount
+        private var state: State            = Idle
+        private var originalSpiderMineCount = unit.spiderMineCount
 
-      def freeArea = mined.get
+        def freeArea = mined.get
 
-      private var inBattle = false
+        private var inBattle = false
 
-      override def priority = if (inBattle) SecondPriority.EvenMore else super.priority
+        override def priority = if (inBattle) SecondPriority.EvenMore else super.priority
 
-      override def describeShort: String = "Minefield"
+        override def describeShort: String = "Minefield"
 
-      override def toOrder(what: Objective) = {
-        val (newState, orders) = state match {
-          case Idle =>
-            // TODO include test in tech trait
-            if (unit.spiderMineCount > 0 && unit.canCastNow(SpiderMines)) {
-              val enemies = universe.unitGrid.enemy.allInRange[GroundUnit](unit.currentTile, 5)
-              if (enemies.nonEmpty) {
-                inBattle = true
-                // drop mines on sight of enemy
-                val on = freeArea
-                val freeTarget = {
-                  on.spiralAround(unit.currentTile).filter(on.free)
-                  .maxByOpt { where =>
-                    def ownUnitsCost = {
-                      universe.unitGrid.own.allInRange[GroundUnit](where, 5)
-                      .view
-                      .filter(
-                        e => !e.isInstanceOf[HasSpiderMines] && !e.isAutoPilot)
-                      .map(_.buildPrice)
-                      .fold(Price.zero)(_ + _)
+        override def toOrder(what: Objective) = {
+          val (newState, orders) = state match {
+            case Idle =>
+              // TODO include test in tech trait
+              if (unit.spiderMineCount > 0 && unit.canCastNow(SpiderMines)) {
+                val enemies = universe.unitGrid.enemy.allInRange[GroundUnit](unit.currentTile, 5)
+                if (enemies.nonEmpty) {
+                  inBattle = true
+                  // drop mines on sight of enemy
+                  val on = freeArea
+                  val freeTarget = {
+                    on.spiralAround(unit.currentTile).filter(on.free)
+                    .maxByOpt { where =>
+                      def ownUnitsCost = {
+                        universe.unitGrid.own.allInRange[GroundUnit](where, 5)
+                        .view
+                        .filter(
+                          e => !e.isInstanceOf[HasSpiderMines] && !e.isAutoPilot)
+                        .map(_.buildPrice)
+                        .fold(Price.zero)(_ + _)
+                      }
+                      def enemyUnitsCost = {
+                        universe.unitGrid.enemy.allInRange[GroundUnit](where, 5)
+                        .view
+                        .filter(
+                          e => !e.isInstanceOf[HasSpiderMines] && !e.isAutoPilot)
+                        .map(_.buildPrice)
+                        .fold(Price.zero)(_ + _)
+                      }
+                      enemyUnitsCost - ownUnitsCost
                     }
-                    def enemyUnitsCost = {
-                      universe.unitGrid.enemy.allInRange[GroundUnit](where, 5)
-                      .view
-                      .filter(
-                        e => !e.isInstanceOf[HasSpiderMines] && !e.isAutoPilot)
-                      .map(_.buildPrice)
-                      .fold(Price.zero)(_ + _)
-                    }
-                    enemyUnitsCost - ownUnitsCost
                   }
+                  freeTarget.map { where =>
+                    on.block_!(where.asArea.extendedBy(1))
+                    plannedDrops += where.asArea.extendedBy(1) -> universe.currentTick
+                    DroppingMine(where) -> unit.toOrder(SpiderMines, where).toList
+                  }.getOrElse(beLazy)
+                } else {
+                  inBattle = false
+                  // place mines on strategic positions
+                  val candiates = suggestMinePositions
+                  val dropMineHere = candiates.minByOpt(_.distanceSquaredTo(unit.currentTile))
+                  dropMineHere.foreach(helper.blackList_!)
+                  dropMineHere.map { where =>
+                    DroppingMine(where) -> unit.toOrder(SpiderMines, where).toList
+                  }.getOrElse(beLazy)
                 }
-                freeTarget.map { where =>
-                  on.block_!(where.asArea.extendedBy(1))
-                  plannedDrops += where.asArea.extendedBy(1) -> universe.currentTick
-                  DroppingMine(where) -> unit.toOrder(SpiderMines, where).toList
-                }.getOrElse(beLazy)
               } else {
                 inBattle = false
-                // place mines on strategic positions
-                val candiates = suggestMinePositions
-                val dropMineHere = candiates.minByOpt(_.distanceSquaredTo(unit.currentTile))
-                dropMineHere.foreach(helper.blackList_!)
-                dropMineHere.map { where =>
-                  DroppingMine(where) -> unit.toOrder(SpiderMines, where).toList
-                }.getOrElse(beLazy)
+                beLazy
               }
-            } else {
+
+            case myState@DroppingMine(where) if unit.canCastNow(SpiderMines) =>
+              myState -> unit.toOrder(SpiderMines, where).toList
+            case DroppingMine(_) if unit.spiderMineCount < originalSpiderMineCount =>
               inBattle = false
-              beLazy
-            }
-
-          case myState@DroppingMine(where) if unit.canCastNow(SpiderMines) =>
-            myState -> unit.toOrder(SpiderMines, where).toList
-          case DroppingMine(_) if unit.spiderMineCount < originalSpiderMineCount =>
-            inBattle = false
-            originalSpiderMineCount = unit.spiderMineCount
-            Idle -> Nil
-          case myState@DroppingMine(_) =>
-            inBattle = false
-            myState -> Nil
+              originalSpiderMineCount = unit.spiderMineCount
+              Idle -> Nil
+            case myState@DroppingMine(_) =>
+              inBattle = false
+              myState -> Nil
+          }
+          state = newState
+          orders
         }
-        state = newState
-        orders
-      }
 
-      override def preconditionOk: Boolean = universe.upgrades
-                                             .hasResearched(Upgrades.Terran.SpiderMines)
+        override def preconditionOk: Boolean = {
+          universe.upgrades.hasResearched(Upgrades.Terran.SpiderMines)
+        }
+      }
     }
 
     trait State
@@ -1082,11 +1087,16 @@ object Terran {
     class ScoutPlan(scout: ArmedMobile, toCheck: List[ResourceArea]) {
       def scouter = scout
 
-      def valid = scout.isInGame
+      def valid = {
+        scout.isInGame && toCheck.forall { resourceArea =>
+          mapLayers.dangerousAsBlocked.freeAndInBounds(resourceArea.nearbyFreeTile)
+        }
+      }
 
       val covered = toCheck.toSet
 
       private val remainingToCheck = mutable.ArrayBuffer.empty ++= toCheck.map(_.nearbyFreeTile)
+
       private val nextPath         = {
         FutureIterator
         .feed((scout.currentTile, remainingToCheck.head, universe.pathfinders.safeFor(scout)))
@@ -1107,8 +1117,9 @@ object Terran {
             val close = scout.currentTile.distanceToIsLess(paths.originalDestination, 7) &&
                         scout.canSee(paths.originalDestination)
             if (close) {
-              if (remainingToCheck.nonEmpty) {
+              if (remainingToCheck.size > 1) {
                 remainingToCheck.remove(0)
+                nextPath.prepareNextIfDone()
               } else {
                 val nextToCheckInOrder = {
                   (if (cycle % 2 == 0) {
@@ -1117,8 +1128,9 @@ object Terran {
                     toCheck
                   }).map(_.nearbyFreeTile)
                 }
+                remainingToCheck.remove(0)
                 remainingToCheck ++= nextToCheckInOrder
-
+                nextPath.prepareNextIfDone()
                 cycle += 1
               }
               None
@@ -1284,6 +1296,8 @@ object Terran {
       super.onTick_!()
       plan.onTick_!()
     }
+
+    override def priority = SecondPriority.BetterThanNothing
 
     override protected def wrapBase(t: ArmedMobile) =
       new SingleUnitBehaviour[ArmedMobile](t, meta) {
