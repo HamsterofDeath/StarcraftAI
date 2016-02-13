@@ -42,8 +42,7 @@ class MigrationPath(follow: Paths, override val universe: Universe)
   def stillActiveUnits = counter.keysIterator.filter(_.isInGame)
 
   def meetingStats = {
-    val total = remaining.size
-    (total - atFormationStep.size) -> total
+    atFormationStep.size -> remaining.size
   }
 
   def allReachedDestination = remaining.isEmpty

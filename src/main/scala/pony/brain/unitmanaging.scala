@@ -848,10 +848,13 @@ abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: 
 
   def jobHasFailedWithoutDeath: Boolean = {
     unit match {
-      case ohs: OrderHistorySupport => ohs.unitHistory.take(24).forall(e => inactive(e.order))
+      case ohs: OrderHistorySupport if !isNoopJob => ohs.unitHistory.take(24)
+                                                     .forall(e => inactive(e.order))
       case _ => false
     }
   }
+
+  def isNoopJob = false
 
   def listen_!(listener: JobFinishedListener[T]): Unit = listeners += listener
 
@@ -1565,6 +1568,8 @@ class BusyDoingNothing[T <: WrapsUnit](unit: T, employer: Employer[T])
       case _ => Nil
     }
   }
+
+  override def isNoopJob = true
 
   override def times: Int = 5
 
