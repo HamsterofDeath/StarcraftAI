@@ -89,13 +89,13 @@ class UnitIdRenderer extends AIPlugIn {
         renderer.drawTextAtMobileUnit(u, u.unitIdText)
       }
       lazyWorld.ownUnits.allByType[Building].foreach { u =>
-        renderer.drawTextAtStaticUnit(u, u.unitIdText)
+        renderer.drawTextAtStaticUnit(u, s"${u.unitIdText}/${u.getClass.className}")
       }
       lazyWorld.enemyUnits.allByType[Mobile].foreach { u =>
         renderer.drawTextAtMobileUnit(u, u.unitIdText)
       }
       lazyWorld.enemyUnits.allByType[Building].foreach { u =>
-        renderer.drawTextAtStaticUnit(u, u.unitIdText)
+        renderer.drawTextAtStaticUnit(u, s"${u.unitIdText}/${u.getClass.className}")
       }
     }
   }
@@ -399,8 +399,8 @@ class DebugHelper(main: MainAI) extends AIPlugIn with HasUniverse {
             case "debug" | "d" =>
               params match {
                 case List(id) =>
-                  ownUnits.all.find(_.unitIdText == id).foreach(debugUnit)
-                  enemies.all.find(_.unitIdText == id).foreach(debugUnit)
+                  ownUnits.allKnownUnits.find(_.unitIdText == id).foreach(debugUnit)
+                  enemies.allKnownUnits.find(_.unitIdText == id).foreach(debugUnit)
               }
             case "attack" | "a" =>
               val target = params match {
@@ -452,6 +452,7 @@ class MainAI extends AIPlugIn with HasUniverse with AIAPIEventDispatcher {
     brain.queueOrdersForTick()
     if (debugger.isDebugging) {
       brain.plugins.foreach(_.renderDebug(debugger.renderer))
+      brain.renderDebug(debugger.renderer)
     }
   }
 

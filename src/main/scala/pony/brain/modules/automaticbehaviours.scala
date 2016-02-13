@@ -171,6 +171,11 @@ object Terran {
       }
 
       case class MaybePath(path: FutureIterator[Feed, Option[MigrationPath]]) {
+
+        def onTick_!() = {
+          path.onMostRecent(_.foreach(_.onTick_!()))
+        }
+
         private var lastTouched = currentTick
 
         def age = currentTick - lastTouched
@@ -189,6 +194,11 @@ object Terran {
       override def blocksForTicks: Int = 24
 
       override def describeShort: String = "Transport"
+
+      override def onTick_!() = {
+        super.onTick_!()
+        paths.valuesIterator.foreach(_.onTick_!())
+      }
 
       override def toOrder(what: Objective): Seq[UnitOrder] = {
         val old = paths.filter { case (_, maybe) => maybe.age > maxAge }
@@ -1115,6 +1125,10 @@ object Terran {
         e.map(_.originalDestination)
       }
 
+      def onTick_!() = {
+        nextPath.mostRecent.foreach(_.foreach(_.onTick_!()))
+      }
+
       def toOrder = {
         nextPath.mostRecent.flatMap {
           case Some(paths) =>
@@ -1270,6 +1284,8 @@ object Terran {
         if (oldSize != scouts.size) {
           coveredRightNow.invalidate()
         }
+
+        scouts.valuesIterator.foreach(_.onTick_!())
 
         leftToCover.onceIfDone { plans =>
           plans.foreach { plan =>

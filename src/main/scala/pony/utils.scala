@@ -54,12 +54,15 @@ class Renderer(game: Game, private var color: bwapi.Color) {
   }
 
   def drawTextAtMobileUnit(u: Mobile, text: String, lineOffset: Int = 0): Unit = {
-    game
-    .drawTextMap(u.currentPositionNative.getX, u.currentPositionNative.getY + lineOffset * 10, text)
+    val x = u.currentPositionNative.getX
+    val y = u.currentPositionNative.getY + lineOffset * 10 + 5
+    game.drawTextMap(x, y, text)
   }
 
   def drawTextAtStaticUnit(u: StaticallyPositioned, text: String, lineOffset: Int = 0): Unit = {
-    game.drawTextMap(u.nativeMapPosition.getX, u.nativeMapPosition.getY + lineOffset * 10, text)
+    val x = u.nativeMapPosition.getX
+    val y = u.nativeMapPosition.getY + lineOffset * 10 + u.area.height * tileSize / 2 - 5
+    game.drawTextMap(x, y, text)
   }
 
   def indicateTarget(currentPosition: MapTilePosition, to: MapTilePosition): Unit = {
@@ -307,6 +310,10 @@ class FutureIterator[IN, T](feed: => IN, produce: IN => T, startNow: Boolean) {
   private var thinking               = startNow
   private var calledForCurrentResult = false
 
+  def onMostRecent[X](f: T => X) = {
+    mostRecent.foreach(f)
+  }
+
   def onceIfDone[X](f: T => X) = {
     lock.readLock().lock()
     if (!calledForCurrentResult && hasResult) {
@@ -406,7 +413,7 @@ object BWFuture {
     def imap[X](f: T => X) = fut.map(_.map(f))
 
     def ifDoneOpt[X](ifDone: T => X): Unit = {
-      fut.ifDone(op => ifDone(op.get))
+      fut.ifDone(_.foreach(ifDone))
     }
 
     def foldOpt[X](ifRunning: => X)(ifDone: T => X) = {

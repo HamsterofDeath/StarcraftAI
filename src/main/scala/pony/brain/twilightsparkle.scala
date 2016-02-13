@@ -57,8 +57,26 @@ trait HasUniverse extends HasLazyVals {
 
 }
 
-trait HasLazyVals {
+trait IsTicked {
+
+  private var lastCalled = 0
+
+  def onTick_!(): Unit = {
+    lastCalled = currentTick
+  }
+
+  def assertCalled() = {
+    assert(lastCalled + 24 >= currentTick,
+      s"Now is $currentTick, ontick has not been called since $lastCalled")
+  }
+
+  protected def currentTick: Int
+
+}
+
+trait HasLazyVals extends IsTicked {
   private val lazyVals = ArrayBuffer.empty[LazyVal[_]]
+
 
   def oncePer[T](prime: PrimeNumber)(t: => T) = {
     var store: T = null.asInstanceOf[T]
@@ -80,11 +98,10 @@ trait HasLazyVals {
     LazyVal.from(t).allowMultithreading_!()
   }
 
-  def onTick_!(): Unit = {
+  override def onTick_!(): Unit = {
+    super.onTick_!()
     lazyVals.foreach(_.invalidate())
   }
-
-  protected def currentTick: Int
 }
 
 trait BackgroundComputationResult[T <: WrapsUnit] {
@@ -242,6 +259,9 @@ object AIModule {
 
 class TwilightSparkle(world: DefaultWorld) {
   self =>
+  def renderDebug(renderer: Renderer) = {
+    worldDomination.renderDebug(renderer)
+  }
 
   val universe: Universe = new Universe {
 

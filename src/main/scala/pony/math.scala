@@ -170,6 +170,10 @@ case class Line(a: MapTilePosition, b: MapTilePosition) {
 }
 
 case class Area(upperLeft: MapTilePosition, sizeOfArea: Size) {
+  def height = sizeOfArea.y
+
+  def width = sizeOfArea.x
+
   val lowerRight = upperLeft.movedBy(sizeOfArea).movedBy(-1, -1)
   val edges      = upperLeft ::
                    MapTilePosition(lowerRight.x, upperLeft.y) ::

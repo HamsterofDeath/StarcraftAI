@@ -15,10 +15,9 @@ package object pony {
 
   // milestone 3:
   // TODO collect minerals/gas from far away if out of resources in bases
-  // TODO fix remaining transporter bugs
   // TODO fix upgrade building counts (too many engineering bays, not enough of the other one)
-  // TODO cover all zerg units (as enemy)
   // TODO stay away from stationary things if tanks are available
+  // TODO send nearby units to help in battles
 
   // milestone 4:
   // TODO send only necessary units for defenses, use "battle simulator" to estimate which units

@@ -17,6 +17,16 @@ class MigrationPath(follow: Paths, override val universe: Universe)
   private val helper          = new FormationHelper(universe, follow, 2, isGroundPath)
   private val atFormationStep = mutable.HashSet.empty[Mobile]
 
+  onTick_!()
+
+  override def onTick_!() = {
+    super.onTick_!()
+    remaining.retain { case (unit, path) =>
+      unit.isInGame && path.nonEmpty
+    }
+
+  }
+
   def isGroundPath = follow.isGroundPath
 
   def originalDestination = follow.unsafeTarget
@@ -25,18 +35,23 @@ class MigrationPath(follow: Paths, override val universe: Universe)
 
   def targetFormationTiles = helper.formationTiles
 
-  def renderDebug(renderer: Renderer): Unit = {
+  def renderDebugPaths(renderer: Renderer): Unit = {
     follow.renderDebug(renderer)
   }
 
-  def allReachedDestination = remaining.nonEmpty &&
-                              remaining.iterator
-                              .filter(_._1.isInGame)
-                              .forall(_._2.isEmpty)
+  def stillActiveUnits = counter.keysIterator.filter(_.isInGame)
+
+  def meetingStats = {
+    val total = remaining.size
+    (total - atFormationStep.size) -> total
+  }
+
+  def allReachedDestination = remaining.isEmpty
 
   def nextPositionFor(t: Mobile) = nextFor(t).map(_._1)
 
   def nextFor(t: Mobile) = {
+    assertCalled()
     val index = counter.getOrElseUpdate(t, counter.size) % follow.pathCount
     val initialFullPath = follow.paths(index)
     val todo = remaining.getOrElseUpdate(t, ArrayBuffer.empty ++= initialFullPath.waypoints)

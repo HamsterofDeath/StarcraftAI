@@ -128,6 +128,21 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
 
   def allAttacks = attacks.toVector
 
+  def renderDebug(renderer: Renderer) = {
+    allAttacks.foreach(_.renderDebug(renderer))
+    allAttacks.groupBy(_.migrationPlan.map(_.safeDestination)).foreach {
+      case (where, attacksSharingTarget) =>
+        where.foreach { tile =>
+          val (arrived, total) = attacksSharingTarget.foldLeft(0, 0)((acc, e) => {
+            val (arrived, total) = acc
+            val (addToArrived, addToTotal) = e.meetingStats.getOrElse(0, 0)
+            (arrived + addToArrived, total + addToTotal)
+          })
+          renderer.drawTextAtTile(s"Meeting point, ${arrived} of ${total}", tile)
+        }
+    }
+  }
+
   override def onTick_!(): Unit = {
     super.onTick_!()
     attacks.foreach(_.onTick())
@@ -206,6 +221,14 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
   }
 
   class Attack(private var currentForce: Set[Mobile], meetingPoint: TargetPosition) {
+    def meetingStats = migrationPlan.map(_.meetingStats)
+
+    def renderDebug(renderer: Renderer): Unit = {
+      migrationPlan.foreach { plan =>
+        plan.renderDebugPaths(renderer)
+      }
+    }
+
     private val area = {
       currentForce.map { unit =>
         mapLayers.rawWalkableMap
@@ -245,6 +268,7 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
 
     def onTick(): Unit = {
       currentForce = currentForce.filter(_.isInGame)
+      migration.result.foreach(_.onTick_!())
     }
 
     def force = currentForce

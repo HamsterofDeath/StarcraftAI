@@ -96,11 +96,11 @@ class DefaultWorld(game: Game) extends WorldListener with WorldEventDispatcher {
 
     //sometimes units die without the event being triggered
     if (ticks % 19 == 0) {
-      ownUnits.all.filterNot(_.isInGame).foreach { e =>
+      ownUnits.allRelevant.filterNot(_.isInGame).foreach { e =>
         warn(s"Unit $e died without event")
         removeQueueOwn += e.nativeUnit
       }
-      enemyUnits.all.filterNot(_.isInGame).foreach { e =>
+      enemyUnits.allRelevant.filterNot(_.isInGame).foreach { e =>
         warn(s"Unit $e died without event")
         removeQueueEnemy += e.nativeUnit
       }
@@ -302,13 +302,15 @@ class Units(game: Game, hostile: Boolean) {
   def allByClass[T <: WrapsUnit](lookFor: Class[T]) = {
     def lazyCreate = {
       classIndexes += lookFor
-      mutable.HashSet.empty ++= all.filter { e => lookFor.isInstance(e) }
+      mutable.HashSet.empty ++= allKnownUnits.filter { e => lookFor.isInstance(e) }
     }
     val cached = preparedByClass.getOrElseUpdate(lookFor, lazyCreate)
     cached.asInstanceOf[collection.Set[T]]
   }
 
-  def all = nativeIdToUnit.valuesIterator
+  def allKnownUnits = nativeIdToUnit.valuesIterator
+
+  def allRelevant = nativeIdToUnit.valuesIterator.filterNot(_.isInstanceOf[Irrelevant])
 
   def allCanDie = allByType[MaybeCanDie]
 
@@ -319,7 +321,7 @@ class Units(game: Game, hostile: Boolean) {
     inFaction.find(lookFor.isInstance).map(_.asInstanceOf[T])
   }
 
-  def inFaction = all.filter(_.nativeUnit.getPlayer == game.self())
+  def inFaction = allKnownUnits.filter(_.nativeUnit.getPlayer == game.self())
 
   def minerals = allByType[MineralPatch]
 

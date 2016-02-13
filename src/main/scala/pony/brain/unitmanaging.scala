@@ -163,9 +163,9 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
     unfulfilledRequestsThisTick.clear()
 
     //clean/update
-    ownUnits.all.foreach(_.onTick_!())
+    ownUnits.allKnownUnits.foreach(_.onTick_!())
     assignments.valuesIterator.foreach(_.onTick_!())
-    enemies.all.foreach(_.onTick_!())
+    enemies.allKnownUnits.foreach(_.onTick_!())
     val removeUs = {
       val done = assignments.filter { case (_, job) => job.isFinished }.values
       val failed = assignments.filter { case (_, job) => job.failedOrObsolete }.values
@@ -236,7 +236,7 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
 
     val registerUs = universe.world
                      .ownUnits
-                     .all
+                     .allKnownUnits
                      .filterNot(assignments.contains)
                      .flatMap(e => initialJobOf(e).toList)
                      .toSeq
@@ -1149,10 +1149,14 @@ trait PathfindingSupport[T <: Mobile] extends JobOrSubJob[T] {
 
   override def renderDebug(renderer: Renderer) = {
     super.renderDebug(renderer)
-    myPath.ifDone(_.foreach(_.renderDebug(renderer)))
+    myPath.ifDoneOpt(_.renderDebugPaths(renderer))
 
   }
 
+  override def onTick_!() = {
+    super.onTick_!()
+    myPath.ifDoneOpt(_.onTick_!())
+  }
   override def higherPriorityOrder = {
     def newPathRequired(where: MapTilePosition): Unit = {
       trace(s"Unit $unit needs paths to $where")

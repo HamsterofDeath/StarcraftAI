@@ -51,6 +51,16 @@ trait OrderHistorySupport extends WrapsUnit {
 
 }
 
+trait CanMorph extends WrapsUnit {
+  override def shouldReRegisterOnMorph = true
+}
+
+trait ZergUnit extends CanMorph
+
+trait ZergMobileUnit extends ZergUnit with Mobile with Organic
+
+trait ZergBuilding extends ZergUnit with Building
+
 trait WrapsUnit extends HasUniverse with AfterTickListener {
 
   val unitId            = WrapsUnit.nextId
@@ -105,7 +115,7 @@ trait WrapsUnit extends HasUniverse with AfterTickListener {
 
   }
 
-  def shouldReRegisterOnMorph: Boolean
+  def shouldReRegisterOnMorph = false
 
   def currentOrder = curOrder.get
 
@@ -209,8 +219,6 @@ trait StaticallyPositioned extends WrapsUnit {
 
   def areaOnMap = myAreaOnMap.get
 
-  override def shouldReRegisterOnMorph = true
-
   def nativeMapPosition = tilePosition.asMapPosition.toNative
 
   def tilePosition = myTilePosition.get
@@ -249,7 +257,7 @@ trait TerranBuilding extends Building {
 
 }
 
-trait Building extends BlockingTiles with MaybeCanDie {
+trait Building extends BlockingTiles with MaybeCanDie with CanMorph {
   self =>
   override val armorType            = Building
   private  val myFlying             = oncePerTick {
@@ -812,7 +820,6 @@ trait Mobile extends WrapsUnit with Controllable {
   private var lastFrameMatrixPoints = 0
   def canMove = true
   def currentArea = myCurrentArea.get
-  override def shouldReRegisterOnMorph = false
   def isAutoPilot = false
   override def isBeingAttacked: Boolean = super.isBeingAttacked || matrixHp < lastFrameMatrixPoints
   def matrixHp = defenseMatrixHP.get
@@ -1363,7 +1370,7 @@ class Probe(unit: APIUnit)
 
 class Drone(unit: APIUnit)
   extends AnyUnit(unit) with WorkerUnit with IsSmall with Organic with NormalGroundDamage with
-          InstantAttackGround
+          InstantAttackGround with ZergMobileUnit
 
 class Shuttle(unit: APIUnit) extends AnyUnit(unit) with TransporterUnit with SupportUnit with IsBig
 
@@ -1678,104 +1685,91 @@ trait IsBig extends Mobile with MaybeCanDie {
   override val armorType = Large
 }
 
-/*UnitType.Zerg_Creep_Colony -> (new CreepColony(_), classOf[CreepColony]),
-      UnitType.Zerg_Defiler_Mound -> (new DefilerMound(_), classOf[DefilerMound]),
-      UnitType.Zerg_Evolution_Chamber -> (new DefilerMound(_), classOf[DefilerMound]),
-      UnitType.Zerg_Extractor -> (new Extractor(_), classOf[Extractor]),
-      UnitType.Zerg_Greater_Spire -> (new GreaterSpire(_), classOf[GreaterSpire]),
-      UnitType.Zerg_Hatchery -> (new Hatchery(_), classOf[Hatchery]),
-      UnitType.Zerg_Hive -> (new Hive(_), classOf[Hive]),
-      UnitType.Zerg_Hydralisk_Den -> (new HydraliskDen(_), classOf[HydraliskDen]),
-      UnitType.Zerg_Lair -> (new Lair(_), classOf[Lair]),
-      UnitType.Zerg_Infested_Command_Center -> (new InfestedCommandCenter(_),
-      classOf[InfestedCommandCenter]),
-      UnitType.Zerg_Nydus_Canal -> (new NydusCanal(_), classOf[NydusCanal]),
-      UnitType.Zerg_Queens_Nest -> (new QueensNest(_), classOf[QueensNest]),
-      UnitType.Zerg_Spawning_Pool -> (new SpawningPool(_), classOf[SpawningPool]),
-      UnitType.Zerg_Spire -> (new Spire(_), classOf[Spire]),
-      UnitType.Zerg_Ultralisk_Cavern -> (new UltralistCavern(_), classOf[UltralistCavern]),*/
+class CreepColony(unit: APIUnit) extends AnyUnit(unit) with ZergBuilding
 
-class CreepColony(unit: APIUnit) extends AnyUnit(unit) with Building
+class DefilerMound(unit: APIUnit) extends AnyUnit(unit) with ZergBuilding
 
-class DefilerMound(unit: APIUnit) extends AnyUnit(unit) with Building
+class EvolutionChamber(unit: APIUnit) extends AnyUnit(unit) with ZergBuilding
 
-class Extractor(unit: APIUnit) extends AnyUnit(unit) with Building with GasProvider
+class Extractor(unit: APIUnit) extends AnyUnit(unit) with GasProvider with ZergBuilding
 
-class GreaterSpire(unit: APIUnit) extends AnyUnit(unit) with Building
+class GreaterSpire(unit: APIUnit) extends AnyUnit(unit) with ZergBuilding
 
-class Hatchery(unit: APIUnit) extends AnyUnit(unit) with Building
+class Hatchery(unit: APIUnit) extends AnyUnit(unit) with ZergBuilding
 
-class HydraliskDen(unit: APIUnit) extends AnyUnit(unit) with Building
+class HydraliskDen(unit: APIUnit) extends AnyUnit(unit) with ZergBuilding
 
-class Lair(unit: APIUnit) extends AnyUnit(unit) with Building
+class Lair(unit: APIUnit) extends AnyUnit(unit) with ZergBuilding
 
-class InfestedCommandCenter(unit: APIUnit) extends AnyUnit(unit) with Building
+class InfestedCommandCenter(unit: APIUnit) extends AnyUnit(unit) with ZergBuilding
 
-class NydusCanal(unit: APIUnit) extends AnyUnit(unit) with Building
+class NydusCanal(unit: APIUnit) extends AnyUnit(unit) with ZergBuilding
 
-class QueensNest(unit: APIUnit) extends AnyUnit(unit) with Building
+class QueensNest(unit: APIUnit) extends AnyUnit(unit) with ZergBuilding
 
-class SpawningPool(unit: APIUnit) extends AnyUnit(unit) with Building
+class SpawningPool(unit: APIUnit) extends AnyUnit(unit) with ZergBuilding
 
-class Spire(unit: APIUnit) extends AnyUnit(unit) with Building
+class Spire(unit: APIUnit) extends AnyUnit(unit) with ZergBuilding
 
-class UltralistCavern(unit: APIUnit) extends AnyUnit(unit) with Building
+class UltralistCavern(unit: APIUnit) extends AnyUnit(unit) with ZergBuilding
 
 class SporeColony(unit: APIUnit)
-  extends AnyUnit(unit) with DetectorBuilding with NormalAirDamage with MediumAttackAir
+  extends AnyUnit(unit) with DetectorBuilding with NormalAirDamage with MediumAttackAir with
+          ZergBuilding
 
 class SunkenColony(unit: APIUnit)
-  extends AnyUnit(unit) with Building with NormalGroundDamage with MediumAttackGround
+  extends AnyUnit(unit) with ZergBuilding with NormalGroundDamage with MediumAttackGround
 
 class Zergling(unit: APIUnit)
-  extends AnyUnit(unit) with Organic with GroundUnit with GroundWeapon with NormalGroundDamage with
-          IsSmall with ArmedMobile with MeleeWeapon with InstantAttackGround
+  extends AnyUnit(unit) with GroundUnit with GroundWeapon with NormalGroundDamage with
+          IsSmall with ArmedMobile with MeleeWeapon with InstantAttackGround with ZergMobileUnit
 
 class Egg(unit: APIUnit)
-  extends AnyUnit(unit) with Organic with GroundUnit with IsBig
+  extends AnyUnit(unit) with GroundUnit with IsBig with ZergUnit
 
 class Larva(unit: APIUnit)
-  extends AnyUnit(unit) with Organic with IsSmall with GroundUnit
+  extends AnyUnit(unit) with IsSmall with GroundUnit with ZergUnit
 
 class InfestedTerran(unit: APIUnit)
-  extends AnyUnit(unit) with Organic with GroundUnit with GroundWeapon with NormalGroundDamage with
-          IsSmall with ArmedMobile with MeleeWeapon with InstantAttackGround
+  extends AnyUnit(unit) with GroundUnit with GroundWeapon with NormalGroundDamage with
+          IsSmall with ArmedMobile with MeleeWeapon with InstantAttackGround with ZergMobileUnit
 
 class Broodling(unit: APIUnit)
-  extends AnyUnit(unit) with Organic with GroundUnit with GroundWeapon with NormalGroundDamage with
-          IsSmall with ArmedMobile with InstantAttackGround
+  extends AnyUnit(unit) with GroundUnit with GroundWeapon with NormalGroundDamage with
+          IsSmall with ArmedMobile with InstantAttackGround with ZergMobileUnit
 
 class Hydralisk(unit: APIUnit)
-  extends AnyUnit(unit) with Organic with GroundUnit with GroundAndAirWeapon with
-          ExplosiveAirDamage with ArmedMobile with
-          ExplosiveGroundDamage with IsMedium with InstantAttackAir with InstantAttackGround
+  extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with ZergMobileUnit with
+          ExplosiveAirDamage with ArmedMobile with ExplosiveGroundDamage with IsMedium with
+          InstantAttackAir with InstantAttackGround
 
 class Lurker(unit: APIUnit)
-  extends AnyUnit(unit) with Organic with GroundUnit with GroundWeapon with NormalGroundDamage with
+  extends AnyUnit(unit) with ZergMobileUnit with GroundUnit with GroundWeapon with
+          NormalGroundDamage with
           IsBig with ArmedMobile with InstantAttackGround
 
 class Mutalisk(unit: APIUnit)
-  extends AnyUnit(unit) with Organic with AirUnit with GroundAndAirWeapon with
+  extends AnyUnit(unit) with ZergMobileUnit with AirUnit with GroundAndAirWeapon with
           NormalGroundDamage with ArmedMobile with
           NormalAirDamage with IsMedium with InstantAttackAir with InstantAttackGround
 
-class Queen(unit: APIUnit) extends AnyUnit(unit) with Organic with AirUnit with IsMedium
+class Queen(unit: APIUnit) extends AnyUnit(unit) with ZergMobileUnit with AirUnit with IsMedium
 
 class Scourge(unit: APIUnit)
-  extends AnyUnit(unit) with Organic with AirUnit with IsSmall with ArmedMobile
+  extends AnyUnit(unit) with ZergMobileUnit with AirUnit with IsSmall with ArmedMobile
 
 class Guardian(unit: APIUnit)
-  extends AnyUnit(unit) with Organic with AirUnit with GroundWeapon with IsBig with
+  extends AnyUnit(unit) with ZergMobileUnit with AirUnit with GroundWeapon with IsBig with
           NormalGroundDamage with ArmedMobile with MediumAttackGround
 
-class Devourer(unit: APIUnit) extends AnyUnit(unit) with Organic with GroundUnit with IsBig
+class Devourer(unit: APIUnit) extends AnyUnit(unit) with ZergMobileUnit with GroundUnit with IsBig
 
 class Ultralisk(unit: APIUnit)
-  extends AnyUnit(unit) with Organic with IsBig with GroundWeapon with MeleeWeapon with
+  extends AnyUnit(unit) with ZergMobileUnit with IsBig with GroundWeapon with MeleeWeapon with
           GroundUnit with
           NormalGroundDamage with ArmedMobile with InstantAttackGround
 
-class Defiler(unit: APIUnit) extends AnyUnit(unit) with Organic with GroundUnit with IsMedium
+class Defiler(unit: APIUnit) extends AnyUnit(unit) with ZergMobileUnit with GroundUnit with IsMedium
 
 class Observer(unit: APIUnit)
   extends AnyUnit(unit) with MobileDetector with Mechanic with IsSmall with AirUnit
@@ -1809,18 +1803,15 @@ class Arbiter(unit: APIUnit)
 
 class Templar(unit: APIUnit)
   extends AnyUnit(unit) with GroundUnit with HasSingleTargetSpells with IsSmall with
-          IsInfantry {
+          IsInfantry with CanMorph {
   override val spells = Nil
 
-  override def shouldReRegisterOnMorph = true
 }
 
 class DarkTemplar(unit: APIUnit)
   extends AnyUnit(unit) with GroundUnit with GroundWeapon with CanCloak with IsSmall with
-          IsInfantry with ArmedMobile with
-          NormalGroundDamage with InstantAttackGround {
-  override def shouldReRegisterOnMorph = true
-}
+          IsInfantry with ArmedMobile with CanMorph with NormalGroundDamage
+          with InstantAttackGround
 
 class DarkArchon(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with IsBig with IsInfantry
 
@@ -1948,120 +1939,124 @@ trait SimplePosition extends WrapsUnit {
 
 class Irrelevant(unit: APIUnit) extends AnyUnit(unit) {
   override def center = !!!(s"Why did this get called?")
-
-  override def shouldReRegisterOnMorph: Boolean = false
 }
 
-trait Geysir extends Resource with BlockingTiles
+trait Geysir extends Resource with BlockingTiles with CanMorph
 
 object UnitWrapper {
 
+  private def lift[T <: WrapsUnit : Manifest] = {
+    val c = manifest[T].runtimeClass.asInstanceOf[Class[_ <: T]]
+    val constructor = c.getConstructor(classOf[APIUnit])
+
+    ((anyUnit: APIUnit) => constructor.newInstance(anyUnit)) -> c
+
+  }
+
   private val mappingRules: Map[UnitType, (APIUnit => WrapsUnit, Class[_ <: WrapsUnit])] =
     HashMap(
-      UnitType.Resource_Vespene_Geyser -> ((new VespeneGeysir(_), classOf[VespeneGeysir])),
-      UnitType.Terran_Supply_Depot -> ((new SupplyDepot(_), classOf[SupplyDepot])),
-      UnitType.Terran_Command_Center -> ((new CommandCenter(_), classOf[CommandCenter])),
-      UnitType.Terran_Barracks -> ((new Barracks(_), classOf[Barracks])),
-      UnitType.Terran_Academy -> ((new Academy(_), classOf[Academy])),
-      UnitType.Terran_Armory -> ((new Armory(_), classOf[Armory])),
-      UnitType.Terran_Science_Facility -> ((new ScienceFacility(_), classOf[ScienceFacility])),
-      UnitType.Terran_Bunker -> ((new Bunker(_), classOf[Bunker])),
-      UnitType.Terran_Comsat_Station -> ((new Comsat(_), classOf[Comsat])),
-      UnitType.Terran_Covert_Ops -> ((new CovertOps(_), classOf[CovertOps])),
-      UnitType.Terran_Control_Tower -> ((new ControlTower(_), classOf[ControlTower])),
-      UnitType.Terran_Engineering_Bay -> ((new EngineeringBay(_), classOf[EngineeringBay])),
-      UnitType.Terran_Factory -> ((new Factory(_), classOf[Factory])),
-      UnitType.Terran_Machine_Shop -> ((new MachineShop(_), classOf[MachineShop])),
-      UnitType.Terran_Missile_Turret -> ((new MissileTurret(_), classOf[MissileTurret])),
-      UnitType.Terran_Nuclear_Silo -> ((new NuclearSilo(_), classOf[NuclearSilo])),
-      UnitType.Terran_Physics_Lab -> ((new PhysicsLab(_), classOf[PhysicsLab])),
-      UnitType.Terran_Refinery -> ((new Refinery(_), classOf[Refinery])),
-      UnitType.Terran_Starport -> ((new Starport(_), classOf[Starport])),
+      UnitType.Resource_Vespene_Geyser -> lift[VespeneGeysir],
+      UnitType.Terran_Supply_Depot -> lift[SupplyDepot],
+      UnitType.Terran_Command_Center -> lift[CommandCenter],
+      UnitType.Terran_Barracks -> lift[Barracks],
+      UnitType.Terran_Academy -> lift[Academy],
+      UnitType.Terran_Armory -> lift[Armory],
+      UnitType.Terran_Science_Facility -> lift[ScienceFacility],
+      UnitType.Terran_Bunker -> lift[Bunker],
+      UnitType.Terran_Comsat_Station -> lift[Comsat],
+      UnitType.Terran_Covert_Ops -> lift[CovertOps],
+      UnitType.Terran_Control_Tower -> lift[ControlTower],
+      UnitType.Terran_Engineering_Bay -> lift[EngineeringBay],
+      UnitType.Terran_Factory -> lift[Factory],
+      UnitType.Terran_Machine_Shop -> lift[MachineShop],
+      UnitType.Terran_Missile_Turret -> lift[MissileTurret],
+      UnitType.Terran_Nuclear_Silo -> lift[NuclearSilo],
+      UnitType.Terran_Physics_Lab -> lift[PhysicsLab],
+      UnitType.Terran_Refinery -> lift[Refinery],
+      UnitType.Terran_Starport -> lift[Starport],
 
-      UnitType.Terran_SCV -> ((new SCV(_), classOf[SCV])),
-      UnitType.Terran_Firebat -> ((new Firebat(_), classOf[Firebat])),
-      UnitType.Terran_Marine -> ((new Marine(_), classOf[Marine])),
-      UnitType.Terran_Medic -> ((new Medic(_), classOf[Medic])),
-      UnitType.Terran_Valkyrie -> ((new Valkery(_), classOf[Valkery])),
-      UnitType.Terran_Vulture -> ((new Vulture(_), classOf[Vulture])),
-      UnitType.Terran_Siege_Tank_Tank_Mode -> ((new Tank(_), classOf[Tank])),
-      UnitType.Terran_Siege_Tank_Siege_Mode -> ((new Tank(_), classOf[Tank])),
-      UnitType.Terran_Goliath -> ((new Goliath(_), classOf[Goliath])),
-      UnitType.Terran_Wraith -> ((new Wraith(_), classOf[Wraith])),
-      UnitType.Terran_Science_Vessel -> ((new ScienceVessel(_), classOf[ScienceVessel])),
-      UnitType.Terran_Battlecruiser -> ((new Battlecruiser(_), classOf[Battlecruiser])),
-      UnitType.Terran_Dropship -> ((new Dropship(_), classOf[Dropship])),
-      UnitType.Terran_Ghost -> ((new Ghost(_), classOf[Ghost])),
-      UnitType.Terran_Vulture_Spider_Mine -> ((new SpiderMine(_), classOf[SpiderMine])),
+      UnitType.Terran_SCV -> lift[SCV],
+      UnitType.Terran_Firebat -> lift[Firebat],
+      UnitType.Terran_Marine -> lift[Marine],
+      UnitType.Terran_Medic -> lift[Medic],
+      UnitType.Terran_Valkyrie -> lift[Valkery],
+      UnitType.Terran_Vulture -> lift[Vulture],
+      UnitType.Terran_Siege_Tank_Tank_Mode -> lift[Tank],
+      UnitType.Terran_Siege_Tank_Siege_Mode -> lift[Tank],
+      UnitType.Terran_Goliath -> lift[Goliath],
+      UnitType.Terran_Wraith -> lift[Wraith],
+      UnitType.Terran_Science_Vessel -> lift[ScienceVessel],
+      UnitType.Terran_Battlecruiser -> lift[Battlecruiser],
+      UnitType.Terran_Dropship -> lift[Dropship],
+      UnitType.Terran_Ghost -> lift[Ghost],
+      UnitType.Terran_Vulture_Spider_Mine -> lift[SpiderMine],
 
-      UnitType.Protoss_Probe -> ((new Probe(_), classOf[Probe])),
-      UnitType.Protoss_Zealot -> ((new Zealot(_), classOf[Zealot])),
-      UnitType.Protoss_Dragoon -> ((new Dragoon(_), classOf[Dragoon])),
-      UnitType.Protoss_Archon -> ((new Archon(_), classOf[Archon])),
-      UnitType.Protoss_Dark_Archon -> ((new DarkArchon(_), classOf[DarkArchon])),
-      UnitType.Protoss_Dark_Templar -> ((new DarkTemplar(_), classOf[DarkTemplar])),
-      UnitType.Protoss_Reaver -> ((new Reaver(_), classOf[Reaver])),
-      UnitType.Protoss_High_Templar -> ((new Templar(_), classOf[Templar])),
-      UnitType.Protoss_Corsair -> ((new Corsair(_), classOf[Corsair])),
-      UnitType.Protoss_Interceptor -> ((new Interceptor(_), classOf[Interceptor])),
-      UnitType.Protoss_Observer -> ((new Observer(_), classOf[Observer])),
-      UnitType.Protoss_Scarab -> ((new Scarab(_), classOf[Scarab])),
-      UnitType.Protoss_Scout -> ((new Scout(_), classOf[Scout])),
-      UnitType.Protoss_Arbiter -> ((new Arbiter(_), classOf[Arbiter])),
+      UnitType.Protoss_Probe -> lift[Probe],
+      UnitType.Protoss_Zealot -> lift[Zealot],
+      UnitType.Protoss_Dragoon -> lift[Dragoon],
+      UnitType.Protoss_Archon -> lift[Archon],
+      UnitType.Protoss_Dark_Archon -> lift[DarkArchon],
+      UnitType.Protoss_Dark_Templar -> lift[DarkTemplar],
+      UnitType.Protoss_Reaver -> lift[Reaver],
+      UnitType.Protoss_High_Templar -> lift[Templar],
+      UnitType.Protoss_Corsair -> lift[Corsair],
+      UnitType.Protoss_Interceptor -> lift[Interceptor],
+      UnitType.Protoss_Observer -> lift[Observer],
+      UnitType.Protoss_Scarab -> lift[Scarab],
+      UnitType.Protoss_Scout -> lift[Scout],
+      UnitType.Protoss_Arbiter -> lift[Arbiter],
 
-      UnitType.Protoss_Nexus -> ((new Nexus(_), classOf[Nexus])),
-      UnitType.Protoss_Arbiter_Tribunal -> ((new ArbiterTribunal(_), classOf[ArbiterTribunal])),
-      UnitType.Protoss_Assimilator -> ((new Assimilator(_), classOf[Assimilator])),
-      UnitType.Protoss_Gateway -> ((new Gateway(_), classOf[Gateway])),
-      UnitType.Protoss_Pylon -> ((new Pylon(_), classOf[Pylon])),
-      UnitType.Protoss_Citadel_of_Adun -> ((new Citadel(_), classOf[Citadel])),
-      UnitType.Protoss_Templar_Archives -> ((new TemplarArchive(_), classOf[TemplarArchive])),
-      UnitType.Protoss_Shield_Battery -> ((new ShieldBattery(_), classOf[ShieldBattery])),
-      UnitType.Protoss_Cybernetics_Core -> ((new CyberneticsCore(_), classOf[CyberneticsCore])),
-      UnitType.Protoss_Fleet_Beacon -> ((new FleetBeacon(_), classOf[FleetBeacon])),
-      UnitType.Protoss_Forge -> ((new Forge(_), classOf[Forge])),
-      UnitType.Protoss_Photon_Cannon -> ((new PhotonCannon(_), classOf[PhotonCannon])),
-      UnitType.Protoss_Robotics_Facility -> ((new RoboticsFacility(_), classOf[RoboticsFacility])),
-      UnitType.Protoss_Robotics_Support_Bay ->
-      ((new RoboticsSupportBay(_), classOf[RoboticsSupportBay])),
-      UnitType.Protoss_Stargate -> ((new Stargate(_), classOf[Stargate])),
+      UnitType.Protoss_Nexus -> lift[Nexus],
+      UnitType.Protoss_Arbiter_Tribunal -> lift[ArbiterTribunal],
+      UnitType.Protoss_Assimilator -> lift[Assimilator],
+      UnitType.Protoss_Gateway -> lift[Gateway],
+      UnitType.Protoss_Pylon -> lift[Pylon],
+      UnitType.Protoss_Citadel_of_Adun -> lift[Citadel],
+      UnitType.Protoss_Templar_Archives -> lift[TemplarArchive],
+      UnitType.Protoss_Shield_Battery -> lift[ShieldBattery],
+      UnitType.Protoss_Cybernetics_Core -> lift[CyberneticsCore],
+      UnitType.Protoss_Fleet_Beacon -> lift[FleetBeacon],
+      UnitType.Protoss_Forge -> lift[Forge],
+      UnitType.Protoss_Photon_Cannon -> lift[PhotonCannon],
+      UnitType.Protoss_Robotics_Facility -> lift[RoboticsFacility],
+      UnitType.Protoss_Robotics_Support_Bay -> lift[RoboticsSupportBay],
+      UnitType.Protoss_Stargate -> lift[Stargate],
 
-      UnitType.Zerg_Creep_Colony ->(new CreepColony(_), classOf[CreepColony]),
-      UnitType.Zerg_Defiler_Mound ->(new DefilerMound(_), classOf[DefilerMound]),
-      UnitType.Zerg_Evolution_Chamber ->(new DefilerMound(_), classOf[DefilerMound]),
-      UnitType.Zerg_Extractor ->(new Extractor(_), classOf[Extractor]),
-      UnitType.Zerg_Greater_Spire ->(new GreaterSpire(_), classOf[GreaterSpire]),
-      UnitType.Zerg_Hatchery ->(new Hatchery(_), classOf[Hatchery]),
-      UnitType.Zerg_Hive ->(new Hive(_), classOf[Hive]),
-      UnitType.Zerg_Hydralisk_Den ->(new HydraliskDen(_), classOf[HydraliskDen]),
-      UnitType.Zerg_Lair ->(new Lair(_), classOf[Lair]),
-      UnitType.Zerg_Infested_Command_Center ->
-      (new InfestedCommandCenter(_), classOf[InfestedCommandCenter]),
-      UnitType.Zerg_Nydus_Canal ->(new NydusCanal(_), classOf[NydusCanal]),
-      UnitType.Zerg_Queens_Nest ->(new QueensNest(_), classOf[QueensNest]),
-      UnitType.Zerg_Spawning_Pool ->(new SpawningPool(_), classOf[SpawningPool]),
-      UnitType.Zerg_Spire ->(new Spire(_), classOf[Spire]),
-      UnitType.Zerg_Ultralisk_Cavern ->(new UltralistCavern(_), classOf[UltralistCavern]),
-      UnitType.Zerg_Spore_Colony ->(new SporeColony(_), classOf[SporeColony]),
-      UnitType.Zerg_Sunken_Colony ->(new SunkenColony(_), classOf[SunkenColony]),
+      UnitType.Zerg_Creep_Colony -> lift[CreepColony],
+      UnitType.Zerg_Defiler_Mound -> lift[DefilerMound],
+      UnitType.Zerg_Evolution_Chamber -> lift[EvolutionChamber],
+      UnitType.Zerg_Extractor -> lift[Extractor],
+      UnitType.Zerg_Greater_Spire -> lift[GreaterSpire],
+      UnitType.Zerg_Hatchery -> lift[Hatchery],
+      UnitType.Zerg_Hive -> lift[Hive],
+      UnitType.Zerg_Hydralisk_Den -> lift[HydraliskDen],
+      UnitType.Zerg_Lair -> lift[Lair],
+      UnitType.Zerg_Infested_Command_Center -> lift[InfestedCommandCenter],
+      UnitType.Zerg_Nydus_Canal -> lift[NydusCanal],
+      UnitType.Zerg_Queens_Nest -> lift[QueensNest],
+      UnitType.Zerg_Spawning_Pool -> lift[SpawningPool],
+      UnitType.Zerg_Spire -> lift[Spire],
+      UnitType.Zerg_Ultralisk_Cavern -> lift[UltralistCavern],
+      UnitType.Zerg_Spore_Colony -> lift[SporeColony],
+      UnitType.Zerg_Sunken_Colony -> lift[SunkenColony],
 
-      UnitType.Zerg_Infested_Terran ->(new InfestedTerran(_), classOf[InfestedTerran]),
-      UnitType.Zerg_Larva ->(new Larva(_), classOf[Larva]),
-      UnitType.Zerg_Egg -> ((new Egg(_), classOf[Egg])),
-      UnitType.Zerg_Drone -> ((new Drone(_), classOf[Drone])),
-      UnitType.Zerg_Broodling -> ((new Broodling(_), classOf[Broodling])),
-      UnitType.Zerg_Zergling -> ((new Zergling(_), classOf[Zergling])),
-      UnitType.Zerg_Defiler -> ((new Defiler(_), classOf[Defiler])),
-      UnitType.Zerg_Guardian -> ((new Guardian(_), classOf[Guardian])),
-      UnitType.Zerg_Hydralisk -> ((new Hydralisk(_), classOf[Hydralisk])),
-      UnitType.Zerg_Mutalisk -> ((new Mutalisk(_), classOf[Mutalisk])),
-      UnitType.Zerg_Infested_Terran -> ((new InfestedTerran(_), classOf[InfestedTerran])),
-      UnitType.Zerg_Lurker -> ((new Lurker(_), classOf[Lurker])),
-      UnitType.Zerg_Queen -> ((new Queen(_), classOf[Queen])),
-      UnitType.Zerg_Scourge -> ((new Scourge(_), classOf[Scourge])),
-      UnitType.Zerg_Ultralisk -> ((new Ultralisk(_), classOf[Ultralisk])),
+      UnitType.Zerg_Infested_Terran -> lift[InfestedTerran],
+      UnitType.Zerg_Larva -> lift[Larva],
+      UnitType.Zerg_Egg -> lift[Egg],
+      UnitType.Zerg_Drone -> lift[Drone],
+      UnitType.Zerg_Broodling -> lift[Broodling],
+      UnitType.Zerg_Zergling -> lift[Zergling],
+      UnitType.Zerg_Defiler -> lift[Defiler],
+      UnitType.Zerg_Guardian -> lift[Guardian],
+      UnitType.Zerg_Hydralisk -> lift[Hydralisk],
+      UnitType.Zerg_Mutalisk -> lift[Mutalisk],
+      UnitType.Zerg_Infested_Terran -> lift[InfestedTerran],
+      UnitType.Zerg_Lurker -> lift[Lurker],
+      UnitType.Zerg_Queen -> lift[Queen],
+      UnitType.Zerg_Scourge -> lift[Scourge],
+      UnitType.Zerg_Ultralisk -> lift[Ultralisk],
 
-      UnitType.Unknown -> ((new Irrelevant(_), classOf[Irrelevant]))
+      UnitType.Unknown -> lift[Irrelevant]
     )
 
   def class2UnitType = {
