@@ -24,7 +24,6 @@ class MigrationPath(follow: Paths, override val universe: Universe)
     remaining.retain { case (unit, path) =>
       unit.isInGame && path.nonEmpty
     }
-
   }
 
   def isGroundPath = follow.isGroundPath

@@ -66,8 +66,9 @@ trait IsTicked {
   }
 
   def assertCalled() = {
-    assert(lastCalled + 24 >= currentTick,
-      s"Now is $currentTick, ontick has not been called since $lastCalled")
+    if (lastCalled != currentTick) {
+      onTick_!()
+    }
   }
 
   protected def currentTick: Int
