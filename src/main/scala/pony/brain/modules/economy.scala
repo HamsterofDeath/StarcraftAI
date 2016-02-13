@@ -34,7 +34,6 @@ class ProvideNewBuildings(universe: Universe)
 
     job match {
       case None =>
-        // TODO fix it if it ever happens
         error(s"Computation returned no result: $in")
         BackgroundComputationResult.nothing[WorkerUnit](() => {
           if (in.jobRequest.stillLocksResources) {

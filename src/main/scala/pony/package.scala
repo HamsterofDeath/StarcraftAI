@@ -15,9 +15,7 @@ package object pony {
 
   // milestone 3:
   // TODO collect minerals/gas from far away if out of resources in bases
-  // TODO enable switching for repairs
   // TODO fix remaining transporter bugs
-  // TODO improve dance (fix + future iterator maybe?)
   // TODO fix upgrade building counts (too many engineering bays, not enough of the other one)
   // TODO cover all zerg units (as enemy)
   // TODO stay away from stationary things if tanks are available

@@ -965,15 +965,17 @@ case class Damage(baseAmount: Int, bonus: Int, cooldown: Int, damageType: Damage
       shots -= 1
 
       val damageOfFirstHit = calculate(other, hp, shields)
-      val afterShot = if (hitCount == 2) {
-        val hpAfterFirstHit = hp - damageOfFirstHit.onHp
-        val shieldAfterFirstHit = shields - damageOfFirstHit.onShields
-        val damageOfSecondHit = calculate(other, hpAfterFirstHit, shieldAfterFirstHit)
-        DamageSingleAttack(damageOfFirstHit.onHp + damageOfSecondHit.onHp,
-          damageOfFirstHit.onShields + damageOfSecondHit.onShields, isAir)
-      } else {
-        assert(hitCount == 1)
-        damageOfFirstHit
+      val afterShot = {
+        if (hitCount == 2) {
+          val hpAfterFirstHit = hp - damageOfFirstHit.onHp
+          val shieldAfterFirstHit = shields - damageOfFirstHit.onShields
+          val damageOfSecondHit = calculate(other, hpAfterFirstHit, shieldAfterFirstHit)
+          DamageSingleAttack(damageOfFirstHit.onHp + damageOfSecondHit.onHp,
+            damageOfFirstHit.onShields + damageOfSecondHit.onShields, isAir)
+        } else {
+          assert(hitCount == 1)
+          damageOfFirstHit
+        }
       }
 
       hp -= afterShot.onHp

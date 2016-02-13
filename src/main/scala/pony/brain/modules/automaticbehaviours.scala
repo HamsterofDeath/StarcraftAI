@@ -1000,16 +1000,18 @@ object Terran {
                       def ownUnitsCost = {
                         universe.unitGrid.own.allInRange[GroundUnit](where, 5)
                         .view
-                        .filter(
-                          e => !e.isInstanceOf[HasSpiderMines] && !e.isAutoPilot)
+                        .filter { e =>
+                          !e.isInstanceOf[HasSpiderMines] && !e.isAutoPilot
+                        }
                         .map(_.buildPrice)
                         .fold(Price.zero)(_ + _)
                       }
                       def enemyUnitsCost = {
                         universe.unitGrid.enemy.allInRange[GroundUnit](where, 5)
                         .view
-                        .filter(
-                          e => !e.isInstanceOf[HasSpiderMines] && !e.isAutoPilot)
+                        .filter { e =>
+                          !e.isInstanceOf[HasSpiderMines] && !e.isAutoPilot
+                        }
                         .map(_.buildPrice)
                         .fold(Price.zero)(_ + _)
                       }
@@ -1098,7 +1100,7 @@ object Terran {
 
       private val remainingToCheck = mutable.ArrayBuffer.empty ++= toCheck.map(_.nearbyFreeTile)
 
-      private val nextPath         = {
+      private val nextPath = {
         FutureIterator
         .feed((scout.currentTile, remainingToCheck.head, universe.pathfinders.safeFor(scout)))
         .produceAsync { case (from, to, pathfinder) =>
