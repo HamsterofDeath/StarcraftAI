@@ -338,9 +338,6 @@ object Terran {
 
     override def priority: SecondPriority = SecondPriority.More
 
-    override def canControl(u: WrapsUnit): Boolean = super.canControl(u) &&
-                                                     !u.isInstanceOf[BadDancer]
-
     override def refuseCommandsForTicks = 6
 
     override def onTick_!() = {
@@ -367,25 +364,29 @@ object Terran {
 
       override def toOrder(what: Objective) = {
         val (newState, newOrder) = {
-          state match {
-            case Idle =>
-              dancePlan.flatMapOnContent { plan =>
-                plan.get(unit.nativeUnitId)
-              }.map { where =>
-                Fallback(where, universe.currentTick) -> Orders.MoveToTile(unit, where).toList
-              }.getOrElse(noop)
-            case current@Fallback(where, startedWhen) =>
-              if (unit.isReadyToFireWeapon || unit.currentTile == where) {
-                noop
-              } else {
-                (current, runningCommands)
-              }
+          val canDance = !unit.isInstanceOf[BadDancer] || unit.hasBeenAttackedSince(8)
+          if (unit.isReadyToFireWeapon || !canDance) {
+            noop
+          } else {
+            state match {
+              case Idle =>
+                dancePlan.flatMapOnContent { plan =>
+                  plan.get(unit.nativeUnitId)
+                }.map { where =>
+                  Fallback(where, universe.currentTick) -> Orders.MoveToTile(unit, where).toList
+                }.getOrElse(noop)
+              case current@Fallback(where, startedWhen) =>
+                if (unit.isReadyToFireWeapon || unit.currentTile == where) {
+                  noop
+                } else {
+                  (current, runningCommands)
+                }
+            }
           }
         }
         state = newState
         runningCommands = newOrder
         runningCommands
-
       }
     }
 

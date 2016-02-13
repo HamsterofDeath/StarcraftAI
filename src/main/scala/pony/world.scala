@@ -93,6 +93,18 @@ class DefaultWorld(game: Game) extends WorldListener with WorldEventDispatcher {
     orderQueue.debugAll()
     orderQueue.issueAll()
     ticks += 1
+
+    //sometimes units die without the event being triggered
+    if (ticks % 19 == 0) {
+      ownUnits.all.filterNot(_.isInGame).foreach { e =>
+        warn(s"Unit $e died without event")
+        removeQueueOwn += e.nativeUnit
+      }
+      enemyUnits.all.filterNot(_.isInGame).foreach { e =>
+        warn(s"Unit $e died without event")
+        removeQueueEnemy += e.nativeUnit
+      }
+    }
   }
 }
 

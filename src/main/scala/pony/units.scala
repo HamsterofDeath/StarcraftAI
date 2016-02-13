@@ -717,6 +717,8 @@ trait MaybeCanDie extends WrapsUnit {
 
   def isBeingAttacked = currentHp < lastFrameHp
 
+  private var tookDamageInTick = 0
+
   def notifyDead_!(): Unit = {
     dead = true
   }
@@ -726,6 +728,15 @@ trait MaybeCanDie extends WrapsUnit {
     case b: Building => ifBuilding(b)
     case x => !!!(s"Check this $x")
   }
+
+  override def onTick_!() = {
+    super.onTick_!()
+    if (isBeingAttacked) {
+      tookDamageInTick = currentTick
+    }
+  }
+
+  def hasBeenAttackedSince(ticks: Int) = currentTick - tookDamageInTick <= ticks
 
   def armor = myArmor.get
 
@@ -1445,14 +1456,6 @@ class MissileTurret(unit: APIUnit)
 
 class Bunker(unit: APIUnit) extends AnyUnit(unit) with Building with TerranBuilding
 
-class SporeColony(unit: APIUnit)
-  extends AnyUnit(unit) with Building with GroundAndAirWeapon with NormalAirDamage with
-          NormalGroundDamage with ArmedBuilding with DetectorBuilding {
-  override def damageDelayFactorAir = 1
-
-  override def damageDelayFactorGround = 1
-}
-
 trait InstantAttackAir extends AirWeapon {
   override def damageDelayFactorAir = 0
 }
@@ -1675,7 +1678,66 @@ trait IsBig extends Mobile with MaybeCanDie {
   override val armorType = Large
 }
 
+/*UnitType.Zerg_Creep_Colony -> (new CreepColony(_), classOf[CreepColony]),
+      UnitType.Zerg_Defiler_Mound -> (new DefilerMound(_), classOf[DefilerMound]),
+      UnitType.Zerg_Evolution_Chamber -> (new DefilerMound(_), classOf[DefilerMound]),
+      UnitType.Zerg_Extractor -> (new Extractor(_), classOf[Extractor]),
+      UnitType.Zerg_Greater_Spire -> (new GreaterSpire(_), classOf[GreaterSpire]),
+      UnitType.Zerg_Hatchery -> (new Hatchery(_), classOf[Hatchery]),
+      UnitType.Zerg_Hive -> (new Hive(_), classOf[Hive]),
+      UnitType.Zerg_Hydralisk_Den -> (new HydraliskDen(_), classOf[HydraliskDen]),
+      UnitType.Zerg_Lair -> (new Lair(_), classOf[Lair]),
+      UnitType.Zerg_Infested_Command_Center -> (new InfestedCommandCenter(_),
+      classOf[InfestedCommandCenter]),
+      UnitType.Zerg_Nydus_Canal -> (new NydusCanal(_), classOf[NydusCanal]),
+      UnitType.Zerg_Queens_Nest -> (new QueensNest(_), classOf[QueensNest]),
+      UnitType.Zerg_Spawning_Pool -> (new SpawningPool(_), classOf[SpawningPool]),
+      UnitType.Zerg_Spire -> (new Spire(_), classOf[Spire]),
+      UnitType.Zerg_Ultralisk_Cavern -> (new UltralistCavern(_), classOf[UltralistCavern]),*/
+
+class CreepColony(unit: APIUnit) extends AnyUnit(unit) with Building
+
+class DefilerMound(unit: APIUnit) extends AnyUnit(unit) with Building
+
+class Extractor(unit: APIUnit) extends AnyUnit(unit) with Building with GasProvider
+
+class GreaterSpire(unit: APIUnit) extends AnyUnit(unit) with Building
+
+class Hatchery(unit: APIUnit) extends AnyUnit(unit) with Building
+
+class HydraliskDen(unit: APIUnit) extends AnyUnit(unit) with Building
+
+class Lair(unit: APIUnit) extends AnyUnit(unit) with Building
+
+class InfestedCommandCenter(unit: APIUnit) extends AnyUnit(unit) with Building
+
+class NydusCanal(unit: APIUnit) extends AnyUnit(unit) with Building
+
+class QueensNest(unit: APIUnit) extends AnyUnit(unit) with Building
+
+class SpawningPool(unit: APIUnit) extends AnyUnit(unit) with Building
+
+class Spire(unit: APIUnit) extends AnyUnit(unit) with Building
+
+class UltralistCavern(unit: APIUnit) extends AnyUnit(unit) with Building
+
+class SporeColony(unit: APIUnit)
+  extends AnyUnit(unit) with DetectorBuilding with NormalAirDamage with MediumAttackAir
+
+class SunkenColony(unit: APIUnit)
+  extends AnyUnit(unit) with Building with NormalGroundDamage with MediumAttackGround
+
 class Zergling(unit: APIUnit)
+  extends AnyUnit(unit) with Organic with GroundUnit with GroundWeapon with NormalGroundDamage with
+          IsSmall with ArmedMobile with MeleeWeapon with InstantAttackGround
+
+class Egg(unit: APIUnit)
+  extends AnyUnit(unit) with Organic with GroundUnit with IsBig
+
+class Larva(unit: APIUnit)
+  extends AnyUnit(unit) with Organic with IsSmall with GroundUnit
+
+class InfestedTerran(unit: APIUnit)
   extends AnyUnit(unit) with Organic with GroundUnit with GroundWeapon with NormalGroundDamage with
           IsSmall with ArmedMobile with MeleeWeapon with InstantAttackGround
 
@@ -1714,9 +1776,6 @@ class Ultralisk(unit: APIUnit)
           NormalGroundDamage with ArmedMobile with InstantAttackGround
 
 class Defiler(unit: APIUnit) extends AnyUnit(unit) with Organic with GroundUnit with IsMedium
-
-class InfestedTerran(unit: APIUnit)
-  extends AnyUnit(unit) with Organic with GroundUnit with ArmedMobile with IsSmall
 
 class Observer(unit: APIUnit)
   extends AnyUnit(unit) with MobileDetector with Mechanic with IsSmall with AirUnit
@@ -1851,7 +1910,7 @@ class Goliath(unit: APIUnit)
 class Wraith(unit: APIUnit)
   extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with CanCloak with
           InstantAttackGround with MediumAttackAir with Mechanic with MobileRangeWeapon with
-          IsBig with IsShip with NormalGroundDamage with
+          IsBig with IsShip with NormalGroundDamage with BadDancer with
           ExplosiveAirDamage with ArmedMobile with HasSingleTargetSpells {
 
   override type CasterType = Wraith
@@ -1860,14 +1919,14 @@ class Wraith(unit: APIUnit)
 
 class Valkery(unit: APIUnit)
   extends AnyUnit(unit) with AirUnit with AirWeapon with Mechanic with MobileRangeWeapon with
-          IsBig with IsShip with ArmedMobile with
+          IsBig with IsShip with ArmedMobile with BadDancer with
           ExplosiveAirDamage with SlowAttackAir
 
 class Battlecruiser(unit: APIUnit)
   extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with InstantAttackAir with
           InstantAttackGround with Mechanic with ArmedMobile with
           HasSingleTargetSpells with MobileRangeWeapon with IsBig with IsShip with
-          NormalAirDamage with
+          NormalAirDamage with BadDancer with
           NormalGroundDamage {
   override val spells = Nil
 }
@@ -1967,6 +2026,28 @@ object UnitWrapper {
       ((new RoboticsSupportBay(_), classOf[RoboticsSupportBay])),
       UnitType.Protoss_Stargate -> ((new Stargate(_), classOf[Stargate])),
 
+      UnitType.Zerg_Creep_Colony ->(new CreepColony(_), classOf[CreepColony]),
+      UnitType.Zerg_Defiler_Mound ->(new DefilerMound(_), classOf[DefilerMound]),
+      UnitType.Zerg_Evolution_Chamber ->(new DefilerMound(_), classOf[DefilerMound]),
+      UnitType.Zerg_Extractor ->(new Extractor(_), classOf[Extractor]),
+      UnitType.Zerg_Greater_Spire ->(new GreaterSpire(_), classOf[GreaterSpire]),
+      UnitType.Zerg_Hatchery ->(new Hatchery(_), classOf[Hatchery]),
+      UnitType.Zerg_Hive ->(new Hive(_), classOf[Hive]),
+      UnitType.Zerg_Hydralisk_Den ->(new HydraliskDen(_), classOf[HydraliskDen]),
+      UnitType.Zerg_Lair ->(new Lair(_), classOf[Lair]),
+      UnitType.Zerg_Infested_Command_Center ->
+      (new InfestedCommandCenter(_), classOf[InfestedCommandCenter]),
+      UnitType.Zerg_Nydus_Canal ->(new NydusCanal(_), classOf[NydusCanal]),
+      UnitType.Zerg_Queens_Nest ->(new QueensNest(_), classOf[QueensNest]),
+      UnitType.Zerg_Spawning_Pool ->(new SpawningPool(_), classOf[SpawningPool]),
+      UnitType.Zerg_Spire ->(new Spire(_), classOf[Spire]),
+      UnitType.Zerg_Ultralisk_Cavern ->(new UltralistCavern(_), classOf[UltralistCavern]),
+      UnitType.Zerg_Spore_Colony ->(new SporeColony(_), classOf[SporeColony]),
+      UnitType.Zerg_Sunken_Colony ->(new SunkenColony(_), classOf[SunkenColony]),
+
+      UnitType.Zerg_Infested_Terran ->(new InfestedTerran(_), classOf[InfestedTerran]),
+      UnitType.Zerg_Larva ->(new Larva(_), classOf[Larva]),
+      UnitType.Zerg_Egg -> ((new Egg(_), classOf[Egg])),
       UnitType.Zerg_Drone -> ((new Drone(_), classOf[Drone])),
       UnitType.Zerg_Broodling -> ((new Broodling(_), classOf[Broodling])),
       UnitType.Zerg_Zergling -> ((new Zergling(_), classOf[Zergling])),
