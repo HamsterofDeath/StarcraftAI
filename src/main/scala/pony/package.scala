@@ -16,8 +16,9 @@ package object pony {
   // milestone 3:
   // TODO collect minerals/gas from far away if out of resources in bases
   // TODO fix upgrade building counts (too many engineering bays, not enough of the other one)
-  // TODO stay away from stationary things if tanks are available
+  // TODO stay away from stationary things if long range units are available
   // TODO send nearby units to help in battles
+  // TODO build units best suited against enemy
 
   // milestone 4:
   // TODO send only necessary units for defenses, use "battle simulator" to estimate which units
