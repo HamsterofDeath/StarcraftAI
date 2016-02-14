@@ -226,7 +226,7 @@ class FerryPlan(val ferry: TransporterUnit, initial: GroundUnit,
   }
 
   private val currentPlannedCargo  = collection.mutable.HashMap.empty ++=
-                                     initial.toSet.map(e => e -> ferry.currentTick)
+                                     initial.toSet.map(_ -> ferry.currentTick)
 
   private val dropTheseImmediately = collection.mutable.HashSet.empty[GroundUnit]
 
@@ -239,14 +239,18 @@ class FerryPlan(val ferry: TransporterUnit, initial: GroundUnit,
     .sortBy(_.currentTile.distanceSquaredTo(ferry.currentTile))
   }
 
+  private def shuttleCapacity = 8
+
   def replaceQueuedUnitIfPossible_!(maybeTransportThis: GroundUnit) = {
-    val removeFromPlan = queuedForPickUp.iterator
-                         .filter(_.transportSize == maybeTransportThis.transportSize)
-                         .filter { e =>
-                           e.currentTile.distanceSquaredTo(ferry.currentTile) - 25 >
-                           maybeTransportThis.currentTile.distanceSquaredTo(ferry.currentTile)
-                         }
-                         .maxByOpt(_.currentTile.distanceSquaredTo(ferry.currentTile))
+    val removeFromPlan = {
+      queuedForPickUp.iterator
+      .filter(-_.transportSize + maybeTransportThis.transportSize <= shuttleCapacity)
+      .filter { e =>
+        e.currentTile.distanceSquaredTo(ferry.currentTile) - 25 >
+        maybeTransportThis.currentTile.distanceSquaredTo(ferry.currentTile)
+      }
+      .maxByOpt(_.currentTile.distanceSquaredTo(ferry.currentTile))
+    }
 
     removeFromPlan.foreach { old =>
       currentPlannedCargo.remove(old)
@@ -264,7 +268,7 @@ class FerryPlan(val ferry: TransporterUnit, initial: GroundUnit,
   def notifyRequested_!(gu: GroundUnit): Unit = {
     currentPlannedCargo.put(gu, ferry.currentTick)
     myQueuedForPickup.invalidate()
-    assert(takenSpace <= 8)
+    assert(takenSpace <= shuttleCapacity)
   }
 
   override def universe = ferry.universe
@@ -272,7 +276,7 @@ class FerryPlan(val ferry: TransporterUnit, initial: GroundUnit,
   def nextToPickUp = myNextPickUp
 
   def hasSpaceFor(forWhat: GroundUnit) = {
-    takenSpace + forWhat.transportSize <= 8
+    takenSpace + forWhat.transportSize <= shuttleCapacity
   }
 
   def takenSpace = currentPlannedCargo.keysIterator.map(_.transportSize).sum
@@ -289,7 +293,7 @@ class FerryPlan(val ferry: TransporterUnit, initial: GroundUnit,
 
     dropTheseImmediately ++= thoseChangedTheirMinds
 
-    currentPlannedCargo --= dropTheseImmediately
+    currentPlannedCargo --= thoseChangedTheirMinds
 
     val loadedButNotPlanned = ferry.loaded.filterNot(currentPlannedCargo.keySet)
     dropTheseImmediately ++= loadedButNotPlanned
@@ -334,7 +338,7 @@ class FerryPlan(val ferry: TransporterUnit, initial: GroundUnit,
 
   def toTransport = currentPlannedCargo.keySet
 
-  assert(toTransport.map(_.transportSize).sum <= 8,
+  assert(toTransport.map(_.transportSize).sum <= shuttleCapacity,
     s"Too many units for single transport: $toTransport")
 
 }
