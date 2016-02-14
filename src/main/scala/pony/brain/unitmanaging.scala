@@ -1217,7 +1217,7 @@ trait FerrySupport[T <: GroundUnit] extends JobOrSubJob[T] {
 
     val myOrder = target.map { to =>
       val needsFerry = !unit.currentArea.exists(_.free(to))
-      if (needsFerry && mapLayers.rawWalkableMap.free(to)) {
+      if (needsFerry) {
         ferryManager.requestFerry_!(unit, to) match {
           case Some(plan) if unit.onGround =>
             Orders.BoardFerry(unit, plan.ferry).toList
@@ -1225,7 +1225,7 @@ trait FerrySupport[T <: GroundUnit] extends JobOrSubJob[T] {
             // do nothing while in transporter
             Orders.NoUpdate(unit).toList
           case None =>
-            //go there while waiting for ferry
+            //go to some hopefully near point and wait for ferry
             Orders.MoveToTile(unit, to).toList
         }
       } else Nil

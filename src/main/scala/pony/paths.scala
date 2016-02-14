@@ -19,6 +19,8 @@ class MigrationPath(follow: Paths, override val universe: Universe)
 
   onTick_!()
 
+  private val creationTick = universe.currentTick
+
   override def onTick_!() = {
     super.onTick_!()
     remaining.retain { case (unit, path) =>
@@ -44,7 +46,9 @@ class MigrationPath(follow: Paths, override val universe: Universe)
     atFormationStep.size -> remaining.size
   }
 
-  def allReachedDestination = remaining.isEmpty
+  def allReachedDestination = {
+    remaining.isEmpty && stillActiveUnits.nonEmpty
+  }
 
   def nextPositionFor(t: Mobile) = nextFor(t).map(_._1)
 
@@ -615,20 +619,20 @@ class UnitGrid(override val universe: Universe) extends HasUniverse {
 class MapLayers(override val universe: Universe) extends HasUniverse {
 
   type AreaFromCircle = FutureIterator[TraversableOnce[Circle], Grid2D]
-  private val rawMapWalk          = world.map.walkableGrid
-  private val empty               = world.map.walkableGrid.emptySameSize(false)
-                                    .guaranteeImmutability
-  private val full                = empty.reverseView
-  private val rawMapWalkMutable   = world.map.walkableGrid.mutableCopy
-  private val rawMapBuild         = world.map.buildableGrid.mutableCopy
-  private val plannedBuildings    = world.map.empty.zoomedOut.mutableCopy
+  private val rawMapWalk        = world.map.walkableGrid
+  private val empty             = world.map.walkableGrid.emptySameSize(false)
+                                  .guaranteeImmutability
+  private val full              = empty.reverseView
+  private val rawMapWalkMutable = world.map.walkableGrid.mutableCopy
+  private val rawMapBuild       = world.map.buildableGrid.mutableCopy
+  private val plannedBuildings  = world.map.empty.zoomedOut.mutableCopy
 
-  private var justBuildings       = evalOnlyBuildings
-  private var justMines           = evalOnlyMines
-  private var justMineralsAndGas  = evalOnlyResources
-  private var justWorkerPaths     = evalWorkerPaths
-  private var justBlockingMobiles = evalOnlyMobileBlockingUnits
-  private var justAddonLocations  = evalPotentialAddonLocations
+  private var justBuildings                   = evalOnlyBuildings
+  private var justMines                       = evalOnlyMines
+  private var justMineralsAndGas              = evalOnlyResources
+  private var justWorkerPaths                 = evalWorkerPaths
+  private var justBlockingMobiles             = evalOnlyMobileBlockingUnits
+  private var justAddonLocations              = evalPotentialAddonLocations
   private var withBuildings                   = evalWithBuildings
   private var withBuildingsAndResources       = evalWithBuildingsAndResources
   private var withEverythingStaticBuildable   = evalEverythingStaticBuildable
@@ -648,10 +652,9 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   private val exposedToCloaked               = evalExposedToCloakedUnits
   private val justBlockingMobilesExtended    = evalOnlyMobileBlockingUnitsExtended
   // initializion order mess
-  private var walkableSafe = evalWalkableSafe
-  private var airSafe      = evalAirSafe
-  private var lastUpdatePerformedInTick = universe.currentTick
-
+  private var walkableSafe                   = evalWalkableSafe
+  private var airSafe                        = evalAirSafe
+  private var lastUpdatePerformedInTick      = universe.currentTick
 
   def isOnIsland(tilePosition: MapTilePosition) = {
     val areaInQuestion = rawMapWalk.areaOf(tilePosition)
@@ -992,6 +995,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
       .map(_.centerTile)
     }
   }
+
 }
 
 trait SubFinder {

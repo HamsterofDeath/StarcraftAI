@@ -129,19 +129,20 @@ class FerryManager(override val universe: Universe) extends HasUniverse {
         }
       }
       ferryPlans.valuesIterator.find { plan =>
-        lazy val sameArea = {
+        lazy val sameTargetArea = {
           val area = fixedDropTarget.flatMap(mapLayers.rawWalkableMap.areaOf)
-          plan.targetArea == area
+          plan.targetArea == area && plan.toWhere.distanceToIsLess(dropTarget, 15)
         }
         def canAdd = {
-          sameArea && plan.hasSpaceFor(forWhat)
+          sameTargetArea && plan.hasSpaceFor(forWhat)
         }
         def tryReplace_!() = {
-          sameArea && plan.replaceQueuedUnitIfPossible_!(forWhat)
+          sameTargetArea && plan.replaceQueuedUnitIfPossible_!(forWhat)
         }
         if (plan.covers(forWhat)) {
           true
         } else if (canAdd) {
+          trace(s"Adding $forWhat to be transported by ${plan.ferry}")
           plan.withMore_!(forWhat)
           true
         } else {
@@ -219,25 +220,34 @@ class FerryPlan(val ferry: TransporterUnit, initial: GroundUnit,
                 initiallyPlannedToDropHere: MapTilePosition,
                 val targetArea: Option[Grid2D]) extends HasUniverse {
 
-  def toWhere = ferryManager.nearestDropPointTo(initiallyPlannedToDropHere)
-                .getOr(s"No drop spot available anywhere near $initiallyPlannedToDropHere")
+  def toWhere = {
+    ferryManager.nearestDropPointTo(initiallyPlannedToDropHere)
+    .getOr(s"No drop spot available anywhere near $initiallyPlannedToDropHere")
+  }
 
   private val currentPlannedCargo  = collection.mutable.HashMap.empty ++=
                                      initial.toSet.map(e => e -> ferry.currentTick)
+
   private val dropTheseImmediately = collection.mutable.HashSet.empty[GroundUnit]
+
   private val planId               = PlanIdCounter.nextId()
-  private val myNextPickUp         = oncePerTick {
-    toTransport.filterNot(_.loaded)
-    .minByOpt(_.currentTile.distanceSquaredTo(ferry.currentTile))
-  }
+
+  private def myNextPickUp = queuedForPickUp.headOption
+
   private val myQueuedForPickup    = oncePerTick {
-    toTransport.filter(needsToPickThatUp)
+    toTransport.filter(needsToPickThatUp).toVector
+    .sortBy(_.currentTile.distanceSquaredTo(ferry.currentTile))
   }
 
   def replaceQueuedUnitIfPossible_!(maybeTransportThis: GroundUnit) = {
     val removeFromPlan = queuedForPickUp.iterator
-                         .filter(_.transportSize >= maybeTransportThis.transportSize)
-                         .minByOpt(_.currentTile.distanceSquaredTo(ferry.currentTile))
+                         .filter(_.transportSize == maybeTransportThis.transportSize)
+                         .filter { e =>
+                           e.currentTile.distanceSquaredTo(ferry.currentTile) - 25 >
+                           maybeTransportThis.currentTile.distanceSquaredTo(ferry.currentTile)
+                         }
+                         .maxByOpt(_.currentTile.distanceSquaredTo(ferry.currentTile))
+
     removeFromPlan.foreach { old =>
       currentPlannedCargo.remove(old)
       withMore_!(maybeTransportThis)
@@ -253,14 +263,13 @@ class FerryPlan(val ferry: TransporterUnit, initial: GroundUnit,
 
   def notifyRequested_!(gu: GroundUnit): Unit = {
     currentPlannedCargo.put(gu, ferry.currentTick)
-    myNextPickUp.invalidate()
     myQueuedForPickup.invalidate()
     assert(takenSpace <= 8)
   }
 
   override def universe = ferry.universe
 
-  def nextToPickUp = myNextPickUp.get
+  def nextToPickUp = myNextPickUp
 
   def hasSpaceFor(forWhat: GroundUnit) = {
     takenSpace + forWhat.transportSize <= 8
@@ -270,7 +279,10 @@ class FerryPlan(val ferry: TransporterUnit, initial: GroundUnit,
 
   def afterTick_!(): Unit = {
     val maxTick = currentPlannedCargo.valuesIterator.maxOpt.getOrElse(Integer.MAX_VALUE)
-
+    if (maxTick + 240 < currentTick) {
+      warn("Investigation please")
+      currentPlannedCargo.clear()
+    }
     val thoseChangedTheirMinds = currentPlannedCargo
                                  .filter(_._2 + 12 < maxTick)
                                  .keySet

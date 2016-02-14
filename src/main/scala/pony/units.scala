@@ -2072,6 +2072,7 @@ object UnitWrapper {
       UnitType.Zerg_Queen -> lift[Queen],
       UnitType.Zerg_Scourge -> lift[Scourge],
       UnitType.Zerg_Ultralisk -> lift[Ultralisk],
+      UnitType.Zerg_Overlord -> lift[Overlord],
 
       UnitType.Unknown -> lift[Irrelevant]
     )
