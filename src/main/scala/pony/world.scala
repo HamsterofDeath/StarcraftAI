@@ -266,7 +266,9 @@ class Units(game: Game, hostile: Boolean) {
 
   def allBuildings = allByType[Building]
 
-  def allBuildingsWithWeapons = allByType[ArmedBuilding]
+  def allBuildingsWithWeapons = allByType[ArmedBuildingCoveringGroundAndAir]
+
+  def allBuildingsWithGroundWeapons = allByType[ArmedBuildingCoveringGround]
 
   def allDetectors = allByType[Detector]
 

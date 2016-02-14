@@ -163,13 +163,13 @@ class UnitDebugRenderer(override val universe: Universe) extends AIPlugIn with H
         val center = m.currentPosition
         m match {
           case a: AirWeapon =>
-            renderer.in_!(Color.Yellow).drawCircleAround(center, a.airRange)
+            renderer.in_!(Color.Yellow).drawCircleAround(center, a.airRangePixels)
           case _ =>
 
         }
         m match {
           case g: GroundWeapon =>
-            renderer.in_!(Color.Red).drawCircleAround(center, g.groundRange)
+            renderer.in_!(Color.Red).drawCircleAround(center, g.groundRangePixels)
           case _ =>
 
         }

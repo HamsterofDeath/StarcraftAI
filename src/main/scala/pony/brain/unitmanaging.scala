@@ -848,8 +848,10 @@ abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: 
 
   def jobHasFailedWithoutDeath: Boolean = {
     unit match {
-      case ohs: OrderHistorySupport if !isNoopJob => ohs.unitHistory.take(24)
-                                                     .forall(e => inactive(e.order))
+      case ohs: OrderHistorySupport if !isNoopJob => {
+        val failedForUnknownReason = ohs.unitHistory.take(24).forall(e => inactive(e.order))
+        failedForUnknownReason
+      }
       case _ => false
     }
   }
@@ -1451,6 +1453,7 @@ case class SingleUnitBehaviourMeta(priority: SecondPriority, refuseCommandsForTi
 
 abstract class SingleUnitBehaviour[+T <: WrapsUnit](val unit: T, meta: SingleUnitBehaviourMeta)
   extends JobOrSubJob[T] {
+  def isNoopTask = false
 
   private var skipFor = 0
 
@@ -1505,6 +1508,10 @@ class BusyDoingSomething[T <: WrapsUnit](employer: Employer[T],
   override def onStealUnit() = {
     super.onStealUnit()
     behaviour.foreach(_.onStealUnit())
+  }
+
+  override def isNoopJob = {
+    lastOrderIssuedBy.exists(_.isNoopTask)
   }
 
   override def interruptableNow = super.interruptableNow &&

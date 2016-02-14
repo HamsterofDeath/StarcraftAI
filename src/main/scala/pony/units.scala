@@ -63,7 +63,12 @@ trait ZergBuilding extends ZergUnit with Building
 
 trait WrapsUnit extends HasUniverse with AfterTickListener {
 
-  val unitId            = WrapsUnit.nextId
+  private val unitId               = WrapsUnit.nextId
+  private var morphed              = false
+  private var inGame               = true
+  private var creationTick         = -1
+  private var myUniverse: Universe = _
+
   val nativeUnitId      = nativeUnit.getID
   val initialNativeType = nativeUnit.getType
   val nativeType        = oncePerTick {
@@ -81,10 +86,6 @@ trait WrapsUnit extends HasUniverse with AfterTickListener {
     val c = center
     MapTilePosition(c.x / 32, c.y / 32)
   }
-  private var morphed              = false
-  private var inGame               = true
-  private var creationTick         = -1
-  private var myUniverse: Universe = _
 
   def hasEverMorphed = morphed
 
@@ -885,7 +886,8 @@ trait HasSpiderMines extends WrapsUnit {
 }
 
 trait GroundWeapon extends Weapon {
-  val groundRange            = groundWeapon.maxRange()
+  val groundRangePixels      = groundWeapon.maxRange()
+  val groundRangeTiles       = groundRangePixels / tileSize
   val groundCanAttackAir     = groundWeapon.targetsAir()
   val groundCanAttackGround  = groundWeapon.targetsGround()
   val groundDamageMultiplier = groundWeapon.damageFactor()
@@ -896,12 +898,12 @@ trait GroundWeapon extends Weapon {
     evalDamage(groundWeapon, groundDamageType, groundDamageMultiplier, targetsAir = false)
   }
   private        val myInGroundWeaponRange = oncePerTick {
-    geoHelper.circle(centerTile, math.round(groundRange.toDouble / 32).toInt)
+    geoHelper.circle(centerTile, math.round(groundRangePixels.toDouble / 32).toInt)
   }
 
   def damageDelayFactorGround: Int
 
-  override def weaponRangeRadius: Int = super.weaponRangeRadius max groundRange
+  override def weaponRangeRadius: Int = super.weaponRangeRadius max groundRangePixels
 
   override def assumeShotDelayOn(target: MaybeCanDie) = {
     if (canAttack(target)) {
@@ -1026,7 +1028,8 @@ trait AutoGroundWeaponType extends GroundWeapon {
 }
 
 trait AirWeapon extends Weapon {
-  val airRange            = airWeapon.maxRange()
+  val airRangePixels      = airWeapon.maxRange()
+  val airRangeTiles       = airRangePixels / tileSize
   val airCanAttackAir     = airWeapon.targetsAir()
   val airCanAttackGround  = airWeapon.targetsGround()
   val airDamageMultiplier = airWeapon.damageFactor()
@@ -1038,12 +1041,12 @@ trait AirWeapon extends Weapon {
   }
 
   private val myInAirWeaponRange = oncePerTick {
-    geoHelper.circle(centerTile, math.round(airRange.toDouble / 32).toInt)
+    geoHelper.circle(centerTile, math.round(airRangePixels.toDouble / 32).toInt)
   }
   def inAirWeaponRange = myInAirWeaponRange.get
 
   def damageDelayFactorAir: Int
-  override def weaponRangeRadius: Int = super.weaponRangeRadius max airRange
+  override def weaponRangeRadius: Int = super.weaponRangeRadius max airRangePixels
   override def assumeShotDelayOn(target: MaybeCanDie) = {
     if (canAttack(target)) {
       damageDelayFactorAir
@@ -1288,6 +1291,13 @@ trait Resource extends BlockingTiles {
   def remaining = remainingResources.get
 }
 
+trait ArmedBuildingCoveringGround extends ArmedBuilding
+
+trait ArmedBuildingCoveringAir extends ArmedBuilding
+
+trait ArmedBuildingCoveringGroundAndAir
+  extends ArmedBuildingCoveringAir with ArmedBuildingCoveringGround
+
 trait ArmedBuilding extends Building with RangeWeapon
 
 trait ImmobileSupplyProvider extends SupplyProvider with Building
@@ -1389,7 +1399,7 @@ class Gateway(unit: APIUnit) extends AnyUnit(unit) with UnitFactory
 
 class PhotonCannon(unit: APIUnit)
   extends AnyUnit(unit) with Building with GroundAndAirWeapon with NormalAirDamage with
-          NormalGroundDamage with ArmedBuilding with DetectorBuilding {
+          NormalGroundDamage with ArmedBuildingCoveringGroundAndAir with DetectorBuilding {
   override def damageDelayFactorAir = 1
 
   override def damageDelayFactorGround = 1
@@ -1458,10 +1468,12 @@ class ScienceFacility(unit: APIUnit)
           TerranBuilding
 
 class MissileTurret(unit: APIUnit)
-  extends AnyUnit(unit) with ArmedBuilding with DetectorBuilding with SlowAttackAir with AirWeapon
+  extends AnyUnit(unit) with ArmedBuildingCoveringAir with DetectorBuilding with SlowAttackAir with
+          AirWeapon
           with ExplosiveAirDamage with TerranBuilding
 
-class Bunker(unit: APIUnit) extends AnyUnit(unit) with Building with TerranBuilding
+class Bunker(unit: APIUnit)
+  extends AnyUnit(unit) with TerranBuilding with ArmedBuildingCoveringGroundAndAir
 
 trait InstantAttackAir extends AirWeapon {
   override def damageDelayFactorAir = 0
@@ -1715,16 +1727,20 @@ class UltralistCavern(unit: APIUnit) extends AnyUnit(unit) with ZergBuilding
 
 class SporeColony(unit: APIUnit)
   extends AnyUnit(unit) with DetectorBuilding with NormalAirDamage with MediumAttackAir with
-          ZergBuilding
+          ZergBuilding with ArmedBuildingCoveringAir
 
 class SunkenColony(unit: APIUnit)
-  extends AnyUnit(unit) with ZergBuilding with NormalGroundDamage with MediumAttackGround
+  extends AnyUnit(unit) with ZergBuilding with NormalGroundDamage with MediumAttackGround with
+          ArmedBuildingCoveringGround
 
 class Zergling(unit: APIUnit)
   extends AnyUnit(unit) with GroundUnit with GroundWeapon with NormalGroundDamage with
           IsSmall with ArmedMobile with MeleeWeapon with InstantAttackGround with ZergMobileUnit
 
 class Egg(unit: APIUnit)
+  extends AnyUnit(unit) with GroundUnit with IsBig with ZergUnit
+
+class LurkerEgg(unit: APIUnit)
   extends AnyUnit(unit) with GroundUnit with IsBig with ZergUnit
 
 class Larva(unit: APIUnit)
@@ -2043,6 +2059,7 @@ object UnitWrapper {
       UnitType.Zerg_Infested_Terran -> lift[InfestedTerran],
       UnitType.Zerg_Larva -> lift[Larva],
       UnitType.Zerg_Egg -> lift[Egg],
+      UnitType.Zerg_Lurker_Egg -> lift[LurkerEgg],
       UnitType.Zerg_Drone -> lift[Drone],
       UnitType.Zerg_Broodling -> lift[Broodling],
       UnitType.Zerg_Zergling -> lift[Zergling],

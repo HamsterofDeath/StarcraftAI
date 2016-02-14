@@ -146,7 +146,7 @@ object Terran {
             r.indicateTarget(unit.currentTile, plan.nextToDrop.map(_.currentTile).get)
           }
 
-          r.drawTextAtMobileUnit(unit, describe, 1)
+          r.drawTextAtMobileUnit(unit, describe, 2)
         }
       }
 
@@ -291,22 +291,33 @@ object Terran {
 
   class Dance(universe: Universe) extends DefaultBehaviour[ArmedMobile](universe) {
 
-    private val immutableMapLayer = oncePerTick {
+    private val freeWalkableMap   = oncePerTick {
       mapLayers.freeWalkableTiles.guaranteeImmutability
     }
+    private val safeFromLongRange = oncePerTick {
+      mapLayers.coveredByEnemyLongRangeAsBlocked.guaranteeImmutability
+    }
+
     private val dropAtFirst       = 36
     private val tries             = 100
     private val range             = 10
     private val takeNth           = 7
     private val dancePlan         = FutureIterator.feed(feed).produceAsyncLater { in =>
-      // second try: consider slipping through enemy lines
       val on = in.freeMap
+      val safetyCheck = in.safeFromLongRange
       in.dancers.map { dancer =>
         val center = MapTilePosition.average(dancer.partners.iterator.map(_.where))
 
         val myArea = universe.mapLayers.rawWalkableMap.areaOf(dancer.me.where)
         dancer -> myArea.flatMap { a =>
-          val antiGrav = {
+          def tileIterator = {
+            on.spiralAround(dancer.me.where, range)
+            .drop(dropAtFirst)
+            .sliding(1, takeNth)
+            .flatten
+            .take(tries)
+          }
+          def antiGravTry = {
             var xSum = 0
             var ySum = 0
 
@@ -318,28 +329,18 @@ object Terran {
 
             val ref = dancer.me.where.movedBy(MapTilePosition(xSum, ySum))
 
-            on.spiralAround(dancer.me.where, range)
-            .drop(dropAtFirst)
-            .sliding(1, takeNth)
-            .flatten
-            .take(tries)
-            .filter { c =>
+            tileIterator.filter { c =>
               c.distanceSquaredTo(ref) <= dancer.me.where.distanceSquaredTo(center)
-            }.find {on.free}
+            }.find(e => on.free(e) && a.free(e) && safetyCheck.free(e))
           }
 
           def secondTry = {
-            on.spiralAround(dancer.me.where, range)
-            .drop(dropAtFirst)
-            .sliding(1, takeNth)
-            .flatten
-            .take(tries)
-            .filter(on.free)
-            .filter(a.free)
+            tileIterator
+            .filter(e => on.free(e) && a.free(e) && safetyCheck.free(e))
             .maxByOpt(center.distanceSquaredTo)
           }
 
-          antiGrav.orElse(secondTry)
+          antiGravTry.orElse(secondTry)
         }
       }.collect { case (k, v) if v.isDefined =>
         k.me.id -> v.get
@@ -425,14 +426,14 @@ object Terran {
           }
         }.toVector
       }
-      Feed(dancers, immutableMapLayer.get)
+      Feed(dancers, freeWalkableMap.get, safeFromLongRange.get)
     }
 
     case class UnitIdPosition(id: Int, where: MapTilePosition)
 
     case class Dancer(me: UnitIdPosition, partners: Seq[UnitIdPosition])
 
-    case class Feed(dancers: Seq[Dancer], freeMap: Grid2D)
+    case class Feed(dancers: Seq[Dancer], freeMap: Grid2D, safeFromLongRange: Grid2D)
 
     case class DancePlan(data: Map[ArmedMobile, MapTilePosition])
 
@@ -500,57 +501,83 @@ object Terran {
 
   class PreventBlockades(universe: Universe) extends DefaultBehaviour[Mobile](universe) {
 
-    private val newBlockingUnits   = oncePer(Primes.prime37) {
-      val baseArea = mapLayers.freeWalkableTiles.guaranteeImmutability
+    case class Feed(unitsToPositions: Map[Int, Area], baseArea: Grid2D, dangerous: Grid2D,
+                    blockedByMobiles: Grid2D)
+
+    def feed = {
+      val baseArea = {
+        mapLayers.freeWalkableTiles.mutableCopy.guaranteeImmutability
+      }
+      val blockedByMobiles = mapLayers.blockedByMobileUnitsExtended
       val unitsToPositions = ownUnits.allCompletedMobiles
                              .iterator
                              .filter(_.canMove)
-                             .filter(_.surroundings.closeOwnBuildings.size > 3)
                              .map { e => e.nativeUnitId -> e.blockedArea }
                              .toMap
-
       val buildingLayer = mapLayers.freeWalkableTiles.guaranteeImmutability
-      BWFuture.produceFrom {
-        val badlyPositioned = unitsToPositions.flatMap { case (id, where) =>
-          val withOutline = where.growBy(tolerance)
+      val dangerous = mapLayers.slightlyDangerousAsBlocked.guaranteeImmutability
+      Feed(unitsToPositions, baseArea, dangerous, blockedByMobiles)
+    }
 
-          import scala.collection.breakOut
-          val touched: Set[Grid2D] = withOutline.tiles.flatMap { tile =>
-            if (baseArea.inBounds(tile)) baseArea.areaOf(tile) else None
-          }(breakOut)
-          def nearBuilding = {
-            buildingLayer.anyBlocked(where.growBy(5))
-          }
-          if (touched.size > 1 && nearBuilding) {
-            Some(where.upperLeft -> id)
-          } else {
-            None
+    private val unlockingPlan = FutureIterator.feed(feed).produceAsyncLater { in =>
+
+      val operateOn = in.baseArea //.mutableCopy.or_!(in.blockedByMobiles.mutableCopy)
+
+      val badlyPositioned = in.unitsToPositions.flatMap { case (id, where) =>
+        val withOutline = where.growBy(tolerance)
+
+        val evil = operateOn.cuttingAreas(withOutline)
+
+        def safe = in.dangerous.free(where.centerTile)
+        if (evil && safe) {
+          Some(where.centerTile -> id)
+        } else {
+          None
+        }
+      }
+
+      val unlockPositions = badlyPositioned.flatMap { case (tile, unitId) =>
+        val moveTo = {
+          val layer = in.baseArea
+          def candidates = layer.spiralAround(tile, 45)
+                           .drop(25)
+                           .sliding(1, 5)
+                           .flatten
+                           .filter(_.distanceToIsMore(tile, 3))
+                           .filter(layer.freeAndInBounds)
+
+          candidates.find { e =>
+            layer.freeAndInBounds(e.asArea.growBy(tolerance))
           }
         }
-        mutable.HashMap.empty ++= badlyPositioned
+        moveTo.map { tile => unitId -> tile }
       }
+      unlockPositions
     }
-    private val blockingUnitsQueue = mutable.HashSet.empty[Mobile]
+
     private val relevantLayer      = oncePerTick {
-      mapLayers.freeWalkableTiles.guaranteeImmutability
+      mapLayers.freeWalkableTiles.mutableCopy
+      //.or_!(mapLayers.blockedByMobileUnitsExtended.mutableCopy)
+      .guaranteeImmutability
     }
 
     override def forceRepeatedCommands: Boolean = false
 
     override def onTick_!() = {
       super.onTick_!()
-      newBlockingUnits.get.ifDoneOpt { locking =>
-        val problems = locking.flatMap { case (_, id) =>
-          ownUnits.byId(id).asInstanceOf[Option[Mobile]]
-        }.filter { unit =>
-          universe.unitGrid.enemy.allInRange[Mobile](unit.currentTile, 5).isEmpty
+      ifNth(Primes.prime59) {
+        unlockingPlan.prepareNextIfDone()
+      }
+    }
+
+    override def renderDebug_!(renderer: Renderer) = {
+      super.renderDebug_!(renderer)
+      unlockingPlan.onMostRecent { map =>
+        map.foreach { case (unitId, whereTo) =>
+          ownUnits.byId(unitId).foreach { unit =>
+            renderer.in_!(Color.Red).indicateTarget(unit.centerTile, whereTo)
+          }
         }
-        blockingUnitsQueue ++= problems
-        if (problems.nonEmpty) {
-          info(s"${problems.size} new units identified as area splitting")
-        }
-        debug(s"${blockingUnitsQueue.size} units identified as area splitting right now")
-        locking.clear()
       }
     }
 
@@ -558,45 +585,20 @@ object Terran {
 
       override def describeShort: String = "<->"
 
-      private var lastFreeGoTo = Option.empty[MapTilePosition]
-
       override def toOrder(what: Objective): Seq[UnitOrder] = {
-        if (blockingUnitsQueue(unit)) {
-          val layer = relevantLayer.get
-          val myBuildings = mapLayers.blockedByBuildingTiles
-          val safeArea = unit.blockedArea.growBy(tolerance)
-          val command = lastFreeGoTo.filter { check =>
-            layer.freeAndInBounds(safeArea)
-          }.map(Orders.MoveToTile(unit, _)).orElse {
-            val moveTo = layer.spiralAround(unit.currentTile, 45)
-                         .sliding(1, 5)
-                         .flatten
-                         .filter(layer.freeAndInBounds)
-                         .find { e =>
-                           layer.freeAndInBounds(safeArea.growBy(1).moveTo(e))
-                         }
-            if (moveTo.isEmpty) {
-              skipFor(Primes.prime59.i)
-            }
-
-            moveTo.map { whereTo =>
-              lastFreeGoTo = Some(whereTo)
-              Orders.MoveToTile(unit, whereTo)
-            }
-          }.toList
-          if (command.isEmpty ||
-              lastFreeGoTo.map(_.distanceTo(unit.currentTile)).getOrElse(0.0) < 1.5 ||
-              !layer.cuttingAreas(safeArea)) {
-            blockingUnitsQueue -= unit
-          }
-          command
-        } else {
-          Nil
-        }
+        val layer = relevantLayer.get
+        unlockingPlan.mostRecent.flatMap { plan =>
+          plan.get(unit.nativeUnitId).map {Orders.MoveToTile(unit, _)}
+        }.filter { command =>
+          val near = command.to.distanceToIsLess(unit.currentTile, 3)
+          def solved = !layer.cuttingAreas(unit.blockedArea.growBy(tolerance))
+          !near || !solved
+        }.map(_.toList)
+        .getOrElse(Nil)
       }
     }
 
-    private def tolerance = 2
+    private def tolerance = 1
   }
 
   class RepairDamagedUnit(universe: Universe) extends DefaultBehaviour[SCV](universe) {
@@ -776,12 +778,16 @@ object Terran {
     override def priority = SecondPriority.None
 
     override protected def wrapBase(unit: Mobile) = new SingleUnitBehaviour[Mobile](unit, meta) {
+
+      override def isNoopTask = true
+
       override def describeShort = "Bored"
 
       override def toOrder(what: Objective) = {
         Orders.NoUpdate(unit).toList
       }
     }
+
   }
 
   class StimSelf(universe: Universe) extends DefaultBehaviour[CanUseStimpack](universe) {

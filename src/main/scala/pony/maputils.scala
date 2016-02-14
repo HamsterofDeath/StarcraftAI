@@ -38,9 +38,12 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
 
   def cuttingAreas(area: Area) = {
     var found = Option.empty[Grid2D]
-    area.tiles.forall { where =>
+    area.outline.exists { where =>
       val check = areaOf(where)
-      check.isEmpty || check == found
+      if (found.isEmpty && check.isDefined) {
+        found = check
+      }
+      check.isDefined && check != found
     }
   }
 
@@ -67,9 +70,9 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
     spiralAround(p, 80).find(free)
   }
 
-  def spiralAround(center: MapTilePosition, size: Int = 45) = geoHelper
-                                                              .iterateBlockSpiralClockWise(center,
-                                                                size)
+  def spiralAround(center: MapTilePosition, size: Int = 45) = {
+    geoHelper.iterateBlockSpiralClockWise(center, size)
+  }
 
   def geoHelper = new GeometryHelpers(cols, rows)
 
@@ -261,6 +264,10 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
 class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet,
                     bitSetContainsBlocked: Boolean = true)
   extends Grid2D(cols, rows, bitSet, bitSetContainsBlocked) {
+  def addOutlineToBlockedTiles_!() = {
+    allBlocked.flatMap(_.asArea.growBy(1).tiles).toSet.foreach((e: MapTilePosition) => block_!(e))
+    this
+  }
 
   def areaSize(anyContained: MapTilePosition) = {
     val isFree = free(anyContained)

@@ -622,15 +622,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   private val rawMapWalkMutable   = world.map.walkableGrid.mutableCopy
   private val rawMapBuild         = world.map.buildableGrid.mutableCopy
   private val plannedBuildings    = world.map.empty.zoomedOut.mutableCopy
-  //in background because expensive
-  private val justAreasToDefend   = evalOnlyAreasToDefend
-  private val justBlockedForMainBuilding = evalOnlyBlockedForMainBuildings
-  private val coveredByDangerousUnits = evalDangerousOnGround
-  private val coveredByAnythingWithWeapons = evalSlightlyDangerous
-  private val coveredByOwnDetectors = evalDetected
-  private val coveredByOwnGround = evalGroundDefended
-  private val coveredbyOwnAir = evalAirDefended
-  private val exposedToCloaked = evalExposedToCloakedUnits
+
   private var justBuildings       = evalOnlyBuildings
   private var justMines           = evalOnlyMines
   private var justMineralsAndGas  = evalOnlyResources
@@ -643,10 +635,23 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   private var withEverythingStaticWalkable    = evalEverythingStaticWalkable
   private var withEverythingBlockingBuildable = evalEverythingBlockingBuildable
   private var withEverythingBlockingWalkable  = evalEverythingBlockingWalkable
-  // based on maps generated in background
+
+  // cpu heavy
+  private val justAreasToDefend              = evalOnlyAreasToDefend
+  private val justBlockedForMainBuilding     = evalOnlyBlockedForMainBuildings
+  private val coveredByDangerousUnits        = evalDangerousOnGround
+  private val coveredByHostileLongRangeUnits = evalHostileLongRangeUnits
+  private val coveredByAnythingWithWeapons   = evalSlightlyDangerous
+  private val coveredByOwnDetectors          = evalDetected
+  private val coveredByOwnGround             = evalGroundDefended
+  private val coveredbyOwnAir                = evalAirDefended
+  private val exposedToCloaked               = evalExposedToCloakedUnits
+  private val justBlockingMobilesExtended    = evalOnlyMobileBlockingUnitsExtended
+  // initializion order mess
   private var walkableSafe = evalWalkableSafe
   private var airSafe      = evalAirSafe
   private var lastUpdatePerformedInTick = universe.currentTick
+
 
   def isOnIsland(tilePosition: MapTilePosition) = {
     val areaInQuestion = rawMapWalk.areaOf(tilePosition)
@@ -677,6 +682,8 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   def blockedByPlannedBuildings = plannedBuildings.asReadOnlyView
 
   def dangerousAsBlocked = coveredByDangerousUnits.mostRecent.getOrElse(emptyGrid)
+
+  def coveredByEnemyLongRangeAsBlocked = coveredByDangerousUnits.mostRecent.getOrElse(emptyGrid)
 
   def slightlyDangerousAsBlocked = coveredByAnythingWithWeapons.mostRecent.getOrElse(emptyGrid)
 
@@ -709,7 +716,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   }
 
   def blockedForResourceDeposit = {
-    justBlockedForMainBuilding.mostRecent.getOrElse(emptyCopy)
+    justBlockedForMainBuilding.mostRecent.getOrElse(empty)
   }
 
   def blockedByWorkerPaths = {
@@ -718,6 +725,10 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
 
   def blockedByMobileUnits = {
     justBlockingMobiles.asReadOnlyView
+  }
+
+  def blockedByMobileUnitsExtended = {
+    justBlockingMobilesExtended.mostRecent.getOrElse(empty)
   }
 
   def blockBuilding_!(where: Area): Unit = {
@@ -774,6 +785,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
       justMines = evalOnlyMines
       justMineralsAndGas = evalOnlyResources
       justBlockingMobiles = evalOnlyMobileBlockingUnits
+      justBlockingMobiles = evalOnlyMobileBlockingUnits
       justAddonLocations = evalPotentialAddonLocations
 
       withBuildings = evalWithBuildings
@@ -788,9 +800,11 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
 
       ifNth(Primes.prime89) {
         // these are cpu heavy
+        justBlockingMobilesExtended.prepareNextIfDone()
         justAreasToDefend.prepareNextIfDone()
         justBlockedForMainBuilding.prepareNextIfDone()
         coveredByDangerousUnits.prepareNextIfDone()
+        coveredByHostileLongRangeUnits.prepareNextIfDone()
         coveredByAnythingWithWeapons.prepareNextIfDone()
         coveredbyOwnAir.prepareNextIfDone()
         coveredByOwnGround.prepareNextIfDone()
@@ -834,7 +848,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
       in.foreach { area =>
         ret.block_!(area)
       }
-      ret
+      ret.guaranteeImmutability
     }
   }
 
@@ -850,6 +864,12 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
 
   private def evalOnlyMobileBlockingUnits = evalOnlyMobileUnits(
     ownUnits.allByType[GroundUnit].iterator.filter(_.onGround))
+
+  private def evalOnlyMobileBlockingUnitsExtended = FutureIterator.feed(blockedByMobileUnits)
+                                                    .produceAsync { in =>
+                                                      in.mutableCopy.addOutlineToBlockedTiles_!()
+                                                      .guaranteeImmutability
+                                                    }
 
   private def evalOnlyMines = evalOnlyMobileUnits(ownUnits.allByType[SpiderMine])
 
@@ -941,6 +961,15 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
     }
   }
 
+  private def evalHostileLongRangeUnits = {
+    FutureIterator.feed(new EvalSafeInput).produceAsync { in =>
+      val base = in.base
+      base.geoHelper.intersections.tilesInCircle(in.longRangeGroundCoveringUnits, 12, 1)
+      .foreach(base.block_!)
+      base.guaranteeImmutability
+    }
+  }
+
   private def evalSlightlyDangerous = {
     FutureIterator.feed(new EvalSafeInput).produceAsync { in =>
       val base = in.base
@@ -951,11 +980,17 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   }
 
   private class EvalSafeInput {
-    val base           = emptyCopy
-    val buildings      = universe.enemyUnits.allBuildings.map(_.centerTile)
-    val armedBuildings = universe.enemyUnits.allBuildingsWithWeapons.map(_.centerTile)
-    val units          = universe.enemyUnits.allMobiles.filterNot(_.isHarmlessNow)
-                         .map(_.currentTile)
+    val base                         = emptyCopy
+    val buildings                    = universe.enemyUnits.allBuildings.map(_.centerTile)
+    val armedBuildings               = universe.enemyUnits.allBuildingsWithWeapons.map(_.centerTile)
+    val units                        = {
+      universe.enemyUnits.allMobiles.filterNot(_.isHarmlessNow).map(_.currentTile)
+    }
+    val longRangeGroundCoveringUnits = {
+      universe.enemyUnits.allWithGroundWeapon.filterNot(_.isHarmlessNow)
+      .filter(_.groundRangeTiles >= 8)
+      .map(_.centerTile)
+    }
   }
 }
 
@@ -996,7 +1031,7 @@ class ConstructionSiteFinder(universe: Universe) {
   def forResourceArea(resources: ResourceArea): SubFinder = {
     val size = Size(4 + 2, 3) // include space for comsat
     //main thread
-    val grid = freeToBuildOn.or_!(universe.mapLayers.blockedForResourceDeposit)
+    val grid = freeToBuildOn.or_!(universe.mapLayers.blockedForResourceDeposit.mutableCopy)
     new SubFinder {
       override def find: Option[MapTilePosition] = {
         // background

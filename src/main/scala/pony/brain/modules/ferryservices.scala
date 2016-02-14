@@ -325,7 +325,9 @@ class FerryPlan(val ferry: TransporterUnit, initial: GroundUnit,
     val loadedButNotPlanned = ferry.loaded.filterNot(currentPlannedCargo.keySet)
     dropTheseImmediately ++= loadedButNotPlanned
 
-    dropTheseImmediately.retain(e => ferry.isCarrying(e) && thoseChangedTheirMinds(e))
+    dropTheseImmediately.retain { e =>
+      ferry.isCarrying(e) && !currentPlannedCargo.contains(e)
+    }
   }
 
   def nextToDrop = {
