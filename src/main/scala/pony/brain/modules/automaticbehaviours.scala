@@ -773,10 +773,12 @@ object Terran {
   class MigrateTowardsPosition(universe: Universe) extends DefaultBehaviour[Mobile](universe) {
     override def priority = SecondPriority.Less
 
-    override def canControl(u: WrapsUnit): Boolean = super.canControl(u) &&
-                                                     !u.isInstanceOf[WorkerUnit] &&
-                                                     !u.isInstanceOf[TransporterUnit] &&
-                                                     !u.isInstanceOf[AutoPilot]
+    override def canControl(u: WrapsUnit): Boolean = {
+      super.canControl(u) &&
+      !u.isInstanceOf[WorkerUnit] &&
+      !u.isInstanceOf[TransporterUnit] &&
+      !u.isInstanceOf[AutoPilot]
+    }
 
     override def onTick_!(): Unit = {
       super.onTick_!()
@@ -816,7 +818,7 @@ object Terran {
 
     private class DefaultMigrationBehaviour[+T <: Mobile](unit: T)
       extends SingleUnitBehaviour(unit, meta) {
-      override def describeShort = "Migrate"
+      override def describeShort = "--> X"
 
       override protected def toOrder(what: Objective) = {
         worldDominationPlan.attackOf(unit).map { attack =>
@@ -1367,7 +1369,11 @@ object Terran {
       }
 
       def planFor(am: ArmedMobile) = {
-        scouts.get(am)
+        if (time.phase.isSinceAlmostMid) {
+          scouts.get(am)
+        } else {
+          None
+        }
       }
     }
 

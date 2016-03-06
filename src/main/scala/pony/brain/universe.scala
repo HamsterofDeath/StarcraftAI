@@ -107,8 +107,9 @@ class Time(universe: Universe) {
 
   def minutes = seconds / 60.0
 
+  def phase = universe.strategy.current.timingHelpers.phase
+
   def categoryName = {
-    val phase = universe.strategy.current.timingHelpers.phase
     if (phase.isEarly) {
       "Early game"
     } else if (phase.isEarlyMid) {

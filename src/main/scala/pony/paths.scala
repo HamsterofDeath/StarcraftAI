@@ -40,14 +40,24 @@ class MigrationPath(follow: Paths, override val universe: Universe)
     follow.renderDebug(renderer)
   }
 
+  def isCloseToUnsafeTarget(m: Mobile) = {
+    (remaining.get(m) match {
+      case None if counter.contains(m) => true
+      case Some(path) if path.isEmpty => true
+      case _ => false
+    }) && m.currentTile.distanceToIsLess(originalDestination, 7)
+  }
+
+
   def stillActiveUnits = counter.keysIterator.filter(_.isInGame)
 
   def meetingStats = {
     atFormationStep.size -> remaining.size
   }
 
-  def allReachedDestination = {
-    remaining.isEmpty && stillActiveUnits.nonEmpty
+  def allCloseToDestination = {
+    val old = creationTick + 24 < universe.currentTick
+    old && remaining.isEmpty && stillActiveUnits.nonEmpty
   }
 
   def nextPositionFor(t: Mobile) = nextFor(t).map(_._1)
@@ -56,27 +66,29 @@ class MigrationPath(follow: Paths, override val universe: Universe)
     assertCalled()
     val index = counter.getOrElseUpdate(t, counter.size) % follow.pathCount
     val initialFullPath = follow.paths(index)
-    val todo = remaining.getOrElseUpdate(t, ArrayBuffer.empty ++= initialFullPath.waypoints)
-    val closest = todo.minByOpt(_.distanceSquaredTo(t.currentTile))
+    val remainingpathForThisUnit = remaining.getOrElseUpdate(t,
+      ArrayBuffer.empty ++= initialFullPath.waypoints)
+    val closest = remainingpathForThisUnit.minByOpt(_.distanceSquaredTo(t.currentTile))
     val formationPoint = helper.assignedPosition(t)
     val canSeeFormationPoint = formationPoint.exists { target =>
       target.distanceToIsLess(t.currentTile, 15) &&
       mapLayers.rawWalkableMap.connectedByLine(target, t.currentTile)
     }
-    def isOver30Percent = todo.size / initialFullPath.waypoints.size.toDouble <= 0.7
+    def isOver30Percent = remainingpathForThisUnit.size / initialFullPath.waypoints.size.toDouble <=
+                          0.7
     def manyArrived = atFormationStep.size.toDouble / counter.size >= 0.8
 
     if (manyArrived) {
-      todo.clear()
+      remainingpathForThisUnit.clear()
       Some(follow.unsafeTarget -> true)
     } else if (canSeeFormationPoint) {
-      todo.clear()
+      remainingpathForThisUnit.clear()
       atFormationStep += t
       formationPoint.map(e => e -> isOver30Percent)
     } else {
       closest.map { c =>
         if (c.distanceSquaredTo(t.currentTile) <= 25) {
-          todo.removeUntilInclusive(_ == c)
+          remainingpathForThisUnit.removeUntilInclusive(_ == c)
         }
         c -> isOver30Percent
       }

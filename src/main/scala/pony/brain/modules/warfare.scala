@@ -2,6 +2,8 @@ package pony
 package brain
 package modules
 
+import pony.AttackPriorities.{AttackPriority, Lowest}
+
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
@@ -122,7 +124,8 @@ class FormationAtFrontLineHelper(override val universe: Universe, distance: Int 
 
 class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
 
-  private           val attacks                                             = ArrayBuffer.empty[Attack]
+  private           val attacks                                             = ArrayBuffer
+                                                                              .empty[Attack]
   private           var planInProgress: BWFuture[Option[IncompleteAttacks]] = BWFuture(None)
   @volatile private var thinking                                            = false
 
@@ -145,7 +148,7 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
 
   override def onTick_!(): Unit = {
     super.onTick_!()
-    attacks.foreach(_.onTick())
+    attacks.foreach(_.onTick_!())
     attacks.retain(_.hasNotEnded)
     if (thinking) {
       planInProgress.result.foreach { plan =>
@@ -159,11 +162,11 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
 
   def attackOf(m: Mobile) = attacks.find(_.force(m))
 
-  def initiateAttack(where: MapTilePosition, complete: Boolean = true): Unit = {
+  def initiateAttack(where: MapTilePosition, priority: AttackPriority = Lowest): Unit = {
     majorInfo(s"Initiating attack of $where")
     assert(!thinking, s"Cannot multitask yet, sorry")
     //this attack has priority over an existing one
-    if (complete) {
+    if (priority.isHigh) {
       attacks.clear()
     }
 
@@ -171,28 +174,31 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
     val req = UnitJobRequest.idleOfType(employer, classOf[Mobile], 9999)
     val result = unitManager.request(req, buildIfNoneAvailable = false)
     result.ifNotZero { seq =>
-      initiateAttack(where, seq)
+      val busy = attacks.flatMap(_.force).toSet
+      val notAlreadyAttacking = seq.collect { case m: Mobile => m }.filterNot(busy)
+      initiateAttack(where, notAlreadyAttacking, priority)
     }
   }
 
-  def initiateAttack(where: MapTilePosition, units: Seq[Mobile]): Unit = {
+  def initiateAttack(where: MapTilePosition, units: Seq[Mobile], priority: AttackPriority): Unit = {
     debug(s"Attacking $where with $units")
     val helper = new GroupingHelper(universe.mapLayers.rawWalkableMap, units, universe.allUnits)
     planInProgress = BWFuture.produceFrom {
       val on = universe.mapLayers.rawWalkableMap
       val grouped = helper.evaluateUnitGroups
       val newAttacks = grouped.map { group =>
-        val asUnits = group.memberIds
-                      .flatMap { e =>
-                        val op = ownUnits.byId(e)
-                        op.forNone {
-                          warn(s"Cannot find unit with id $e aka ${e.toBase36}")
-                        }
-                        op.map(_.asInstanceOf[Mobile])
-                      }
+        val asUnits = {
+          group.memberIds
+          .flatMap { e =>
+            val op = ownUnits.byId(e)
+            op.forNone {
+              warn(s"Cannot find unit with id $e aka ${e.toBase36}")
+            }
+            op.map(_.asInstanceOf[Mobile])
+          }
+        }
 
-
-        new IncompleteAttack(asUnits.toSet, TargetPosition(where, 10))
+        new IncompleteAttack(asUnits.toSet, TargetPosition(where, 10), priority)
       }
       debug(s"Attack calculation finished, results: $newAttacks")
       IncompleteAttacks(newAttacks)
@@ -216,12 +222,18 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
     override def asOrder = Orders.NoUpdate(who)
   }
 
-  class IncompleteAttack(private var currentForce: Set[Mobile], meetingPoint: TargetPosition) {
+  class IncompleteAttack(private var currentForce: Set[Mobile], meetingPoint: TargetPosition,
+                         priority: AttackPriority) {
     def complete = new Attack(currentForce, meetingPoint)
   }
 
-  class Attack(private var currentForce: Set[Mobile], meetingPoint: TargetPosition) {
+  class Attack(private var currentForce: Set[Mobile], meetingPoint: TargetPosition)
+    extends HasLazyVals {
+    val uniqueId = WrapsUnit.nextId
+
     def meetingStats = migrationPlan.map(_.meetingStats)
+
+    def force = currentForce
 
     def renderDebug(renderer: Renderer): Unit = {
       migrationPlan.foreach { plan =>
@@ -241,7 +253,7 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
     }
 
     assert(currentForce.nonEmpty, "WTF?")
-    private val centerOfForce = oncePerTick {
+    private val centerOfForce = this.oncePerTick {
       val realCenter = {
         currentForce.foldLeft(MapTilePosition.shared(0, 0))((acc, e) =>
           acc.movedByNew(e.currentTile)
@@ -250,9 +262,18 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
       area.flatMap(_.nearestFree(realCenter))
       .getOrElse(realCenter)
     }
-    private val pathToFollow = universe.pathfinders.groundSafe
-                               .findPaths(currentCenter, meetingPoint.where)
-    private val migration    = pathToFollow.map(_.map(_.toMigration))
+    private val pathToFollow  = universe.pathfinders.groundSafe
+                                .findPaths(currentCenter, meetingPoint.where)
+
+    private val migration = pathToFollow.map(_.map(_.toMigration))
+
+    private val myTargetReachedPercentage = oncePer(Primes.prime11) {
+      val reachedTargetPoint = migration.result.map { migration =>
+        currentForce.count { m => migration.isCloseToUnsafeTarget(m) }
+      }.getOrElse(0)
+
+      reachedTargetPoint / currentForce.size.toDouble
+    }
 
     def destination = meetingPoint
 
@@ -260,18 +281,19 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
 
     def hasNotEnded = !hasEnded
 
-    def hasEnded = !hasMembers || allReachedDestination
+    def hasEnded = !hasMembers || (allReachedTargetArea && halfOfForceReachedTargetPoint)
 
     def hasMembers = currentForce.nonEmpty
 
-    def allReachedDestination = migration.result.exists(_.allReachedDestination)
+    def halfOfForceReachedTargetPoint = myTargetReachedPercentage.get > 0.5
 
-    def onTick(): Unit = {
+    def allReachedTargetArea = migration.result.exists(_.allCloseToDestination)
+
+    override def onTick_!(): Unit = {
+      super.onTick_!()
       currentForce = currentForce.filter(_.isInGame)
       migration.result.foreach(_.onTick_!())
     }
-
-    def force = currentForce
 
     def currentCenter = centerOfForce.get
 
@@ -297,10 +319,12 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
           t match {
             case s: SupportUnit =>
               val stayHere = {
-                val stayBetweenThese = s.nearestAllies.iterator
-                                       .filter(_.currentTile.distanceToIsLess(s.currentTile, 8))
-                                       .take(3)
-                                       .map(_.currentTile)
+                val stayBetweenThese = {
+                  s.nearestAllies.iterator
+                  .filter(_.currentTile.distanceToIsLess(s.currentTile, 8))
+                  .take(3)
+                  .map(_.currentTile)
+                }
                 MapTilePosition.averageOpt(stayBetweenThese)
               }
               stayHere.map {AttackToPosition(t, _)}.getOrElse {defaultCommand}
@@ -309,6 +333,10 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
           }
       }
     }
+
+    override def toString = s"--> X $uniqueId@$destination, $meetingStats"
+
+    override protected def currentTick = universe.currentTick
   }
 
   case class Attacks(parts: Seq[Attack])
@@ -317,7 +345,6 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
     def complete = Attacks(parts.map(_.complete))
   }
 
-
 }
 
 case class UnitGroup[T <: WrapsUnit](members: Seq[T], center: MapTilePosition)
@@ -325,7 +352,10 @@ case class UnitGroup[T <: WrapsUnit](members: Seq[T], center: MapTilePosition)
 object GroupingHelper {
   def typedGroup[T <: WrapsUnit](universe: Universe, group: Group[T]) = {
     val members = group.memberIds.flatMap { e =>
-      universe.enemyUnits.byId(e).orElse(universe.ownUnits.byId(e)).asInstanceOf[Option[T]]
+      universe.enemyUnits
+      .byId(e)
+      .orElse(universe.ownUnits.byId(e))
+      .asInstanceOf[Option[T]]
     }.toVector
     UnitGroup(members, group.center)
   }
@@ -658,7 +688,7 @@ class SetupAntiCloakDefenses(universe: Universe)
   private val richBaseCount = oncePerTick {
     bases.richBasesCount
   }
-  private val analyzed = FutureIterator.feed(input) produceAsyncLater { in =>
+  private val analyzed      = FutureIterator.feed(input) produceAsyncLater { in =>
 
     val counts = mutable.HashMap.empty[MapTilePosition, Int]
 
@@ -759,6 +789,7 @@ class SetupAntiCloakDefenses(universe: Universe)
 
     def age = currentTick - created
   }
+
 }
 
 class HandleDefenses(universe: Universe) extends OrderlessAIModule[Mobile](universe) {
@@ -785,7 +816,7 @@ class HandleDefenses(universe: Universe) extends OrderlessAIModule[Mobile](unive
         //prototype: just attack the biggest group with everything
 
         val biggest = typedGroups.maxBy(_.members.iterator.map(_.armorType.transportSize).sum)
-        worldDominationPlan.initiateAttack(biggest.center, complete = false)
+        worldDominationPlan.initiateAttack(biggest.center, Lowest)
 
         resetBackgroundOp()
       }, {})

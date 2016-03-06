@@ -3,6 +3,7 @@ package pony
 import java.text.DecimalFormat
 
 import bwapi.Color
+import pony.AttackPriorities.Highest
 import pony.brain.modules.{GatherMineralsAtSinglePatch, ProvideExpansions}
 import pony.brain.{HasUniverse, TwilightSparkle, Universe}
 
@@ -257,6 +258,25 @@ class StatsRenderer(override val universe: Universe) extends AIPlugIn with HasUn
         }.toList.sorted
       }
 
+      debugString ++= {
+        universe.worldDominationPlan.allAttacks.map { att =>
+          val id = att.uniqueId.toSome.map { id =>
+            s"Attack $id with"
+          }
+          val force = att.force.size.toSome.map { i =>
+            s" $i units"
+          }
+          val where = att.destination.where.toSome.map { tp =>
+            s" attacking $tp"
+          }
+          val state = att.meetingStats.map { case (done, total) =>
+            s", ${total - done} tbd"
+          }
+
+          (force :: where :: state :: Nil).flatten.mkString
+        }
+      }
+
       if (debugger.isFullDebug) {
         debugString ++= {
           val formatted = unitManager.jobsByType.map { case (jobType, members) =>
@@ -417,7 +437,7 @@ class DebugHelper(main: MainAI) extends AIPlugIn with HasUniverse {
                   enemies.allMobilesAndBuildings.find(_.unitIdText == id).map(_.centerTile)
               }
               target.foreach { where =>
-                main.brain.universe.worldDominationPlan.initiateAttack(where, true)
+                main.brain.universe.worldDominationPlan.initiateAttack(where, Highest)
               }
           }
         case Nil =>
