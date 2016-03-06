@@ -63,6 +63,10 @@ trait ZergBuilding extends ZergUnit with Building
 
 trait WrapsUnit extends HasUniverse with AfterTickListener {
 
+  def isNonFighter = false
+
+  def isFigher = !isNonFighter
+
   private val unitId               = WrapsUnit.nextId
   private var morphed              = false
   private var inGame               = true
@@ -716,7 +720,7 @@ trait MaybeCanDie extends WrapsUnit {
 
   def isDead = dead || currentHp.isDead
 
-  def isNonFighter = isUnArmed || isInstanceOf[WorkerUnit]
+  override def isNonFighter = isUnArmed || super.isNonFighter
 
   def isUnArmed = !canDoDamage && !hasSpells
 
@@ -781,6 +785,7 @@ trait IndestructibleUnit extends WrapsUnit {
 trait AutoPilot extends Mobile {
   def isManuallyControlled = !isAutoPilot
   override def isAutoPilot = true
+  override def isNonFighter = true
 }
 
 trait Mobile extends WrapsUnit with Controllable {
@@ -1255,7 +1260,7 @@ object WorkerUnit {
 }
 
 trait WorkerUnit extends Killable with Mobile with GroundUnit with GroundWeapon with Floating {
-
+  override def isNonFighter = true
   def isGatheringGas = WorkerUnit.gasMiningOrders(currentOrder)
   def isMagic = currentOrder == Order.ResetCollision
   def isInMiningProcess = currentOrder == Order.MiningMinerals
@@ -1270,6 +1275,7 @@ trait WorkerUnit extends Killable with Mobile with GroundUnit with GroundWeapon 
 }
 
 trait TransporterUnit extends AirUnit {
+  override def isNonFighter = true
   private val myPickingUp = oncePerTick {
     nativeUnit.getOrderTarget != null
   }

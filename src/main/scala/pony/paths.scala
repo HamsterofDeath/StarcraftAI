@@ -66,29 +66,39 @@ class MigrationPath(follow: Paths, override val universe: Universe)
     assertCalled()
     val index = counter.getOrElseUpdate(t, counter.size) % follow.pathCount
     val initialFullPath = follow.paths(index)
-    val remainingpathForThisUnit = remaining.getOrElseUpdate(t,
+    val remainingPathForThisUnit = remaining.getOrElseUpdate(t,
       ArrayBuffer.empty ++= initialFullPath.waypoints)
-    val closest = remainingpathForThisUnit.minByOpt(_.distanceSquaredTo(t.currentTile))
+    val closest = remainingPathForThisUnit.minByOpt(_.distanceSquaredTo(t.currentTile))
     val formationPoint = helper.assignedPosition(t)
     val canSeeFormationPoint = formationPoint.exists { target =>
       target.distanceToIsLess(t.currentTile, 15) &&
       mapLayers.rawWalkableMap.connectedByLine(target, t.currentTile)
     }
-    def isOver30Percent = remainingpathForThisUnit.size / initialFullPath.waypoints.size.toDouble <=
-                          0.7
+    def isOver30Percent = {
+      remainingPathForThisUnit.size / initialFullPath.waypoints.size.toDouble <= 0.7
+    }
     def manyArrived = atFormationStep.size.toDouble / counter.size >= 0.8
+    def skipFormation = {
+      t.currentTile.distanceSquaredTo(initialFullPath.unsafeTarget) <
+      formationPoint.map(t.currentTile.distanceSquaredTo).getOrElse(10000)
+    }
 
+    def clearPath() = remainingPathForThisUnit.clear()
     if (manyArrived) {
-      remainingpathForThisUnit.clear()
+      clearPath()
       Some(follow.unsafeTarget -> true)
+    } else if (skipFormation) {
+      clearPath()
+      atFormationStep += t
+      None // just wait
     } else if (canSeeFormationPoint) {
-      remainingpathForThisUnit.clear()
+      clearPath()
       atFormationStep += t
       formationPoint.map(e => e -> isOver30Percent)
     } else {
       closest.map { c =>
         if (c.distanceSquaredTo(t.currentTile) <= 25) {
-          remainingpathForThisUnit.removeUntilInclusive(_ == c)
+          remainingPathForThisUnit.removeUntilInclusive(_ == c)
         }
         c -> isOver30Percent
       }

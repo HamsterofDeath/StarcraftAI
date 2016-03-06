@@ -774,10 +774,7 @@ object Terran {
     override def priority = SecondPriority.Less
 
     override def canControl(u: WrapsUnit): Boolean = {
-      super.canControl(u) &&
-      !u.isInstanceOf[WorkerUnit] &&
-      !u.isInstanceOf[TransporterUnit] &&
-      !u.isInstanceOf[AutoPilot]
+      super.canControl(u) && u.isFigher
     }
 
     override def onTick_!(): Unit = {

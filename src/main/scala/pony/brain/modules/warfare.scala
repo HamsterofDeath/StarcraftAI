@@ -11,26 +11,28 @@ class FormationHelper(override val universe: Universe,
                       paths: Paths,
                       distanceForUnits: Int = 1,
                       isGroundPath: Boolean) extends HasUniverse {
-  private val target             = paths.anyTarget
+
+  private val target             = paths.realisticTarget
   private val assignments        = mutable.HashMap.empty[Mobile, MapTilePosition]
   private val used               = mutable.HashSet.empty[MapTilePosition]
   private val availablePositions = {
     val walkable = mapLayers.rawWalkableMap.guaranteeImmutability
 
     BWFuture.from {
-      val minDst = 24
       if (isGroundPath) {
         val availableArea = {
           mapLayers.safeGround.mutableCopy
         }
 
         val targetArea = walkable.areaOf(target).getOr(s"No area contains $target")
-        val validTiles = availableArea.spiralAround(target, 80)
+        val validTiles = availableArea.spiralAround(target)
                          .filter(availableArea.freeAndInBounds)
                          .filter(targetArea.freeAndInBounds)
                          .toVector
 
-        val unsorted = validTiles.filter { p => paths.isEmpty || paths.minimalDistanceTo(p) < 10 }
+        val unsorted = validTiles.filter { p =>
+          paths.isEmpty || paths.minimalDistanceTo(p) < 10
+        }
 
         unsorted.sortBy(_.distanceSquaredTo(target))
       } else {
@@ -175,7 +177,8 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
     val result = unitManager.request(req, buildIfNoneAvailable = false)
     result.ifNotZero { seq =>
       val busy = attacks.flatMap(_.force).toSet
-      val notAlreadyAttacking = seq.collect { case m: Mobile => m }.filterNot(busy)
+      val notAlreadyAttacking = seq.collect { case m: Mobile if m.isFigher => m }
+                                .filterNot(busy)
       initiateAttack(where, notAlreadyAttacking, priority)
     }
   }
@@ -222,12 +225,12 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
     override def asOrder = Orders.NoUpdate(who)
   }
 
-  class IncompleteAttack(private var currentForce: Set[Mobile], meetingPoint: TargetPosition,
+  class IncompleteAttack(private var currentForce: Set[Mobile], targetOfAttack: TargetPosition,
                          priority: AttackPriority) {
-    def complete = new Attack(currentForce, meetingPoint)
+    def complete = new Attack(currentForce, targetOfAttack)
   }
 
-  class Attack(private var currentForce: Set[Mobile], meetingPoint: TargetPosition)
+  class Attack(private var currentForce: Set[Mobile], targetOfAttack: TargetPosition)
     extends HasLazyVals {
     val uniqueId = WrapsUnit.nextId
 
@@ -262,8 +265,10 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
       area.flatMap(_.nearestFree(realCenter))
       .getOrElse(realCenter)
     }
-    private val pathToFollow  = universe.pathfinders.groundSafe
-                                .findPaths(currentCenter, meetingPoint.where)
+    private val pathToFollow  = {
+      universe.pathfinders.groundSafe
+      .findPaths(currentCenter, targetOfAttack.where)
+    }
 
     private val migration = pathToFollow.map(_.map(_.toMigration))
 
@@ -275,7 +280,7 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
       reachedTargetPoint / currentForce.size.toDouble
     }
 
-    def destination = meetingPoint
+    def destination = targetOfAttack
 
     def migrationPlan = migration.result
 
