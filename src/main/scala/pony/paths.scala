@@ -974,7 +974,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   private def evalHostileLongRangeUnits = {
     FutureIterator.feed(new EvalSafeInput).produceAsync { in =>
       val base = in.base
-      base.geoHelper.intersections.tilesInCircleWithRange(in.longRangeGroundCoveringUnits, 9, 1)
+      base.geoHelper.intersections.tilesInCircleWithRange(in.longRangeGroundCoveringUnits, 7, 1)
       .foreach(base.block_!)
       base.guaranteeImmutability
     }
@@ -999,7 +999,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
     val longRangeGroundCoveringUnits = {
       universe.enemyUnits.allWithGroundWeapon.filterNot(_.isHarmlessNow)
       .filter(_.groundRangeTiles >= 7)
-      .map(e => e.centerTile -> e.groundRangeTiles)
+      .map(e => e.centerTile -> (e.groundRangeTiles + 1))
     }
   }
 

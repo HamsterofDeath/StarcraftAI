@@ -453,10 +453,13 @@ object Terran {
 
     case class Feed(toAvoid: Grid2D, free: Grid2D)
 
+    protected def targetReuseAllowance = 0
+
     private def feed = Feed(tilesToAvoidAsBlocked.getOrElse(mapLayers.emptyGrid),
       mapLayers.freeWalkableTiles)
 
     private val freeAlternativeTiles = FutureIterator.feed(feed).produceAsyncLater { in =>
+      val usages = mutable.HashMap.empty[MapTilePosition, Int]
       val walkable = mapLayers.rawWalkableMap
       val allBlocked = in.toAvoid.allBlocked.toList
       val mut = in.toAvoid.mutableCopy
@@ -473,7 +476,10 @@ object Terran {
         }
         // block solution for next try
         ret.foreach { found =>
-          mut.block_!(found)
+          usages.insertReplace(found, _ + 1, 1)
+          if (usages(found) == targetReuseAllowance) {
+            mut.block_!(found)
+          }
         }
         ret.map(e => blocked -> e)
       }.toMap
@@ -537,6 +543,8 @@ object Terran {
 
   class MoveAwayFromDangerousSpot(universe: Universe)
     extends AvoidSpecificAreas[Mobile](universe) {
+
+    override protected def targetReuseAllowance = 8
 
     override protected def updateWhen = Primes.prime37
 
