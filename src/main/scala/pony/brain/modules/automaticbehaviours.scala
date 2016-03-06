@@ -92,6 +92,7 @@ object Terran {
                       new RepairDamagedUnit(universe) ::
                       new RepairDamagedBuilding(universe) ::
                       new MoveAwayFromConstructionSite(universe) ::
+                      new MoveAwayFromDangerousSpot(universe) ::
                       new PreventBlockades(universe) ::
                       new ContinueInterruptedConstruction(universe) ::
                       new UseComsat(universe) ::
@@ -309,39 +310,42 @@ object Terran {
         val center = MapTilePosition.average(dancer.partners.iterator.map(_.where))
 
         val myArea = universe.mapLayers.rawWalkableMap.areaOf(dancer.me.where)
-        dancer -> myArea.flatMap { a =>
-          def tileIterator = {
-            on.spiralAround(dancer.me.where, range)
-            .drop(dropAtFirst)
-            .sliding(1, takeNth)
-            .flatten
-            .take(tries)
-          }
-          def antiGravTry = {
-            var xSum = 0
-            var ySum = 0
+        val danceMove = {
+          myArea.flatMap { a =>
+            def tileIterator = {
+              on.spiralAround(dancer.me.where, range)
+              .drop(dropAtFirst)
+              .sliding(1, takeNth)
+              .flatten
+              .take(tries)
+            }
+            def antiGravTry = {
+              var xSum = 0
+              var ySum = 0
 
-            for (dp <- dancer.partners) {
-              val diff = dp.where.diffTo(dancer.me.where)
-              xSum += diff.x
-              ySum += diff.y
+              for (dp <- dancer.partners) {
+                val diff = dp.where.diffTo(dancer.me.where)
+                xSum += diff.x
+                ySum += diff.y
+              }
+
+              val ref = dancer.me.where.movedBy(MapTilePosition(xSum, ySum))
+
+              tileIterator.filter { c =>
+                c.distanceSquaredTo(ref) <= dancer.me.where.distanceSquaredTo(center)
+              }.find(e => on.free(e) && a.free(e) && safetyCheck.free(e))
             }
 
-            val ref = dancer.me.where.movedBy(MapTilePosition(xSum, ySum))
+            def secondTry = {
+              tileIterator
+              .filter(e => on.free(e) && a.free(e) && safetyCheck.free(e))
+              .maxByOpt(center.distanceSquaredTo)
+            }
 
-            tileIterator.filter { c =>
-              c.distanceSquaredTo(ref) <= dancer.me.where.distanceSquaredTo(center)
-            }.find(e => on.free(e) && a.free(e) && safetyCheck.free(e))
+            antiGravTry.orElse(secondTry)
           }
-
-          def secondTry = {
-            tileIterator
-            .filter(e => on.free(e) && a.free(e) && safetyCheck.free(e))
-            .maxByOpt(center.distanceSquaredTo)
-          }
-
-          antiGravTry.orElse(secondTry)
         }
+        dancer -> danceMove
       }.collect { case (k, v) if v.isDefined =>
         k.me.id -> v.get
       }.toMap
@@ -439,18 +443,23 @@ object Terran {
 
   }
 
-  class MoveAwayFromConstructionSite(universe: Universe)
-    extends DefaultBehaviour[Mobile](universe) {
+  abstract class AvoidSpecificAreas[T <: Mobile : Manifest](universe: Universe)
+    extends DefaultBehaviour[T](universe) {
+    self =>
 
-    case class Feed(planned: Grid2D, free: Grid2D)
+    protected def tilesToAvoidAsBlocked: Option[Grid2D]
 
-    private def feed = Feed(mapLayers.blockedByPlannedBuildings, mapLayers.freeWalkableTiles)
+    protected def tolerance = 2
+
+    case class Feed(toAvoid: Grid2D, free: Grid2D)
+
+    private def feed = Feed(tilesToAvoidAsBlocked.getOrElse(mapLayers.emptyGrid),
+      mapLayers.freeWalkableTiles)
 
     private val freeAlternativeTiles = FutureIterator.feed(feed).produceAsyncLater { in =>
-      val tolerance = 2
-
-      val allBlocked = in.planned.allBlocked.toList
-      val mut = in.planned.mutableCopy
+      val walkable = mapLayers.rawWalkableMap
+      val allBlocked = in.toAvoid.allBlocked.toList
+      val mut = in.toAvoid.mutableCopy
       allBlocked.foreach { where =>
         mut.block_!(where.asArea.growBy(tolerance))
       }
@@ -459,7 +468,8 @@ object Terran {
         val ret = in.free.spiralAround(blocked).find { tile =>
           in.free.freeAndInBounds(tile) &&
           mut.freeAndInBounds(tile) &&
-          mapLayers.rawWalkableMap.areInSameWalkableArea(tile, blocked)
+          walkable.areInSameWalkableArea(tile, blocked) &&
+          walkable.countBlockedOnLine(tile, blocked).freePercentage >= 0.8
         }
         // block solution for next try
         ret.foreach { found =>
@@ -470,23 +480,43 @@ object Terran {
     }
 
     override def renderDebug_!(renderer: Renderer) = {
-      super.renderDebug_!(renderer)
-      freeAlternativeTiles.mostRecent.foreach { data =>
-        data.foreach { case (from, to) =>
-          renderer.in_!(Color.Green).indicateTarget(from, to)
+      if (logLevel.includes(LogLevels.LogTrace)) {
+        super.renderDebug_!(renderer)
+        freeAlternativeTiles.mostRecent.foreach { data =>
+          data.foreach { case (from, to) =>
+            renderer.in_!(Color.Green).indicateTarget(from, to)
+          }
         }
       }
     }
 
+    protected def updateWhen = Primes.prime31
+
     override def onTick_!() = {
       super.onTick_!()
-      ifNth(Primes.prime31) {
+      ifNth(updateWhen) {
         freeAlternativeTiles.prepareNextIfDone()
       }
     }
 
-    override protected def wrapBase(unit: Mobile) = new SingleUnitBehaviour[Mobile](unit, meta) {
-      override def describeShort: String = "<>"
+    protected val actionName = self.getClass.className
+
+    override protected def wrapBase(unit: T) = new SingleUnitBehaviour[T](unit, meta) {
+
+      private val isInstantFireUnit = unit.isInstantFireUnit
+
+      private def weapon = unit.asInstanceOf[Weapon]
+
+      override protected def butOnlyIf = {
+        def couldFireInBetween = {
+          isInstantFireUnit &&
+          weapon.isReadyToFireWeapon &&
+          weapon.hasTarget
+        }
+        super.butOnlyIf && !couldFireInBetween
+      }
+
+      override def describeShort = actionName
 
       override def toOrder(what: Objective): Seq[UnitOrder] = {
         freeAlternativeTiles.flatMapOnContent { result =>
@@ -495,8 +525,24 @@ object Terran {
           Orders.MoveToTile(unit, target)
         }.toList
       }
-
     }
+  }
+
+  class MoveAwayFromConstructionSite(universe: Universe)
+    extends AvoidSpecificAreas[Mobile](universe) {
+    override protected def tilesToAvoidAsBlocked = mapLayers.blockedByPlannedBuildings.toSome
+
+    override protected val actionName = "<>"
+  }
+
+  class MoveAwayFromDangerousSpot(universe: Universe)
+    extends AvoidSpecificAreas[Mobile](universe) {
+
+    override protected def updateWhen = Primes.prime37
+
+    override protected def tilesToAvoidAsBlocked = mapLayers.coveredByEnemyLongRangeAsBlocked.toSome
+
+    override protected val actionName: String = "<!>"
   }
 
   class PreventBlockades(universe: Universe) extends DefaultBehaviour[Mobile](universe) {

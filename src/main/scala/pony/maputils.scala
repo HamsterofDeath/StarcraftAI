@@ -135,7 +135,12 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
 
   def inBounds(x: Int, y: Int): Boolean = x >= 0 && x < cols && y >= 0 && y < rows
 
-  def countBlockedOnLine(line: Line) = {
+  def countBlockedOnLine(a: MapTilePosition, b: MapTilePosition): LineInfo = {
+    val line = Line(a, b)
+    countBlockedOnLine(line)
+  }
+
+  def countBlockedOnLine(line: Line): LineInfo = {
     var blockedCount = 0
     var freeCount = 0
     AreaHelper.traverseTilesOfLine(line.a, line.b, (x, y) => {
@@ -150,8 +155,9 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
     LineInfo(line, blockedCount, freeCount)
   }
 
-  def connectedByLine(a: MapTilePosition, b: MapTilePosition) = AreaHelper
-                                                                .directLineOfSight(a, b, this)
+  def connectedByLine(a: MapTilePosition, b: MapTilePosition) = {
+    AreaHelper.directLineOfSight(a, b, this)
+  }
 
   def blockedCount = size - freeCount
 
@@ -258,7 +264,10 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
 
   def areaCount = areas.size
 
-  case class LineInfo(line: Line, blocked: Int, free: Int)
+  case class LineInfo(line: Line, blocked: Int, free: Int) {
+    def freePercentage = free.toDouble / (blocked + free)
+  }
+
 }
 
 class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet,

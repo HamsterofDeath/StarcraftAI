@@ -127,17 +127,18 @@ case class Paths(paths: Seq[Path], isGroundPath: Boolean) {
   val anyTarget           = paths.head.bestEffort
 
   def renderDebug(renderer: Renderer): Unit = {
-    paths.foreach { singlePath =>
-      var prev = Option.empty[MapTilePosition]
-      singlePath.waypoints.zipWithIndex.foreach { case (tile, index) =>
-        renderer.drawTextAtTile(s"P$index", tile)
-        prev.foreach { p =>
-          renderer.drawLineInTile(p, tile)
+    if (logLevel.includes(LogLevels.LogTrace)) {
+      paths.foreach { singlePath =>
+        var prev = Option.empty[MapTilePosition]
+        singlePath.waypoints.zipWithIndex.foreach { case (tile, index) =>
+          renderer.drawTextAtTile(s"P$index", tile)
+          prev.foreach { p =>
+            renderer.drawLineInTile(p, tile)
+          }
+          prev = Some(tile)
         }
-        prev = Some(tile)
       }
     }
-
   }
 
   def toMigration(implicit universe: Universe) = new MigrationPath(this, universe)
@@ -640,17 +641,26 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   private var withEverythingBlockingBuildable = evalEverythingBlockingBuildable
   private var withEverythingBlockingWalkable  = evalEverythingBlockingWalkable
 
+  private val cpuHeavy = ArrayBuffer.empty[FutureIterator[_, Grid2D]]
+
+  implicit class RichFuture(val f: FutureIterator[_, Grid2D]) {
+    def registered = {
+      cpuHeavy += f
+      f
+    }
+  }
+
   // cpu heavy
-  private val justAreasToDefend              = evalOnlyAreasToDefend
-  private val justBlockedForMainBuilding     = evalOnlyBlockedForMainBuildings
-  private val coveredByDangerousUnits        = evalDangerousOnGround
-  private val coveredByHostileLongRangeUnits = evalHostileLongRangeUnits
-  private val coveredByAnythingWithWeapons   = evalSlightlyDangerous
-  private val coveredByOwnDetectors          = evalDetected
-  private val coveredByOwnGround             = evalGroundDefended
-  private val coveredbyOwnAir                = evalAirDefended
-  private val exposedToCloaked               = evalExposedToCloakedUnits
-  private val justBlockingMobilesExtended    = evalOnlyMobileBlockingUnitsExtended
+  private val justAreasToDefend              = evalOnlyAreasToDefend.registered
+  private val justBlockedForMainBuilding     = evalOnlyBlockedForMainBuildings.registered
+  private val coveredByDangerousUnits        = evalDangerousOnGround.registered
+  private val coveredByHostileLongRangeUnits = evalHostileLongRangeUnits.registered
+  private val coveredByAnythingWithWeapons   = evalSlightlyDangerous.registered
+  private val coveredByOwnDetectors          = evalDetected.registered
+  private val coveredByOwnGround             = evalGroundDefended.registered
+  private val coveredbyOwnAir                = evalAirDefended.registered
+  private val exposedToCloaked               = evalExposedToCloakedUnits.registered
+  private val justBlockingMobilesExtended    = evalOnlyMobileBlockingUnitsExtended.registered
   // initializion order mess
   private var walkableSafe                   = evalWalkableSafe
   private var airSafe                        = evalAirSafe
@@ -684,9 +694,16 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
 
   def blockedByPlannedBuildings = plannedBuildings.asReadOnlyView
 
+  def coveredByDetectors = coveredByOwnDetectors.mostRecent.getOrElse(emptyGrid)
+
+  def coveredByOwnGroundUnits = coveredByOwnGround.mostRecent.getOrElse(emptyGrid)
+
+  def coveredByOwnAirUnits = coveredbyOwnAir.mostRecent.getOrElse(emptyGrid)
+
   def dangerousAsBlocked = coveredByDangerousUnits.mostRecent.getOrElse(emptyGrid)
 
-  def coveredByEnemyLongRangeAsBlocked = coveredByDangerousUnits.mostRecent.getOrElse(emptyGrid)
+  def coveredByEnemyLongRangeAsBlocked = coveredByHostileLongRangeUnits.mostRecent
+                                         .getOrElse(emptyGrid)
 
   def slightlyDangerousAsBlocked = coveredByAnythingWithWeapons.mostRecent.getOrElse(emptyGrid)
 
@@ -802,17 +819,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
       airSafe = evalAirSafe
 
       ifNth(Primes.prime89) {
-        // these are cpu heavy
-        justBlockingMobilesExtended.prepareNextIfDone()
-        justAreasToDefend.prepareNextIfDone()
-        justBlockedForMainBuilding.prepareNextIfDone()
-        coveredByDangerousUnits.prepareNextIfDone()
-        coveredByHostileLongRangeUnits.prepareNextIfDone()
-        coveredByAnythingWithWeapons.prepareNextIfDone()
-        coveredbyOwnAir.prepareNextIfDone()
-        coveredByOwnGround.prepareNextIfDone()
-        coveredByOwnDetectors.prepareNextIfDone()
-        exposedToCloaked.prepareNextIfDone()
+        cpuHeavy.foreach(_.prepareNextIfDone())
       }
     }
   }
@@ -967,7 +974,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   private def evalHostileLongRangeUnits = {
     FutureIterator.feed(new EvalSafeInput).produceAsync { in =>
       val base = in.base
-      base.geoHelper.intersections.tilesInCircle(in.longRangeGroundCoveringUnits, 12, 1)
+      base.geoHelper.intersections.tilesInCircleWithRange(in.longRangeGroundCoveringUnits, 9, 1)
       .foreach(base.block_!)
       base.guaranteeImmutability
     }
@@ -991,8 +998,8 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
     }
     val longRangeGroundCoveringUnits = {
       universe.enemyUnits.allWithGroundWeapon.filterNot(_.isHarmlessNow)
-      .filter(_.groundRangeTiles >= 8)
-      .map(_.centerTile)
+      .filter(_.groundRangeTiles >= 7)
+      .map(e => e.centerTile -> e.groundRangeTiles)
     }
   }
 

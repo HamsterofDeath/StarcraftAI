@@ -1,6 +1,6 @@
 package pony
 
-import bwapi.{Order, Race, TechType, Unit => APIUnit, UnitType, UpgradeType, WeaponType}
+import bwapi.{Order, Race, TechType, UnitType, UpgradeType, WeaponType, Unit => APIUnit}
 import pony.Upgrades.Terran.{Nuke, ScannerSweep}
 import pony.Upgrades.{IsTech, SinglePointMagicSpell, SingleTargetMagicSpell}
 import pony.brain._
@@ -798,6 +798,14 @@ trait Mobile extends WrapsUnit with Controllable {
       .map(_.get)
     }
   }
+  def isInstantFireUnit = this match {
+    case ga: GroundAndAirWeapon => ga.isInstantAttackGround && ga.isInstantAttackAir
+    case g: GroundWeapon => g.isInstantAttackGround
+    case a: AirWeapon => a.isInstantAttackAir
+    case _ => false
+  }
+
+
   private val defenseMatrix         = oncePerTick {
     nativeUnit.getDefenseMatrixPoints > 0 || nativeUnit.getDefenseMatrixTimer > 0
   }
@@ -886,11 +894,13 @@ trait HasSpiderMines extends WrapsUnit {
 }
 
 trait GroundWeapon extends Weapon {
+
   val groundRangePixels      = groundWeapon.maxRange()
   val groundRangeTiles       = groundRangePixels / tileSize
   val groundCanAttackAir     = groundWeapon.targetsAir()
   val groundCanAttackGround  = groundWeapon.targetsGround()
   val groundDamageMultiplier = groundWeapon.damageFactor()
+  def isInstantAttackGround = damageDelayFactorGround == 0
   val groundDamageType: DamageType
   protected lazy val groundWeapon          = initialNativeType.groundWeapon()
   private        val damage                = LazyVal.from {
@@ -1034,6 +1044,7 @@ trait AirWeapon extends Weapon {
   val airCanAttackGround  = airWeapon.targetsGround()
   val airDamageMultiplier = airWeapon.damageFactor()
   val airDamageType: DamageType
+  def isInstantAttackAir = damageDelayFactorAir == 0
   protected lazy val airWeapon = initialNativeType.airWeapon()
   private        val damage    = LazyVal.from {
     // will be invalidated on upgrade
@@ -1096,6 +1107,12 @@ trait ArmedMobile extends Mobile with Weapon {
 
 trait Weapon extends Controllable with ArmedUnit {
   self: WrapsUnit =>
+
+  private val myTarget = oncePerTick {
+    nativeUnit.getTarget != null && nativeUnit.getOrderTarget != null
+  }
+
+  def hasTarget = myTarget.get
 
   def assumeShotDelayOn(target: MaybeCanDie): Int = !!!("This should never be called")
 

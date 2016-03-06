@@ -41,7 +41,7 @@ package object pony {
   val tileSize  = 32
   var tickCount = 0
 
-  private var setTinyLogLevel_! : LogLevel = LogLevels.LogTrace
+  private var tinyLogLevel: LogLevel = LogLevels.LogTrace
 
   def !!! : Nothing = !!!("Something is not as it should be")
 
@@ -52,7 +52,7 @@ package object pony {
 
   def setLogLevel_!(logLevel: LogLevel): Unit = {
     setTinyLogLevel_!(logLevel.toTinyLogLevel)
-    this.setTinyLogLevel_! = logLevel
+    this.tinyLogLevel = logLevel
   }
 
   def setTinyLogLevel_!(newLevel: Level) = {
@@ -65,15 +65,17 @@ package object pony {
     assert(ok)
   }
 
+  def logLevel = tinyLogLevel
+
   @elidable(LOGLEVEL)
   def error(a: => Any, doIt: Boolean = true): Unit = {
-    if (doIt && LogError.includes(setTinyLogLevel_!))
+    if (doIt && LogError.includes(tinyLogLevel))
       tinylog.Logger.error(s"[$tick] ${a.toString}")
   }
 
   @elidable(LOGLEVEL)
   def warn(a: => Any, doIt: Boolean = true): Unit = {
-    if (doIt && LogWarn.includes(setTinyLogLevel_!))
+    if (doIt && LogWarn.includes(tinyLogLevel))
       tinylog.Logger.warn(s"[$tick] ${a.toString}")
   }
 
@@ -83,7 +85,7 @@ package object pony {
 
   @elidable(LOGLEVEL)
   def info(a: => Any, doIt: Boolean = true): Unit = {
-    if (doIt && LogInfo.includes(setTinyLogLevel_!))
+    if (doIt && LogInfo.includes(tinyLogLevel))
       tinylog.Logger.info(s"[$tick] ${a.toString}")
   }
 
@@ -91,13 +93,13 @@ package object pony {
 
   @elidable(LOGLEVEL)
   def majorInfo(a: => Any, doIt: Boolean = true): Unit = {
-    if (doIt && LogInfo.includes(setTinyLogLevel_!))
+    if (doIt && LogInfo.includes(tinyLogLevel))
       tinylog.Logger.info(s"<MAJOR> [$tick] ${a.toString}")
   }
 
   @elidable(LOGLEVEL)
   def debug(a: => Any, doIt: Boolean = true): Unit = {
-    if (LogDebug.includes(setTinyLogLevel_!))
+    if (LogDebug.includes(tinyLogLevel))
       tinylog.Logger.debug(s"[$tick] ${a.toString}")
   }
 
@@ -105,7 +107,7 @@ package object pony {
 
   @elidable(LOGLEVEL)
   def trace(a: => Any, doIt: Boolean = true, marker: String = ""): Unit = {
-    if (doIt && LogTrace.includes(setTinyLogLevel_!))
+    if (doIt && LogTrace.includes(tinyLogLevel))
       tinylog.Logger.trace(s"[$tick] ${if (marker.isEmpty) "" else s"[$marker] "}${a.toString}")
   }
 

@@ -1461,6 +1461,8 @@ abstract class SingleUnitBehaviour[+T <: WrapsUnit](val unit: T, meta: SingleUni
 
   def onStealUnit(): Unit = {}
 
+  protected def butOnlyIf = true
+
   def orderForTick(what: Objective) = {
     if (skipFor > 0) {
       skipFor -= 1
@@ -1468,7 +1470,11 @@ abstract class SingleUnitBehaviour[+T <: WrapsUnit](val unit: T, meta: SingleUni
     } else {
       val interrupt = higherPriorityOrder
       if (interrupt.isEmpty) {
-        toOrder(what)
+        if (butOnlyIf) {
+          toOrder(what)
+        } else {
+          Nil
+        }
       } else {
         interrupt
       }
