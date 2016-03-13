@@ -26,13 +26,11 @@ trait OrderHistorySupport extends WrapsUnit {
   }
   override def onTick_!(): Unit = {
     super.onTick_!()
-    if (universe.world.debugger.isDebugging) {
-      if (universe.unitManager.hasJob(this)) {
-        history += HistoryElement(nativeUnit.getOrder, nativeUnit.getOrderTarget,
-          universe.unitManager.jobOf(this))
-        if (history.size > maxHistory) {
-          history.remove(0)
-        }
+    if (universe.unitManager.hasJob(this)) {
+      history += HistoryElement(nativeUnit.getOrder, nativeUnit.getOrderTarget,
+        universe.unitManager.jobOf(this))
+      if (history.size > maxHistory) {
+        history.remove(0)
       }
     }
   }
@@ -902,6 +900,7 @@ trait GroundWeapon extends Weapon {
 
   val groundRangePixels      = groundWeapon.maxRange()
   val groundRangeTiles       = groundRangePixels / tileSize
+  private val groundRangeTilesSquared = groundRangeTiles * groundRangeTiles
   val groundCanAttackAir     = groundWeapon.targetsAir()
   val groundCanAttackGround  = groundWeapon.targetsGround()
   val groundDamageMultiplier = groundWeapon.damageFactor()
@@ -921,14 +920,14 @@ trait GroundWeapon extends Weapon {
   override def weaponRangeRadius: Int = super.weaponRangeRadius max groundRangePixels
 
   override def assumeShotDelayOn(target: MaybeCanDie) = {
-    if (canAttack(target)) {
+    if (canAttackIfNear(target)) {
       damageDelayFactorGround
     } else
       super.assumeShotDelayOn(target)
   }
 
-  override def canAttack(other: MaybeCanDie) = {
-    super.canAttack(other) || selfCanAttack(other)
+  override def canAttackIfNear(other: MaybeCanDie) = {
+    super.canAttackIfNear(other) || selfCanAttack(other)
   }
 
   def inGroundWeaponRange = myInGroundWeaponRange.get
@@ -949,14 +948,18 @@ trait GroundWeapon extends Weapon {
       b => if (b.isFloating) groundCanAttackAir else groundCanAttackGround)
   }
 
-  override def isInWeaponRange(other: MaybeCanDie) = {
-    if (selfCanAttack(other))
-    // TODO use own logic here
+  private def quickRangeExclusion(other: MaybeCanDie): Boolean = {
+    groundRangeTilesSquared + 6 < other.centerTile.distanceSquaredTo(this.centerTile)
+  }
+
+  override def isInWeaponRangeExact(other: MaybeCanDie) = {
+    if (selfCanAttack(other) && !quickRangeExclusion(other))
+
       matchOn(other)(air => nativeUnit.isInWeaponRange(other.nativeUnit),
         ground => nativeUnit.isInWeaponRange(other.nativeUnit),
         building => nativeUnit.isInWeaponRange(other.nativeUnit))
     else
-      super.isInWeaponRange(other)
+      super.isInWeaponRangeExact(other)
   }
   override protected def onUniverseSet(universe: Universe): Unit = {
     super.onUniverseSet(universe)
@@ -1043,8 +1046,10 @@ trait AutoGroundWeaponType extends GroundWeapon {
 }
 
 trait AirWeapon extends Weapon {
-  val airRangePixels      = airWeapon.maxRange()
+  val airRangePixels = airWeapon.maxRange()
+  // fails at goliath range upgrade
   val airRangeTiles       = airRangePixels / tileSize
+  private val airRangeTilesSquared = airRangeTiles * airRangeTiles
   val airCanAttackAir     = airWeapon.targetsAir()
   val airCanAttackGround  = airWeapon.targetsGround()
   val airDamageMultiplier = airWeapon.damageFactor()
@@ -1064,14 +1069,14 @@ trait AirWeapon extends Weapon {
   def damageDelayFactorAir: Int
   override def weaponRangeRadius: Int = super.weaponRangeRadius max airRangePixels
   override def assumeShotDelayOn(target: MaybeCanDie) = {
-    if (canAttack(target)) {
+    if (canAttackIfNear(target)) {
       damageDelayFactorAir
     } else
       super.assumeShotDelayOn(target)
   }
   // air & groundweapon need to override this
-  override def canAttack(other: MaybeCanDie) = {
-    super.canAttack(other) || selfCanAttack(other)
+  override def canAttackIfNear(other: MaybeCanDie) = {
+    super.canAttackIfNear(other) || selfCanAttack(other)
   }
   override def calculateDamageOn(other: Armor, assumeHP: Int, assumeShields: Int,
                                  shotCount: Int) = {
@@ -1089,14 +1094,17 @@ trait AirWeapon extends Weapon {
       b => if (b.isFloating) airCanAttackAir else airCanAttackGround)
   }
 
-  override def isInWeaponRange(other: MaybeCanDie) = {
-    if (selfCanAttack(other))
-    // TODO use own logic
+  private def quickRangeExclusion(other: MaybeCanDie): Boolean = {
+    airRangeTilesSquared + 6 < other.centerTile.distanceSquaredTo(this.centerTile)
+  }
+
+  override def isInWeaponRangeExact(other: MaybeCanDie) = {
+    if (selfCanAttack(other) && !quickRangeExclusion(other))
       matchOn(other)(air => nativeUnit.isInWeaponRange(other.nativeUnit),
         ground => nativeUnit.isInWeaponRange(other.nativeUnit),
         building => nativeUnit.isInWeaponRange(other.nativeUnit))
     else
-      super.isInWeaponRange(other)
+      super.isInWeaponRangeExact(other)
   }
 
   override protected def onUniverseSet(universe: Universe): Unit = {
@@ -1131,7 +1139,7 @@ trait Weapon extends Controllable with ArmedUnit {
 
   def isStartingToAttack = nativeUnit.isStartingAttack
   // air & groundweapon need to override this
-  def canAttack(other: MaybeCanDie) = false
+  def canAttackIfNear(other: MaybeCanDie) = false
   def calculateDamageOn(other: MaybeCanDie, assumeHP: Int, assumeShields: Int,
                         shotCount: Int): DamageSingleAttack = calculateDamageOn(
     other.armor, assumeHP, assumeShields, shotCount)
@@ -1148,7 +1156,7 @@ trait Weapon extends Controllable with ArmedUnit {
       case x => !!!(s"Check this $x")
     }
   // needs to be overridden
-  def isInWeaponRange(target: MaybeCanDie): Boolean = false
+  def isInWeaponRangeExact(target: MaybeCanDie): Boolean = false
 
   def weaponRangeRadiusTiles = weaponRangeRadius / 32
 

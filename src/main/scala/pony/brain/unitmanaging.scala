@@ -167,8 +167,9 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
     assignments.valuesIterator.foreach(_.onTick_!())
     enemies.allKnownUnits.foreach(_.onTick_!())
     val removeUs = {
-      val done = assignments.filter { case (_, job) => job.isFinished }.values
-      val failed = assignments.filter { case (_, job) => job.failedOrObsolete }.values
+      val done = assignments.iterator.collect { case (_, job) if job.isFinished => job }.toVector
+      val failed = assignments.iterator.collect { case (_, job) if job.failedOrObsolete => job }
+                   .toVector
 
       trace(s"${failed.size}/${done.size} jobs failed/finished, putting units on the market again",
         failed.nonEmpty || done.nonEmpty)
@@ -324,35 +325,39 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
 
   def request[T <: WrapsUnit : Manifest](req: UnitJobRequest[T],
                                          buildIfNoneAvailable: Boolean = true) = {
-    trace(s"${req.employer} requested ${req.request.toString}")
-    val (missing, incomplete, planned) = findMissingRequirements(req.allRequiredTypes)
-    val result = if (missing.isEmpty && incomplete.isEmpty && planned.isEmpty) {
-      val hr = collectCandidates(req)
-      hr match {
-        case None =>
-          if (buildIfNoneAvailable) unfulfilledRequestsThisTick += req
-          new FailedPreHiringResult[T]
-        case Some(team) if !team.complete =>
-          trace(s"Partially successful hiring request: $team")
-          if (buildIfNoneAvailable) unfulfilledRequestsThisTick += team.missingAsRequest
-          if (team.hasOneMember)
-            new PartialPreHiringResult(team.teamAsCanHireInfo) with ExactlyOneSuccess[T]
-          else
-            new PartialPreHiringResult(team.teamAsCanHireInfo)
-        case Some(team) =>
-          trace(s"Successful hiring request: $team")
-          if (team.hasOneMember) {
-            new SuccessfulPreHiringResult(team.teamAsCanHireInfo) with ExactlyOneSuccess[T]
-          } else {
-            new SuccessfulPreHiringResult(team.teamAsCanHireInfo)
-          }
-      }
+    if (req.request.amount == 0) {
+      new FailedPreHiringResult[T]
     } else {
-      new MissingRequirementResult[T](missing, incomplete, planned)
-    }
+      trace(s"${req.employer} requested ${req.request.toString}")
+      val (missing, incomplete, planned) = findMissingRequirements(req.allRequiredTypes)
+      val result = if (missing.isEmpty && incomplete.isEmpty && planned.isEmpty) {
+        val hr = collectCandidates(req)
+        hr match {
+          case None =>
+            if (buildIfNoneAvailable) unfulfilledRequestsThisTick += req
+            new FailedPreHiringResult[T]
+          case Some(team) if !team.complete =>
+            trace(s"Partially successful hiring request: $team")
+            if (buildIfNoneAvailable) unfulfilledRequestsThisTick += team.missingAsRequest
+            if (team.hasOneMember)
+              new PartialPreHiringResult(team.teamAsCanHireInfo) with ExactlyOneSuccess[T]
+            else
+              new PartialPreHiringResult(team.teamAsCanHireInfo)
+          case Some(team) =>
+            trace(s"Successful hiring request: $team")
+            if (team.hasOneMember) {
+              new SuccessfulPreHiringResult(team.teamAsCanHireInfo) with ExactlyOneSuccess[T]
+            } else {
+              new SuccessfulPreHiringResult(team.teamAsCanHireInfo)
+            }
+        }
+      } else {
+        new MissingRequirementResult[T](missing, incomplete, planned)
+      }
 
-    trace(s"Result of request: $result")
-    result
+      trace(s"Result of request: $result")
+      result
+    }
   }
 
   def allOfEmployerAndType[T <: WrapsUnit](employer: Employer[T], unitType: Class[_ <: T]) = {
@@ -1345,13 +1350,23 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W,
 
   override def jobHasFailedWithoutDeath: Boolean = {
     if (unit.onGround) {
-      val byState = !worker.isInConstructionProcess &&
-                    ageSinceFirstNonInterceptedOrder.getOrElse(0) > times + 10 &&
-                    !isFinished
-      def byMap = !mapLayers.blockedByBuildingTiles.free(area) && constructs.isEmpty
-      val fail = byState || byMap
+      val byState = {
+        !worker.isInConstructionProcess &&
+        ageSinceFirstNonInterceptedOrder.getOrElse(0) > times + 10 &&
+        !isFinished
+      }
+      def expensiveCheck = {
+        def targetBlockedByBuilding = {
+          !mapLayers.blockedByBuildingTiles.free(area) && constructs.isEmpty
+        }
+
+        mapNth(Primes.prime37, false)(targetBlockedByBuilding)
+      }
+
+      val fail = byState || expensiveCheck
       warn(s"Construction of ${typeOfBuilding.className} failed, worker $worker didn't manange",
         fail)
+
       fail
     } else {
       false

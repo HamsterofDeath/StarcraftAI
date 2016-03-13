@@ -149,7 +149,6 @@ case class Paths(paths: Seq[Path], isGroundPath: Boolean) {
   val anyTarget           = paths.head.bestEffort
 
   def renderDebug(renderer: Renderer): Unit = {
-    if (logLevel.includes(LogLevels.LogTrace)) {
       paths.foreach { singlePath =>
         var prev = Option.empty[MapTilePosition]
         singlePath.waypoints.zipWithIndex.foreach { case (tile, index) =>
@@ -160,7 +159,6 @@ case class Paths(paths: Seq[Path], isGroundPath: Boolean) {
           prev = Some(tile)
         }
       }
-    }
   }
 
   def toMigration(implicit universe: Universe) = new MigrationPath(this, universe)

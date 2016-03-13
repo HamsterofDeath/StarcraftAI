@@ -80,7 +80,6 @@ class DefaultWorld(game: Game) extends WorldListener with WorldEventDispatcher {
   }
 
   def tick(): Unit = {
-    debugger.tick()
     ownUnits.dead_!(removeQueueOwn.toSeq)
     enemyUnits.dead_!(removeQueueEnemy.toSeq)
     removeQueueOwn.clear()
@@ -109,6 +108,8 @@ class DefaultWorld(game: Game) extends WorldListener with WorldEventDispatcher {
 }
 
 class Debugger(game: Game) {
+  def isRendering = logLevel.includes(LogLevels.LogTrace)
+
   val renderer = new Renderer(game, Color.Green)
   private var debugging     = true
   private var fullDebugMode = false
@@ -145,17 +146,13 @@ class Debugger(game: Game) {
 
   def debugRender(whatToDo: Renderer => Any): Unit = {
     countTicks += 1
-    if (debugging && countTicks > 5) {
+    if (debugging && countTicks > 5 && isRendering) {
       whatToDo(renderer)
     }
   }
 
   def chat(msg: String): Unit = {
     game.sendText(msg)
-  }
-
-  def tick() = {
-    renderer.in_!(Color.Green)
   }
 
   def revealMap(): Unit = {

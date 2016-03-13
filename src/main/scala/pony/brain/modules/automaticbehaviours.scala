@@ -292,6 +292,17 @@ object Terran {
 
   class Dance(universe: Universe) extends DefaultBehaviour[ArmedMobile](universe) {
 
+    override def renderDebug_!(renderer: Renderer) = {
+      super.renderDebug_!(renderer)
+      dancePlan.mostRecent.foreach { plan =>
+        plan.foreach { case (unitId, goto) =>
+          ownUnits.byId(unitId).foreach { unit =>
+            renderer.in_!(Color.Yellow).drawLine(unit.center, goto.asMapPosition)
+          }
+        }
+      }
+    }
+
     private val freeWalkableMap   = oncePerTick {
       mapLayers.freeWalkableTiles.guaranteeImmutability
     }
@@ -299,11 +310,11 @@ object Terran {
       mapLayers.coveredByEnemyLongRangeAsBlocked.guaranteeImmutability
     }
 
-    private val dropAtFirst       = 36
-    private val tries             = 100
-    private val range             = 10
-    private val takeNth           = 7
-    private val dancePlan         = FutureIterator.feed(feed).produceAsyncLater { in =>
+    private val dropAtFirst = 36
+    private val tries       = 100
+    private val range       = 10
+    private val takeNth     = 7
+    private val dancePlan   = FutureIterator.feed(feed).produceAsyncLater { in =>
       val on = in.freeMap
       val safetyCheck = in.safeFromLongRange
       in.dancers.map { dancer =>
@@ -413,7 +424,7 @@ object Terran {
             def take(enemy: ArmedMobile) = {
               enemy.initialNativeType.topSpeed <= own.initialNativeType.topSpeed &&
               enemy.weaponRangeRadius <= own.weaponRangeRadius &&
-              own.canAttack(enemy)
+              own.canAttackIfNear(enemy)
             }
             unitGrid.allInRangeOf[ArmedMobile](own.currentTile,
               own.weaponRangeRadiusTiles, friendly = false, take)
@@ -486,12 +497,10 @@ object Terran {
     }
 
     override def renderDebug_!(renderer: Renderer) = {
-      if (logLevel.includes(LogLevels.LogTrace)) {
-        super.renderDebug_!(renderer)
-        freeAlternativeTiles.mostRecent.foreach { data =>
-          data.foreach { case (from, to) =>
-            renderer.in_!(Color.Green).indicateTarget(from, to)
-          }
+      super.renderDebug_!(renderer)
+      freeAlternativeTiles.mostRecent.foreach { data =>
+        data.foreach { case (from, to) =>
+          renderer.in_!(Color.Green).indicateTarget(from, to)
         }
       }
     }
@@ -609,7 +618,7 @@ object Terran {
       unlockPositions
     }
 
-    private val relevantLayer      = oncePerTick {
+    private val relevantLayer = oncePerTick {
       mapLayers.freeWalkableTiles.mutableCopy
       //.or_!(mapLayers.blockedByMobileUnitsExtended.mutableCopy)
       .guaranteeImmutability
@@ -645,8 +654,9 @@ object Terran {
           plan.get(unit.nativeUnitId).map {Orders.MoveToTile(unit, _)}
         }.filter { command =>
           val near = command.to.distanceToIsLess(unit.currentTile, 3)
-          def solved = !layer.cuttingAreas(unit.blockedArea.growBy(tolerance))
-          !near || !solved
+          def stillProblematic = mapNth(Primes.prime37, true)(
+            layer.cuttingAreas(unit.blockedArea.growBy(tolerance)))
+          !near || stillProblematic
         }.map(_.toList)
         .getOrElse(Nil)
       }
@@ -1463,6 +1473,11 @@ object Terran {
       helper.onTick_!()
     }
 
+    override def renderDebug_!(renderer: Renderer) = {
+      super.renderDebug_!(renderer)
+      helper.renderDebug_!(renderer)
+    }
+
     override protected def wrapBase(unit: MobileRangeWeapon) = new
         SingleUnitBehaviour(unit, meta) {
       override def describeShort = "Focus fire"
@@ -1480,6 +1495,11 @@ object Terran {
 case class Target[T <: Mobile](caster: HasSingleTargetSpells, target: T)
 
 class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
+  def renderDebug_!(renderer: Renderer): Unit = {
+    me2Enemy.foreach({ case (from, to) =>
+      renderer.in_!(Color.White).drawLine(from.center, to.center)
+    })
+  }
 
   private val enemy2Attackers    = mutable.HashMap.empty[MaybeCanDie, Attackers]
   private val me2Enemy           = mutable.HashMap.empty[MobileRangeWeapon, MaybeCanDie]
@@ -1517,25 +1537,26 @@ class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
   }
 
   def suggestTarget(myUnit: MobileRangeWeapon): Option[MaybeCanDie] = {
-    val maybeAttackers = me2Enemy.get(myUnit)
-                         .map(enemy2Attackers)
-    val shouldLeaveTeam = {
-      def outOfRange = maybeAttackers.exists(_.isOutOfRange(myUnit))
-      def overkill = maybeAttackers
-                     .filter(_.isOverkill)
-                     .exists(_.canSpare(myUnit))
-      outOfRange || overkill
-    }
-    if (shouldLeaveTeam) {
-      maybeAttackers.foreach(_.removeAttacker_!(myUnit))
-      me2Enemy.remove(myUnit)
+    val myCurrentTarget = me2Enemy.get(myUnit)
+    myCurrentTarget.foreach { t =>
+      val maybeAttackers = enemy2Attackers(t)
+      val shouldLeaveTeam = {
+        def outOfRange = maybeAttackers.isOutOfRange(myUnit)
+        def overkill = maybeAttackers.isOverkill && maybeAttackers.canSpare(myUnit)
+        outOfRange || overkill
+      }
+      if (shouldLeaveTeam) {
+        maybeAttackers.removeAttacker_!(myUnit)
+        me2Enemy.remove(myUnit)
+      }
     }
 
-    prioritizedTargets.get.find { target =>
+    val bestTarget = prioritizedTargets.get.find { target =>
       val existing = enemy2Attackers.get(target).exists(_.isAttacker(myUnit))
-      existing || (myUnit.isInWeaponRange(target) && myUnit.canAttack(target) &&
+      existing || (myUnit.canAttackIfNear(target) && myUnit.isInWeaponRangeExact(target) &&
                    enemy2Attackers.getOrElseUpdate(target, new Attackers(target)).canTakeMore)
-    }.foreach { attackThis =>
+    }
+    bestTarget.foreach { attackThis =>
       val plan = enemy2Attackers(attackThis)
       if (!plan.isAttacker(myUnit)) {
         me2Enemy.put(myUnit, attackThis)
@@ -1554,7 +1575,7 @@ class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
     private val hpAfterNextAttacks  = currentHp
     private val plannedDamageMerged = new MutableHP(0, 0)
 
-    def isOutOfRange(myUnit: MobileRangeWeapon) = !myUnit.isInWeaponRange(target)
+    def isOutOfRange(myUnit: MobileRangeWeapon) = !myUnit.isInWeaponRangeExact(target)
 
     def removeAttacker_!(t: MobileRangeWeapon): Unit = {
       attackers -= t

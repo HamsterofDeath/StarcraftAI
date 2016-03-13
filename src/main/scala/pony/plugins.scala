@@ -471,8 +471,10 @@ class MainAI extends AIPlugIn with HasUniverse with AIAPIEventDispatcher {
   override protected def tickPlugIn(): Unit = {
     brain.queueOrdersForTick()
     if (debugger.isDebugging) {
-      brain.plugins.foreach(_.renderDebug(debugger.renderer))
-      brain.renderDebug(debugger.renderer)
+      if (debugger.isRendering) {
+        brain.plugins.foreach(_.renderDebug(debugger.renderer))
+        brain.renderDebug(debugger.renderer)
+      }
     }
   }
 
