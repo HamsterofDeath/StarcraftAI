@@ -364,8 +364,6 @@ object Terran {
 
     override def priority: SecondPriority = SecondPriority.More
 
-    override def refuseCommandsForTicks = 6
-
     override def onTick_!() = {
       super.onTick_!()
       ifNth(Primes.prime5) {
