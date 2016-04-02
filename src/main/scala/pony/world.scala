@@ -39,7 +39,11 @@ case class Resources(minerals: Int, gas: Int, supply: Supplies) {
   def supplyUsagePercent = supply.supplyUsagePercent
 }
 
-case class AllUnits(own: Units, other: Units)
+case class AllUnits(own: Units, other: Units) {
+  def byNativeId(id: Int) = {
+    own.byId(id).orElse(other.byId(id))
+  }
+}
 
 class DefaultWorld(game: Game) extends WorldListener with WorldEventDispatcher {
 
@@ -80,8 +84,8 @@ class DefaultWorld(game: Game) extends WorldListener with WorldEventDispatcher {
   }
 
   def tick(): Unit = {
-    ownUnits.dead_!(removeQueueOwn.toSeq)
-    enemyUnits.dead_!(removeQueueEnemy.toSeq)
+    ownUnits.dead_!(removeQueueOwn)
+    enemyUnits.dead_!(removeQueueEnemy)
     removeQueueOwn.clear()
     removeQueueEnemy.clear()
     ownUnits.tick()
@@ -94,7 +98,7 @@ class DefaultWorld(game: Game) extends WorldListener with WorldEventDispatcher {
     ticks += 1
 
     //sometimes units die without the event being triggered
-    if (ticks % 19 == 0) {
+    if (true || ticks % 19 == 0) {
       ownUnits.allRelevant.filterNot(_.isInGame).foreach { e =>
         warn(s"Unit $e died without event")
         removeQueueOwn += e.nativeUnit
@@ -142,6 +146,10 @@ class Debugger(game: Game) {
 
   def fastest(): Unit = {
     game.setLocalSpeed(0)
+  }
+
+  def slowMotion(): Unit = {
+    game.setLocalSpeed(255)
   }
 
   def debugRender(whatToDo: Renderer => Any): Unit = {
@@ -267,6 +275,8 @@ class Units(game: Game, hostile: Boolean) {
 
   def allBuildingsWithGroundWeapons = allByType[ArmedBuildingCoveringGround]
 
+  def allBuildingsWithAirWeapons = allByType[ArmedBuildingCoveringAir]
+
   def allDetectors = allByType[Detector]
 
   def allCompletedMobiles = allMobiles.filterNot(_.isBeingCreated)
@@ -360,9 +370,9 @@ class Units(game: Game, hostile: Boolean) {
   private def addUnit(u: bwapi.Unit): Unit = {
     val record = {
       if (ownAndNeutral) {
-        forces.get.isNotEnemy(u)
+        forces.isNotEnemy(u)
       } else {
-        forces.get.isEnemy(u)
+        forces.isEnemy(u)
       }
     }
     if (record) {
@@ -392,6 +402,8 @@ class Units(game: Game, hostile: Boolean) {
             }
           case _ => // noop
         }
+      } else {
+        warn("zombie?")
       }
     }
   }
@@ -416,7 +428,7 @@ case class SerializablePatchGroup(areas: Seq[Area])
 
 class ResourceAnalyzer(map: AnalyzedMap, all: AllUnits) {
 
-  lazy    val groups        = myGroups.get.zipWithIndex.map { case (serializable, index) =>
+  lazy val groups        = myGroups.zipWithIndex.map { case (serializable, index) =>
     val pg = new MineralPatchGroup(index)
     serializable.areas.foreach { e =>
       val minerals = myUnits.minerals.find(_.area == e).getOr(s"Could not find minerals at $e")
@@ -424,7 +436,7 @@ class ResourceAnalyzer(map: AnalyzedMap, all: AllUnits) {
     }
     pg
   }
-  lazy    val resourceAreas = {
+  lazy val resourceAreas = {
     val mineralBased = groups.map { patchGroup =>
       val geysirs = myUnits.geysirs
                     .filter { e =>
@@ -478,7 +490,7 @@ class ResourceAnalyzer(map: AnalyzedMap, all: AllUnits) {
       }
     }
 
-    patchGroups.toSeq.map(e => SerializablePatchGroup(e.patches.map(_.area).toSeq))
+    patchGroups.map(e => SerializablePatchGroup(e.patches.map(_.area).toSeq))
   }, s"mineralgroups_${map.game.suggestFileName}")
 
   def nearestTo(position: MapTilePosition) = {
@@ -513,7 +525,7 @@ case class MineralPatchGroup(patchId: Int) {
     myInitialValue.invalidate()
   }
 
-  def remainingPercentage = myValue.get / myInitialValue.get.toDouble
+  def remainingPercentage = myValue / myInitialValue.toDouble
 
   override def toString = s"Minerals#$patchId($value)@$center"
 

@@ -1,7 +1,6 @@
 package pony
 
-import java.io.{BufferedInputStream, ByteArrayInputStream, ByteArrayOutputStream, File,
-ObjectInputStream, ObjectOutputStream}
+import java.io._
 import java.util.concurrent.locks.ReentrantReadWriteLock
 import java.util.zip.{Deflater, ZipEntry, ZipInputStream, ZipOutputStream}
 
@@ -130,17 +129,38 @@ class Renderer(game: Game, private var color: bwapi.Color) {
   }
 }
 
-class LazyVal[T](gen: => T, onValueChange: Option[() => Unit] = None) extends Serializable {
-  private var allowUnsafe    = false
-  private val creationThread = Thread.currentThread()
-  private var locked         = false
-  private var evaluated      = false
-  private var value: T       = _
+object SynchronizedLazyVal {
+  def from[T](t: => T) = new SynchronizedLazyVal(t)
+}
 
-  def allowMultithreading_!() = {
-    allowUnsafe = true
-    this
+class SynchronizedLazyVal[T](gen: => T, onValueChange: Option[() => Unit] = None)
+  extends LazyVal(gen, onValueChange) {
+
+  private var lastGeneratedValue = Option.empty[T]
+
+  override protected def allowMultiRead = true
+
+  override def invalidate() = synchronized {
+    super.invalidate()
   }
+
+  override def get = synchronized {
+    if (isOnCreationThread) {
+      val ret = super.get
+      lastGeneratedValue = ret.toSome
+      ret
+    } else {
+      lastGeneratedValue.getOr("Data generation is limited to creation thread")
+    }
+  }
+}
+
+class LazyVal[T](gen: => T, onValueChange: Option[() => Unit] = None) extends Serializable {
+  protected def allowMultiRead = false
+  private   val creationThread = Thread.currentThread()
+  private   var locked         = false
+  protected var evaluated      = false
+  protected var value: T       = _
 
   def lockValueForever(): Unit = {
     locked = true
@@ -158,7 +178,7 @@ class LazyVal[T](gen: => T, onValueChange: Option[() => Unit] = None) extends Se
   override def toString = s"LazyVal($get)"
 
   def get = {
-    assert(allowUnsafe || Thread.currentThread() == creationThread)
+    assert(isOnCreationThread)
     if (!evaluated)
       if (onValueChange.isDefined) {
         val newVal = gen
@@ -174,6 +194,10 @@ class LazyVal[T](gen: => T, onValueChange: Option[() => Unit] = None) extends Se
     evaluated = true
     assert(value != null)
     value
+  }
+
+  protected def isOnCreationThread: Boolean = {
+    Thread.currentThread() == creationThread
   }
 }
 
@@ -303,12 +327,18 @@ class BWFuture[+T](val future: Future[T], incomplete: T) {
 }
 
 class FutureIterator[IN, T](feed: => IN, produce: IN => T, startNow: Boolean) {
+  private var name                   = "No name"
   private val lock                   = new ReentrantReadWriteLock()
   private var lastFeed               = Option.empty[IN]
   private var done                   = Option.empty[T]
   private var inProgress             = if (startNow) nextFuture else BWFuture.none
   private var thinking               = startNow
   private var calledForCurrentResult = false
+
+  def named(name: String) = {
+    this.name = name
+    this
+  }
 
   def onMostRecent[X](f: T => X) = {
     mostRecent.foreach(f)
@@ -322,7 +352,6 @@ class FutureIterator[IN, T](feed: => IN, produce: IN => T, startNow: Boolean) {
     }
     lock.readLock().unlock()
   }
-
 
   def mapOnContent[X](f: T => X) = {
     mostRecent.map(f)
@@ -363,6 +392,7 @@ class FutureIterator[IN, T](feed: => IN, produce: IN => T, startNow: Boolean) {
   }
 
   private def nextFuture = {
+    val start = System.currentTimeMillis()
     val input = feed
     val fut = BWFuture.produceFrom(produce(input))
     fut.future.onSuccess {
@@ -372,6 +402,8 @@ class FutureIterator[IN, T](feed: => IN, produce: IN => T, startNow: Boolean) {
         done = any
         lastFeed = Some(input)
         calledForCurrentResult = false
+        val duration = System.currentTimeMillis() - start
+        debug(s"Future $name took $duration ms")
         lock.writeLock().unlock()
     }
     fut

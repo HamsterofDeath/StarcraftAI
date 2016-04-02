@@ -92,7 +92,8 @@ object Terran {
                       new RepairDamagedUnit(universe) ::
                       new RepairDamagedBuilding(universe) ::
                       new MoveAwayFromConstructionSite(universe) ::
-                      new MoveAwayFromDangerousSpot(universe) ::
+                      new MoveAwayFromDangerousSpotOnGround(universe) ::
+                      new MoveAwayFromDangerousSpotOnAir(universe) ::
                       new PreventBlockades(universe) ::
                       new ContinueInterruptedConstruction(universe) ::
                       new UseComsat(universe) ::
@@ -215,7 +216,7 @@ object Terran {
             val future = FutureIterator.feed(feed).produceAsync { in =>
               in.pathfinder.findPathNow(in.transporterWhere, in.pickupTarget.where)
               .map(_.toMigration)
-            }
+            }.named("Pathfinding")
             MaybePath(future)
           })
           if (maybeCalculatedPath.age > timeBetweenUpdates) {
@@ -294,7 +295,7 @@ object Terran {
 
     override def renderDebug_!(renderer: Renderer) = {
       super.renderDebug_!(renderer)
-      dancePlan.mostRecent.foreach { plan =>
+      dancePlan.foreach { plan =>
         plan.foreach { case (unitId, goto) =>
           ownUnits.byId(unitId).foreach { unit =>
             renderer.in_!(Color.Yellow).drawLine(unit.center, goto.asMapPosition)
@@ -307,7 +308,7 @@ object Terran {
       mapLayers.freeWalkableTiles.guaranteeImmutability
     }
     private val safeFromLongRange = oncePerTick {
-      mapLayers.coveredByEnemyLongRangeAsBlocked.guaranteeImmutability
+      mapLayers.coveredByEnemyLongRangeGroundAsBlocked.guaranteeImmutability
     }
 
     private val dropAtFirst = 36
@@ -360,7 +361,7 @@ object Terran {
       }.collect { case (k, v) if v.isDefined =>
         k.me.id -> v.get
       }.toMap
-    }
+    }.named("Dance plan")
 
     override def priority: SecondPriority = SecondPriority.More
 
@@ -439,7 +440,7 @@ object Terran {
           }
         }.toVector
       }
-      Feed(dancers, freeWalkableMap.get, safeFromLongRange.get)
+      Feed(dancers, freeWalkableMap, safeFromLongRange)
     }
 
     case class UnitIdPosition(id: Int, where: MapTilePosition)
@@ -492,13 +493,13 @@ object Terran {
         }
         ret.map(e => blocked -> e)
       }.toMap
-    }
+    }.named("Find alternative tiles")
 
     override def renderDebug_!(renderer: Renderer) = {
       super.renderDebug_!(renderer)
-      freeAlternativeTiles.mostRecent.foreach { data =>
+      freeAlternativeTiles.foreach { data =>
         data.foreach { case (from, to) =>
-          renderer.in_!(Color.Green).indicateTarget(from, to)
+          renderer.in_!(Color.Green).drawCircleAround(to)
         }
       }
     }
@@ -548,16 +549,25 @@ object Terran {
     override protected val actionName = "<>"
   }
 
-  class MoveAwayFromDangerousSpot(universe: Universe)
-    extends AvoidSpecificAreas[Mobile](universe) {
+  class MoveAwayFromDangerousSpotOnAir(universe: Universe)
+    extends AvoidSpecificAreas[AirUnit](universe) with DefaultDangerAreaConfig[AirUnit] {
 
+    override protected def tilesToAvoidAsBlocked = mapLayers.coveredByEnemyLongRangeAirAsBlocked
+                                                   .toSome
+  }
+
+  trait DefaultDangerAreaConfig[T <: Mobile] extends AvoidSpecificAreas[T] {
+    override protected def tolerance = 1
     override protected def targetReuseAllowance = 8
-
     override protected def updateWhen = Primes.prime37
-
-    override protected def tilesToAvoidAsBlocked = mapLayers.coveredByEnemyLongRangeAsBlocked.toSome
-
     override protected val actionName: String = "<!>"
+  }
+
+  class MoveAwayFromDangerousSpotOnGround(universe: Universe)
+    extends AvoidSpecificAreas[GroundUnit](universe) with DefaultDangerAreaConfig[GroundUnit] {
+
+    override protected def tilesToAvoidAsBlocked = mapLayers.avoidanceSuggestionGround.toSome
+
   }
 
   class PreventBlockades(universe: Universe) extends DefaultBehaviour[Mobile](universe) {
@@ -576,7 +586,7 @@ object Terran {
                              .map { e => e.nativeUnitId -> e.blockedArea }
                              .toMap
       val buildingLayer = mapLayers.freeWalkableTiles.guaranteeImmutability
-      val dangerous = mapLayers.slightlyDangerousAsBlocked.guaranteeImmutability
+      val dangerous = mapLayers.slightlyDangerousForGroundAsBlocked.guaranteeImmutability
       Feed(unitsToPositions, baseArea, dangerous, blockedByMobiles)
     }
 
@@ -614,7 +624,7 @@ object Terran {
         moveTo.map { tile => unitId -> tile }
       }
       unlockPositions
-    }
+    }.named("Make plan to unlock blockades")
 
     private val relevantLayer = oncePerTick {
       mapLayers.freeWalkableTiles.mutableCopy
@@ -648,7 +658,7 @@ object Terran {
 
       override def toOrder(what: Objective): Seq[UnitOrder] = {
         val layer = relevantLayer.get
-        unlockingPlan.mostRecent.flatMap { plan =>
+        unlockingPlan.flatMap { plan =>
           plan.get(unit.nativeUnitId).map {Orders.MoveToTile(unit, _)}
         }.filter { command =>
           val near = command.to.distanceToIsLess(unit.currentTile, 3)
@@ -767,7 +777,7 @@ object Terran {
         def eval = helper.suggestTarget(unit)
         target.filter(_.incomplete).orElse(eval).map { building =>
           target = Some(building)
-          val sameArea = area.get.areInSameWalkableArea(unit.currentTile, building.centerTile)
+          val sameArea = area.areInSameWalkableArea(unit.currentTile, building.centerTile)
           if (sameArea) {
             Orders.ContinueConstruction(unit, building)
           } else {
@@ -886,12 +896,19 @@ object Terran {
         def siegeableInRange = {
           buildingInRange || enemies.iterator.filterNot(_.isHarmlessNow).take(4).size >= 3
         }
-        def anyNear = {
-          enemies.exists(e => !e.isHarmlessNow && e.centerTile.distanceToIsMore(unit.centerTile, 4))
+
+        def anyCloseButNotTooClose = {
+          enemies.exists { e =>
+            !e.isHarmlessNow && e.centerTile.distanceToIsMore(unit.centerTile, 4)
+          }
         }
 
         if (unit.isSieged) {
-          if (buildingInRange || anyNear) {
+          val staySieged = {
+            val hasTargets = buildingInRange || anyCloseButNotTooClose
+            hasTargets && !unit.underAttackByMeleeSince(3)
+          }
+          if (staySieged) {
             Nil
           } else {
             Orders.TechOnSelf(unit, TankSiegeMode).toList
@@ -968,16 +985,16 @@ object Terran {
   }
 
   class UseComsat(universe: Universe) extends DefaultBehaviour[Comsat](universe) {
-    private val detectThese = ArrayBuffer.empty[Group[CanCloak]]
+    private val detectThese = ArrayBuffer.empty[Group[CanHide]]
 
     override def onTick_!() = {
       super.onTick_!()
       detectThese ++= {
-        mapNth(Primes.prime31, Seq.empty[Group[CanCloak]]) {
+        mapNth(Primes.prime31, Seq.empty[Group[CanHide]]) {
           val dangerous = {
-            enemies.allByType[CanCloak]
+            enemies.allByType[CanHide]
             .iterator
-            .filterNot(_.isDecloaked)
+            .filterNot(_.isExposed)
             .filter { cloaked =>
               ownUnits.allCompletedMobiles
               .exists(_.centerTile.distanceToIsLess(cloaked.centerTile, 8))
@@ -1183,21 +1200,21 @@ object Terran {
         .feed((scout.currentTile, remainingToCheck.head, universe.pathfinders.safeFor(scout)))
         .produceAsync { case (from, to, pathfinder) =>
           pathfinder.findPathNow(from, to).map(_.toMigration)
-        }
+        }.named("Single scout plan")
       }
 
       private var cycle = 0
 
-      def nextTarget = nextPath.mostRecent.flatMap { e =>
+      def nextTarget = nextPath.flatMap { e =>
         e.map(_.originalDestination)
       }
 
       def onTick_!() = {
-        nextPath.mostRecent.foreach(_.foreach(_.onTick_!()))
+        nextPath.foreach(_.foreach(_.onTick_!()))
       }
 
       def toOrder = {
-        nextPath.mostRecent.flatMap {
+        nextPath.flatMap {
           case Some(paths) =>
             val close = scout.currentTile.distanceToIsLess(paths.originalDestination, 7) &&
                         scout.canSee(paths.originalDestination)
@@ -1255,7 +1272,7 @@ object Terran {
           .filter { ra =>
             mapLayers.dangerousAsBlocked.free(ra.nearbyFreeTile)
           }
-          .filterNot(coveredRightNow.get)
+          .filterNot(coveredRightNow)
           .filterNot(bases.isCovered)
           .map { ra =>
             ra.uniqueId -> ra.nearbyFreeTile
@@ -1279,7 +1296,7 @@ object Terran {
         val pathfinder = pathfinders.groundSafe
       }
 
-      private val leftToCover = FutureIterator.feed(new Feed) produceAsyncLater { in =>
+      private val leftToCover = FutureIterator.feed(new Feed).produceAsyncLater { in =>
         val candidates = in.scoutingCandidates.groupBy(_.area).mapValuesStrict { who =>
           val sorted = who.toVector.sortBy(-_.speed)
           sorted.filter(_.speed == sorted.head.speed)
@@ -1343,7 +1360,7 @@ object Terran {
 
           }.getOrElse(Nil)
         }.toList
-      }
+      }.named("Evaluate scouting plans")
 
       def onTick_!() = {
         val oldSize = scouts.size
@@ -1549,7 +1566,7 @@ class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
       }
     }
 
-    val bestTarget = prioritizedTargets.get.find { target =>
+    val bestTarget = prioritizedTargets.find { target =>
       val existing = enemy2Attackers.get(target).exists(_.isAttacker(myUnit))
       existing || (myUnit.canAttackIfNear(target) && myUnit.isInWeaponRangeExact(target) &&
                    enemy2Attackers.getOrElseUpdate(target, new Attackers(target)).canTakeMore)
@@ -1842,7 +1859,7 @@ class NonConflictingSpellTargets[T <: HasSingleTargetSpells, M <: Mobile : Manif
     // for now, just pick the first in range that is not yet taken
     val range = spell.castRangeSquare
 
-    val filtered = prioritizedTargets.get.filterNot(locked)
+    val filtered = prioritizedTargets.filterNot(locked)
     filtered.find {_.currentPosition.distanceSquaredTo(caster.currentPosition) < range}
   }
 }

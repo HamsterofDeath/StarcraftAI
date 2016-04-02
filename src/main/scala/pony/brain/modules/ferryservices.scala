@@ -97,7 +97,7 @@ class FerryManager(override val universe: Universe) extends HasUniverse {
 
       AltDropPositions(fixes, impossibleCache.guaranteeImmutability,
         passThrough.guaranteeImmutability)
-    }
+    }.named("Best drop alternatives")
   }
 
   def canDropHere(where: MapTilePosition) = {

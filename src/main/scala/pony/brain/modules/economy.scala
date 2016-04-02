@@ -505,7 +505,7 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule(universe
 
         override protected def pathTargetPosition = {
           if (worker.isCarryingMinerals) {
-            nearestReachableBase.get.map(_.mainBuilding.centerTile)
+            nearestReachableBase.map(_.mainBuilding.centerTile)
           } else {
             miningTarget.patch.centerTile.toSome
           }
@@ -695,7 +695,7 @@ class ManageMiningAtGeysirs(universe: Universe)
 
       override protected def pathTargetPosition = {
         if (worker.isCarryingGas) {
-          nearestReachableBase.get.map(_.mainBuilding.centerTile)
+          nearestReachableBase.map(_.mainBuilding.centerTile)
         } else {
           geysir.centerTile.toSome
         }

@@ -4,6 +4,7 @@ package brain
 import pony.brain.modules.Strategy.Strategies
 import pony.brain.modules._
 
+import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, Future}
@@ -47,8 +48,10 @@ trait HasUniverse extends HasLazyVals {
     orElse
   }
 
-  def ifNth(prime: PrimeNumber)(u: => Unit) = {
-    if (universe.currentTick % prime.i == 0) {
+  def ifNth(prime: PrimeNumber, firstTime: Option[PrimeNumber] = None)(u: => Unit) = {
+    val execute = currentTick % prime.i == 0 ||
+                  firstTime.exists(e => currentTick % e.i == 0)
+    if (execute) {
       u
     }
   }
@@ -76,8 +79,34 @@ trait IsTicked {
 }
 
 trait HasLazyVals extends IsTicked {
-  private val lazyVals = ArrayBuffer.empty[LazyVal[_]]
+  private var counter = 0
 
+  def uniqueKey = {
+    val value = counter
+    counter += 1
+    Key(value)
+  }
+
+  case class Key(private val id: Int)
+
+  private      val lazyVals              = ArrayBuffer.empty[LazyVal[_]]
+  private lazy val lockedGroupedLazyVals = mutable.HashMap.empty[Key, ArrayBuffer[LazyVal[_]]]
+
+  def explicitly[T](key: Key, t: => T, synchronize: Boolean = false) = {
+    val newLazyVal = {
+      if (synchronize) {
+        SynchronizedLazyVal.from(t)
+      } else {
+        LazyVal.from(t)
+      }
+    }
+    lockedGroupedLazyVals.getOrElseUpdate(key, ArrayBuffer.empty) += newLazyVal
+    newLazyVal
+  }
+
+  def invalidate(key: Key) = {
+    lockedGroupedLazyVals.get(key).foreach(_.foreach(_.invalidate()))
+  }
 
   def oncePer[T](prime: PrimeNumber)(t: => T) = {
     var store: T = null.asInstanceOf[T]
@@ -96,7 +125,7 @@ trait HasLazyVals extends IsTicked {
   }
 
   def once[T](t: => T) = {
-    LazyVal.from(t).allowMultithreading_!()
+    SynchronizedLazyVal.from(t)
   }
 
   override def onTick_!(): Unit = {
@@ -267,11 +296,11 @@ class TwilightSparkle(world: DefaultWorld) {
   val universe: Universe = new Universe {
 
     override def pathfinders = new Pathfinders {
-      override def groundSafe = myPathFinderGroundSafe.get
+      override def groundSafe = myPathFinderGroundSafe
 
-      override def ground = myPathFinderGround.get
+      override def ground = myPathFinderGround
 
-      override def airSafe = myPathFinderAirSafe.get
+      override def airSafe = myPathFinderAirSafe
     }
 
     override def bases = self.bases

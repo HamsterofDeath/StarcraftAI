@@ -61,9 +61,25 @@ trait ZergBuilding extends ZergUnit with Building
 
 trait WrapsUnit extends HasUniverse with AfterTickListener {
 
+  def currentTileNative = currentTile.asNative
+
+  def currentTile = myTile.get
+
   def isNonFighter = false
 
   def isFigher = !isNonFighter
+
+  def currentPositionNative = currentPosition.toNative
+  def currentPosition = myCurrentPosition.get
+
+  private val myTile            = oncePerTick {
+    val tp = nativeUnit.getPosition
+    MapTilePosition.shared(tp.getX / 32, tp.getY / 32)
+  }
+  private val myCurrentPosition = oncePerTick {
+    val p = nativeUnit.getPosition
+    MapPosition(p.getX, p.getY)
+  }
 
   private val unitId               = WrapsUnit.nextId
   private var morphed              = false
@@ -71,6 +87,9 @@ trait WrapsUnit extends HasUniverse with AfterTickListener {
   private var creationTick         = -1
   private var myUniverse: Universe = _
 
+  private val myExists = oncePerTick {
+    nativeUnit.exists()
+  }
   val nativeUnitId      = nativeUnit.getID
   val initialNativeType = nativeUnit.getType
   val nativeType        = oncePerTick {
@@ -78,9 +97,18 @@ trait WrapsUnit extends HasUniverse with AfterTickListener {
     morphed |= ret != initialNativeType
     ret
   }
+
+  private val myTarget             = oncePerTick {
+    nativeUnit.getTarget
+    .nullSafe(_.getID)
+    .flatMap(universe.allUnits.byNativeId)
+  }
   private val nativeOrder          = oncePerTick {
     nativeUnit.getOrder
   }
+
+  def currentTarget = myTarget.get
+
   private val curOrder             = oncePerTick {nativeUnit.getOrder}
   private val unfinished           = oncePerTick(
     nativeUnit.getRemainingBuildTime > 0 || !nativeUnit.isCompleted)
@@ -126,8 +154,10 @@ trait WrapsUnit extends HasUniverse with AfterTickListener {
 
   def isInGame = {
     val ct = centerTile
-    inGame && ct.x < 1000 && ct.y < 1000
+    inGame && ct.isInsideOfGame
   }
+
+  def exists = myExists.get
 
   def centerTile = myCenterTile.get
 
@@ -707,6 +737,13 @@ trait MaybeCanDie extends WrapsUnit {
     hitPoints.sum.toDouble / (maxHp + maxShields)
   }
 
+  def underAttackByMeleeSince(ticks: Int) = {
+    hasBeenAttackedSince(ticks) && surroundings.closeEnemyGroundUnits.exists { e =>
+      !e.isHarmlessNow && e.currentTarget.contains(self)
+    }
+  }
+
+
   def isDamaged = isInGame && (hitPoints.shield < maxShields || hitPoints.hitpoints < maxHp) &&
                   !isBeingCreated
 
@@ -788,6 +825,8 @@ trait AutoPilot extends Mobile {
 
 trait Mobile extends WrapsUnit with Controllable {
 
+  override def center = currentTile.asMapPosition
+
   def isGroundUnit: Boolean
   def asGroundUnit = if (isGroundUnit) this.asInstanceOf[GroundUnit].toSome else None
   def canSee(tile: MapTilePosition) = mapLayers.rawWalkableMap.connectedByLine(tile, currentTile)
@@ -818,16 +857,8 @@ trait Mobile extends WrapsUnit with Controllable {
   private val irradiation           = oncePerTick {
     nativeUnit.getIrradiateTimer > 0
   }
-  private val myTile                = oncePerTick {
-    val tp = nativeUnit.getPosition
-    MapTilePosition.shared(tp.getX / 32, tp.getY / 32)
-  }
   private val myArea                = oncePerTick {
-    Area(myTile.get, armorType.tileSize)
-  }
-  private val myCurrentPosition     = oncePerTick {
-    val p = nativeUnit.getPosition
-    MapPosition(p.getX, p.getY)
+    Area(currentTile, armorType.tileSize)
   }
   private var lastFrameMatrixPoints = 0
   def canMove = true
@@ -837,27 +868,19 @@ trait Mobile extends WrapsUnit with Controllable {
   def matrixHp = defenseMatrixHP.get
   def hasDefenseMatrix = defenseMatrix.get
   def isIrradiated = irradiation.get
-  override def center = currentPosition
 
-  def isGuarding = nativeUnit.getOrder == Order.PlayerGuard
+  def isGuarding = currentNativeOrder == Order.PlayerGuard
 
   def isMoving = nativeUnit.isMoving
 
-  def currentTileNative = currentTile.asNative
-
-  def currentTile = myTile.get
 
   def blockedArea = myArea.get
   def unitTileSize = armor.armorType.tileSize
-  def currentPositionNative = currentPosition.toNative
-
-  def currentPosition = myCurrentPosition.get
 
   override def toString = s"${super.toString}@$currentTile"
 
   override def onTick_!(): Unit = {
     super.onTick_!()
-    defenseMatrix.invalidate()
   }
   override protected def onUniverseSet(universe: Universe): Unit = {
     super.onUniverseSet(universe)
@@ -935,7 +958,7 @@ trait GroundWeapon extends Weapon {
   override def calculateDamageOn(other: Armor, assumeHP: Int, assumeShields: Int,
                                  shotCount: Int) = {
     if (selfCanAttack(other.owner)) {
-      damage.get.damageIfHits(other, assumeHP, assumeShields, shotCount)
+      damage.damageIfHits(other, assumeHP, assumeShields, shotCount)
     } else {
       super.calculateDamageOn(other, assumeHP, assumeShields, shotCount)
     }
@@ -1081,7 +1104,7 @@ trait AirWeapon extends Weapon {
   override def calculateDamageOn(other: Armor, assumeHP: Int, assumeShields: Int,
                                  shotCount: Int) = {
     if (selfCanAttack(other.owner)) {
-      damage.get.damageIfHits(other, assumeHP, assumeShields, shotCount)
+      damage.damageIfHits(other, assumeHP, assumeShields, shotCount)
     } else {
       super.calculateDamageOn(other, assumeHP, assumeShields, shotCount)
     }
@@ -1212,7 +1235,7 @@ trait GroundUnit extends Killable with Mobile {
     super.postTick()
     inFerryLastTick = loaded
   }
-  def loaded = inFerry.get.isDefined
+  def loaded = inFerry.isDefined
 }
 
 trait Floating
@@ -1223,7 +1246,7 @@ trait CanBuildAddons extends Building {
   }
   private var attached    = Option.empty[Addon]
   def positionedNextTo(addon: Addon) = {
-    myAddonArea.get.upperLeft == addon.tilePosition
+    myAddonArea.upperLeft == addon.tilePosition
   }
   def addonArea = myAddonArea.get
   def canBuildAddon(addon: Class[_ <: Addon]) = race.techTree.canBuildAddon(getClass, addon)
@@ -1299,10 +1322,10 @@ trait TransporterUnit extends AirUnit {
 
   def isPickingUp = myPickingUp.get
   def loaded = myLoaded.get
-  def isCarrying(gu: GroundUnit) = myLoaded.get(gu)
+  def isCarrying(gu: GroundUnit) = myLoaded(gu)
   def canDropHere = ferryManager.canDropHere(currentTile)
 
-  def hasUnitsLoaded = myLoaded.get.nonEmpty
+  def hasUnitsLoaded = myLoaded.nonEmpty
 }
 
 trait Ignored extends WrapsUnit
@@ -1533,7 +1556,7 @@ trait SlowAttackGround extends GroundWeapon {
 trait MobileDetector extends CanDetectHidden with Mobile
 
 trait CanDetectHidden extends WrapsUnit with Detector {
-  private val sight = math.round(nativeType.get.sightRange() / 32.0).toInt
+  private val sight = math.round(nativeType.sightRange() / 32.0).toInt
   override def detectionRadius = sight
 }
 
@@ -1554,16 +1577,31 @@ trait PermaCloak extends CanCloak {
   override def isCloaked = true
 }
 
-trait CanCloak extends Mobile {
+trait CanHide extends WrapsUnit {
+  def isExposed = isVisible
+
+  def isVisible: Boolean
+  final def isHidden = !isVisible
+}
+
+trait CanCloak extends Mobile with CanHide {
+
+  override def isExposed = super.isExposed && isDecloaked
+
   private val cloaked   = oncePerTick {
     nativeUnit.isCloaked
   }
+
   private val decloaked = oncePerTick {
     nativeUnit.isDetected
   }
+
   def isCloaked = cloaked.get
 
   def isDecloaked = decloaked.get
+
+  override def isVisible = !isCloaked || isDecloaked
+
 }
 
 trait DetectorsFirst extends IsTech {
@@ -1728,6 +1766,110 @@ trait IsBig extends Mobile with MaybeCanDie {
   override val armorType = Large
 }
 
+trait VirtualPosition extends WrapsUnit with Virtual {
+
+  case class PositionSnapshot(where: MapTilePosition, where32: MapPosition)
+
+  private var lastSeen = Option.empty[PositionSnapshot]
+
+  override def currentTile = lastSeen.map(_.where).getOrElse(super.currentTile)
+
+  override def currentPosition = lastSeen.map(_.where32).getOrElse(super.currentPosition)
+
+  override def remember_!() = {
+    super.remember_!()
+    lastSeen = PositionSnapshot(currentTile, currentPosition).toSome
+  }
+
+  override def forget_!() = {
+    super.forget_!()
+    lastSeen = None
+  }
+
+}
+
+trait VirtualHitPoints extends MaybeCanDie with Virtual {
+
+  case class HitpointsSnapshot(hitPoints: HitPoints)
+
+  private var lastSeen = Option.empty[HitpointsSnapshot]
+
+  override def hitPoints = lastSeen.map(_.hitPoints).getOrElse(super.hitPoints)
+
+  override def remember_!() = {
+    super.remember_!()
+    lastSeen = HitpointsSnapshot(hitPoints).toSome
+  }
+
+  override def forget_!() = {
+    super.forget_!()
+    lastSeen = None
+  }
+
+}
+
+trait VirtualCloak extends CanCloak with Virtual {
+
+  case class CloakStateSnapshot(cloaked: Boolean, decloaked: Boolean)
+
+  private var lastSeen = Option.empty[CloakStateSnapshot]
+  override def isCloaked = lastSeen.map(_.cloaked).getOrElse(super.isCloaked)
+  override def isDecloaked = lastSeen.map(_.decloaked).getOrElse(super.isDecloaked)
+
+  override def remember_!() = {
+    super.remember_!()
+    lastSeen = CloakStateSnapshot(isCloaked, isDecloaked).toSome
+  }
+
+  override def forget_!() = {
+    super.forget_!()
+    lastSeen = None
+  }
+}
+
+trait Virtual extends MaybeCanDie {
+
+  def remember_!(): Unit = {}
+
+  def forget_!(): Unit = {}
+
+}
+
+trait CanBurrow extends ZergMobileUnit with VirtualPosition with VirtualHitPoints with CanHide {
+
+  private var virtualBurrowed = false
+
+  override def isVisible = !virtualBurrowed
+
+  private val myBurrowed = oncePerTick {
+    nativeUnit.isBurrowed
+  }
+
+  def isBurrowed = myBurrowed.get
+
+  override def isDead = {
+    super.isDead && currentTile.isOutsideOfGame
+  }
+
+  override def onTick_!() = {
+    super.onTick_!()
+    // units that can burrow somehow lose all their attributes and even top officially existing, but
+    // pop up later as soon as they unburrow. the ai needs to keep track of them
+    // if they start burrows, they might start with officially 0 hp... no idea why
+    if (exists && isBurrowed && currentTick < 2) {
+      remember_!()
+      virtualBurrowed = true
+    }
+    if (currentNativeOrder == bwapi.Order.Burrowing || isBurrowed) {
+      remember_!()
+      virtualBurrowed = true
+    } else if (currentNativeOrder == bwapi.Order.Unburrowing) {
+      forget_!()
+      virtualBurrowed = false
+    }
+  }
+}
+
 class CreepColony(unit: APIUnit) extends AnyUnit(unit) with ZergBuilding
 
 class DefilerMound(unit: APIUnit) extends AnyUnit(unit) with ZergBuilding
@@ -1765,8 +1907,9 @@ class SunkenColony(unit: APIUnit)
           ArmedBuildingCoveringGround
 
 class Zergling(unit: APIUnit)
-  extends AnyUnit(unit) with GroundUnit with GroundWeapon with NormalGroundDamage with
-          IsSmall with ArmedMobile with MeleeWeapon with InstantAttackGround with ZergMobileUnit
+  extends AnyUnit(unit) with GroundUnit with GroundWeapon with NormalGroundDamage with Virtual with
+          IsSmall with ArmedMobile with MeleeWeapon with InstantAttackGround with
+          ZergMobileUnit with CanBurrow
 
 class Egg(unit: APIUnit)
   extends AnyUnit(unit) with GroundUnit with IsBig with ZergUnit
@@ -1788,12 +1931,13 @@ class Broodling(unit: APIUnit)
 class Hydralisk(unit: APIUnit)
   extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with ZergMobileUnit with
           ExplosiveAirDamage with ArmedMobile with ExplosiveGroundDamage with IsMedium with
-          InstantAttackAir with InstantAttackGround
+          InstantAttackAir with InstantAttackGround with CanBurrow with Virtual
 
 class Lurker(unit: APIUnit)
   extends AnyUnit(unit) with ZergMobileUnit with GroundUnit with GroundWeapon with
-          NormalGroundDamage with
-          IsBig with ArmedMobile with InstantAttackGround
+          NormalGroundDamage with Virtual with
+          IsBig with ArmedMobile with InstantAttackGround with CanBurrow {
+}
 
 class Mutalisk(unit: APIUnit)
   extends AnyUnit(unit) with ZergMobileUnit with AirUnit with GroundAndAirWeapon with
@@ -1935,6 +2079,7 @@ class Tank(unit: APIUnit)
           Mechanic with CanSiege with ArmedMobile with
           MobileRangeWeapon with IsBig with IsVehicle with ExplosiveGroundDamage with
           HasSingleTargetSpells {
+
   override type CasterType = Tank
   override val spells = List(Spells.TankSiege)
 }

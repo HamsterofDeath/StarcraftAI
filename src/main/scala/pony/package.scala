@@ -274,6 +274,14 @@ package object pony {
     def someIfTrue[T](ifTrue: => T) = if (b) Some(ifTrue) else None
   }
 
+  implicit def unwrap[T](lv: LazyVal[T]): T = lv.get
+
+  implicit def unwrap[T](f: FutureIterator[_, T]): Option[T] = f.mostRecent
+
+  implicit class RichAny[T](val any: T) extends AnyVal {
+    def nullSafe[R](f: T => R) = if (any != null) Some(f(any)) else None
+  }
+
   implicit class RichBitSet(val b: mutable.BitSet) extends AnyVal {
     def immutableCopy = collection.immutable.BitSet.fromBitMaskNoCopy(b.toBitMask)
 

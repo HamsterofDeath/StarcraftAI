@@ -26,6 +26,10 @@ trait HasXY {
 }
 
 case class MapTilePosition(x: Int, y: Int) extends HasXY {
+  def isInsideOfGame = !isOutsideOfGame
+
+  def isOutsideOfGame = x > 1000 && y > 1000
+
   def asTuple = (x, y)
 
   def middleBetween(center: MapTilePosition) = {

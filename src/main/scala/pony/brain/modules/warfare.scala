@@ -290,7 +290,7 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
 
     def hasMembers = currentForce.nonEmpty
 
-    def halfOfForceReachedTargetPoint = myTargetReachedPercentage.get > 0.5
+    def halfOfForceReachedTargetPoint = myTargetReachedPercentage > 0.5
 
     def allReachedTargetArea = migration.result.exists(_.allCloseToDestination)
 
@@ -693,7 +693,7 @@ class SetupAntiCloakDefenses(universe: Universe)
   private val richBaseCount = oncePerTick {
     bases.richBasesCount
   }
-  private val analyzed      = FutureIterator.feed(input) produceAsyncLater { in =>
+  private val analyzed      = FutureIterator.feed(input).produceAsyncLater { in =>
 
     val counts = mutable.HashMap.empty[MapTilePosition, Int]
 
@@ -738,13 +738,13 @@ class SetupAntiCloakDefenses(universe: Universe)
     } else {
       None
     }
-  }
+  }.named("Anti cloak defendes")
 
   override def onTick_!() = {
     super.onTick_!()
     kickOffOn24thTick()
     val active = strategy.current.buildAntiCloakNow
-    analyzed.mostRecent.foreach { bestBuildingLocation =>
+    analyzed.foreach { bestBuildingLocation =>
       if (active) {
         val buildingInProgress = {
           unitManager.constructionsInProgress[DetectorBuilding].nonEmpty

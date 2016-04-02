@@ -1183,7 +1183,7 @@ trait PathfindingSupport[T <: Mobile] extends JobOrSubJob[T] {
       }
     }
     val myOrder = {
-      if (needsPath.get) {
+      if (needsPath) {
         pathTargetPosition.map { where =>
           if (myPath.isDone && myPath.assumeDoneAndGet.isEmpty) {
             newPathRequired(where)
@@ -1286,7 +1286,7 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W,
         }
       }
       data
-    }
+    }.named("Find worker path")
   }
   private val isMainBuilding     = classOf[MainBuilding].isAssignableFrom(buildingType)
 

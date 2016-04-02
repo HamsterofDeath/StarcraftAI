@@ -18,7 +18,7 @@ object ConcoctedAI {
     .addPlugin(new BuildableRenderer(true))
     .addPlugin(new UnitIdRenderer)
     .addPlugin(new MapReveal)
-    .addPlugin(new FastSpeed)
+    .addPlugin(new ChangeSpeed)
     .addPlugin(mainAi)
     .addPlugin(new ChokePointRenderer(mainAi.universe))
     .addPlugin(new BlockedBuildingSpotsRenderer(mainAi.universe))
