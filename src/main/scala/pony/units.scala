@@ -195,16 +195,22 @@ trait WrapsUnit extends HasUniverse with AfterTickListener {
   }
 
   object surroundings {
+    private val near = 8
+
     private val myEnemyGroundUnits = oncePer(Primes.prime23) {
-      universe.unitGrid.enemy.allInRange[GroundUnit](centerTile, 12).toVector
+      universe.unitGrid.enemy.allInRange[GroundUnit](centerTile, near).toVector
     }
 
     private val myCloseOwnBuildings = oncePer(Primes.prime29) {
-      ownUnits.allBuildings.filter(_.centerTile.distanceToIsLess(centerTile, 12))
+      ownUnits.allBuildings.filter(_.centerTile.distanceToIsLess(centerTile, near))
+    }
+
+    private val myCloseOwnUnits = oncePer(Primes.prime29) {
+      ownUnits.allMobilesWithWeapons.filter(_.centerTile.distanceToIsLess(centerTile, near))
     }
 
     private val myCloseEnemyBuildings = oncePer(Primes.prime29) {
-      enemies.allBuildings.filter(_.centerTile.distanceToIsLess(centerTile, 12))
+      enemies.allBuildings.filter(_.centerTile.distanceToIsLess(centerTile, near))
     }
 
     def closeEnemyBuildings = myCloseEnemyBuildings.get
@@ -212,6 +218,8 @@ trait WrapsUnit extends HasUniverse with AfterTickListener {
     def closeEnemyGroundUnits = myEnemyGroundUnits.get
 
     def closeOwnBuildings = myCloseOwnBuildings.get
+
+    def closeOwnUnits = myCloseOwnUnits.get
 
   }
 
@@ -1143,7 +1151,9 @@ trait AirWeapon extends Weapon {
 }
 
 trait ArmedMobile extends Mobile with Weapon {
-
+  def isInFight = {
+    isStartingToAttack || isAttacking || isBeingAttacked
+  }
 }
 
 trait Weapon extends Controllable with ArmedUnit {
@@ -1421,6 +1431,15 @@ trait SupportUnit extends Mobile {
 
 trait PsiArea extends AnyUnit
 
+trait NeedsPower extends Building {
+  private val myPowered = oncePerTick {
+    nativeUnit.isPowered
+  }
+  def isPowered = myPowered.get
+
+  override def isHarmlessNow = super.isHarmlessNow || !isPowered
+}
+
 class SupplyDepot(unit: APIUnit)
   extends AnyUnit(unit) with ImmobileSupplyProvider with TerranBuilding
 
@@ -1460,6 +1479,7 @@ class Gateway(unit: APIUnit) extends AnyUnit(unit) with UnitFactory
 
 class PhotonCannon(unit: APIUnit)
   extends AnyUnit(unit) with Building with GroundAndAirWeapon with NormalAirDamage with
+          NeedsPower with
           NormalGroundDamage with ArmedBuildingCoveringGroundAndAir with DetectorBuilding {
   override def damageDelayFactorAir = 1
 

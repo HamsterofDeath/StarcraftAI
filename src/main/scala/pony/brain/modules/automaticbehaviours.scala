@@ -22,7 +22,6 @@ abstract class DefaultBehaviour[T <: WrapsUnit : Manifest](override val universe
     val remove = controlledUnits.filterNot(_.isInGame)
     controlledUnits --= remove
     unit2behaviour --= remove
-
   }
 
   def renderDebug_!(renderer: Renderer): Unit = {}
@@ -77,37 +76,37 @@ abstract class DefaultBehaviour[T <: WrapsUnit : Manifest](override val universe
 
 object Terran {
   def allBehaviours(universe: Universe): Seq[DefaultBehaviour[WrapsUnit]] = {
-    val allOfThem = (
-                      new StimSelf(universe) ::
-                      new StopMechanic(universe) ::
-                      new SetupMineField(universe) ::
-                      new ShieldUnit(universe) ::
-                      new IrradiateUnit(universe) ::
-                      new CloakSelfGhost(universe) ::
-                      new GoToInitialPosition(universe) ::
-                      new CloakSelfWraith(universe) ::
-                      new SiegeUnsiegeSelf(universe) ::
-                      new MigrateTowardsPosition(universe) ::
-                      new TransportGroundUnits(universe) ::
-                      new RepairDamagedUnit(universe) ::
-                      new RepairDamagedBuilding(universe) ::
-                      new MoveAwayFromConstructionSite(universe) ::
-                      new MoveAwayFromDangerousSpotOnGround(universe) ::
-                      new MoveAwayFromDangerousSpotOnAir(universe) ::
-                      new PreventBlockades(universe) ::
-                      new ContinueInterruptedConstruction(universe) ::
-                      new UseComsat(universe) ::
-                      new Scout(universe) ::
-                      /*
-                                           new DoNotStray ::
-                                           new HealDamagedUnit ::
-                                           new FixMedicalProblem ::
-                                           new BlindDetector ::
-                      */
-                      new Dance(universe) ::
-                      new FocusFire(universe) ::
-                      new ReallyReallyLazy(universe) ::
-                      Nil)
+    val allOfThem = (new StimSelf(universe) ::
+                     new StopMechanic(universe) ::
+                     new SetupMineField(universe) ::
+                     new ShieldUnit(universe) ::
+                     new IrradiateUnit(universe) ::
+                     new CloakSelfGhost(universe) ::
+                     new GoToInitialPosition(universe) ::
+                     new CloakSelfWraith(universe) ::
+                     new SiegeUnsiegeSelf(universe) ::
+                     new MigrateTowardsPosition(universe) ::
+                     new TransportGroundUnits(universe) ::
+                     new RepairDamagedUnit(universe) ::
+                     new RepairDamagedBuilding(universe) ::
+                     new MoveAwayFromConstructionSite(universe) ::
+                     new MoveAwayFromDangerousSpotOnGround(universe) ::
+                     new MoveAwayFromDangerousSpotOnAir(universe) ::
+                     new PreventBlockades(universe) ::
+                     new ContinueInterruptedConstruction(universe) ::
+                     new UseComsat(universe) ::
+                     new Scout(universe) ::
+                     /*
+                                          new DoNotStray ::
+                                          new HealDamagedUnit ::
+                                          new FixMedicalProblem ::
+                                          new BlindDetector ::
+                     */
+                     new Dance(universe) ::
+                     new HelpNearUnits(universe) ::
+                     new FocusFire(universe) ::
+                     new ReallyReallyLazy(universe) ::
+                     Nil)
                     .map(_.cast)
     allOfThem
   }
@@ -203,9 +202,13 @@ object Terran {
       }
 
       override def toOrder(what: Objective): Seq[UnitOrder] = {
-        val old = paths.filter { case (_, maybe) => maybe.age > maxAge }
-                  .keySet
-                  .toList
+        val old = {
+          paths.filter {
+            case (_, maybe) => maybe.age > maxAge
+          }
+          .keySet
+          .toList
+        }
         paths --= old
         trace(s"Kicked out obsolete paths for: $old", old.nonEmpty)
 
@@ -287,6 +290,32 @@ object Terran {
             }
         }
         order.toList
+      }
+    }
+  }
+
+  class HelpNearUnits(universe: Universe) extends DefaultBehaviour[ArmedMobile](universe) {
+
+    override def priority = SecondPriority.Less
+
+    override protected def wrapBase(unit: ArmedMobile) = {
+      new SingleUnitBehaviour[ArmedMobile](unit, meta) {
+        override def describeShort = "(+)"
+
+        override protected def toOrder(what: Objective) = {
+          val closest = {
+            unit.surroundings.closeOwnUnits
+            .iterator
+            .filter(_.isInFight)
+            .filter { e =>
+              mapLayers.rawWalkableMap.connectedByLine(e.currentTile, unit.currentTile)
+            }
+            .minByOpt(_.currentTile.distanceSquaredTo(unit.currentTile))
+          }
+          closest.map { helpThisOne =>
+            Orders.AttackMove(unit, helpThisOne.currentTile)
+          }.toList
+        }
       }
     }
   }
@@ -1549,7 +1578,6 @@ class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
     //    }
     true
   }
-
 
   override def onTick_!() = {
     super.onTick_!()
