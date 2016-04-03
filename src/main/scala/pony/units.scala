@@ -1055,13 +1055,14 @@ case class Damage(baseAmount: Int, bonus: Int, cooldown: Int, damageType: Damage
 }
 
 trait HasHpAndShields {
-  val hp     : Int
-  val shields: Int
+  def hp: Int
+  def shields: Int
 }
 
 case class DamageSingleAttack(onHp: Int, onShields: Int, airHit: Boolean) extends HasHpAndShields {
-  override val hp     : Int = onHp
-  override val shields: Int = onShields
+  override def hp: Int = onHp
+
+  override def shields: Int = onShields
 }
 
 trait AutoAirWeaponType extends AirWeapon {
@@ -1168,11 +1169,13 @@ trait Weapon extends Controllable with ArmedUnit {
   // air & groundweapon need to override this
   def canAttackIfNear(other: MaybeCanDie) = false
   def calculateDamageOn(other: MaybeCanDie, assumeHP: Int, assumeShields: Int,
-                        shotCount: Int): DamageSingleAttack = calculateDamageOn(
-    other.armor, assumeHP, assumeShields, shotCount)
+                        shotCount: Int): DamageSingleAttack = {
+    calculateDamageOn(other.armor, assumeHP, assumeShields, shotCount)
+  }
   def calculateDamageOn(other: Armor, assumeHP: Int, assumeShields: Int,
-                        shotCount: Int): DamageSingleAttack = !!!(
-    "Forgot to override this")
+                        shotCount: Int): DamageSingleAttack = {
+    !!!("Forgot to override this")
+  }
 
   def matchOn[X](other: MaybeCanDie)
                 (ifAir: AirUnit => X, ifGround: GroundUnit => X, ifBuilding: Building => X) =

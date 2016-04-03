@@ -1512,38 +1512,63 @@ case class Target[T <: Mobile](caster: HasSingleTargetSpells, target: T)
 
 class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
   def renderDebug_!(renderer: Renderer): Unit = {
-    me2Enemy.foreach({ case (from, to) =>
+    mine2Enemy.foreach({ case (from, to) =>
       renderer.in_!(Color.White).drawLine(from.center, to.center)
     })
   }
 
-  private val enemy2Attackers    = mutable.HashMap.empty[MaybeCanDie, Attackers]
-  private val me2Enemy           = mutable.HashMap.empty[MobileRangeWeapon, MaybeCanDie]
-  private val prioritizedTargets = LazyVal.from {
-    val prioritized = universe.enemyUnits.allCanDie.toVector.sortBy { e =>
-      (e.isHarmlessNow.ifElse(1, 0), enemy2Attackers.contains(e).ifElse(0, 1), -e.price.sum, e
-                                                                                             .hitPoints
-                                                                                             .sum)
+  private val mine2Plan          = mutable.HashMap.empty[MobileRangeWeapon, Attackers]
+  private val enemy2Mine         = mutable.HashMap.empty[MaybeCanDie, Attackers]
+  private val mine2Enemy         = mutable.HashMap.empty[MobileRangeWeapon, MaybeCanDie]
+  private val prioritizedTargets = {
+    LazyVal.from {
+      val prioritized = {
+        universe.enemyUnits
+        .allCanDie
+        .toVector
+        .sortBy { e =>
+          (e.isHarmlessNow.ifElse(1, 0),
+            enemy2Mine.contains(e).ifElse(0, 1),
+            -e.price.sum,
+            e.hitPoints.sum)
+        }
+      }
+      prioritized
     }
-    prioritized
   }
+
+  private def consistent = {
+    //    enemy2Mine.valuesIterator.foreach { attackers =>
+    //      val m2e = attackers.allAttackers.map { e =>
+    //        assert(mine2Enemy.contains(e))
+    //        e -> mine2Enemy(e)
+    //      }
+    //      m2e.foreach { case (m,e) =>
+    //        assert(mine2Enemy(m) == e)
+    //      }
+    //    }
+    true
+  }
+
 
   override def onTick_!() = {
     super.onTick_!()
-    enemy2Attackers.filter(_._1.isDead).foreach { case (dead, attackers) =>
+    enemy2Mine.filter(_._1.isDead).foreach { case (dead, attackers) =>
       trace(s"Unit $dead died, reorganizing attackers")
-      enemy2Attackers.remove(dead)
+      enemy2Mine.remove(dead)
       attackers.allAttackers.foreach { unit =>
-        me2Enemy.remove(unit)
+        mine2Enemy.remove(unit)
       }
     }
 
-    me2Enemy.keySet.filter(_.isDead).foreach { dead =>
-      val target = me2Enemy.remove(dead)
+    mine2Enemy.keySet.filter(_.isDead).foreach { dead =>
+      val target = mine2Enemy.remove(dead)
       target.foreach { canDie =>
-        enemy2Attackers(canDie).removeAttacker_!(dead)
+        enemy2Mine(canDie).removeAttacker_!(dead)
       }
     }
+
+    enemy2Mine.valuesIterator.foreach(_.onTick_!())
 
     invalidateQueue()
   }
@@ -1553,9 +1578,9 @@ class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
   }
 
   def suggestTarget(myUnit: MobileRangeWeapon): Option[MaybeCanDie] = {
-    val myCurrentTarget = me2Enemy.get(myUnit)
+    val myCurrentTarget = mine2Enemy.get(myUnit)
     myCurrentTarget.foreach { t =>
-      val maybeAttackers = enemy2Attackers(t)
+      val maybeAttackers = enemy2Mine(t)
       val shouldLeaveTeam = {
         def outOfRange = maybeAttackers.isOutOfRange(myUnit)
         def overkill = maybeAttackers.isOverkill && maybeAttackers.canSpare(myUnit)
@@ -1563,42 +1588,60 @@ class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
       }
       if (shouldLeaveTeam) {
         maybeAttackers.removeAttacker_!(myUnit)
-        me2Enemy.remove(myUnit)
+        mine2Enemy.remove(myUnit)
       }
     }
 
     val bestTarget = prioritizedTargets.find { target =>
-      val existing = enemy2Attackers.get(target).exists(_.isAttacker(myUnit))
+      val existing = enemy2Mine.get(target).exists(_.isAttacker(myUnit))
+      assert(!existing || myCurrentTarget.isDefined)
       existing || (myUnit.canAttackIfNear(target) && myUnit.isInWeaponRangeExact(target) &&
-                   enemy2Attackers.getOrElseUpdate(target, new Attackers(target)).canTakeMore)
+                   enemy2Mine.getOrElseUpdate(target, new Attackers(target)).canTakeMore)
     }
     bestTarget.foreach { attackThis =>
-      val plan = enemy2Attackers(attackThis)
-      if (!plan.isAttacker(myUnit)) {
-        me2Enemy.put(myUnit, attackThis)
+      val oldPlan = mine2Plan.get(myUnit)
+      oldPlan.foreach { plan =>
+        if (plan.isAttacker(myUnit)) {
+          plan.removeAttacker_!(myUnit)
+        }
+        mine2Plan.remove(myUnit)
+      }
+      val plan = enemy2Mine(attackThis)
+      if (plan.isAttacker(myUnit)) {
+        assert(mine2Enemy.contains(myUnit))
+      } else {
+        mine2Enemy.put(myUnit, attackThis)
         plan.addAttacker_!(myUnit)
+        mine2Plan.put(myUnit, plan)
       }
       invalidateQueue()
     }
-    me2Enemy.get(myUnit)
+    mine2Enemy.get(myUnit)
   }
 
   class Attackers(val target: MaybeCanDie) {
 
     private val attackers           = mutable.HashSet.empty[MobileRangeWeapon]
-    private val plannedDamage       = mutable.HashMap
-                                      .empty[MobileRangeWeapon, DamageSingleAttack]
+    private val plannedDamage       =
+      mutable.HashMap.empty[MobileRangeWeapon, DamageSingleAttack]
     private val hpAfterNextAttacks  = currentHp
     private val plannedDamageMerged = new MutableHP(0, 0)
 
     def isOutOfRange(myUnit: MobileRangeWeapon) = !myUnit.isInWeaponRangeExact(target)
 
     def removeAttacker_!(t: MobileRangeWeapon): Unit = {
+      assert(attackers(t))
+      assert(plannedDamage.contains(t))
       attackers -= t
       plannedDamage -= t
       recalculatePlannedDamage_!()
       hpAfterNextAttacks.set(currentHp -! plannedDamageMerged)
       invalidateQueue()
+    }
+
+    def onTick_!(): Unit = {
+      // adjust to reality
+      hpAfterNextAttacks.set(currentHp -! plannedDamageMerged)
     }
 
     private def currentHp = new MutableHP(actualHP.hitpoints, actualHP.shield)
@@ -1620,12 +1663,15 @@ class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
 
     def addAttacker_!(t: MobileRangeWeapon): Unit = {
       assert(!attackers(t), s"$attackers already contains $t")
+      assert(enemy2Mine(target) == this)
       attackers += t
       // for slow attacks, we assume that one is always on the way to hit to avoid overkill
       val expectedDamage = {
         val factor = 1 + t.assumeShotDelayOn(target)
 
-        t.calculateDamageOn(target, hpAfterNextAttacks.hitPoints, hpAfterNextAttacks.shieldPoints,
+        t.calculateDamageOn(target,
+          hpAfterNextAttacks.hitPoints,
+          hpAfterNextAttacks.shieldPoints,
           factor)
       }
 
@@ -1657,8 +1703,9 @@ class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
     def canTakeMore = hpAfterNextAttacks.alive
 
     class MutableHP(var hitPoints: Int, var shieldPoints: Int) extends HasHpAndShields {
-      override val hp      = hitPoints
-      override val shields = shieldPoints
+      override def hp = hitPoints
+
+      override def shields = shieldPoints
 
       def toHP = HitPoints(hitPoints, shieldPoints)
 
@@ -1685,6 +1732,7 @@ class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
 
     }
 
+    override def toString = s"Attackers($attackers)"
   }
 
 }
