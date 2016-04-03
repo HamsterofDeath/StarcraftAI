@@ -98,21 +98,22 @@ trait WrapsUnit extends HasUniverse with AfterTickListener {
     ret
   }
 
-  private val myTarget             = oncePerTick {
-    nativeUnit.getTarget
-    .nullSafe(_.getID)
+  private val myTarget    = oncePerTick {
+    nativeUnit.getTarget.wrapNull
+    .orElse(nativeUnit.getOrderTarget.wrapNull)
+    .map(_.getID)
     .flatMap(universe.allUnits.byNativeId)
   }
-  private val nativeOrder          = oncePerTick {
+  private val nativeOrder = oncePerTick {
     nativeUnit.getOrder
   }
 
   def currentTarget = myTarget.get
 
-  private val curOrder             = oncePerTick {nativeUnit.getOrder}
-  private val unfinished           = oncePerTick(
+  private val curOrder     = oncePerTick {nativeUnit.getOrder}
+  private val unfinished   = oncePerTick(
     nativeUnit.getRemainingBuildTime > 0 || !nativeUnit.isCompleted)
-  private val myCenterTile         = oncePerTick {
+  private val myCenterTile = oncePerTick {
     val c = center
     MapTilePosition(c.x / 32, c.y / 32)
   }
@@ -737,12 +738,15 @@ trait MaybeCanDie extends WrapsUnit {
     hitPoints.sum.toDouble / (maxHp + maxShields)
   }
 
-  def underAttackByMeleeSince(ticks: Int) = {
-    hasBeenAttackedSince(ticks) && surroundings.closeEnemyGroundUnits.exists { e =>
-      !e.isHarmlessNow && e.currentTarget.contains(self)
+  def underAttackByMelee = {
+    surroundings.closeEnemyGroundUnits.exists {
+      case gw: GroundWeapon => gw.isMelee &&
+                               !gw.isHarmlessNow &&
+                               gw.currentTarget.contains(self) &&
+                               gw.currentTile.distanceToIsLess(self.currentTile, 3)
+      case _ => false
     }
   }
-
 
   def isDamaged = isInGame && (hitPoints.shield < maxShields || hitPoints.hitpoints < maxHp) &&
                   !isBeingCreated
@@ -829,9 +833,10 @@ trait Mobile extends WrapsUnit with Controllable {
 
   def isGroundUnit: Boolean
   def asGroundUnit = if (isGroundUnit) this.asInstanceOf[GroundUnit].toSome else None
+  def asWithGroundWeapon = if (isGroundUnit) this.asInstanceOf[GroundWeapon].toSome else None
   def canSee(tile: MapTilePosition) = mapLayers.rawWalkableMap.connectedByLine(tile, currentTile)
   val buildPrice = Price(nativeUnit.getType.mineralPrice(), nativeUnit.getType.gasPrice())
-  private val myCurrentArea         = oncePer(Primes.prime11) {
+  private val myCurrentArea = oncePer(Primes.prime11) {
     mapLayers.rawWalkableMap.areaOf(currentTile).orElse {
       mapLayers.rawWalkableMap
       .spiralAround(currentTile, 2)
@@ -846,7 +851,6 @@ trait Mobile extends WrapsUnit with Controllable {
     case a: AirWeapon => a.isInstantAttackAir
     case _ => false
   }
-
 
   private val defenseMatrix         = oncePerTick {
     nativeUnit.getDefenseMatrixPoints > 0 || nativeUnit.getDefenseMatrixTimer > 0
@@ -872,7 +876,6 @@ trait Mobile extends WrapsUnit with Controllable {
   def isGuarding = currentNativeOrder == Order.PlayerGuard
 
   def isMoving = nativeUnit.isMoving
-
 
   def blockedArea = myArea.get
   def unitTileSize = armor.armorType.tileSize
@@ -920,9 +923,10 @@ trait HasSpiderMines extends WrapsUnit {
 }
 
 trait GroundWeapon extends Weapon {
+  def isMelee = groundRangeTiles <= 2
 
-  val groundRangePixels      = groundWeapon.maxRange()
-  val groundRangeTiles       = groundRangePixels / tileSize
+  val groundRangePixels = groundWeapon.maxRange()
+  val groundRangeTiles  = groundRangePixels / tileSize
   private val groundRangeTilesSquared = groundRangeTiles * groundRangeTiles
   val groundCanAttackAir     = groundWeapon.targetsAir()
   val groundCanAttackGround  = groundWeapon.targetsGround()
@@ -1071,7 +1075,7 @@ trait AutoGroundWeaponType extends GroundWeapon {
 trait AirWeapon extends Weapon {
   val airRangePixels = airWeapon.maxRange()
   // fails at goliath range upgrade
-  val airRangeTiles       = airRangePixels / tileSize
+  val airRangeTiles  = airRangePixels / tileSize
   private val airRangeTilesSquared = airRangeTiles * airRangeTiles
   val airCanAttackAir     = airWeapon.targetsAir()
   val airCanAttackGround  = airWeapon.targetsGround()
@@ -1588,7 +1592,7 @@ trait CanCloak extends Mobile with CanHide {
 
   override def isExposed = super.isExposed && isDecloaked
 
-  private val cloaked   = oncePerTick {
+  private val cloaked = oncePerTick {
     nativeUnit.isCloaked
   }
 

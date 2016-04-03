@@ -195,7 +195,7 @@ class FerryCargoBuilder {
   private val myCargo = ArrayBuffer.empty[GroundUnit]
   private var left    = 8
 
-  def cargo = myCargo.toSeq
+  def cargo = myCargo.immutableView
 
   def add_!(g: GroundUnit) = {
     assert(canAdd(g))

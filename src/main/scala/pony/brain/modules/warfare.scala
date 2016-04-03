@@ -391,7 +391,7 @@ class GroupingHelper[T <: WrapsUnit](val map: Grid2D, seq: TraversableOnce[T], s
     *
     * @return
     */
-  def evaluateUnitGroups = {
+  def evaluateUnitGroups: Seq[Group[T]] = {
     val groups = ArrayBuffer.empty[Group[T]]
     immutable.foreach { elem =>
       groups.find(_.canJoin(elem)) match {
@@ -402,7 +402,7 @@ class GroupingHelper[T <: WrapsUnit](val map: Grid2D, seq: TraversableOnce[T], s
           ng.add_!(elem)
       }
     }
-    groups.toSeq
+    groups.immutableView
   }
 
 }

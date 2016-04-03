@@ -149,7 +149,7 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
 
   def failedToProvideFlat = failedToProvide.map(_.request)
 
-  def failedToProvide = unfulfilledRequestsLastTick.toSeq
+  def failedToProvide = unfulfilledRequestsLastTick
 
   def jobOptOf[T <: WrapsUnit](unit: T) = assignments.get(unit).asInstanceOf[Option[UnitWithJob[T]]]
 
@@ -179,7 +179,7 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
       }
       trace(s"Failed: ${failed.mkString("\n")}")
       trace(s"Finished: ${done.mkString(", ")}")
-      val ret = (done ++ failed).toVector
+      val ret = done ++ failed
       assert(ret.size == ret.distinct.size, s"A job is failed and finished at the same time")
       ret
     }
@@ -700,7 +700,7 @@ class Employer[T <: WrapsUnit : Manifest](override val universe: Universe) exten
     unitManager.assignJob_!(job)
   }
 
-  def current = employees.toSeq
+  def current = employees.immutableView
 }
 
 trait CanAcceptSwitchAndHasFunding[T <: WrapsUnit]

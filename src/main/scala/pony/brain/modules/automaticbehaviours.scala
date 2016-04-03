@@ -557,7 +557,7 @@ object Terran {
   }
 
   trait DefaultDangerAreaConfig[T <: Mobile] extends AvoidSpecificAreas[T] {
-    override protected def tolerance = 1
+    override protected def tolerance = 2
     override protected def targetReuseAllowance = 8
     override protected def updateWhen = Primes.prime37
     override protected val actionName: String = "<!>"
@@ -903,10 +903,11 @@ object Terran {
           }
         }
 
+        val botheredByMelee = unit.underAttackByMelee
         if (unit.isSieged) {
           val staySieged = {
             val hasTargets = buildingInRange || anyCloseButNotTooClose
-            hasTargets && !unit.underAttackByMeleeSince(3)
+            hasTargets && !botheredByMelee
           }
           if (staySieged) {
             Nil
@@ -914,7 +915,7 @@ object Terran {
             Orders.TechOnSelf(unit, TankSiegeMode).toList
           }
         } else {
-          if (siegeableInRange) {
+          if (siegeableInRange && !botheredByMelee) {
             Orders.TechOnSelf(unit, TankSiegeMode).toList
           } else {
             Nil

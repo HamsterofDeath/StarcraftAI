@@ -16,7 +16,6 @@ package object pony {
   // milestone 3:
   // TODO collect minerals/gas from far away if out of resources in bases
   // TODO fix upgrade building counts (too many engineering bays, not enough of the other one)
-  // TODO stay away from stationary things if long range units are available
   // TODO send nearby units to help in battles
   // TODO build units best suited against enemy
 
@@ -143,6 +142,11 @@ package object pony {
     def toBase36 = Integer.toString(i, 36)
   }
 
+  implicit class RichMutableTraversable[T](val t: mutable.Traversable[T]) extends AnyVal {
+    // not correct, but i only use it in ways so that it doesn't matter
+    def immutableView = t.toSeq
+  }
+
   implicit class RichTraversable[T](val t: Traversable[T]) extends AnyVal {
     def headAssert = {
       assert(t.size == 1)
@@ -151,6 +155,7 @@ package object pony {
   }
 
   implicit class RichTraversableOnce[T](val t: TraversableOnce[T]) extends AnyVal {
+
     def minByOpt[C](cmp: T => C)(implicit cmp2: Ordering[C]) = {
       if (t.isEmpty) {
         None
@@ -280,6 +285,10 @@ package object pony {
 
   implicit class RichAny[T](val any: T) extends AnyVal {
     def nullSafe[R](f: T => R) = if (any != null) Some(f(any)) else None
+  }
+
+  implicit class RichAnyRef[T](val anyRef: T) extends AnyVal {
+    def wrapNull = Option(anyRef)
   }
 
   implicit class RichBitSet(val b: mutable.BitSet) extends AnyVal {

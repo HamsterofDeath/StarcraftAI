@@ -61,7 +61,7 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
 
   def hasStillLocked(funding: ResourceApproval) = detailedLocks.exists(_.proof.contains(funding))
 
-  def detailedLocks = locked.toSeq
+  def detailedLocks = locked.immutableView
 
   def couldAffordNow(e: SCUnitType): Boolean = {
     unlockedResources >

@@ -429,15 +429,15 @@ class Bases(world: DefaultWorld) {
     (singleValuable || multipleIncomes) && muchGas
   }
 
-  def myMineralFields = myBases.flatMap(_.myMineralGroup).toSeq
+  def myMineralFields = myBases.flatMap(_.myMineralGroup).immutableView
 
-  def myGeysirs = myBases.flatMap(_.myGeysirs).toSeq
+  def myGeysirs = myBases.flatMap(_.myGeysirs).immutableView
 
   def richBasesCount = richBases.size
 
   def richBases = bases.filter(_.resourceArea.rich)
 
-  def bases = myBases.toSeq
+  def bases = myBases.immutableView
 
   def mainBase = myBases.headOption
 
