@@ -256,38 +256,40 @@ object Terran {
           currentSafeOrder(what)
         }
 
-        val order = ferryManager.planFor(unit) match {
-          case Some(plan) =>
-            if ((plan.instantDropRequested || plan.dropUnitsNow) && !unit.canDropHere) {
-              unit.nearestDropTile.flatMap(orderByTile)
-            } else if (plan.instantDropRequested && unit.canDropHere) {
-              plan.asapDrop.map { dropIt =>
-                Orders.UnloadUnit(unit, dropIt)
+        val order = {
+          ferryManager.planFor(unit) match {
+            case Some(plan) =>
+              if ((plan.instantDropRequested || plan.dropUnitsNow) && !unit.canDropHere) {
+                unit.nearestDropTile.flatMap(orderByTile)
+              } else if (plan.instantDropRequested && unit.canDropHere) {
+                plan.asapDrop.map { dropIt =>
+                  Orders.UnloadUnit(unit, dropIt)
+                }
+              } else if (plan.dropUnitsNow) {
+                plan.nextToDrop.map { drop =>
+                  Orders.UnloadUnit(unit, drop)
+                }
+              } else if (plan.pickupTargetsLeft) {
+                val loadThis = plan.nextToPickUp
+                orderByUnit(loadThis.get)
+              } else if (plan.needsToReachTarget) {
+                orderByTile(plan.toWhere)
+              } else {
+                None
               }
-            } else if (plan.dropUnitsNow) {
-              plan.nextToDrop.map { drop =>
-                Orders.UnloadUnit(unit, drop)
+            case None =>
+              if (unit.hasUnitsLoaded) {
+                val nearestFree = mapLayers.freeWalkableTiles.nearestFree(unit.currentTile)
+                nearestFree.map { where =>
+                  Orders.UnloadAll(unit, where).forceRepeat_!(true)
+                }
+              } else if (unit.isPickingUp) {
+                Orders.Stop(unit).toSome
               }
-            } else if (plan.pickupTargetsLeft) {
-              val loadThis = plan.nextToPickUp
-              orderByUnit(loadThis.get)
-            } else if (plan.needsToReachTarget) {
-              orderByTile(plan.toWhere)
-            } else {
-              None
-            }
-          case None =>
-            if (unit.hasUnitsLoaded) {
-              val nearestFree = mapLayers.freeWalkableTiles.nearestFree(unit.currentTile)
-              nearestFree.map { where =>
-                Orders.UnloadAll(unit, where).forceRepeat_!(true)
+              else {
+                None
               }
-            } else if (unit.isPickingUp) {
-              Orders.Stop(unit).toSome
-            }
-            else {
-              None
-            }
+          }
         }
         order.toList
       }
