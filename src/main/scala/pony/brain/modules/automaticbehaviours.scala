@@ -1881,15 +1881,9 @@ class NonConflictingTargets[T <: WrapsUnit : Manifest, M <: Mobile : Manifest]
   private def targetOf(m: M) = assignments(m)
 }
 
-class NonConflictingSpellTargets[T <: HasSingleTargetSpells, M <: Mobile : Manifest](spell:
-                                                                                     SingleTargetSpell[T, M],
-                                                                                     targetConstraint:
-                                                                                     PartialFunction[Mobile, M],
-                                                                                     keepLocked:
-                                                                                     M => Boolean,
-                                                                                     override val
-                                                                                     universe:
-                                                                                     Universe)
+class NonConflictingSpellTargets[T <: HasSingleTargetSpells, M <: Mobile : Manifest]
+(spell: SingleTargetSpell[T, M], targetConstraint: PartialFunction[Mobile, M],
+ keepLocked: M => Boolean, override val universe: Universe)
   extends HasUniverse {
   private val locked = mutable.HashSet.empty[M]
 
