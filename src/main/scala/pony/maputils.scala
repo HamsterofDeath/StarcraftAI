@@ -7,6 +7,10 @@ import scala.collection.mutable
 class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitSet,
              protected val containsBlocked: Boolean = true) extends Serializable {
   self =>
+  def asMutable = mutableCopy
+
+  def or(other: Grid2D) = mutableCopy.or_!(other.asMutable).guaranteeImmutability
+
   private lazy val lazyAreas = new AreaHelper(self).findFreeAreas
 
   def anyFreeInSpiral(tile: MapTilePosition, size: Int) = {
@@ -277,6 +281,8 @@ class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet,
     allBlocked.flatMap(_.asArea.growBy(1).tiles).toSet.foreach((e: MapTilePosition) => block_!(e))
     this
   }
+
+  override def asMutable = this
 
   def areaSize(anyContained: MapTilePosition) = {
     val isFree = free(anyContained)

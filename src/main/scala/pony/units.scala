@@ -225,7 +225,7 @@ trait WrapsUnit extends HasUniverse with AfterTickListener {
 
 }
 
-trait Controllable extends WrapsUnit with MaybeCanDie
+trait Controllable extends WrapsUnit with CanDie
 
 object WrapsUnit {
   private var counter = 0
@@ -299,7 +299,7 @@ trait TerranBuilding extends Building {
 
 }
 
-trait Building extends BlockingTiles with MaybeCanDie with CanMorph {
+trait Building extends BlockingTiles with CanDie with CanMorph {
   self =>
   override val armorType            = Building
   private  val myFlying             = oncePerTick {
@@ -724,9 +724,37 @@ case object Building extends ArmorType {
   override def transportSize = !!!("This should never happen")
 }
 
-case class Armor(armorType: ArmorType, hp: HitPoints, armor: Int, owner: MaybeCanDie)
+case class Armor(armorType: ArmorType, hp: HitPoints, armor: Int, owner: CanDie)
 
-trait MaybeCanDie extends WrapsUnit {
+case class IsUnder(attack: Boolean, storm: Boolean, darkSwarm: Boolean, disruptor: Boolean,
+                   whenTick: Int)
+
+trait CanBeUnderStorm extends WrapsUnit {
+  private val myUnder = oncePerTick {
+    IsUnder(nativeUnit.isUnderAttack,
+      nativeUnit.isUnderStorm,
+      nativeUnit.isUnderDarkSwarm,
+      nativeUnit.isUnderDisruptionWeb,
+      currentTick)
+  }
+
+  case class LastKnownUnderPsi(where: MapTilePosition, when: Int)
+
+  private var lastKnownUnderPsi = Option.empty[LastKnownUnderPsi]
+  def isUnderPsiStorm = myUnder.storm
+
+  def wasUnderPsiStormSince(ticks: Int) = lastKnownUnderPsi.exists(_.when + ticks >= currentTick)
+
+  def lastKnownStormPosition = lastKnownUnderPsi.map(_.where)
+  override def onTick_!() = {
+    super.onTick_!()
+    if (isUnderPsiStorm) {
+      lastKnownUnderPsi = LastKnownUnderPsi(currentTile, currentTick).toSome
+    }
+  }
+}
+
+trait CanDie extends WrapsUnit with CanBeUnderStorm {
   self =>
 
   val armorType: ArmorType
@@ -739,6 +767,7 @@ trait MaybeCanDie extends WrapsUnit {
     val armorLevel = universe.upgrades.armorForUnitType(self)
     Armor(armorType, hp, armorLevel, self)
   }
+
   private var lastFrameHp = HitPoints(-1, -1)
   // obviously wrong, but that doesn't matter
   private var dead        = false
@@ -954,14 +983,14 @@ trait GroundWeapon extends Weapon {
 
   override def weaponRangeRadius: Int = super.weaponRangeRadius max groundRangePixels
 
-  override def assumeShotDelayOn(target: MaybeCanDie) = {
+  override def assumeShotDelayOn(target: CanDie) = {
     if (canAttackIfNear(target)) {
       damageDelayFactorGround
     } else
       super.assumeShotDelayOn(target)
   }
 
-  override def canAttackIfNear(other: MaybeCanDie) = {
+  override def canAttackIfNear(other: CanDie) = {
     super.canAttackIfNear(other) || selfCanAttack(other)
   }
 
@@ -976,18 +1005,18 @@ trait GroundWeapon extends Weapon {
     }
   }
 
-  private def selfCanAttack(other: MaybeCanDie) = {
+  private def selfCanAttack(other: CanDie) = {
     matchOn[Boolean](other)(
       _ => groundCanAttackAir,
       _ => groundCanAttackGround,
       b => if (b.isFloating) groundCanAttackAir else groundCanAttackGround)
   }
 
-  private def quickRangeExclusion(other: MaybeCanDie): Boolean = {
+  private def quickRangeExclusion(other: CanDie): Boolean = {
     groundRangeTilesSquared + 6 < other.centerTile.distanceSquaredTo(this.centerTile)
   }
 
-  override def isInWeaponRangeExact(other: MaybeCanDie) = {
+  override def isInWeaponRangeExact(other: CanDie) = {
     if (selfCanAttack(other) && !quickRangeExclusion(other))
 
       matchOn(other)(air => nativeUnit.isInWeaponRange(other.nativeUnit),
@@ -1104,14 +1133,14 @@ trait AirWeapon extends Weapon {
 
   def damageDelayFactorAir: Int
   override def weaponRangeRadius: Int = super.weaponRangeRadius max airRangePixels
-  override def assumeShotDelayOn(target: MaybeCanDie) = {
+  override def assumeShotDelayOn(target: CanDie) = {
     if (canAttackIfNear(target)) {
       damageDelayFactorAir
     } else
       super.assumeShotDelayOn(target)
   }
   // air & groundweapon need to override this
-  override def canAttackIfNear(other: MaybeCanDie) = {
+  override def canAttackIfNear(other: CanDie) = {
     super.canAttackIfNear(other) || selfCanAttack(other)
   }
   override def calculateDamageOn(other: Armor, assumeHP: Int, assumeShields: Int,
@@ -1123,18 +1152,18 @@ trait AirWeapon extends Weapon {
     }
   }
 
-  private def selfCanAttack(other: MaybeCanDie) = {
+  private def selfCanAttack(other: CanDie) = {
     matchOn(other)(
       _ => airCanAttackAir,
       _ => airCanAttackGround,
       b => if (b.isFloating) airCanAttackAir else airCanAttackGround)
   }
 
-  private def quickRangeExclusion(other: MaybeCanDie): Boolean = {
+  private def quickRangeExclusion(other: CanDie): Boolean = {
     airRangeTilesSquared + 6 < other.centerTile.distanceSquaredTo(this.centerTile)
   }
 
-  override def isInWeaponRangeExact(other: MaybeCanDie) = {
+  override def isInWeaponRangeExact(other: CanDie) = {
     if (selfCanAttack(other) && !quickRangeExclusion(other))
       matchOn(other)(air => nativeUnit.isInWeaponRange(other.nativeUnit),
         ground => nativeUnit.isInWeaponRange(other.nativeUnit),
@@ -1165,7 +1194,7 @@ trait Weapon extends Controllable with ArmedUnit {
 
   def hasTarget = myTarget.get
 
-  def assumeShotDelayOn(target: MaybeCanDie): Int = !!!("This should never be called")
+  def assumeShotDelayOn(target: CanDie): Int = !!!("This should never be called")
 
   override def canDoDamage = true
 
@@ -1177,8 +1206,8 @@ trait Weapon extends Controllable with ArmedUnit {
 
   def isStartingToAttack = nativeUnit.isStartingAttack
   // air & groundweapon need to override this
-  def canAttackIfNear(other: MaybeCanDie) = false
-  def calculateDamageOn(other: MaybeCanDie, assumeHP: Int, assumeShields: Int,
+  def canAttackIfNear(other: CanDie) = false
+  def calculateDamageOn(other: CanDie, assumeHP: Int, assumeShields: Int,
                         shotCount: Int): DamageSingleAttack = {
     calculateDamageOn(other.armor, assumeHP, assumeShields, shotCount)
   }
@@ -1187,7 +1216,7 @@ trait Weapon extends Controllable with ArmedUnit {
     !!!("Forgot to override this")
   }
 
-  def matchOn[X](other: MaybeCanDie)
+  def matchOn[X](other: CanDie)
                 (ifAir: AirUnit => X, ifGround: GroundUnit => X, ifBuilding: Building => X) =
     other match {
       case a: AirUnit => ifAir(a)
@@ -1196,7 +1225,7 @@ trait Weapon extends Controllable with ArmedUnit {
       case x => !!!(s"Check this $x")
     }
   // needs to be overridden
-  def isInWeaponRangeExact(target: MaybeCanDie): Boolean = false
+  def isInWeaponRangeExact(target: CanDie): Boolean = false
 
   def weaponRangeRadiusTiles = weaponRangeRadius / 32
 
@@ -1781,15 +1810,15 @@ trait Organic extends Mobile {
   def isBlinded = nativeUnit.isBlind
 }
 
-trait IsSmall extends Mobile with MaybeCanDie {
+trait IsSmall extends Mobile with CanDie {
   override val armorType = Small
 }
 
-trait IsMedium extends Mobile with MaybeCanDie {
+trait IsMedium extends Mobile with CanDie {
   override val armorType = Medium
 }
 
-trait IsBig extends Mobile with MaybeCanDie {
+trait IsBig extends Mobile with CanDie {
   override val armorType = Large
 }
 
@@ -1815,7 +1844,7 @@ trait VirtualPosition extends WrapsUnit with Virtual {
 
 }
 
-trait VirtualHitPoints extends MaybeCanDie with Virtual {
+trait VirtualHitPoints extends CanDie with Virtual {
 
   case class HitpointsSnapshot(hitPoints: HitPoints)
 
@@ -1854,7 +1883,7 @@ trait VirtualCloak extends CanCloak with Virtual {
   }
 }
 
-trait Virtual extends MaybeCanDie {
+trait Virtual extends CanDie {
 
   def remember_!(): Unit = {}
 

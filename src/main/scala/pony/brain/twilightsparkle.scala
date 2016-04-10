@@ -419,7 +419,7 @@ class Bases(world: DefaultWorld) {
   private val myBases          = ArrayBuffer.empty[Base]
   private val newBaseListeners = ArrayBuffer.empty[NewBaseListener]
 
-  def isCovered(field: ResourceArea) = myBases.exists(_.resourceArea == field)
+  def isCovered(field: ResourceArea) = myBases.exists(_.resourceArea.contains(field))
 
   def rich = {
     def singleValuable = myMineralFields.exists(_.value > 15000) &&
@@ -435,7 +435,7 @@ class Bases(world: DefaultWorld) {
 
   def richBasesCount = richBases.size
 
-  def richBases = bases.filter(_.resourceArea.rich)
+  def richBases = bases.filter(_.resourceArea.exists(_.rich))
 
   def bases = myBases.immutableView
 
@@ -469,10 +469,10 @@ trait NewBaseListener {
 case class Base(mainBuilding: MainBuilding)(world: DefaultWorld) {
 
   val resourceArea = world.resourceAnalyzer.resourceAreas
-                     .minBy(c => mainBuilding.area.distanceTo(c.center))
+                     .minByOpt(c => mainBuilding.area.distanceTo(c.center))
 
-  val myMineralGroup = resourceArea.patches
-  val myGeysirs      = resourceArea.geysirs
+  val myMineralGroup = resourceArea.flatMap(_.patches)
+  val myGeysirs      = resourceArea.map(_.geysirs).getOrElse(Set.empty)
 
   info(
     s"""

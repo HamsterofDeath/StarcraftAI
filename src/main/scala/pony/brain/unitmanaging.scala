@@ -194,10 +194,10 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
       }
 
       job.unit match {
-        case cd: MaybeCanDie if !cd.isDead =>
+        case cd: CanDie if !cd.isDead =>
           val newJob = new BusyDoingNothing(cd, Nobody)
           assignJob_!(newJob)
-        case cd: MaybeCanDie if cd.isDead =>
+        case cd: CanDie if cd.isDead =>
           assignments.remove(cd)
           allJobs.removeBinding(job)
         case res: MineralPatch =>
@@ -747,7 +747,7 @@ abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: 
   private  var startTick     = currentTick
 
   unit match {
-    case cd: MaybeCanDie if cd.isDead => fail_!()
+    case cd: CanDie if cd.isDead => fail_!()
     case _ =>
   }
   private var noCommandsForTicks            = 0

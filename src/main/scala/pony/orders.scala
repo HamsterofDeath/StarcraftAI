@@ -69,7 +69,7 @@ object Orders {
     }
   }
 
-  case class AttackUnit(attacker: MobileRangeWeapon, target: MaybeCanDie) extends UnitOrder {
+  case class AttackUnit(attacker: MobileRangeWeapon, target: CanDie) extends UnitOrder {
 
     override def obsolete = super.obsolete || target.isDead
 

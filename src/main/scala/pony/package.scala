@@ -68,13 +68,13 @@ package object pony {
 
   @elidable(LOGLEVEL)
   def error(a: => Any, doIt: Boolean = true): Unit = {
-    if (doIt && LogError.includes(tinyLogLevel))
+    if (LogError.includes(tinyLogLevel) && doIt)
       tinylog.Logger.error(s"[$tick] ${a.toString}")
   }
 
   @elidable(LOGLEVEL)
   def warn(a: => Any, doIt: Boolean = true): Unit = {
-    if (doIt && LogWarn.includes(tinyLogLevel))
+    if (LogWarn.includes(tinyLogLevel) && doIt)
       tinylog.Logger.warn(s"[$tick] ${a.toString}")
   }
 
@@ -84,7 +84,7 @@ package object pony {
 
   @elidable(LOGLEVEL)
   def info(a: => Any, doIt: Boolean = true): Unit = {
-    if (doIt && LogInfo.includes(tinyLogLevel))
+    if (LogInfo.includes(tinyLogLevel) && doIt)
       tinylog.Logger.info(s"[$tick] ${a.toString}")
   }
 
@@ -92,13 +92,13 @@ package object pony {
 
   @elidable(LOGLEVEL)
   def majorInfo(a: => Any, doIt: Boolean = true): Unit = {
-    if (doIt && LogInfo.includes(tinyLogLevel))
+    if (LogInfo.includes(tinyLogLevel) && doIt)
       tinylog.Logger.info(s"<MAJOR> [$tick] ${a.toString}")
   }
 
   @elidable(LOGLEVEL)
   def debug(a: => Any, doIt: Boolean = true): Unit = {
-    if (LogDebug.includes(tinyLogLevel))
+    if (LogDebug.includes(tinyLogLevel) && doIt)
       tinylog.Logger.debug(s"[$tick] ${a.toString}")
   }
 
@@ -106,7 +106,7 @@ package object pony {
 
   @elidable(LOGLEVEL)
   def trace(a: => Any, doIt: Boolean = true, marker: String = ""): Unit = {
-    if (doIt && LogTrace.includes(tinyLogLevel))
+    if (LogTrace.includes(tinyLogLevel) && doIt)
       tinylog.Logger.trace(s"[$tick] ${if (marker.isEmpty) "" else s"[$marker] "}${a.toString}")
   }
 

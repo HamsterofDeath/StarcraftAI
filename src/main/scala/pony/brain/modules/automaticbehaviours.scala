@@ -526,11 +526,13 @@ object Terran {
       }.toMap
     }.named("Find alternative tiles")
 
+    protected def debugColor = Color.Green
+
     override def renderDebug_!(renderer: Renderer) = {
       super.renderDebug_!(renderer)
       freeAlternativeTiles.foreach { data =>
         data.foreach { case (from, to) =>
-          renderer.in_!(Color.Green).drawCircleAround(to)
+          renderer.in_!(debugColor).drawCircleAround(to)
         }
       }
     }
@@ -578,26 +580,40 @@ object Terran {
     override protected def tilesToAvoidAsBlocked = mapLayers.blockedByPlannedBuildings.toSome
 
     override protected val actionName = "<>"
+
+    override protected def debugColor = Color.White
   }
 
   class MoveAwayFromDangerousSpotOnAir(universe: Universe)
     extends AvoidSpecificAreas[AirUnit](universe) with DefaultDangerAreaConfig[AirUnit] {
 
-    override protected def tilesToAvoidAsBlocked = mapLayers.coveredByEnemyLongRangeAirAsBlocked
-                                                   .toSome
+    override protected def tilesToAvoidAsBlocked = {
+      super.tilesToAvoidAsBlocked.map { base =>
+        base.or(mapLayers.avoidanceSuggestionAir)
+      }
+    }
+
+    override protected def debugColor = Color.Orange
   }
 
   trait DefaultDangerAreaConfig[T <: Mobile] extends AvoidSpecificAreas[T] {
     override protected def tolerance = 2
     override protected def targetReuseAllowance = 8
-    override protected def updateWhen = Primes.prime37
+    override protected def updateWhen = Primes.prime5
     override protected val actionName: String = "<!>"
+    override protected def tilesToAvoidAsBlocked = mapLayers.underPsiStorm.toSome
   }
 
   class MoveAwayFromDangerousSpotOnGround(universe: Universe)
     extends AvoidSpecificAreas[GroundUnit](universe) with DefaultDangerAreaConfig[GroundUnit] {
 
-    override protected def tilesToAvoidAsBlocked = mapLayers.avoidanceSuggestionGround.toSome
+    override protected def tilesToAvoidAsBlocked = {
+      super.tilesToAvoidAsBlocked.map { base =>
+        base.or(mapLayers.avoidanceSuggestionGround)
+      }
+    }
+
+    override protected def debugColor = Color.Red
 
   }
 
@@ -1549,8 +1565,8 @@ class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
   }
 
   private val mine2Plan          = mutable.HashMap.empty[MobileRangeWeapon, Attackers]
-  private val enemy2Mine         = mutable.HashMap.empty[MaybeCanDie, Attackers]
-  private val mine2Enemy         = mutable.HashMap.empty[MobileRangeWeapon, MaybeCanDie]
+  private val enemy2Mine         = mutable.HashMap.empty[CanDie, Attackers]
+  private val mine2Enemy         = mutable.HashMap.empty[MobileRangeWeapon, CanDie]
   private val prioritizedTargets = {
     LazyVal.from {
       val prioritized = {
@@ -1607,7 +1623,7 @@ class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
     prioritizedTargets.invalidate()
   }
 
-  def suggestTarget(myUnit: MobileRangeWeapon): Option[MaybeCanDie] = {
+  def suggestTarget(myUnit: MobileRangeWeapon): Option[CanDie] = {
     val myCurrentTarget = mine2Enemy.get(myUnit)
     myCurrentTarget.foreach { t =>
       val maybeAttackers = enemy2Mine(t)
@@ -1649,7 +1665,7 @@ class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
     mine2Enemy.get(myUnit)
   }
 
-  class Attackers(val target: MaybeCanDie) {
+  class Attackers(val target: CanDie) {
 
     private val attackers           = mutable.HashSet.empty[MobileRangeWeapon]
     private val plannedDamage       =

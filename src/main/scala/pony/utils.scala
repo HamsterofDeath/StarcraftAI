@@ -327,6 +327,7 @@ class BWFuture[+T](val future: Future[T], incomplete: T) {
 }
 
 class FutureIterator[IN, T](feed: => IN, produce: IN => T, startNow: Boolean) {
+  private var nthHint                = 1
   private var name                   = "No name"
   private val lock                   = new ReentrantReadWriteLock()
   private var lastFeed               = Option.empty[IN]
@@ -334,6 +335,13 @@ class FutureIterator[IN, T](feed: => IN, produce: IN => T, startNow: Boolean) {
   private var inProgress             = if (startNow) nextFuture else BWFuture.none
   private var thinking               = startNow
   private var calledForCurrentResult = false
+
+  def setupRecalcHint(tick: PrimeNumber) = {
+    triggerRecalcOn(tick.i)
+    this
+  }
+
+  def triggerRecalcOn(tick: Int) = tick % nthHint == 0
 
   def named(name: String) = {
     this.name = name
@@ -403,7 +411,7 @@ class FutureIterator[IN, T](feed: => IN, produce: IN => T, startNow: Boolean) {
         lastFeed = Some(input)
         calledForCurrentResult = false
         val duration = System.currentTimeMillis() - start
-        debug(s"Future $name took $duration ms")
+        debug(s"Future $name took $duration ms", duration > 0)
         lock.writeLock().unlock()
     }
     fut

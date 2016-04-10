@@ -1068,7 +1068,7 @@ object Strategy {
     override def suggestNextExpansion = {
       val shouldExpand = expandNow
       if (shouldExpand) {
-        val covered = bases.bases.map(_.resourceArea).toSet
+        val covered = bases.bases.flatMap(_.resourceArea).toSet
         val dangerous = mapLayers.slightlyDangerousAsBlocked
         bases.mainBase.map(_.mainBuilding.tilePosition).flatMap { where =>
           val others = strategicMap.resources
