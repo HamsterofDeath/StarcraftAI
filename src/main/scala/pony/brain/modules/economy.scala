@@ -61,16 +61,17 @@ class ProvideNewBuildings(universe: Universe)
   }
 
   override def calculationInput = {
-    // we do them one by one, it's simpler. in the current tick, the same missing buildings will
-    // still be
-    // requested, so the queue will be refilled
+    // we do them one by one, it's simpler. in the next tick, the same missing buildings will
+    // still be requested, so the queue will be refilled
     val buildingRelated = unitManager.failedToProvideByType[Building]
-    val constructionRequests = buildingRelated.iterator.collect {
-      case buildIt: BuildUnitRequest[Building]
-        if buildIt.proofForFunding.isSuccess &&
-           !buildIt.isAddon &&
-           universe.resources.hasStillLocked(buildIt.funding) =>
-        buildIt
+    val constructionRequests = {
+      buildingRelated.iterator.collect {
+        case buildIt: BuildUnitRequest[Building]
+          if buildIt.proofForFunding.isSuccess &&
+             !buildIt.isAddon &&
+             universe.resources.hasStillLocked(buildIt.funding) =>
+          buildIt
+      }
     }
 
     val anyOfThese = constructionRequests.find { candidate =>
@@ -145,7 +146,7 @@ class ProvideExpansions(universe: Universe)
             plannedExpansionPoint = None
           }
         case None =>
-          if (!unitManager.plannedToBuild(race.resourceDepositClass)) {
+          if (!unitManager.requestedToBuild(race.resourceDepositClass)) {
             val buildingSpot = AlternativeBuildingSpot
                                .fromExpensive(
                                  new ConstructionSiteFinder(universe).forResourceArea(resources))(
@@ -216,7 +217,7 @@ class ProvideNewUnits(universe: Universe) extends OrderlessAIModule[UnitFactory]
     unitManager.failedToProvideFlat.distinct.flatMap { req =>
       trace(s"Trying to satisfy $req somehow")
       val wantedType = req.typeOfRequestedUnit
-      if (classOf[Mobile].isAssignableFrom(wantedType)) {
+      if (classOf[Mobile] >= wantedType) {
         val typeFixed = wantedType.asInstanceOf[Class[Mobile]]
         val wantedAmount = req.amount
         1 to wantedAmount flatMap { _ =>
@@ -232,10 +233,12 @@ class ProvideNewUnits(universe: Universe) extends OrderlessAIModule[UnitFactory]
                   val res = req match {
                     case hf: HasFunding if resources.hasStillLocked(hf.proofForFunding) => hf
                                                                                            .proofForFunding
-                    case _ => resources
-                              .request(
-                                ResourceRequests.forUnit(universe.myRace, typeFixed, req.priority),
-                                self)
+
+                    case _ => {
+                      val forUnit = ResourceRequests
+                                    .forUnit(universe.myRace, typeFixed, req.priority)
+                      resources.request(forUnit, self)
+                    }
                   }
                   res match {
                     case suc: ResourceApprovalSuccess =>

@@ -29,6 +29,11 @@ trait Universe extends HasLazyVals {
 
   Universe.mainThread = Thread.currentThread()
 
+  def plugins: List[AIModule[_ <: WrapsUnit]]
+
+  def pluginByType[T: Manifest] = plugins.find(_.getClass == manifest[T].runtimeClass).get
+                                  .asInstanceOf[T]
+
   private val myTime             = new Time(this)
   private val race0              = LazyVal.from(evalRace)
   private val afterTickListeners = ArrayBuffer.empty[AfterTickListener]

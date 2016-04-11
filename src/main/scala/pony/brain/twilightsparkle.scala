@@ -11,6 +11,8 @@ import scala.concurrent.{Await, Future}
 import scala.reflect.ManifestFactory
 
 trait HasUniverse extends HasLazyVals {
+  def plugins = universe.plugins
+  def pluginByType[T: Manifest] = universe.pluginByType[T]
   def pathfinders = universe.pathfinders
   def ferryManager = universe.ferryManager
   def unitGrid = universe.unitGrid
@@ -265,7 +267,9 @@ abstract class AIModule[T <: WrapsUnit : Manifest](override val universe: Univer
 }
 
 abstract class OrderlessAIModule[T <: WrapsUnit : Manifest](universe: Universe)
-  extends AIModule[T](universe) with Orderless[T]
+  extends AIModule[T](universe) with Orderless[T] {
+  def debugText = ""
+}
 
 class HelperAIModule[T <: WrapsUnit : Manifest](universe: Universe)
   extends OrderlessAIModule[T](universe) {
@@ -330,6 +334,8 @@ class TwilightSparkle(world: DefaultWorld) {
     override def unitGrid = self.unitGrid
 
     override def ferryManager = self.ferryManager
+
+    override def plugins = aiModules
   }
   private val bases           = new Bases(world)
   private val resources       = new ResourceManager(universe)
@@ -378,7 +384,7 @@ class TwilightSparkle(world: DefaultWorld) {
 
   def pluginByType[T <: AIModule[_] : Manifest] = {
     val c = manifest[T].runtimeClass
-    aiModules.find(e => c.isAssignableFrom(e.getClass)).get.asInstanceOf[T]
+    aiModules.find(e => c >= e.getClass).get.asInstanceOf[T]
   }
 
   def queueOrdersForTick(): Unit = {

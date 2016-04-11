@@ -559,6 +559,7 @@ trait BuildingRequestHelper extends AIModule[WorkerUnit] {
                                      .useDefault,
                                      belongsTo: Option[ResourceArea] = None,
                                      priority: Priority = Priority.Default): Unit = {
+
     val req = ResourceRequests.forUnit(universe.myRace, buildingType, priority)
     val result = resources.request(req, buildingEmployer)
     result.ifSuccess { suc =>
@@ -572,7 +573,7 @@ trait BuildingRequestHelper extends AIModule[WorkerUnit] {
       }
       if (takeCareOfDependencies) {
         result.notExistingMissingRequiments.foreach { what =>
-          if (!unitManager.plannedToBuild(what)) {
+          if (!unitManager.requestedToBuild(what)) {
             requestBuilding(what, takeCareOfDependencies, saveMoneyIfPoor,
               AlternativeBuildingSpot.useDefault, belongsTo, priority = priority)
           }
@@ -607,7 +608,7 @@ trait UnitRequestHelper extends AIModule[UnitFactory] {
         result.notExistingMissingRequiments.foreach { requirement =>
           trace(s"Checking dependency: $requirement")
           if (!unitManager.existsOrPlanned(requirement)) {
-            def isAddon = classOf[Addon].isAssignableFrom(requirement)
+            def isAddon = classOf[Addon] >= requirement
             trace(s"Planning to build $requirement because it is required for $mobileType")
             if (isAddon) {
               addonHelper.requestAddon(requirement.asInstanceOf[Class[_ <: Addon]])
@@ -680,7 +681,7 @@ class ProvideSuggestedAndRequestedAddons(universe: Universe)
       def noUpgrades = !any.isInstanceOf[Upgrader]
       def requiredForUnit = race.techTree
                             .requiredBy.get(any.getClass)
-                            .exists(_.exists(classOf[Mobile].isAssignableFrom))
+                            .exists(_.exists(classOf[Mobile] >=))
       noUpgrades || requiredForUnit
 
     }
@@ -755,7 +756,7 @@ class SetupAntiCloakDefenses(universe: Universe)
           }
         }
         def outdated = {
-          analyzed.lastUsedFeed.map(_.age).getOrElse(0) > 80
+          analyzed.lastUsedFeed.map(_.age).getOrElse(0) > 24 * 15
         }
 
         if (buildingInProgress || outdated || buildingExists) {
@@ -851,7 +852,7 @@ class ProvideUpgrades(universe: Universe) extends OrderlessAIModule[Upgrader](un
       val needs = race.techTree.upgraderFor(wantedUpgrade)
       val buildingPlannedOrExists = unitManager.existsOrPlanned(needs)
       if (buildingPlannedOrExists) {
-        val buildMissing = !unitManager.plannedToBuild(needs) &&
+        val buildMissing = !unitManager.requestedToBuild(needs) &&
                            ownUnits.allByClass(needs).size < bases.richBases.size
 
         val result = unitManager
@@ -931,13 +932,18 @@ case class IdealUnitRatio[T <: Mobile](unitType: Class[_ <: Mobile], amount: Int
   def isActive = active
 }
 
+case class RequestPlan(buildThese: Seq[EnqueueArmy#Ratio], needsSomething: Set[EnqueueArmy#Ratio])
+
 class EnqueueArmy(universe: Universe)
   extends OrderlessAIModule[UnitFactory](universe) with UnitRequestHelper {
 
-  override def onTick_!(): Unit = {
-    val p = percentages
-    val mostMissing = p.wanted.toVector.sortBy { case (t, idealRatio) =>
-      val existingRatio = p.existing.getOrElse(t, 0.0)
+  type Ratio = (Class[_ <: Mobile], Double)
+  type RequestOrder = Seq[Ratio]
+
+  private val myRequestPlan = oncePerTick {
+    val idealRatios = percentages
+    val mostMissing = idealRatios.wanted.toVector.sortBy { case (t, idealRatio) =>
+      val existingRatio = idealRatios.existing.getOrElse(t, 0.0)
       existingRatio / idealRatio
     }
     val needsSomething = {
@@ -946,10 +952,12 @@ class EnqueueArmy(universe: Universe)
       later.toSet
     }
 
-    val canBuildNow = mostMissing.filterNot
-    { case (c, _) => universe.unitManager.requirementsQueuedToBuild(c) }
+    val canBuildNow = mostMissing.filterNot {
+      case (c, _) => universe.unitManager.requirementsQueuedToBuild(c)
+    }
     val highestPriority = canBuildNow
-    val buildThese = highestPriority.view.takeWhile { e =>
+    val buildThese =
+      highestPriority.takeWhile { e =>
       val rich = resources.couldAffordNow(e._1)
       def mineralsOverflow = resources.unlockedResources.moreMineralsThanGas &&
                              resources.unlockedResources.minerals > 400
@@ -957,6 +965,12 @@ class EnqueueArmy(universe: Universe)
                         resources.unlockedResources.gas > 400
       rich || mineralsOverflow || gasOverflow
     }
+    RequestPlan(buildThese, needsSomething)
+  }
+
+  override def onTick_!(): Unit = {
+    super.onTick_!()
+    val RequestPlan(buildThese, needsSomething) = myRequestPlan.get
     buildThese.filterNot(needsSomething.contains).foreach { case (thisOne, _) =>
       requestUnit(thisOne, takeCareOfDependencies = false)
     }
@@ -966,12 +980,18 @@ class EnqueueArmy(universe: Universe)
     }
   }
 
+  def plan = myRequestPlan.get
+
   def percentages = {
-    val ratios = strategy.current.suggestUnits.filter(_.isActive)
-    val summed = ratios.groupBy(_.unitType)
-                 .map { case (t, v) =>
-                   (t, v.map(_.fixedAmount).sum)
-                 }
+    val ratios = strategy.current
+                 .suggestUnits
+                 .filter(_.isActive)
+    val summed = {
+      ratios.groupBy(_.unitType)
+      .map { case (t, v) =>
+        (t, v.map(_.fixedAmount).sum)
+      }
+    }
     val totalWanted = summed.values.sum
     val percentagesWanted = summed.map { case (t, v) => t -> v.toDouble / totalWanted }
 
@@ -983,10 +1003,9 @@ class EnqueueArmy(universe: Universe)
     }
 
     val totalExisting = existingCounts.values.sum
-    val percentagesExisting = existingCounts
-                              .map { case (t, v) => t -> (if (totalExisting == 0) 0
-                              else v.toDouble / totalExisting)
-                              }
+    val percentagesExisting = existingCounts.map { case (t, v) =>
+      t -> (if (totalExisting == 0) 0 else v.toDouble / totalExisting)
+    }
     Percentages(percentagesWanted, percentagesExisting)
   }
 
@@ -1158,15 +1177,15 @@ object Strategy {
     }
 
     override def suggestUnits = {
-      IdealUnitRatio(classOf[Marine], 3)(timingHelpers.phase.isMid) ::
-      IdealUnitRatio(classOf[Medic], 1)(timingHelpers.phase.isLateMid) ::
-      IdealUnitRatio(classOf[Ghost], 1)(timingHelpers.phase.isSinceLateMid) ::
-      IdealUnitRatio(classOf[Vulture], 3)(timingHelpers.phase.isAnyTime) ::
-      IdealUnitRatio(classOf[Tank], 5)(timingHelpers.phase.isSinceEarlyMid) ::
-      IdealUnitRatio(classOf[Goliath], 3)(timingHelpers.phase.isSinceMid) ::
-      IdealUnitRatio(classOf[ScienceVessel], 1)(timingHelpers.phase.isSinceLateMid) ::
+      IdealUnitRatio(classOf[Marine], 3)(timingHelpers.phase.isSinceMid) ::
+      IdealUnitRatio(classOf[Medic], 1)(timingHelpers.phase.isSinceLateMid) ::
+      IdealUnitRatio(classOf[Ghost], 2)(timingHelpers.phase.isSinceLateMid) ::
+      IdealUnitRatio(classOf[Vulture], 6)(timingHelpers.phase.isAnyTime) ::
+      IdealUnitRatio(classOf[Tank], 10)(timingHelpers.phase.isSinceEarlyMid) ::
+      IdealUnitRatio(classOf[Goliath], 6)(timingHelpers.phase.isSinceMid) ::
+      IdealUnitRatio(classOf[ScienceVessel], 2)(timingHelpers.phase.isSinceLateMid) ::
       IdealUnitRatio(classOf[Dropship], 1)(timingHelpers.phase.isSincePostMid) ::
-      IdealUnitRatio(classOf[Wraith], 1)(timingHelpers.phase.isSinceLateMid) ::
+      IdealUnitRatio(classOf[Wraith], 2)(timingHelpers.phase.isSinceLateMid) ::
       Nil
     }
 

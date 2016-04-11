@@ -92,11 +92,13 @@ trait WrapsUnit extends HasUniverse with AfterTickListener {
   }
   val nativeUnitId      = nativeUnit.getID
   val initialNativeType = nativeUnit.getType
-  val nativeType        = oncePerTick {
+  private val myNativeType = oncePerTick {
     val ret = nativeUnit.getType
     morphed |= ret != initialNativeType
     ret
   }
+
+  def nativeUnitType = myNativeType.get
 
   private val myTarget    = oncePerTick {
     nativeUnit.getTarget.wrapNull
@@ -195,10 +197,15 @@ trait WrapsUnit extends HasUniverse with AfterTickListener {
   }
 
   object surroundings {
-    private val near = 8
+    private val near   = 8
+    private val medium = 12
 
-    private val myEnemyGroundUnits = oncePer(Primes.prime23) {
+    private val myNearEnemyGroundUnits = oncePer(Primes.prime23) {
       universe.unitGrid.enemy.allInRange[GroundUnit](centerTile, near).toVector
+    }
+
+    private val myMediumEnemyGroundUnits = oncePer(Primes.prime23) {
+      universe.unitGrid.enemy.allInRange[GroundUnit](centerTile, medium).toVector
     }
 
     private val myCloseOwnBuildings = oncePer(Primes.prime29) {
@@ -213,9 +220,17 @@ trait WrapsUnit extends HasUniverse with AfterTickListener {
       enemies.allBuildings.filter(_.centerTile.distanceToIsLess(centerTile, near))
     }
 
+    private val myMediumEnemyBuildings = oncePer(Primes.prime29) {
+      enemies.allBuildings.filter(_.centerTile.distanceToIsLess(centerTile, medium))
+    }
+
     def closeEnemyBuildings = myCloseEnemyBuildings.get
 
-    def closeEnemyGroundUnits = myEnemyGroundUnits.get
+    def mediumEnemyBuildings = myMediumEnemyBuildings.get
+
+    def closeEnemyGroundUnits = myNearEnemyGroundUnits.get
+
+    def mediumEnemyGroundUnits = myMediumEnemyGroundUnits.get
 
     def closeOwnBuildings = myCloseOwnBuildings.get
 
@@ -780,7 +795,7 @@ trait CanDie extends WrapsUnit with CanBeUnderStorm {
       case gw: GroundWeapon => gw.isMelee &&
                                !gw.isHarmlessNow &&
                                gw.currentTarget.contains(self) &&
-                               gw.currentTile.distanceToIsLess(self.currentTile, 3)
+                               gw.currentTile.distanceToIsLess(self.currentTile, 2)
       case _ => false
     }
   }
@@ -1612,7 +1627,7 @@ trait SlowAttackGround extends GroundWeapon {
 trait MobileDetector extends CanDetectHidden with Mobile
 
 trait CanDetectHidden extends WrapsUnit with Detector {
-  private val sight = math.round(nativeType.sightRange() / 32.0).toInt
+  private val sight = math.round(nativeUnitType.sightRange() / 32.0).toInt
   override def detectionRadius = sight
 }
 
@@ -1683,7 +1698,7 @@ abstract class SingleTargetSpell[C <: HasSingleTargetSpells, M <: Mobile : Manif
 
   private val targetClass = tech.canCastOn
 
-  assert(targetClass.isAssignableFrom(manifest[M].runtimeClass),
+  assert(targetClass >= manifest[M].runtimeClass,
     s"$targetClass vs ${manifest[M].runtimeClass}")
 
   def castOn: CastOn = EnemyUnits

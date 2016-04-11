@@ -27,7 +27,7 @@ object ConcoctedAI {
     .addPlugin(new PathDebugRenderer(mainAi.universe))
     .addPlugin(new MineralDebugRenderer(mainAi.universe))
     .addPlugin(new UnitDebugRenderer(mainAi.universe))
-    .addPlugin(new StatsRenderer(mainAi.universe))
+    .addPlugin(new AiDebugRenderer(mainAi.universe))
     .addPlugin(new DebugHelper(mainAi))
   }
 }

@@ -4,9 +4,10 @@ import java.text.DecimalFormat
 
 import bwapi.Color
 import pony.AttackPriorities.Highest
-import pony.brain.modules.{GatherMineralsAtSinglePatch, ProvideExpansions}
+import pony.brain.modules.{EnqueueArmy, GatherMineralsAtSinglePatch, ProvideExpansions}
 import pony.brain.{HasUniverse, TwilightSparkle, Universe}
 
+import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.util.{Failure, Success, Try}
 
@@ -183,10 +184,40 @@ class UnitDebugRenderer(override val universe: Universe) extends AIPlugIn with H
   }
 }
 
-class StatsRenderer(override val universe: Universe) extends AIPlugIn with HasUniverse {
+class AiDebugRenderer(override val universe: Universe) extends AIPlugIn with HasUniverse {
   override val lazyWorld     = universe.world
   private  val df            = new DecimalFormat("#0.00")
   private  var lastTickNanos = System.nanoTime()
+
+  class UnitStats() {
+    private var detected = 0
+    private var dead     = 0
+
+    def format = {
+      s"$alive/$detected/$dead"
+    }
+
+    def incDetected() = {
+      detected += 1
+    }
+
+    def incDead() = {
+      dead += 1
+    }
+
+    def alive = detected - dead
+  }
+
+  private val trackedUnits = mutable.HashMap.empty[SCUnitType, UnitStats]
+
+  private val lastKnownPlanPriorities = mutable.HashMap.empty[SCUnitType, Double]
+
+  universe.ownUnits.registerAdd_! { wu =>
+    trackedUnits.getOrElseUpdate(wu.getClass, new UnitStats).incDetected()
+  }
+  universe.ownUnits.registerKill_! { wu =>
+    trackedUnits(wu.getClass).incDead()
+  }
 
   override protected def tickPlugIn(): Unit = {
     lazyWorld.debugger.debugRender { renderer =>
@@ -219,7 +250,8 @@ class StatsRenderer(override val universe: Universe) extends AIPlugIn with HasUn
       }
 
       debugString += {
-        val locked = unitManager.plannedToBuild.groupBy(_.typeOfRequestedUnit).map { case (k, v) =>
+        val locked = unitManager.requestedToBuild.groupBy(_.typeOfRequestedUnit)
+                     .map { case (k, v) =>
           s"${k.className}*${v.size}"
         }
 
@@ -258,26 +290,59 @@ class StatsRenderer(override val universe: Universe) extends AIPlugIn with HasUn
         }.toList.sorted
       }
 
-      debugString ++= {
-        universe.worldDominationPlan.allAttacks.map { att =>
-          val id = att.uniqueId.toSome.map { id =>
-            s"Attack $id with"
-          }
-          val force = att.force.size.toSome.map { i =>
-            s" $i units"
-          }
-          val where = att.destination.where.toSome.map { tp =>
-            s" attacking $tp"
-          }
-          val state = att.meetingStats.map { case (done, total) =>
-            s", ${total - done} tbd"
-          }
 
-          (force :: where :: state :: Nil).flatten.mkString
+      val enqueueArmy = universe.pluginByType[EnqueueArmy]
+      val plan = enqueueArmy.plan.buildThese.toMap
+      val ratios = enqueueArmy.percentages
+
+      debugString ++= {
+        trackedUnits.keysIterator
+        .filter(c => classOf[CanDie] >= c)
+        .filter(c => classOf[Mobile] >= c)
+        .toList
+        .sortBy(c => trackedUnits(c).alive)
+        .takeRight(10)
+        .sortBy(_.className).map { c =>
+          val casted = c.asInstanceOf[Class[_ <: Mobile]]
+          val priority = {
+
+            val value = plan.get(casted) match {
+              case op@Some(newValue) =>
+                lastKnownPlanPriorities.put(casted, newValue)
+                op
+              case None =>
+                lastKnownPlanPriorities.get(casted)
+            }
+
+            value.map {_.format}.getOrElse("x")
+          }
+          val wanted = ratios.wanted.get(casted).map(_.format).getOrElse("0")
+          val existing = ratios.existing.get(casted).map(_.format).getOrElse("0")
+          s"${c.className.padTo(15, ' ')}: ${trackedUnits(c).format} $priority ($existing/$wanted)"
         }
       }
 
       if (debugger.isFullDebug) {
+
+        debugString ++= {
+          universe.worldDominationPlan.allAttacks.map { att =>
+            val id = att.uniqueId.toSome.map { id =>
+              s"Attack $id with"
+            }
+            val force = att.force.size.toSome.map { i =>
+              s" $i units"
+            }
+            val where = att.destination.where.toSome.map { tp =>
+              s" attacking $tp"
+            }
+            val state = att.meetingStats.map { case (done, total) =>
+              s", ${total - done} tbd"
+            }
+
+            (force :: where :: state :: Nil).flatten.mkString
+          }
+        }
+
         debugString ++= {
           val formatted = unitManager.jobsByType.map { case (jobType, members) =>
             s"${jobType.className}/${members.size}"

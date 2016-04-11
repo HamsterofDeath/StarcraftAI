@@ -930,13 +930,15 @@ object Terran {
 
     override def forceRepeatedCommands = true
 
+    override def priority = SecondPriority.EvenMore
+
     override protected def wrapBase(unit: Tank) = new SingleUnitBehaviour[Tank](unit, meta) {
 
       override def preconditionOk = upgrades.hasResearched(TankSiegeMode)
 
       override def toOrder(what: Objective) = {
-        val enemies = unit.surroundings.closeEnemyGroundUnits
-        val buildings = unit.surroundings.closeEnemyBuildings
+        val enemies = unit.surroundings.mediumEnemyGroundUnits
+        val buildings = unit.surroundings.mediumEnemyBuildings
 
         def buildingInRange = buildings.exists(_.area.distanceTo(unit.currentTile) <= 11)
 

@@ -1,3 +1,6 @@
+import java.math.RoundingMode
+import java.text.DecimalFormat
+
 import bwapi.Game
 import org.pmw.tinylog
 import org.pmw.tinylog.writers.FileWriter
@@ -16,13 +19,11 @@ package object pony {
   // milestone 3:
   // TODO collect minerals/gas from far away if out of resources in bases
   // TODO fix upgrade building counts (too many engineering bays, not enough of the other one)
-  // TODO send nearby units to help in battles
   // TODO build units best suited against enemy
 
   // milestone 4:
   // TODO send only necessary units for defenses, use "battle simulator" to estimate which units
   // are required for each attack/defense
-  // TODO optimize worker paths -> might be impossible
   // TODO cover island maps
 
   // milestone 4:
@@ -142,6 +143,18 @@ package object pony {
     def toBase36 = Integer.toString(i, 36)
   }
 
+  implicit class RichDouble(val d: Double) extends AnyVal {
+
+    def format: String = format(2)
+
+    def format(decimal: Int): String = {
+      val df = new DecimalFormat()
+      df.setRoundingMode(RoundingMode.HALF_UP)
+      df.setMaximumFractionDigits(2)
+      df.format(d)
+    }
+  }
+
   implicit class RichMutableTraversable[T](val t: mutable.Traversable[T]) extends AnyVal {
     // not correct, but i only use it in ways so that it doesn't matter
     def immutableView = t.toSeq
@@ -235,6 +248,10 @@ package object pony {
   }
 
   implicit class RichClass[T](val c: Class[_ <: T]) extends AnyVal {
+    def >=(other: Class[_]) = c.isAssignableFrom(other)
+
+    def <=(other: Class[_]) = other.isAssignableFrom(c)
+
     def className = {
       val lastDot = c.getName.lastIndexOf('.')
       val last$ = c.getName.lastIndexOf('$')
