@@ -18,7 +18,6 @@ package object pony {
 
   // milestone 3:
   // TODO collect minerals/gas from far away if out of resources in bases
-  // TODO fix upgrade building counts (too many engineering bays, not enough of the other one)
   // TODO build units best suited against enemy
 
   // milestone 4:

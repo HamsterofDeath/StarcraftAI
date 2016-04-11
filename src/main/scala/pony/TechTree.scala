@@ -127,15 +127,15 @@ class TerranTechTree extends TechTree {
 sealed trait SCRace {
   val techTree: TechTree
   def specialize[T](unitType: Class[_ <: T]) = {
-    (if (classOf[WorkerUnit].isAssignableFrom(unitType)) {
+    (if (classOf[WorkerUnit] >= unitType) {
       workerClass
-    } else if (classOf[ResourceGatherPoint].isAssignableFrom(unitType)) {
+    } else if (classOf[ResourceGatherPoint] >= unitType) {
       resourceDepositClass
-    } else if (classOf[MainBuilding].isAssignableFrom(unitType)) {
+    } else if (classOf[MainBuilding] >= unitType) {
       resourceDepositClass
-    } else if (classOf[SupplyProvider].isAssignableFrom(unitType)) {
+    } else if (classOf[SupplyProvider] >= unitType) {
       supplyClass
-    } else if (classOf[TransporterUnit].isAssignableFrom(unitType)) {
+    } else if (classOf[TransporterUnit] >= unitType) {
       transporterClass
     } else
       unitType).asInstanceOf[Class[T]]
