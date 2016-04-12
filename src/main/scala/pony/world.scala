@@ -46,6 +46,9 @@ case class AllUnits(own: Units, other: Units) {
 }
 
 class DefaultWorld(game: Game) extends WorldListener with WorldEventDispatcher {
+  def addPostTickAction(value: => Unit) = {
+    postTickActions += (() => value)
+  }
 
   // these must be initialized after the first tick. making them lazy solves this
   lazy val resourceAnalyzer = new ResourceAnalyzer(map, AllUnits(ownUnits, enemyUnits))
@@ -55,11 +58,12 @@ class DefaultWorld(game: Game) extends WorldListener with WorldEventDispatcher {
   val map        = new AnalyzedMap(game)
   val ownUnits   = new Units(game, false)
   val enemyUnits = new Units(game, true)
-  val debugger   = new Debugger(game)
+  val debugger   = new Debugger(game, this)
   val orderQueue = new OrderQueue(game, debugger)
   private val removeQueueOwn   = ArrayBuffer.empty[bwapi.Unit]
   private val removeQueueEnemy = ArrayBuffer.empty[bwapi.Unit]
   private var ticks            = 0
+  private val postTickActions  = ArrayBuffer.empty[() => Unit]
 
   def nativeGame = game
 
@@ -93,6 +97,10 @@ class DefaultWorld(game: Game) extends WorldListener with WorldEventDispatcher {
   }
 
   def postTick(): Unit = {
+    debugger.renderer.allow()
+    postTickActions.foreach(e => e())
+    debugger.renderer.disallow()
+    postTickActions.clear()
     orderQueue.debugAll()
     orderQueue.issueAll()
     ticks += 1
@@ -111,7 +119,7 @@ class DefaultWorld(game: Game) extends WorldListener with WorldEventDispatcher {
   }
 }
 
-class Debugger(game: Game) {
+class Debugger(game: Game, world: DefaultWorld) {
   def isRendering = logLevel.includes(LogLevels.LogTrace)
 
   val renderer = new Renderer(game, Color.Green)
@@ -155,7 +163,9 @@ class Debugger(game: Game) {
   def debugRender(whatToDo: Renderer => Any): Unit = {
     countTicks += 1
     if (debugging && countTicks > 5 && isRendering) {
-      whatToDo(renderer)
+      world.addPostTickAction {
+        whatToDo(renderer)
+      }
     }
   }
 

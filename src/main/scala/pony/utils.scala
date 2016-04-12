@@ -11,7 +11,29 @@ import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, Future}
 import scala.util.{Failure, Success, Try}
 
-class Renderer(game: Game, private var color: bwapi.Color) {
+class Renderer(g: Game, private var color: bwapi.Color) {
+  private def game = {
+    assert(ok)
+    g
+  }
+
+  private var ok = false
+
+  def allow() = {
+    ok = true
+  }
+
+  def disallow() = {
+    ok = false
+  }
+
+  private var line = 0
+
+  def beforeTick() = {
+    line = 0
+  }
+
+
   def drawLine(from: MapTilePosition, to: MapTilePosition): Unit = {
     game.drawLineMap(from.mapX, from.mapY, to.mapX, to.mapY, color)
   }
@@ -35,8 +57,9 @@ class Renderer(game: Game, private var color: bwapi.Color) {
     game.drawLineMap(from.x, from.y, to.x, to.y, color)
   }
 
-  def drawTextOnScreen(text: String, row: Int = 0): Unit = {
-    game.drawTextScreen(10, 10 + row * 10, text)
+  def drawTextOnScreen(text: String): Unit = {
+    g.drawTextScreen(10, 10 + line * 10, text)
+    line += 1
   }
 
   def drawTextAtTile(text: String, where: MapTilePosition): Unit = {

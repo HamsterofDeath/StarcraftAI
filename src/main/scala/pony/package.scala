@@ -18,6 +18,10 @@ package object pony {
 
   // milestone 3:
   // TODO collect minerals/gas from far away if out of resources in bases
+  // TODO optimize performance
+  // TODO fix dark templar bug
+
+  // milestone 3.5
   // TODO build units best suited against enemy
 
   // milestone 4:
@@ -124,6 +128,10 @@ package object pony {
   }
 
   class PrimeNumber(val i: Int) extends AnyVal
+
+  implicit class RichLong(val l: Long) extends AnyVal {
+    def nanoToMillis = l.toDouble / 1000 / 1000
+  }
 
   implicit class RichOption[T](val o: Option[T]) extends AnyVal {
     def getOr(excuse: => String) = o match {

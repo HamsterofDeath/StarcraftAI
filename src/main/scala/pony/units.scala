@@ -338,6 +338,8 @@ trait Building extends BlockingTiles with CanDie with CanMorph {
 
   def incomplete = currentNativeOrder == Order.IncompleteBuilding || remainingBuildTime > 0
 
+  override def isHarmlessNow = super.isHarmlessNow || incomplete
+
   def remainingBuildTime = myRemainingBuildTime.get
 
   def isIncompleteAbandoned = myAbandoned.get

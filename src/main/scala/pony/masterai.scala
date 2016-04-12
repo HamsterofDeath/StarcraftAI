@@ -7,11 +7,7 @@ object ConcoctedAI {
     val mainAi = new MainAI
     new ConcoctedAI(world) {
       override def onTickOnApi(): Unit = {
-        val before = System.nanoTime()
         super.onTickOnApi()
-        val after = System.nanoTime()
-        val nanoDiff = after - before
-        debug(s"AI took ${nanoDiff.toDouble / 1000 / 1000} ms for calculations")
       }
     }
     .addPlugin(new WalkableRenderer)

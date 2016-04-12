@@ -185,9 +185,7 @@ object PathFinder {
 
     val asGrid = Array.ofDim[GridNode2DInt](grid.cols, grid.rows)
     implicit def conv(mtp: MapTilePosition): GridNode2DInt = {
-      val ret = asGrid(mtp.x)(mtp.y)
-      assert(ret != null, s"$mtp was null?")
-      ret
+      asGrid(mtp.x)(mtp.y)
     }
     // fill the grid
     grid.allFree.foreach { e =>

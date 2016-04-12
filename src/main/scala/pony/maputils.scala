@@ -132,7 +132,6 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
   def blocked(x: Int, y: Int): Boolean = !free(x, y)
 
   def free(x: Int, y: Int): Boolean = {
-    assert(inBounds(x, y), s"$x / $y is not inside $cols, $rows")
     val coord = x + y * cols
     if (containsBlocked) !areaDataBitSet(coord) else areaDataBitSet(coord)
   }

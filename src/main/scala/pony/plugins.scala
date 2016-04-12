@@ -357,7 +357,7 @@ class AiDebugRenderer(override val universe: Universe) extends AIPlugIn with Has
         }
       }
 
-      debugString.zipWithIndex.foreach { case (txt, line) => renderer.drawTextOnScreen(txt, line) }
+      debugString.foreach {renderer.drawTextOnScreen}
     }
   }
 }
@@ -537,8 +537,10 @@ class MainAI extends AIPlugIn with HasUniverse with AIAPIEventDispatcher {
     brain.queueOrdersForTick()
     if (debugger.isDebugging) {
       if (debugger.isRendering) {
-        brain.plugins.foreach(_.renderDebug(debugger.renderer))
-        brain.renderDebug(debugger.renderer)
+        debugger.debugRender { ren =>
+          brain.plugins.foreach(_.renderDebug(ren))
+          brain.renderDebug(ren)
+        }
       }
     }
   }
