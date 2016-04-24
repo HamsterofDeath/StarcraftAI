@@ -1,6 +1,6 @@
 package pony
 
-import bwapi.{Order, Race, TechType, UnitType, UpgradeType, WeaponType, Unit => APIUnit}
+import bwapi.{Unit => APIUnit, _}
 import pony.Upgrades.Terran.{Nuke, ScannerSweep}
 import pony.Upgrades.{IsTech, SinglePointMagicSpell, SingleTargetMagicSpell}
 import pony.brain._
@@ -824,7 +824,7 @@ trait CanDie extends WrapsUnit with CanBeUnderStorm {
     surroundings.closeEnemyUnits.exists {
       case cw: Weapon with CanCloak =>
         cw.isCloaked &&
-        !cw.isExposed
+        !cw.isExposed &&
         !cw.isHarmlessNow &&
         cw.cooldownTimer > 0
       case _ => false
@@ -1008,6 +1008,8 @@ trait HasSpiderMines extends WrapsUnit {
 }
 
 trait GroundWeapon extends Weapon {
+
+  def isInstantAttackGround = false
   def isMelee = groundRangeTiles <= 2
 
   val groundRangePixels = groundWeapon.maxRange()
@@ -1016,7 +1018,7 @@ trait GroundWeapon extends Weapon {
   val groundCanAttackAir     = groundWeapon.targetsAir()
   val groundCanAttackGround  = groundWeapon.targetsGround()
   val groundDamageMultiplier = groundWeapon.damageFactor()
-  def isInstantAttackGround = damageDelayFactorGround == 0
+  def isInstantEffectAttackGround = damageDelayFactorGround == 0
   val groundDamageType: DamageType
   protected lazy val groundWeapon          = initialNativeType.groundWeapon()
   private        val damage                = LazyVal.from {
@@ -1159,6 +1161,8 @@ trait AutoGroundWeaponType extends GroundWeapon {
 }
 
 trait AirWeapon extends Weapon {
+
+  def isInstantAttackAir = false
   val airRangePixels = airWeapon.maxRange()
   // fails at goliath range upgrade
   val airRangeTiles  = airRangePixels / tileSize
@@ -1167,7 +1171,7 @@ trait AirWeapon extends Weapon {
   val airCanAttackGround  = airWeapon.targetsGround()
   val airDamageMultiplier = airWeapon.damageFactor()
   val airDamageType: DamageType
-  def isInstantAttackAir = damageDelayFactorAir == 0
+  def isInstantEffectAttackAir = damageDelayFactorAir == 0
   protected lazy val airWeapon = initialNativeType.airWeapon()
   private        val damage    = LazyVal.from {
     // will be invalidated on upgrade
@@ -1529,15 +1533,15 @@ class Overlord(unit: APIUnit)
 
 class SCV(unit: APIUnit)
   extends AnyUnit(unit) with WorkerUnit with IsSmall with NormalGroundDamage with
-          InstantAttackGround
+          FastAttackGround
 
 class Probe(unit: APIUnit)
   extends AnyUnit(unit) with WorkerUnit with IsSmall with NormalGroundDamage with
-          InstantAttackGround
+          FastAttackGround
 
 class Drone(unit: APIUnit)
   extends AnyUnit(unit) with WorkerUnit with IsSmall with Organic with NormalGroundDamage with
-          InstantAttackGround with ZergMobileUnit
+          FastAttackGround with ZergMobileUnit
 
 class Shuttle(unit: APIUnit) extends AnyUnit(unit) with TransporterUnit with SupportUnit with IsBig
 
@@ -1633,7 +1637,7 @@ class MissileTurret(unit: APIUnit)
 class Bunker(unit: APIUnit)
   extends AnyUnit(unit) with TerranBuilding with ArmedBuildingCoveringGroundAndAir
 
-trait InstantAttackAir extends AirWeapon {
+trait FastAttackAir extends AirWeapon {
   override def damageDelayFactorAir = 0
 }
 
@@ -1645,7 +1649,15 @@ trait SlowAttackAir extends AirWeapon {
   override def damageDelayFactorAir = 1
 }
 
-trait InstantAttackGround extends GroundWeapon {
+trait VeryFastAttackGround extends FastAttackGround {
+  override def isInstantAttackGround = true
+}
+
+trait VeryFastAttackAir extends FastAttackAir {
+  override def isInstantAttackAir = true
+}
+
+trait FastAttackGround extends GroundWeapon {
   override def damageDelayFactorGround = 0
 }
 
@@ -1961,29 +1973,12 @@ trait VirtualCloak extends CanCloak with Virtual {
   override def remember_!() = {
     super.remember_!()
     if (isEnemy) {
-      storePosition
+      lastSeen = CloakStateSnapshot(isCloaked).toSome
     }
-  }
-
-  override def onTick_!() = {
-    super.onTick_!()
-    if (isVisible) {
-      storePosition()
-    } else {
-      forgetPosition()
-    }
-  }
-
-  private def storePosition(): Unit = {
-    lastSeen = CloakStateSnapshot(isCloaked).toSome
   }
 
   override def forget_!() = {
     super.forget_!()
-    forgetPosition()
-  }
-
-  private def forgetPosition(): Unit = {
     lastSeen = None
   }
 }
@@ -2020,9 +2015,8 @@ trait CanBurrow extends ZergMobileUnit with VirtualPosition with VirtualHitPoint
   override def onTick_!() = {
     super.onTick_!()
     // units that can burrow somehow lose all their attributes and even stop officially existing,
-    // but
-    // pop up later as soon as they unburrow. the ai needs to keep track of them
-    // if they start burrows, they might start with officially 0 hp... no idea why
+    // but pop up later as soon as they unburrow. the ai needs to keep track of them
+    // if they start burrowed, they might start with officially 0 hp...
     if (exists && isBurrowed && currentTick < 2) {
       remember_!()
       virtualBurrowed = true
@@ -2075,7 +2069,7 @@ class SunkenColony(unit: APIUnit)
 
 class Zergling(unit: APIUnit)
   extends AnyUnit(unit) with GroundUnit with GroundWeapon with NormalGroundDamage with Virtual with
-          IsSmall with ArmedMobile with MeleeWeapon with InstantAttackGround with
+          IsSmall with ArmedMobile with MeleeWeapon with FastAttackGround with
           ZergMobileUnit with CanBurrow
 
 class Egg(unit: APIUnit)
@@ -2089,27 +2083,27 @@ class Larva(unit: APIUnit)
 
 class InfestedTerran(unit: APIUnit)
   extends AnyUnit(unit) with GroundUnit with GroundWeapon with NormalGroundDamage with
-          IsSmall with ArmedMobile with MeleeWeapon with InstantAttackGround with ZergMobileUnit
+          IsSmall with ArmedMobile with MeleeWeapon with FastAttackGround with ZergMobileUnit
 
 class Broodling(unit: APIUnit)
   extends AnyUnit(unit) with GroundUnit with GroundWeapon with NormalGroundDamage with
-          IsSmall with ArmedMobile with InstantAttackGround with ZergMobileUnit
+          IsSmall with ArmedMobile with FastAttackGround with ZergMobileUnit
 
 class Hydralisk(unit: APIUnit)
   extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with ZergMobileUnit with
           ExplosiveAirDamage with ArmedMobile with ExplosiveGroundDamage with IsMedium with
-          InstantAttackAir with InstantAttackGround with CanBurrow with Virtual
+          FastAttackAir with FastAttackGround with CanBurrow with Virtual
 
 class Lurker(unit: APIUnit)
   extends AnyUnit(unit) with ZergMobileUnit with GroundUnit with GroundWeapon with
           NormalGroundDamage with Virtual with
-          IsBig with ArmedMobile with InstantAttackGround with CanBurrow {
+          IsBig with ArmedMobile with FastAttackGround with CanBurrow {
 }
 
 class Mutalisk(unit: APIUnit)
   extends AnyUnit(unit) with ZergMobileUnit with AirUnit with GroundAndAirWeapon with
           NormalGroundDamage with ArmedMobile with
-          NormalAirDamage with IsMedium with InstantAttackAir with InstantAttackGround
+          NormalAirDamage with IsMedium with FastAttackAir with FastAttackGround
 
 class Queen(unit: APIUnit) extends AnyUnit(unit) with ZergMobileUnit with AirUnit with IsMedium
 
@@ -2125,7 +2119,7 @@ class Devourer(unit: APIUnit) extends AnyUnit(unit) with ZergMobileUnit with Gro
 class Ultralisk(unit: APIUnit)
   extends AnyUnit(unit) with ZergMobileUnit with IsBig with GroundWeapon with MeleeWeapon with
           GroundUnit with
-          NormalGroundDamage with ArmedMobile with InstantAttackGround
+          NormalGroundDamage with ArmedMobile with FastAttackGround
 
 class Defiler(unit: APIUnit) extends AnyUnit(unit) with ZergMobileUnit with GroundUnit with IsMedium
 
@@ -2135,11 +2129,11 @@ class Observer(unit: APIUnit)
 class Scout(unit: APIUnit)
   extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with Mechanic with IsBig with
           ExplosiveAirDamage with ArmedMobile with
-          NormalGroundDamage with MediumAttackAir with InstantAttackGround
+          NormalGroundDamage with MediumAttackAir with FastAttackGround
 
 class Zealot(unit: APIUnit)
   extends AnyUnit(unit) with GroundUnit with GroundWeapon with IsSmall with IsInfantry with
-          NormalGroundDamage with ArmedMobile with InstantAttackGround
+          NormalGroundDamage with ArmedMobile with FastAttackGround
 
 class Dragoon(unit: APIUnit)
   extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with Mechanic with IsBig with
@@ -2148,8 +2142,8 @@ class Dragoon(unit: APIUnit)
 
 class Archon(unit: APIUnit)
   extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with IsBig with IsInfantry with
-          NormalAirDamage with ArmedMobile with NormalGroundDamage with InstantAttackAir with
-          InstantAttackGround
+          NormalAirDamage with ArmedMobile with NormalGroundDamage with FastAttackAir with
+          FastAttackGround
 
 class Carrier(unit: APIUnit)
   extends AnyUnit(unit) with AirUnit with Mechanic with IsBig with ArmedMobile with IsShip
@@ -2169,18 +2163,18 @@ class Templar(unit: APIUnit)
 class DarkTemplar(unit: APIUnit)
   extends AnyUnit(unit) with GroundUnit with GroundWeapon with CanCloak with IsSmall with
           IsInfantry with ArmedMobile with CanMorph with NormalGroundDamage
-          with InstantAttackGround with PermaCloak
+          with FastAttackGround with PermaCloak
 
 class DarkArchon(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with IsBig with IsInfantry
 
 class Corsair(unit: APIUnit)
   extends AnyUnit(unit) with AirUnit with AirWeapon with Mechanic with IsMedium with IsShip with
-          ExplosiveAirDamage with ArmedMobile with InstantAttackAir
+          ExplosiveAirDamage with ArmedMobile with FastAttackAir
 
 class Interceptor(unit: APIUnit)
   extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with Mechanic with IsSmall with
           IsShip with ArmedMobile with NormalAirDamage with NormalGroundDamage with
-          InstantAttackAir with InstantAttackGround
+          FastAttackAir with FastAttackGround
 
 class Reaver(unit: APIUnit)
   extends AnyUnit(unit) with GroundUnit with GroundWeapon with Mechanic with IsBig with
@@ -2203,7 +2197,7 @@ class Marine(unit: APIUnit)
           MobileRangeWeapon with ArmedMobile with
           IsSmall with IsInfantry with NormalAirDamage with NormalGroundDamage with
           HasSingleTargetSpells with
-          InstantAttackAir with InstantAttackGround {
+          FastAttackAir with FastAttackGround {
   override type CasterType = CanUseStimpack
   override val spells = List(Spells.Stimpack)
 }
@@ -2211,14 +2205,14 @@ class Marine(unit: APIUnit)
 class Firebat(unit: APIUnit)
   extends AnyUnit(unit) with GroundUnit with GroundWeapon with CanUseStimpack with IsSmall with
           IsInfantry with ArmedMobile with
-          HasSingleTargetSpells with InstantAttackGround with ConcussiveGroundDamage {
+          HasSingleTargetSpells with FastAttackGround with ConcussiveGroundDamage {
   override type CasterType = CanUseStimpack
   override val spells = List(Spells.Stimpack)
 }
 
 class Ghost(unit: APIUnit)
   extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with CanCloak with
-          InstantAttackAir with ArmedMobile with InstantAttackGround with
+          FastAttackAir with ArmedMobile with VeryFastAttackGround with
           HasSingleTargetSpells with MobileRangeWeapon with IsSmall with IsInfantry with
           ConcussiveAirDamage with ConcussiveGroundDamage with VirtualCloakHelpers {
   override type CasterType = Ghost
@@ -2242,7 +2236,7 @@ class Vulture(unit: APIUnit)
 }
 
 class Tank(unit: APIUnit)
-  extends AnyUnit(unit) with GroundUnit with GroundWeapon with InstantAttackGround with
+  extends AnyUnit(unit) with GroundUnit with GroundWeapon with VeryFastAttackGround with
           Mechanic with CanSiege with ArmedMobile with
           MobileRangeWeapon with IsBig with IsVehicle with ExplosiveGroundDamage with
           HasSingleTargetSpells {
@@ -2252,14 +2246,14 @@ class Tank(unit: APIUnit)
 }
 
 class Goliath(unit: APIUnit)
-  extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with InstantAttackGround with
+  extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with FastAttackGround with
           SlowAttackAir with Mechanic with MobileRangeWeapon with IsBig with IsVehicle with
           NormalGroundDamage with BadDancer with
           ExplosiveAirDamage with ArmedMobile
 
 class Wraith(unit: APIUnit)
   extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with CanCloak with
-          InstantAttackGround with MediumAttackAir with Mechanic with MobileRangeWeapon with
+          FastAttackGround with MediumAttackAir with Mechanic with MobileRangeWeapon with
           IsBig with IsShip with NormalGroundDamage with BadDancer with VirtualCloakHelpers with
           ExplosiveAirDamage with ArmedMobile with HasSingleTargetSpells {
 
@@ -2273,8 +2267,8 @@ class Valkery(unit: APIUnit)
           ExplosiveAirDamage with SlowAttackAir
 
 class Battlecruiser(unit: APIUnit)
-  extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with InstantAttackAir with
-          InstantAttackGround with Mechanic with ArmedMobile with
+  extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with VeryFastAttackAir with
+          VeryFastAttackGround with Mechanic with ArmedMobile with
           HasSingleTargetSpells with MobileRangeWeapon with IsBig with IsShip with
           NormalAirDamage with BadDancer with
           NormalGroundDamage {

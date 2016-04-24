@@ -452,13 +452,13 @@ object Terran {
         .flatMap { own =>
           val dancePartners = {
             def take(enemy: ArmedMobile) = {
-              enemy.initialNativeType.topSpeed <= own.initialNativeType.topSpeed &&
+              (own.isInstantFireUnit ||
+               enemy.initialNativeType.topSpeed <= own.initialNativeType.topSpeed) &&
               enemy.weaponRangeRadius <= own.weaponRangeRadius &&
               own.canAttackIfNear(enemy)
             }
             unitGrid.allInRangeOf[ArmedMobile](own.currentTile,
-              own.weaponRangeRadiusTiles, friendly = false, take)
-            .map { unit =>
+              own.weaponRangeRadiusTiles, friendly = false, take).map { unit =>
               UnitIdPosition(unit.nativeUnitId, unit.currentTile)
             }
           }
@@ -1085,10 +1085,13 @@ object Terran {
         if (detectThese.nonEmpty && comsat.canCastNow(ScannerSweep)) {
           val first = detectThese.remove(0)
           Orders.ScanWithComsat(comsat, first.center).toList
-          Nil
         } else if (helpThese.nonEmpty && comsat.canCastNow(ScannerSweep)) {
           val first = helpThese.remove(0)
-          Orders.ScanWithComsat(comsat, first.center).toList
+          if (first.memberUnits.forall(_.underAttackByCloaked)) {
+            Orders.ScanWithComsat(comsat, first.center).toList
+          } else {
+            Nil
+          }
         } else {
           Nil
         }
