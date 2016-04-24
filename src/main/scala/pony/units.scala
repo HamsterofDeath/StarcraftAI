@@ -61,6 +61,9 @@ trait ZergBuilding extends ZergUnit with Building
 
 trait WrapsUnit extends HasUniverse with AfterTickListener {
 
+  lazy val isEnemy = universe.enemyUnits.byId(nativeUnitId).isDefined &&
+                     universe.ownUnits.byId(nativeUnitId).isEmpty
+
   def currentTileNative = currentTile.asNative
 
   def currentTile = myTile.get
@@ -773,14 +776,22 @@ trait CanBeUnderStorm extends WrapsUnit {
 
 trait CanDie extends WrapsUnit with CanBeUnderStorm {
   self =>
+  def isAttackable = true
 
   val armorType: ArmorType
   val price = Price(nativeUnit.getType.mineralPrice(), nativeUnit.getType.gasPrice())
   private val maxHp       = nativeUnit.getType.maxHitPoints()
   private val maxShields  = nativeUnit.getType.maxShields()
   private val disabled    = oncePerTick {evalLocked}
-  private val myArmor     = oncePerTick {
-    val hp = HitPoints(nativeUnit.getHitPoints, nativeUnit.getShields)
+  private val myHitPoints = oncePerTick {
+    val hp = {
+      if (age == 0) {
+        // cloaked units start with 0/0, which makes the ai think the unit is dead
+        HitPoints(maxHp, maxShields)
+      } else {
+        HitPoints(nativeUnit.getHitPoints, nativeUnit.getShields)
+      }
+    }
     val armorLevel = universe.upgrades.armorForUnitType(self)
     Armor(armorType, hp, armorLevel, self)
   }
@@ -805,13 +816,11 @@ trait CanDie extends WrapsUnit with CanBeUnderStorm {
   def isDamaged = isInGame && (hitPoints.shield < maxShields || hitPoints.hitpoints < maxHp) &&
                   !isBeingCreated
 
-  def hitPoints = currentHp
-
-  private def currentHp = myArmor.get.hp
+  def hitPoints = myHitPoints.get.hp
 
   override def isInGame: Boolean = super.isInGame && !isDead
 
-  def isDead = dead || currentHp.isDead
+  def isDead = dead || hitPoints.isDead
 
   override def isNonFighter = isUnArmed || super.isNonFighter
 
@@ -821,7 +830,7 @@ trait CanDie extends WrapsUnit with CanBeUnderStorm {
 
   def isIncapacitated = disabled.get
 
-  def isBeingAttacked = currentHp < lastFrameHp
+  def isBeingAttacked = hitPoints < lastFrameHp
 
   private var tookDamageInTick = 0
 
@@ -844,12 +853,12 @@ trait CanDie extends WrapsUnit with CanBeUnderStorm {
 
   def hasBeenAttackedSince(ticks: Int) = currentTick - tookDamageInTick <= ticks
 
-  def armor = myArmor.get
+  def armor = myHitPoints.get
 
   override protected def onUniverseSet(universe: Universe): Unit = {
     super.onUniverseSet(universe)
     universe.register_!(() => {
-      lastFrameHp = currentHp
+      lastFrameHp = hitPoints
     })
   }
 
@@ -1646,8 +1655,19 @@ trait CanUseStimpack extends Mobile with Weapon with HasSingleTargetSpells {
   private def stimTime = nativeUnit.getStimTimer
 }
 
-trait PermaCloak extends CanCloak {
+trait VirtualCloakHelpers
+  extends CanCloak with Virtual with VirtualCloak with VirtualHitPoints with VirtualPosition {}
+
+trait PermaCloak extends VirtualCloakHelpers {
+
   override def isCloaked = true
+
+  override def onTick_!() = {
+    super.onTick_!()
+    if (isExposed || age == 0) {
+      remember_!()
+    }
+  }
 }
 
 trait CanHide extends WrapsUnit {
@@ -1658,6 +1678,8 @@ trait CanHide extends WrapsUnit {
 }
 
 trait CanCloak extends Mobile with CanHide {
+
+  override def isAttackable = super.isAttackable && isExposed
 
   override def isExposed = super.isExposed && isDecloaked
 
@@ -1851,7 +1873,9 @@ trait VirtualPosition extends WrapsUnit with Virtual {
 
   override def remember_!() = {
     super.remember_!()
-    lastSeen = PositionSnapshot(currentTile, currentPosition).toSome
+    if (isEnemy) {
+      lastSeen = PositionSnapshot(currentTile, currentPosition).toSome
+    }
   }
 
   override def forget_!() = {
@@ -1871,7 +1895,9 @@ trait VirtualHitPoints extends CanDie with Virtual {
 
   override def remember_!() = {
     super.remember_!()
-    lastSeen = HitpointsSnapshot(hitPoints).toSome
+    if (isEnemy) {
+      lastSeen = HitpointsSnapshot(hitPoints).toSome
+    }
   }
 
   override def forget_!() = {
@@ -1891,7 +1917,9 @@ trait VirtualCloak extends CanCloak with Virtual {
 
   override def remember_!() = {
     super.remember_!()
-    lastSeen = CloakStateSnapshot(isCloaked, isDecloaked).toSome
+    if (isEnemy) {
+      lastSeen = CloakStateSnapshot(isCloaked, isDecloaked).toSome
+    }
   }
 
   override def forget_!() = {
@@ -1926,7 +1954,8 @@ trait CanBurrow extends ZergMobileUnit with VirtualPosition with VirtualHitPoint
 
   override def onTick_!() = {
     super.onTick_!()
-    // units that can burrow somehow lose all their attributes and even top officially existing, but
+    // units that can burrow somehow lose all their attributes and even stop officially existing,
+    // but
     // pop up later as soon as they unburrow. the ai needs to keep track of them
     // if they start burrows, they might start with officially 0 hp... no idea why
     if (exists && isBurrowed && currentTick < 2) {
@@ -2036,7 +2065,7 @@ class Ultralisk(unit: APIUnit)
 class Defiler(unit: APIUnit) extends AnyUnit(unit) with ZergMobileUnit with GroundUnit with IsMedium
 
 class Observer(unit: APIUnit)
-  extends AnyUnit(unit) with MobileDetector with Mechanic with IsSmall with AirUnit
+  extends AnyUnit(unit) with MobileDetector with Mechanic with IsSmall with AirUnit with PermaCloak
 
 class Scout(unit: APIUnit)
   extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with Mechanic with IsBig with
@@ -2075,7 +2104,7 @@ class Templar(unit: APIUnit)
 class DarkTemplar(unit: APIUnit)
   extends AnyUnit(unit) with GroundUnit with GroundWeapon with CanCloak with IsSmall with
           IsInfantry with ArmedMobile with CanMorph with NormalGroundDamage
-          with InstantAttackGround
+          with InstantAttackGround with PermaCloak
 
 class DarkArchon(unit: APIUnit) extends AnyUnit(unit) with GroundUnit with IsBig with IsInfantry
 
@@ -2126,7 +2155,7 @@ class Ghost(unit: APIUnit)
   extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with CanCloak with
           InstantAttackAir with ArmedMobile with InstantAttackGround with
           HasSingleTargetSpells with MobileRangeWeapon with IsSmall with IsInfantry with
-          ConcussiveAirDamage with ConcussiveGroundDamage {
+          ConcussiveAirDamage with ConcussiveGroundDamage with VirtualCloakHelpers {
   override type CasterType = Ghost
   override val spells = List(Spells.Lockdown)
 }
@@ -2166,7 +2195,7 @@ class Goliath(unit: APIUnit)
 class Wraith(unit: APIUnit)
   extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with CanCloak with
           InstantAttackGround with MediumAttackAir with Mechanic with MobileRangeWeapon with
-          IsBig with IsShip with NormalGroundDamage with BadDancer with
+          IsBig with IsShip with NormalGroundDamage with BadDancer with VirtualCloakHelpers with
           ExplosiveAirDamage with ArmedMobile with HasSingleTargetSpells {
 
   override type CasterType = Wraith

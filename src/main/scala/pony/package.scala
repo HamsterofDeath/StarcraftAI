@@ -23,6 +23,7 @@ package object pony {
 
   // milestone 3.5
   // TODO build units best suited against enemy
+  // TODO handle remaining special abilities, add rules to handle abilities of enemy
 
   // milestone 4:
   // TODO send only necessary units for defenses, use "battle simulator" to estimate which units

@@ -1574,6 +1574,8 @@ class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
       val prioritized = {
         universe.enemyUnits
         .allCanDie
+        .iterator
+        .filter(_.isAttackable)
         .toVector
         .sortBy { e =>
           (e.isHarmlessNow.ifElse(1, 0),

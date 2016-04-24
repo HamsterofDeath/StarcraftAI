@@ -113,6 +113,7 @@ class DefaultWorld(game: Game) extends WorldListener with WorldEventDispatcher {
       }
       enemyUnits.allRelevant.filterNot(_.isInGame).foreach { e =>
         warn(s"Unit $e died without event")
+        e.isInGame
         removeQueueEnemy += e.nativeUnit
       }
     }
