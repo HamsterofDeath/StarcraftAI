@@ -208,6 +208,10 @@ trait WrapsUnit extends HasUniverse with AfterTickListener {
       universe.unitGrid.enemy.allInRange[GroundUnit](centerTile, near).toVector
     }
 
+    private val myNearEnemyAirUnits = oncePer(Primes.prime23) {
+      universe.unitGrid.enemy.allInRange[AirUnit](centerTile, near).toVector
+    }
+
     private val myMediumEnemyGroundUnits = oncePer(Primes.prime23) {
       universe.unitGrid.enemy.allInRange[GroundUnit](centerTile, medium).toVector
     }
@@ -233,6 +237,8 @@ trait WrapsUnit extends HasUniverse with AfterTickListener {
     def mediumEnemyBuildings = myMediumEnemyBuildings.get
 
     def closeEnemyGroundUnits = myNearEnemyGroundUnits.get
+
+    def closeEnemyUnits = myNearEnemyGroundUnits.iterator ++ myNearEnemyAirUnits.iterator
 
     def mediumEnemyGroundUnits = myMediumEnemyGroundUnits.get
 
@@ -804,7 +810,7 @@ trait CanDie extends WrapsUnit with CanBeUnderStorm {
     hitPoints.sum.toDouble / (maxHp + maxShields)
   }
 
-  def underAttackByMelee = {
+  private val myAttackedByMelee = oncePerTick {
     surroundings.closeEnemyGroundUnits.exists {
       case gw: GroundWeapon => gw.isMelee &&
                                !gw.isHarmlessNow &&
@@ -813,6 +819,20 @@ trait CanDie extends WrapsUnit with CanBeUnderStorm {
       case _ => false
     }
   }
+
+  private val myAttackedByCloaked = oncePerTick {
+    surroundings.closeEnemyUnits.exists {
+      case cw: Weapon with CanCloak =>
+        cw.isCloaked &&
+        !cw.isHarmlessNow &&
+        cw.cooldownTimer > 0
+      case _ => false
+    }
+  }
+
+  def underAttackByMelee = myAttackedByMelee.get
+
+  def underAttackByCloaked = myAttackedByCloaked.get
 
   def isDamaged = isInGame && (hitPoints.shield < maxShields || hitPoints.hitpoints < maxHp) &&
                   !isBeingCreated
@@ -1882,9 +1902,17 @@ trait VirtualPosition extends WrapsUnit with Virtual {
 
   private var lastSeen = Option.empty[PositionSnapshot]
 
-  override def currentTile = lastSeen.map(_.where).getOrElse(super.currentTile)
+  override def currentTile = lastSeen.map(_.where)
+                             .filterNot(_ => myVisible)
+                             .getOrElse(super.currentTile)
 
-  override def currentPosition = lastSeen.map(_.where32).getOrElse(super.currentPosition)
+  override def currentPosition = lastSeen.map(_.where32)
+                                 .filterNot(_ => myVisible)
+                                 .getOrElse(super.currentPosition)
+
+  private val myVisible = oncePerTick {
+    nativeUnit.isVisible
+  }
 
   override def remember_!() = {
     super.remember_!()
@@ -1932,12 +1960,29 @@ trait VirtualCloak extends CanCloak with Virtual {
   override def remember_!() = {
     super.remember_!()
     if (isEnemy) {
-      lastSeen = CloakStateSnapshot(isCloaked).toSome
+      storePosition
     }
+  }
+
+  override def onTick_!() = {
+    super.onTick_!()
+    if (isVisible) {
+      storePosition()
+    } else {
+      forgetPosition()
+    }
+  }
+
+  private def storePosition(): Unit = {
+    lastSeen = CloakStateSnapshot(isCloaked).toSome
   }
 
   override def forget_!() = {
     super.forget_!()
+    forgetPosition()
+  }
+
+  private def forgetPosition(): Unit = {
     lastSeen = None
   }
 }

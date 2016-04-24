@@ -1036,6 +1036,7 @@ object Terran {
 
   class UseComsat(universe: Universe) extends DefaultBehaviour[Comsat](universe) {
     private val detectThese = ArrayBuffer.empty[Group[CanHide]]
+    private val helpThese   = ArrayBuffer.empty[Group[CanDie]]
 
     override def onTick_!() = {
       super.onTick_!()
@@ -1057,6 +1058,20 @@ object Terran {
         }
       }
 
+      helpThese ++= {
+        val attacked = {
+          ownUnits.allCanDie
+          .iterator
+          .filterNot { u =>
+            helpThese.exists(_.covers(u))
+          }
+          .filter(_.underAttackByCloaked)
+        }
+
+        val groups = GroupingHelper.groupTheseNow(attacked, universe)
+        groups.sortBy(-_.size)
+      }
+
       debug(s"Currently known cloaked groups: ${
         detectThese.map(e => s"${e.size}@${e.center}").mkString(", ")
       })", detectThese.nonEmpty)
@@ -1069,6 +1084,10 @@ object Terran {
       override def toOrder(what: Objective) = {
         if (detectThese.nonEmpty && comsat.canCastNow(ScannerSweep)) {
           val first = detectThese.remove(0)
+          Orders.ScanWithComsat(comsat, first.center).toList
+          Nil
+        } else if (helpThese.nonEmpty && comsat.canCastNow(ScannerSweep)) {
+          val first = helpThese.remove(0)
           Orders.ScanWithComsat(comsat, first.center).toList
         } else {
           Nil

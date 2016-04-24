@@ -408,8 +408,10 @@ class GroupingHelper[T <: WrapsUnit](val map: Grid2D, seq: TraversableOnce[T], s
 }
 
 class Group[T <: WrapsUnit](map: Grid2D, source: AllUnits) {
+  def covers(u: CanDie) = myMembers.contains(u.nativeUnitId)
+
   private val maxDst    = 10 * 10
-  private val myMembers = ArrayBuffer.empty[((Int, MapTilePosition))]
+  private val myMembers = mutable.HashMap.empty[Int, MapTilePosition]
   private var myCenter  = MapTilePosition.zero
 
   def memberUnits = {
