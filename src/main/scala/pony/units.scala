@@ -824,6 +824,7 @@ trait CanDie extends WrapsUnit with CanBeUnderStorm {
     surroundings.closeEnemyUnits.exists {
       case cw: Weapon with CanCloak =>
         cw.isCloaked &&
+        !cw.isExposed
         !cw.isHarmlessNow &&
         cw.cooldownTimer > 0
       case _ => false
