@@ -184,6 +184,7 @@ trait WrapsUnit extends HasUniverse with AfterTickListener {
 
   def isSelected = nativeUnit.isSelected
   def nativeUnit: APIUnit
+  def shortDebugString = s"$unitIdText"
   def unitIdText = Integer.toString(unitId, 36)
   def mySCRace = {
     val r = nativeUnit.getType.getRace
@@ -1656,18 +1657,24 @@ trait CanUseStimpack extends Mobile with Weapon with HasSingleTargetSpells {
 }
 
 trait VirtualCloakHelpers
-  extends CanCloak with Virtual with VirtualCloak with VirtualHitPoints with VirtualPosition {}
+  extends CanCloak with Virtual with VirtualCloak with VirtualHitPoints with VirtualPosition {
+
+  override def onTick_!() = {
+    super.onTick_!()
+    if (isEnemy) {
+      if (age == 0) {
+        remember_!()
+      } else if (isExposed) {
+        update_!()
+      }
+    }
+  }
+}
 
 trait PermaCloak extends VirtualCloakHelpers {
 
   override def isCloaked = true
 
-  override def onTick_!() = {
-    super.onTick_!()
-    if (isExposed || age == 0) {
-      remember_!()
-    }
-  }
 }
 
 trait CanHide extends WrapsUnit {
@@ -1689,6 +1696,14 @@ trait CanCloak extends Mobile with CanHide {
 
   private val decloaked = oncePerTick {
     nativeUnit.isDetected
+  }
+
+  override def shortDebugString = {
+    val c = if (isCloaked) "c" else ""
+    val d = if (isDecloaked) "d" else ""
+    val e = if (isExposed) "e" else ""
+    val v = if (isVisible) "v" else ""
+    s"${super.shortDebugString}.$c$d$e"
   }
 
   def isCloaked = cloaked.get
@@ -1909,16 +1924,15 @@ trait VirtualHitPoints extends CanDie with Virtual {
 
 trait VirtualCloak extends CanCloak with Virtual {
 
-  case class CloakStateSnapshot(cloaked: Boolean, decloaked: Boolean)
+  case class CloakStateSnapshot(cloaked: Boolean)
 
   private var lastSeen = Option.empty[CloakStateSnapshot]
   override def isCloaked = lastSeen.map(_.cloaked).getOrElse(super.isCloaked)
-  override def isDecloaked = lastSeen.map(_.decloaked).getOrElse(super.isDecloaked)
 
   override def remember_!() = {
     super.remember_!()
     if (isEnemy) {
-      lastSeen = CloakStateSnapshot(isCloaked, isDecloaked).toSome
+      lastSeen = CloakStateSnapshot(isCloaked).toSome
     }
   }
 
@@ -1933,6 +1947,11 @@ trait Virtual extends CanDie {
   def remember_!(): Unit = {}
 
   def forget_!(): Unit = {}
+
+  def update_!(): Unit = {
+    forget_!()
+    remember_!()
+  }
 
 }
 

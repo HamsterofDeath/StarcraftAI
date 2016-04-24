@@ -88,16 +88,16 @@ class UnitIdRenderer extends AIPlugIn {
         case a: AirUnit => a
       }
       .foreach { u =>
-        renderer.drawTextAtMobileUnit(u, u.unitIdText)
+        renderer.drawTextAtMobileUnit(u, u.shortDebugString)
       }
       lazyWorld.ownUnits.allByType[Building].foreach { u =>
-        renderer.drawTextAtStaticUnit(u, s"${u.unitIdText}/${u.getClass.className}")
+        renderer.drawTextAtStaticUnit(u, s"${u.shortDebugString}/${u.getClass.className}")
       }
       lazyWorld.enemyUnits.allByType[Mobile].foreach { u =>
-        renderer.drawTextAtMobileUnit(u, u.unitIdText)
+        renderer.drawTextAtMobileUnit(u, u.shortDebugString)
       }
       lazyWorld.enemyUnits.allByType[Building].foreach { u =>
-        renderer.drawTextAtStaticUnit(u, s"${u.unitIdText}/${u.getClass.className}")
+        renderer.drawTextAtStaticUnit(u, s"${u.shortDebugString}/${u.getClass.className}")
       }
     }
   }
