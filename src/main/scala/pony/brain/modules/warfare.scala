@@ -1092,15 +1092,17 @@ object Strategy {
         val covered = bases.bases.flatMap(_.resourceArea).toSet
         val dangerous = mapLayers.slightlyDangerousAsBlocked
         bases.mainBase.map(_.mainBuilding.tilePosition).flatMap { where =>
-          val others = strategicMap.resources
-                       .filterNot(covered)
-                       .filterNot(ra => dangerous.blocked(ra.nearbyFreeTile))
-                       .filter { where =>
-                         universe.ownUnits.allByType[TransporterUnit].nonEmpty ||
-                         mapLayers.rawWalkableMap
-                         .areInSameWalkableArea(where.center,
-                           bases.mainBase.get.mainBuilding.tilePosition)
-                       }
+          val others = {
+            strategicMap.resources
+            .filterNot(covered)
+            .filterNot(ra => dangerous.blocked(ra.nearbyFreeTile))
+            .filter { where =>
+              universe.ownUnits.allByType[TransporterUnit].nonEmpty ||
+              mapLayers.rawWalkableMap
+              .areInSameWalkableArea(where.center,
+                bases.mainBase.get.mainBuilding.tilePosition)
+            }
+          }
           if (others.nonEmpty) {
             val target = others.maxBy(
               e => (e.mineralsAndGas, -e.patches.map(_.center.distanceSquaredTo(where))

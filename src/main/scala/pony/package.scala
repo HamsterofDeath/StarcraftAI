@@ -19,7 +19,6 @@ package object pony {
   // milestone 3:
   // TODO collect minerals/gas from far away if out of resources in bases
   // TODO optimize performance
-  // TODO fix dark templar bug
 
   // milestone 3.5
   // TODO build units best suited against enemy

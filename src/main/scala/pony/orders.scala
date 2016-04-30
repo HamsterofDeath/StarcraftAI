@@ -286,6 +286,14 @@ object Orders {
     }
   }
 
+  case class ReturnResourcesToAnyBase(myUnit: WorkerUnit) extends UnitOrder {
+    override def issueOrderToGame() = {
+      myUnit.nativeUnit.returnCargo()
+    }
+
+    override def renderDebug(renderer: Renderer) = {}
+  }
+
   case class ReturnMinerals(myUnit: WorkerUnit, to: MainBuilding) extends UnitOrder {
     override def issueOrderToGame(): Unit = {
       // for some reason, other commands are not reliable

@@ -214,52 +214,48 @@ class ProvideNewUnits(universe: Universe) extends OrderlessAIModule[UnitFactory]
   self =>
 
   override def onTick_!(): Unit = {
-    unitManager.failedToProvideFlat.distinct.flatMap { req =>
+    unitManager.failedToProvideFlat.distinct.foreach { req =>
       trace(s"Trying to satisfy $req somehow")
       val wantedType = req.typeOfRequestedUnit
       if (classOf[Mobile] >= wantedType) {
         val typeFixed = wantedType.asInstanceOf[Class[Mobile]]
         val wantedAmount = req.amount
-        1 to wantedAmount flatMap { _ =>
+        var skipRemaining = false
+        (1 to wantedAmount).iterator.takeWhile(_ => !skipRemaining) foreach { _ =>
           val builderOf = UnitJobRequest.builderOf(typeFixed, self)
           unitManager.request(builderOf) match {
-            case any: ExactlyOneSuccess[UnitFactory] =>
-              val producer = any
+            case producer: ExactlyOneSuccess[UnitFactory] =>
               unitManager.jobOf(producer.onlyOne) match {
                 case t: CreatesUnit[_] =>
                   req.clearableInNextTick_!()
-                  Nil
+                  skipRemaining = true
                 case _ =>
                   val res = req match {
-                    case hf: HasFunding if resources.hasStillLocked(hf.proofForFunding) => hf
-                                                                                           .proofForFunding
+                    case hf: HasFunding if resources.hasStillLocked(hf.proofForFunding) =>
+                      hf.proofForFunding
 
-                    case _ => {
+                    case _ =>
                       val forUnit = ResourceRequests
                                     .forUnit(universe.myRace, typeFixed, req.priority)
                       resources.request(forUnit, self)
-                    }
                   }
                   res match {
                     case suc: ResourceApprovalSuccess =>
                       // job will take care of resource disposal
                       req.keepResourcesLocked_!()
                       req.clearableInNextTick_!()
-                      val order = new TrainUnit(any.onlyOne, typeFixed, self, suc)
+                      val order = new TrainUnit(producer.onlyOne, typeFixed, self, suc)
                       assignJob_!(order)
-                      Nil
                     case _ =>
                       req.clearableInNextTick_!()
-                      Nil
+                      skipRemaining = true
                   }
               }
             case _ =>
               req.clearableInNextTick_!()
-              Nil
+              skipRemaining = true
           }
         }
-      } else {
-        Nil
       }
     }
   }
@@ -303,15 +299,33 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule(universe
   }
 
   private def createJobsForBases(): Unit = {
-    val add = universe.bases
-              .bases
-              .filterNot(e => gatheringJobs.exists(_.covers(e)))
-              .filterNot(_.mainBuilding.isBeingCreated)
-              .flatMap { base =>
-                base.myMineralGroup.map { minerals =>
-                  new ManageMiningAtPatchGroup(base, minerals)
-                }
-              }
+    val add = {
+      val naturals = {
+        universe.bases
+        .finishedBases
+        .filterNot(e => gatheringJobs.exists(_.covers(e)))
+        .flatMap { base =>
+          base.myMineralGroup.map { minerals =>
+            new ManageMiningAtPatchGroup(base, minerals)
+          }
+        }
+      }
+      val unnaturals = {
+        val poor = gatheringJobs.groupBy(_.forBase)
+                   .filter(_._2.forall(_.poor))
+
+        val newTargets = poor.flatMap { case (base, jobs) =>
+          base.alternativeResourceAreas.find { area =>
+            !jobs.exists(e => area.patches.contains(e.patchGroup))
+          }.map { e => base -> e }
+        }
+        newTargets.map { case (base, area) =>
+          new ManageMiningAtPatchGroup(base, area.patches.get)
+        }
+      }
+
+      naturals ++ unnaturals
+    }
     info(
       s"""
          |Added new mineral gathering job(s): ${add.mkString(" & ")}
@@ -322,6 +336,12 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule(universe
   class ManageMiningAtPatchGroup(base: Base, minerals: MineralPatchGroup)
     extends Employer[WorkerUnit](universe) {
     emp =>
+
+    def patchGroup = minerals
+
+    def poor = minerals.remainingPercentage <= 0.1
+
+    def forBase = base
 
     override def onTick_!(): Unit = {
       super.onTick_!()

@@ -471,8 +471,9 @@ class ResourceAnalyzer(map: AnalyzedMap, all: AllUnits) {
         ResourceArea(None, group.memberUnits.toSet)
       }
     }
-    allAreas
+    allAreas.toVector
   }
+
   val myUnits = all.own
   private val myGroups      = FileStorageLazyVal.fromFunction({
     info(s"Calculating mineral groups...")

@@ -20,6 +20,8 @@ case class ResourceArea(patches: Option[MineralPatchGroup], geysirs: Set[Geysir]
 
   def area = myArea.get
 
+  def anyTile = coveredTiles.head
+
   assert(patches.isDefined || geysirs.nonEmpty)
   val resourceUnits = patches.map(_.patches).getOrElse(Nil) ++ geysirs
   val coveredTiles  = resourceUnits.flatMap(_.area.tiles).toSet

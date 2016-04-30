@@ -445,12 +445,14 @@ class Bases(world: DefaultWorld) {
 
   def bases = myBases.immutableView
 
+  def finishedBases = bases.filterNot(_.mainBuilding.isBeingCreated)
+
   def mainBase = myBases.headOption
 
   def tick(): Unit = {
     val all = world.ownUnits.allByType[MainBuilding]
     all.filterNot(known).foreach { main =>
-      val newBase = new Base(main)(world)
+      val newBase = new Base(main)
       myBases += newBase
       newBaseListeners.foreach(_.newBase(newBase))
     }
@@ -472,10 +474,50 @@ trait NewBaseListener {
   def newBase(base: Base): Unit
 }
 
-case class Base(mainBuilding: MainBuilding)(world: DefaultWorld) {
+case class Base(mainBuilding: MainBuilding) {
 
-  val resourceArea = world.resourceAnalyzer.resourceAreas
-                     .minByOpt(c => mainBuilding.area.distanceTo(c.center))
+  def world = mainBuilding.world
+
+  val resourceArea = {
+    world.resourceAnalyzer.resourceAreas
+    .minByOpt { c =>
+      mainBuilding.area.distanceTo(c.center)
+    }
+  }
+
+  def alternativeResourceAreas = myAlternativeResourceAreas.result
+
+  private val myAlternativeResourceAreas = {
+    val safeGround = mainBuilding.pathfinders.groundSafe
+    val safeAir = mainBuilding.pathfinders.airSafe
+    val tile = mainBuilding.centerTile
+
+    def sortByPath = {
+
+      def evaluate(area: ResourceArea, ground: Boolean) = {
+        val finder = if (ground) safeGround else safeAir
+        val path = safeGround.findSimplePathNow(tile, area.anyTile)
+
+        path match {
+          case None =>
+            None
+          case Some(p) =>
+            Some(area -> p.length)
+
+        }
+      }
+      val ground = world.resourceAnalyzer.resourceAreas.flatMap(evaluate(_, true))
+
+      val air = world.resourceAnalyzer.resourceAreas.filterNot { area =>
+        ground.exists(_._1 == area)
+      }.flatMap(evaluate(_, false))
+
+      val all = ground.sortBy(_._2).map(_._1) ++ air.sortBy(_._2).map(_._1)
+      all.filterNot(_ == resourceArea)
+    }
+
+    BWFuture(sortByPath, Nil)
+  }
 
   val myMineralGroup = resourceArea.flatMap(_.patches)
   val myGeysirs      = resourceArea.map(_.geysirs).getOrElse(Set.empty)

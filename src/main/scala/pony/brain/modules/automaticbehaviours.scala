@@ -104,6 +104,7 @@ object Terran {
                      */
                      new Dance(universe) ::
                      new HelpNearUnits(universe) ::
+                     new DeliverResources(universe) ::
                      new FocusFire(universe) ::
                      new ReallyReallyLazy(universe) ::
                      Nil)
@@ -292,6 +293,23 @@ object Terran {
           }
         }
         order.toList
+      }
+    }
+  }
+
+  class DeliverResources(universe: Universe) extends DefaultBehaviour[WorkerUnit](universe) {
+
+    override def priority = SecondPriority.BetterThanNothing
+
+    override protected def wrapBase(unit: WorkerUnit) = new SingleUnitBehaviour(unit, meta) {
+      override def describeShort = "Return resources"
+
+      override protected def toOrder(what: Objective) = {
+        if (unit.isCarryingGas || unit.isCarryingMinerals) {
+          Orders.ReturnResourcesToAnyBase(unit).toList
+        } else {
+          Nil
+        }
       }
     }
   }

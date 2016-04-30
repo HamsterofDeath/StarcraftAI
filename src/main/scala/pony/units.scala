@@ -1435,12 +1435,13 @@ trait Resource extends BlockingTiles {
     Area(ul, lr)
   }
 
-  private val remainingResources = oncePerTick
-                                   {if (nativeUnit.exists) nativeUnit.getResources else 0}
+  private val remainingResources = oncePerTick {
+    nativeUnit.getResources
+  }
 
   def nonEmpty = remaining > 8
 
-  def remaining = remainingResources.get
+  def remaining = if (isInGame) remainingResources.get else 0
 }
 
 trait ArmedBuildingCoveringGround extends ArmedBuilding
