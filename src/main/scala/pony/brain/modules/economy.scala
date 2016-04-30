@@ -295,6 +295,29 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule(universe
 
   override def onTick_!(): Unit = {
     createJobsForBases()
+    ifNth(Primes.prime43) {
+      val outdated = gatheringJobs.filter(_.unnatural).flatMap { e =>
+        val base = e.forBase
+        val currentDistance = base.mainBuilding.centerTile.distanceSquaredTo(e.patchGroup.anyTile)
+        val nearest = universe.bases
+                      .finishedBases
+                      .iterator
+                      .filterNot(_ == base)
+                      .minByOpt(_.mainBuilding.centerTile.distanceSquaredTo(e.patchGroup.anyTile))
+        nearest.flatMap { bestReplacement =>
+          val altDistance = bestReplacement.mainBuilding.centerTile
+                            .distanceSquaredTo(e.patchGroup.anyTile)
+
+          if (altDistance < currentDistance) {
+            Some(e)
+          } else {
+            None
+          }
+        }
+      }
+      debug(s"Replacing ${outdated.size} outdated mining jobs")
+      gatheringJobs --= outdated
+    }
     gatheringJobs.foreach(_.onTick_!())
   }
 
@@ -336,6 +359,10 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule(universe
   class ManageMiningAtPatchGroup(base: Base, minerals: MineralPatchGroup)
     extends Employer[WorkerUnit](universe) {
     emp =>
+
+    def natural = base.resourceArea.exists(_.patches.contains(minerals))
+
+    def unnatural = !natural
 
     def patchGroup = minerals
 

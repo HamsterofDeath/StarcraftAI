@@ -519,6 +519,9 @@ class ResourceAnalyzer(map: AnalyzedMap, all: AllUnits) {
 }
 
 case class MineralPatchGroup(patchId: Int) {
+
+  def anyTile = allTiles.next()
+
   private val myPatches      = mutable.HashSet.empty[MineralPatch]
   private val myCenter       = new LazyVal[MapTilePosition](calcCenter)
   private val myValue        = new
