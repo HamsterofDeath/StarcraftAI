@@ -4,7 +4,8 @@ import java.text.DecimalFormat
 
 import bwapi.Color
 import pony.AttackPriorities.Highest
-import pony.brain.modules.{EnqueueArmy, GatherMineralsAtSinglePatch, ProvideExpansions}
+import pony.brain.modules.{EnqueueArmy, EnqueueFactories, GatherMineralsAtSinglePatch,
+ProvideExpansions}
 import pony.brain.{HasUniverse, TwilightSparkle, Universe}
 
 import scala.collection.mutable
@@ -296,8 +297,10 @@ class AiDebugRenderer(override val universe: Universe) extends AIPlugIn with Has
 
 
       val enqueueArmy = universe.pluginByType[EnqueueArmy]
+      val enqueueFactories = universe.pluginByType[EnqueueFactories]
       val plan = enqueueArmy.plan.buildThese.toMap
-      val ratios = enqueueArmy.percentages
+      val ratiosForUnits = enqueueArmy.percentages
+      val ratiosForProducers = enqueueFactories.ratios
 
       debugString ++= {
         trackedUnits.keysIterator
@@ -309,7 +312,6 @@ class AiDebugRenderer(override val universe: Universe) extends AIPlugIn with Has
         .sortBy(_.className).map { c =>
           val casted = c.asInstanceOf[Class[_ <: Mobile]]
           val priority = {
-
             val value = plan.get(casted) match {
               case op@Some(newValue) =>
                 lastKnownPlanPriorities.put(casted, newValue)
@@ -317,14 +319,31 @@ class AiDebugRenderer(override val universe: Universe) extends AIPlugIn with Has
               case None =>
                 lastKnownPlanPriorities.get(casted)
             }
-
             value.map {_.format}.getOrElse("x")
           }
-          val wanted = ratios.wanted.get(casted).map(_.format).getOrElse("0")
-          val existing = ratios.existing.get(casted).map(_.format).getOrElse("0")
+          val wanted = ratiosForUnits.wanted.get(casted).map(_.format).getOrElse("0")
+          val existing = ratiosForUnits.existing.get(casted).map(_.format).getOrElse("0")
           s"${c.className.padTo(15, ' ')}: ${trackedUnits(c).format} $priority ($existing/$wanted)"
         }
       }
+
+      debugString ++= {
+        trackedUnits.keysIterator
+        .filter(c => classOf[CanDie] >= c)
+        .filter(c => classOf[Building] >= c)
+        .filter(c => ratiosForProducers.find(_._1.typeOfFactory == c).isDefined)
+        .toList
+        .sortBy(c => trackedUnits(c).alive)
+        .takeRight(10)
+        .sortBy(_.className).map { c =>
+          val casted = c.asInstanceOf[Class[_ <: Building]]
+          val info = ratiosForProducers.find(_._1.typeOfFactory == casted)
+          val wanted = info.map(_._1.format).getOrElse("?")
+          val existing = info.map(_._2).getOrElse(0).toString
+          s"${c.className.padTo(15, ' ')}: ${trackedUnits(c).format} ($existing/$wanted)"
+        }
+      }
+
 
       if (debugger.isFullDebug) {
 

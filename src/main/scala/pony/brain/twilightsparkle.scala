@@ -525,7 +525,7 @@ case class Base(mainBuilding: MainBuilding) {
       val all = ground.sortBy(_._2).map(_._1) ++ air.sortBy(_._2).map(_._1)
       all.filterNot(_ == resourceArea).filter { candidate =>
         mainBuilding.mapLayers.rawWalkableMap
-        .areInSameWalkableArea(candidate.anyTile, mainBuilding.centerTile)
+        .areInSameWalkableArea(candidate.anyTile, tile)
       }
     }
 

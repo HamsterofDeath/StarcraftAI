@@ -1,5 +1,7 @@
 package pony
 
+import bwapi.Race
+
 import scala.collection.mutable
 
 trait TechTree {
@@ -125,6 +127,11 @@ class TerranTechTree extends TechTree {
 }
 
 sealed trait SCRace {
+  def isTerran = false
+  def isZerg = false
+  def isProtoss = false
+  assert(isTerran ^ isZerg ^ isProtoss)
+
   val techTree: TechTree
   def specialize[T](unitType: Class[_ <: T]) = {
     (if (classOf[WorkerUnit] >= unitType) {
@@ -147,8 +154,22 @@ sealed trait SCRace {
   def detectorBuildingClass: Class[_ <: DetectorBuilding]
 }
 
+object SCRace {
+  def fromNative(r: Race) = {
+    if (r == Race.Protoss) Protoss
+    else if (r == Race.Terran) Terran
+    else if (r == Race.Zerg) Zerg
+    else {
+      throw new IllegalStateException(s"Check this: $this")
+    }
+  }
+}
+
 case object Terran extends SCRace {
-  override val techTree = new TerranTechTree
+
+  override def isTerran = true
+
+  override lazy val techTree = new TerranTechTree
 
   override def workerClass = classOf[SCV]
 
@@ -162,7 +183,10 @@ case object Terran extends SCRace {
 }
 
 case object Zerg extends SCRace {
-  override val techTree = ???
+
+  override def isZerg = true
+
+  override lazy val techTree = ???
 
   override def workerClass = classOf[Drone]
 
@@ -176,7 +200,10 @@ case object Zerg extends SCRace {
 }
 
 case object Protoss extends SCRace {
-  override val techTree = ???
+
+  override def isProtoss = true
+
+  override lazy val techTree = ???
 
   override def workerClass = classOf[Probe]
 

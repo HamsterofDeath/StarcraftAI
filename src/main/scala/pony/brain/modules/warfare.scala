@@ -899,10 +899,14 @@ class ProvideUpgrades(universe: Universe) extends OrderlessAIModule[Upgrader](un
 class EnqueueFactories(universe: Universe)
   extends OrderlessAIModule[WorkerUnit](universe) with BuildingRequestHelper {
 
+  def ratios = evaluateCapacities.map { cap =>
+    cap -> (ownUnits.allByClass(cap.typeOfFactory).size +
+            unitManager.plannedToBuildByClass(cap.typeOfFactory).size)
+  }.toMap
+
   override def onTick_!(): Unit = {
-    evaluateCapacities.foreach { cap =>
-      val existingByType = ownUnits.allByClass(cap.typeOfFactory).size +
-                           unitManager.plannedToBuildByClass(cap.typeOfFactory).size
+
+    ratios.foreach { case (cap, existingByType) =>
       if (existingByType < cap.maximumSustainable) {
         requestBuilding(cap.typeOfFactory, takeCareOfDependencies = true)
       }
@@ -924,6 +928,10 @@ class EnqueueFactories(universe: Universe)
 case class IdealProducerCount[T <: UnitFactory](typeOfFactory: Class[_ <: UnitFactory],
                                                 maximumSustainable: Int)
                                                (active: => Boolean) {
+  def format = {
+    s"${if (active) "A" else "I"}, $maximumSustainable"
+  }
+
   def isActive = active
 }
 
@@ -1067,7 +1075,9 @@ object Strategy {
 
         def isAnyTime = true
       }
+
     }
+
   }
 
   trait TerranDefaults extends LongTermStrategy {
@@ -1393,9 +1403,9 @@ object Strategy {
     override def suggestProducers = {
       val myBases = bases.myMineralFields.count(_.value > 1000)
 
-      IdealProducerCount(classOf[Barracks], myBases * 3)(timingHelpers.phase.isAnyTime) ::
-      IdealProducerCount(classOf[Barracks], myBases * 2)(timingHelpers.phase.isSincePostMid) ::
-      IdealProducerCount(classOf[Factory], myBases)(timingHelpers.phase.isSinceLateMid) ::
+      IdealProducerCount(classOf[Barracks], myBases + 2)(timingHelpers.phase.isAnyTime) ::
+      IdealProducerCount(classOf[Barracks], myBases)(timingHelpers.phase.isSincePostMid) ::
+      IdealProducerCount(classOf[Factory], myBases)(timingHelpers.phase.isSincePostMid) ::
       IdealProducerCount(classOf[Starport], myBases)(timingHelpers.phase.isSinceLateMid) ::
       Nil
     }
