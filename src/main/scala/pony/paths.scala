@@ -848,7 +848,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   private def evalWorkerPaths = {
     trace("Re-evaluation of worker paths")
     val ret = emptyCopy
-    bases.bases.foreach { base =>
+    bases.allBases.foreach { base =>
       base.myMineralGroup.foreach { group =>
         group.patches.foreach { patch =>
           base.mainBuilding.area.outline.foreach { outline =>

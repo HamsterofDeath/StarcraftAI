@@ -1,10 +1,9 @@
 package pony
 
-import bwapi.{Color, Game, Player, PlayerType}
+import bwapi.{Color, Game, PlayerType, Player => BWPlayer}
 import pony.brain.modules.GroupingHelper
-import pony.brain.{ResourceRequestSum, Supplies}
+import pony.brain.{HasUniverse, ResourceRequestSum, Supplies, Universe}
 
-import scala.collection.JavaConverters._
 import scala.collection.immutable.BitSet
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
@@ -46,18 +45,25 @@ case class AllUnits(own: Units, other: Units) {
 }
 
 class DefaultWorld(game: Game) extends WorldListener with WorldEventDispatcher {
+  private var myUniverse: Universe = _
+
+  def init_!(universe: Universe) = {
+    this.myUniverse = universe
+  }
+
+  def universe = myUniverse
+
   def addPostTickAction(value: => Unit) = {
     postTickActions += (() => value)
   }
 
   // these must be initialized after the first tick. making them lazy solves this
-  lazy val resourceAnalyzer = new ResourceAnalyzer(map, AllUnits(ownUnits, enemyUnits))
+  lazy val resourceAnalyzer = new ResourceAnalyzer(map,
+    AllUnits(myUniverse.ownUnits, myUniverse.enemyUnits))
   lazy val strategicMap     = new
       StrategicMap(resourceAnalyzer.resourceAreas, map.walkableGrid, game)
 
   val map        = new AnalyzedMap(game)
-  val ownUnits   = new Units(game, false)
-  val enemyUnits = new Units(game, true)
   val debugger   = new Debugger(game, this)
   val orderQueue = new OrderQueue(game, debugger)
   private val removeQueueOwn   = ArrayBuffer.empty[bwapi.Unit]
@@ -88,12 +94,12 @@ class DefaultWorld(game: Game) extends WorldListener with WorldEventDispatcher {
   }
 
   def tick(): Unit = {
-    ownUnits.dead_!(removeQueueOwn)
-    enemyUnits.dead_!(removeQueueEnemy)
+    myUniverse.ownUnits.dead_!(removeQueueOwn)
+    myUniverse.enemyUnits.dead_!(removeQueueEnemy)
     removeQueueOwn.clear()
     removeQueueEnemy.clear()
-    ownUnits.tick()
-    enemyUnits.tick()
+    myUniverse.ownUnits.tick()
+    myUniverse.enemyUnits.tick()
   }
 
   def postTick(): Unit = {
@@ -104,19 +110,6 @@ class DefaultWorld(game: Game) extends WorldListener with WorldEventDispatcher {
     orderQueue.debugAll()
     orderQueue.issueAll()
     ticks += 1
-
-    //sometimes units die without the event being triggered
-    if (ticks % 19 == 0) {
-      ownUnits.allRelevant.filterNot(_.isInGame).foreach { e =>
-        warn(s"Unit $e died without event")
-        removeQueueOwn += e.nativeUnit
-      }
-      enemyUnits.allRelevant.filterNot(_.isInGame).foreach { e =>
-        warn(s"Unit $e died without event")
-        e.isInGame
-        removeQueueEnemy += e.nativeUnit
-      }
-    }
   }
 }
 
@@ -200,7 +193,7 @@ abstract class OnKillListener[T <: WrapsUnit](val unit: T) {
   def nativeUnitId = unit.nativeUnitId
 }
 
-class Units(game: Game, hostile: Boolean) {
+class Units(game: Game, hostile: Boolean, override val universe: Universe) extends HasUniverse {
   private val killListeners      = mutable.HashMap.empty[Int, OnKillListener[_]]
   private val killListenersOnAll = mutable.ArrayBuffer.empty[WrapsUnit => Unit]
   private val newUnitListeners   = mutable.ArrayBuffer.empty[WrapsUnit => Unit]
@@ -209,11 +202,7 @@ class Units(game: Game, hostile: Boolean) {
   private val classIndexes       = mutable.HashSet.empty[Class[_]]
   private val preparedByClass    = multiMap[Class[_], WrapsUnit]
   private val nativeIdToUnit     = mutable.HashMap.empty[Int, WrapsUnit]
-  private val forces             = LazyVal.from {
-    val me = game.self
-    val friends = game.allies()
-    Forces(me, friends.asScala.toSet)
-  }
+
   private var initial            = true
 
   def byNative(nativeUnit: bwapi.Unit) = if (nativeUnit == null) None else byId(nativeUnit.getID)
@@ -352,6 +341,16 @@ class Units(game: Game, hostile: Boolean) {
       initial = false
       init()
     }
+    //sometimes units die without the event being triggered
+    if (universe.currentTick % 19 == 0) {
+      val dead = allRelevant.filterNot(_.isInGame).map { e =>
+        warn(s"Unit $e died without event")
+        e.nativeUnit
+      }.toSeq
+      dead_!(dead)
+    }
+
+
     val addThese = {
       if (ownAndNeutral)
         game.self().getUnits.asScala
@@ -421,18 +420,54 @@ class Units(game: Game, hostile: Boolean) {
 
   private def ownAndNeutral = !hostile
 
-  case class Forces(me: Player, allies: Set[Player]) {
-    def isNotEnemy(u: bwapi.Unit) = !isEnemy(u)
 
-    def isEnemy(u: bwapi.Unit) = !isNeutral(u) && !isFriend(u)
+}
 
-    def isFriend(u: bwapi.Unit) = {
-      u.getPlayer == me || allies(u.getPlayer)
-    }
+class Forces(me: bwapi.Player, myAllies: Set[bwapi.Player], myEnemies: Set[bwapi.Player],
+             override val universe: Universe) extends HasUniverse {
 
-    def isNeutral(u: bwapi.Unit) = u.getPlayer.getType == PlayerType.None
+  def myRace = myself.scRace
+
+  def isTvT = {
+    forces.myself.scRace.isTerran &&
+    forces.hostilePlayers.size == 1 &&
+    forces.hostilePlayers.players.head.scRace.isTerran
   }
 
+  def isTvZ = {
+    forces.myself.scRace.isTerran &&
+    forces.hostilePlayers.size == 1 &&
+    forces.hostilePlayers.players.head.scRace.isZerg
+  }
+
+  def isTvP = {
+    forces.myself.scRace.isTerran &&
+    forces.hostilePlayers.size == 1 &&
+    forces.hostilePlayers.players.head.scRace.isProtoss
+  }
+
+  val myself         = Player(me)(universe)
+  val alliedPlayers  = Force(myAllies.map(Player(_)(universe)))(universe)
+  val hostilePlayers = Force(myEnemies.map(Player(_)(universe)))(universe)
+
+  def isNotEnemy(u: bwapi.Unit) = !isEnemy(u)
+
+  def isEnemy(u: bwapi.Unit) = !isNeutral(u) && !isFriend(u)
+
+  def isFriend(u: bwapi.Unit) = {
+    u.getPlayer == me || myAllies(u.getPlayer)
+  }
+
+  def isNeutral(u: bwapi.Unit) = u.getPlayer.getType == PlayerType.None
+}
+
+case class Player(base: bwapi.Player)(override val universe: Universe) extends HasUniverse {
+  val nativeRace = base.getRace
+  val scRace     = SCRace.fromNative(nativeRace)
+}
+
+case class Force(players: Set[Player])(override val universe: Universe) extends HasUniverse {
+  def size = players.size
 }
 
 case class SerializablePatchGroup(areas: Seq[Area])

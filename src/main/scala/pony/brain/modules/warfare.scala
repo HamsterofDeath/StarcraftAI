@@ -75,7 +75,7 @@ class FormationHelper(override val universe: Universe,
 class FormationAtFrontLineHelper(override val universe: Universe, distance: Int = 0)
   extends HasUniverse {
   private val myDefenseLines = LazyVal.from {
-    bases.bases.flatMap { base =>
+    bases.allBases.flatMap { base =>
       strategicMap.defenseLineOf(base).map(_.tileDistance(distance))
     }
   }
@@ -458,7 +458,7 @@ trait AddonRequestHelper extends AIModule[CanBuildAddons] {
   def requestAddon[T <: Addon](addonType: Class[_ <: T],
                                handleDependencies: Boolean = false): Unit = {
     trace(s"Addon ${addonType.className} requested")
-    val req = ResourceRequests.forUnit(universe.myRace, addonType, Priority.Addon)
+    val req = ResourceRequests.forUnit(race, addonType, Priority.Addon)
     val result = resources.request(req, self)
     requestAddonIfResourcesProvided(addonType, handleDependencies, result)
   }
@@ -562,7 +562,7 @@ trait BuildingRequestHelper extends AIModule[WorkerUnit] {
                                      belongsTo: Option[ResourceArea] = None,
                                      priority: Priority = Priority.Default): Unit = {
 
-    val req = ResourceRequests.forUnit(universe.myRace, buildingType, priority)
+    val req = ResourceRequests.forUnit(race, buildingType, priority)
     val result = resources.request(req, buildingEmployer)
     result.ifSuccess { suc =>
       val unitReq = UnitJobRequest.newOfType(universe, buildingEmployer, buildingType, suc,
@@ -595,7 +595,7 @@ trait UnitRequestHelper extends AIModule[UnitFactory] {
   private val addonHelper    = new HelperAIModule[CanBuildAddons](universe) with AddonRequestHelper
 
   def requestUnit[T <: Mobile](mobileType: Class[_ <: T], takeCareOfDependencies: Boolean) = {
-    val req = ResourceRequests.forUnit(universe.myRace, mobileType)
+    val req = ResourceRequests.forUnit(race, mobileType)
     val result = resources.request(req, mobileEmployer)
     result.ifSuccess { suc =>
       val unitReq = UnitJobRequest.newOfType(universe, mobileEmployer, mobileType, suc)
@@ -960,13 +960,13 @@ class EnqueueArmy(universe: Universe)
     val highestPriority = canBuildNow
     val buildThese =
       highestPriority.takeWhile { e =>
-      val rich = resources.couldAffordNow(e._1)
-      def mineralsOverflow = resources.unlockedResources.moreMineralsThanGas &&
-                             resources.unlockedResources.minerals > 400
-      def gasOverflow = resources.unlockedResources.moreGasThanMinerals &&
-                        resources.unlockedResources.gas > 400
-      rich || mineralsOverflow || gasOverflow
-    }
+        val rich = resources.couldAffordNow(e._1)
+        def mineralsOverflow = resources.unlockedResources.moreMineralsThanGas &&
+                               resources.unlockedResources.minerals > 400
+        def gasOverflow = resources.unlockedResources.moreGasThanMinerals &&
+                          resources.unlockedResources.gas > 400
+        rich || mineralsOverflow || gasOverflow
+      }
     RequestPlan(buildThese, needsSomething)
   }
 
@@ -1021,6 +1021,8 @@ object Strategy {
   trait LongTermStrategy extends HasUniverse {
     val timingHelpers = new TimingHelpers
 
+    def name: String
+
     def buildAntiCloakNow: Boolean
 
     def suggestNextExpansion: Option[ResourceArea]
@@ -1065,9 +1067,7 @@ object Strategy {
 
         def isAnyTime = true
       }
-
     }
-
   }
 
   trait TerranDefaults extends LongTermStrategy {
@@ -1089,7 +1089,7 @@ object Strategy {
     override def suggestNextExpansion = {
       val shouldExpand = expandNow
       if (shouldExpand) {
-        val covered = bases.bases.flatMap(_.resourceArea).toSet
+        val covered = bases.allBases.flatMap(_.resourceArea).toSet
         val dangerous = mapLayers.slightlyDangerousAsBlocked
         bases.mainBase.map(_.mainBuilding.tilePosition).flatMap { where =>
           val others = {
@@ -1136,10 +1136,11 @@ object Strategy {
   }
 
   class Strategies(override val universe: Universe) extends HasUniverse {
-    private val available              = new TerranHeavyMetal(universe) ::
-                                         new TerranAirSuperiority(universe) ::
-                                         new TerranHeavyAir(universe) ::
-                                         new TerranFootSoldiers(universe) ::
+    private val available              = new TerranVsProtoss(universe) ::
+                                         new TerranIsland(universe) ::
+                                         new TerranIslandRich(universe) ::
+                                         new TerranVsTerran(universe) ::
+                                         new TerranVsZerg(universe) ::
                                          Nil
     private var best: LongTermStrategy = new IdleAround(universe)
 
@@ -1153,6 +1154,9 @@ object Strategy {
   }
 
   class IdleAround(override val universe: Universe) extends LongTermStrategy {
+
+    override def name = "Idle"
+
     override def buildAntiCloakNow = false
 
     override def determineScore = -1
@@ -1166,9 +1170,13 @@ object Strategy {
     override def suggestNextExpansion = None
   }
 
-  class TerranHeavyMetal(override val universe: Universe)
+  class TerranVsProtoss(override val universe: Universe)
     extends LongTermStrategy with TerranDefaults {
-    override def determineScore: Int = 50
+    override def determineScore = {
+      if (forces.isTvP) 50 else 0
+    }
+
+    override def name = "TvP"
 
     override def suggestProducers = {
       val myBases = bases.myMineralFields.count(_.remainingPercentage > 0.25)
@@ -1220,8 +1228,11 @@ object Strategy {
       Nil
   }
 
-  class TerranHeavyAir(override val universe: Universe)
-    extends TerranAirSuperiority(universe) with TerranDefaults {
+  class TerranIslandRich(override val universe: Universe)
+    extends TerranIsland(universe) with TerranDefaults {
+
+    override def name = "Heavy air"
+
     override def suggestUnits: List[IdealUnitRatio[Nothing]] = {
       IdealUnitRatio(classOf[ScienceVessel], 3)(timingHelpers.phase.isAnyTime) ::
       IdealUnitRatio(classOf[Battlecruiser], 10)(timingHelpers.phase.isAnyTime) ::
@@ -1242,8 +1253,47 @@ object Strategy {
 
   }
 
-  class TerranAirSuperiority(override val universe: Universe)
+  class TerranVsTerran(override val universe: Universe)
     extends LongTermStrategy with TerranDefaults {
+    override def name = "TvT"
+
+    override def determineScore = {
+      val ok = forces.isTvT
+      if (ok) 50 else 0
+    }
+
+    override def suggestUnits = {
+      IdealUnitRatio(classOf[Marine], 3)(timingHelpers.phase.isSinceMid) ::
+      IdealUnitRatio(classOf[Medic], 1)(timingHelpers.phase.isSinceMid) ::
+      IdealUnitRatio(classOf[Ghost], 3)(timingHelpers.phase.isSinceMid) ::
+      IdealUnitRatio(classOf[Vulture], 3)(timingHelpers.phase.isSinceMid) ::
+      IdealUnitRatio(classOf[Tank], 3)(timingHelpers.phase.isSincePostMid) ::
+      IdealUnitRatio(classOf[Dropship], 3)(timingHelpers.phase.isSinceMid) ::
+      IdealUnitRatio(classOf[Goliath], 5)(timingHelpers.phase.isSincePostMid) ::
+      IdealUnitRatio(classOf[Wraith], 20)(timingHelpers.phase.isSinceMid) ::
+      IdealUnitRatio(classOf[ScienceVessel], 5)(timingHelpers.phase.isSincePostMid) ::
+      Nil
+    }
+
+    override def suggestUpgrades =
+      UpgradeToResearch(Upgrades.Terran.WraithCloak)(timingHelpers.phase.isSinceEarlyMid) ::
+      UpgradeToResearch(Upgrades.Terran.WraithEnergy)(timingHelpers.phase.isSinceMid) ::
+      Nil
+
+    override def suggestProducers = {
+      val myBases = bases.myMineralFields.count(_.value > 1000)
+
+      IdealProducerCount(classOf[Barracks], myBases)(timingHelpers.phase.isAnyTime) ::
+      IdealProducerCount(classOf[Factory], myBases)(timingHelpers.phase.isAnyTime) ::
+      IdealProducerCount(classOf[Starport], myBases * 3)(timingHelpers.phase.isAnyTime) ::
+      Nil
+    }
+  }
+
+  class TerranIsland(override val universe: Universe)
+    extends LongTermStrategy with TerranDefaults {
+
+    override def name = "Air control"
 
     override def suggestUnits = {
       IdealUnitRatio(classOf[Marine], 3)(timingHelpers.phase.isSinceMid) ::
@@ -1309,8 +1359,10 @@ object Strategy {
       Nil
   }
 
-  class TerranFootSoldiers(override val universe: Universe)
+  class TerranVsZerg(override val universe: Universe)
     extends LongTermStrategy with TerranDefaults {
+
+    override def name = "M&Ms"
 
     override def suggestUpgrades =
       UpgradeToResearch(Upgrades.Terran.InfantryCooldown)(
@@ -1334,7 +1386,9 @@ object Strategy {
       Nil
     }
 
-    override def determineScore: Int = (mapLayers.rawWalkableMap.size <= 96 * 96).ifElse(100, 0)
+    override def determineScore = {
+      if (forces.isTvZ || mapLayers.rawWalkableMap.size <= 96 * 96) 50 else 0
+    }
 
     override def suggestProducers = {
       val myBases = bases.myMineralFields.count(_.value > 1000)

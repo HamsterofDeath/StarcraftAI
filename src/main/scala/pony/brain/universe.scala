@@ -26,16 +26,19 @@ object Universe {
 }
 
 trait Universe extends HasLazyVals {
+  def forces: Forces
 
   Universe.mainThread = Thread.currentThread()
 
   def plugins: List[AIModule[_ <: WrapsUnit]]
 
-  def pluginByType[T: Manifest] = plugins.find(_.getClass == manifest[T].runtimeClass).get
-                                  .asInstanceOf[T]
+  def pluginByType[T: Manifest] = {
+    plugins.find(_.getClass == manifest[T].runtimeClass)
+    .get
+    .asInstanceOf[T]
+  }
 
   private val myTime             = new Time(this)
-  private val race0              = LazyVal.from(evalRace)
   private val afterTickListeners = ArrayBuffer.empty[AfterTickListener]
 
   def pathfinders: Pathfinders
@@ -74,7 +77,6 @@ trait Universe extends HasLazyVals {
 
   def resourceFields = world.resourceAnalyzer
 
-  def myRace = race0.get
   def afterTick(): Unit = {
     afterTickListeners.foreach(_.postTick())
   }

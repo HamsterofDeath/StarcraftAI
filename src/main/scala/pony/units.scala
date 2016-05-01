@@ -188,12 +188,7 @@ trait WrapsUnit extends HasUniverse with AfterTickListener {
   def unitIdText = Integer.toString(unitId, 36)
   def mySCRace = {
     val r = nativeUnit.getType.getRace
-    if (r == Race.Protoss) Protoss
-    else if (r == Race.Terran) Terran
-    else if (r == Race.Zerg) Zerg
-    else {
-      throw new IllegalStateException(s"Check this: $this")
-    }
+    SCRace.fromNative(r)
   }
   def isBeingCreated = unfinished.get
   override def onTick_!() = {

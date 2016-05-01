@@ -224,7 +224,7 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
       }
     }
 
-    val myOwn = universe.world
+    val myOwn = universe
                 .ownUnits
                 .inFaction
                 .filterNot(assignments.contains)
@@ -235,7 +235,7 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
     myOwn.foreach(assignJob_!)
     assignments ++= myOwn.map(e => e.unit -> e)
 
-    val registerUs = universe.world
+    val registerUs = universe
                      .ownUnits
                      .allKnownUnits
                      .filterNot(assignments.contains)
@@ -1912,8 +1912,8 @@ object UnitJobRequest {
                                                                                .Default):
   UnitJobRequest[F] = {
 
-    val actualClass = employer.universe.myRace.specialize(manifest[F].runtimeClass
-                                                          .asInstanceOf[Class[F]])
+    val actualClass = employer.universe.forces.myRace.specialize(manifest[F].runtimeClass
+                                                                 .asInstanceOf[Class[F]])
     val req = AnyFactoryRequest[F, T](actualClass, 1, wantedType)
 
     UnitJobRequest(req, employer, priority)
@@ -1924,7 +1924,7 @@ object UnitJobRequest {
                                                                    .ConstructBuilding):
   UnitJobRequest[T] = {
 
-    val actualClass = employer.universe.myRace.specialize(manifest[T].runtimeClass)
+    val actualClass = employer.universe.forces.myRace.specialize(manifest[T].runtimeClass)
                       .asInstanceOf[Class[T]]
     val req = AnyUnitRequest(actualClass, 1)
               .withCherryPicker_!(WorkerUnit.currentPriority)
@@ -1937,7 +1937,7 @@ object UnitJobRequest {
                                                        priority: Priority = Priority
                                                                             .ConstructBuilding) = {
 
-    val actualClass = employer.universe.myRace.specialize(what)
+    val actualClass = employer.universe.forces.myRace.specialize(what)
     val mainType = employer.race.techTree.mainBuildingOf(what).asInstanceOf[Class[T]]
     val req = AnyUnitRequest(mainType, 1)
               .withFilter_!(e => !e.isBeingCreated && !e.hasAddonAttached && !e.isBuildingAddon)
@@ -1948,7 +1948,7 @@ object UnitJobRequest {
   def idleOfType[T <: WrapsUnit : Manifest](employer: Employer[T], ofType: Class[_ <: T],
                                             amount: Int = 1,
                                             priority: Priority = Priority.Default) = {
-    val realType = employer.universe.myRace.specialize(ofType)
+    val realType = employer.universe.forces.myRace.specialize(ofType)
     val req: AnyUnitRequest[T] = AnyUnitRequest(realType, amount)
 
     UnitJobRequest(req, employer, priority)
@@ -1962,7 +1962,7 @@ object UnitJobRequest {
                                            AlternativeBuildingSpot
                                            .useDefault,
                                            belongsTo: Option[ResourceArea] = None) = {
-    val actualType = universe.myRace.specialize(ofType)
+    val actualType = universe.forces.myRace.specialize(ofType)
     val req: BuildUnitRequest[T] = {
       BuildUnitRequest(universe, actualType, amount, funding, priority,
         customBuildingPosition, belongsTo)

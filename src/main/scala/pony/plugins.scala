@@ -19,7 +19,7 @@ class MapReveal extends AIPluginRunOnce {
 
 class ChangeSpeed extends AIPluginRunOnce {
   override def runOnce(): Unit = {
-    //debugger.fastest()
+    debugger.fastest()
   }
 }
 
@@ -81,7 +81,8 @@ class UnitIdRenderer extends AIPlugIn {
     lazyWorld.debugger.debugRender { renderer =>
       renderer.in_!(Color.Green)
 
-      lazyWorld.ownUnits.allByType[Mobile]
+      val u = lazyWorld.universe
+      u.ownUnits.allByType[Mobile]
       .iterator
       .collect {
         case g: GroundUnit if !g.loaded => g
@@ -90,13 +91,13 @@ class UnitIdRenderer extends AIPlugIn {
       .foreach { u =>
         renderer.drawTextAtMobileUnit(u, u.shortDebugString)
       }
-      lazyWorld.ownUnits.allByType[Building].foreach { u =>
+      u.ownUnits.allByType[Building].foreach { u =>
         renderer.drawTextAtStaticUnit(u, s"${u.shortDebugString}/${u.getClass.className}")
       }
-      lazyWorld.enemyUnits.allByType[Mobile].foreach { u =>
+      u.enemyUnits.allByType[Mobile].foreach { u =>
         renderer.drawTextAtMobileUnit(u, u.shortDebugString)
       }
-      lazyWorld.enemyUnits.allByType[Building].foreach { u =>
+      u.enemyUnits.allByType[Building].foreach { u =>
         renderer.drawTextAtStaticUnit(u, s"${u.shortDebugString}/${u.getClass.className}")
       }
     }
@@ -236,7 +237,10 @@ class AiDebugRenderer(override val universe: Universe) extends AIPlugIn with Has
         val time = universe.time.formatted
         val category = universe.time.categoryName
 
-        s"$category: $time (*${df.format(speedFactor)})"
+        val factor = df.format(speedFactor)
+        val currentStrategy = universe.strategy.current
+        s"$category: $time (*${factor}), ${currentStrategy.name} (${currentStrategy
+                                                                    .determineScore})"
       }
 
       debugString += {
@@ -276,7 +280,7 @@ class AiDebugRenderer(override val universe: Universe) extends AIPlugIn with Has
       }
 
       debugString ++= {
-        universe.bases.bases.flatMap { base =>
+        universe.bases.allBases.flatMap { base =>
           base.myMineralGroup.map { mins =>
             val gatherJob = unitManager.allJobsByType[GatherMineralsAtSinglePatch]
                             .filter(e => mins.contains(e.targetPatch))

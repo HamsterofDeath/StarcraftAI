@@ -79,7 +79,7 @@ class ProvideNewBuildings(universe: Universe)
       def isUpgradeEnablerOrRich = {
         val count = ownUnits.allByClass(candidate.typeOfRequestedUnit).size
         val isFirst = count == 0
-        isFirst || bases.rich && bases.bases.size > count
+        isFirst || bases.rich && bases.allBases.size > count
       }
       passThrough || isUpgradeEnablerOrRich
     }
@@ -171,7 +171,6 @@ class ProvideNewSupply(universe: Universe) extends OrderlessAIModule[WorkerUnit]
     trace(s"Need more supply: $cur ($plannedSupplies planned)", needsMore)
     if (needsMore) {
       // can't use helper because overlords are not buildings :|
-      val race = universe.myRace
       val result = resources.request(
         ResourceRequests.forUnit(race, classOf[SupplyProvider], Priority.Supply), this)
       result.ifSuccess { suc =>
@@ -236,7 +235,7 @@ class ProvideNewUnits(universe: Universe) extends OrderlessAIModule[UnitFactory]
 
                     case _ =>
                       val forUnit = ResourceRequests
-                                    .forUnit(universe.myRace, typeFixed, req.priority)
+                                    .forUnit(universe.forces.myself.scRace, typeFixed, req.priority)
                       resources.request(forUnit, self)
                   }
                   res match {
@@ -453,7 +452,7 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule(universe
         import States._
 
         private val nearestReachableBase = oncePer(Primes.prime71) {
-          bases.bases.filter { b =>
+          bases.allBases.filter { b =>
             worker.currentArea.contains(b.mainBuilding.areaOnMap)
           }.minByOpt { base =>
             base.mainBuilding.area.distanceTo(worker.currentTile)
@@ -625,7 +624,8 @@ class ManageMiningAtGeysirs(universe: Universe)
   private val gatheringJobs = ArrayBuffer.empty[ManageMiningAtGeysir]
 
   override def onTick_!(): Unit = {
-    val unattended = unitManager.bases.bases.filter(base => !gatheringJobs.exists(_.covers(base)))
+    val unattended = unitManager.bases.allBases
+                     .filter(base => !gatheringJobs.exists(_.covers(base)))
     unattended.foreach { base =>
       base.myGeysirs.map { geysir =>
         new ManageMiningAtGeysir(base, geysir)
@@ -699,7 +699,7 @@ class ManageMiningAtGeysirs(universe: Universe)
         mapLayers.rawWalkableMap.nearestFreeBlock(geysir.tilePosition, 1)
       }
       private val nearestReachableBase = oncePer(Primes.prime71) {
-        bases.bases.filter { b =>
+        bases.allBases.filter { b =>
           worker.currentArea.contains(b.mainBuilding.areaOnMap)
         }.minByOpt { base =>
           base.mainBuilding.area.distanceTo(worker.currentTile)

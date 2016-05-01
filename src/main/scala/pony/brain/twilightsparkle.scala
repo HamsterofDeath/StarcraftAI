@@ -4,6 +4,7 @@ package brain
 import pony.brain.modules.Strategy.Strategies
 import pony.brain.modules._
 
+import scala.collection.JavaConverters._
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.duration.Duration
@@ -11,6 +12,7 @@ import scala.concurrent.{Await, Future}
 import scala.reflect.ManifestFactory
 
 trait HasUniverse extends HasLazyVals {
+  def race = forces.myself.scRace
   def plugins = universe.plugins
   def pluginByType[T: Manifest] = universe.pluginByType[T]
   def pathfinders = universe.pathfinders
@@ -18,7 +20,6 @@ trait HasUniverse extends HasLazyVals {
   def unitGrid = universe.unitGrid
   def upgrades = universe.upgrades
   def time = universe.time
-  def race = universe.myRace
   def universe: Universe
   def unitManager = universe.unitManager
   def ownUnits = universe.ownUnits
@@ -26,20 +27,14 @@ trait HasUniverse extends HasLazyVals {
   def resources = universe.resources
   def bases = universe.bases
   def currentTick = universe.currentTick
-
   def nativeGame = world.nativeGame
-
   def world = universe.world
-
   def strategicMap = universe.strategicMap
-
   def strategy = universe.strategy
-
   def worldDominationPlan = universe.worldDominationPlan
-
   def geoHelper = mapLayers.rawWalkableMap.geoHelper
-
   def mapLayers = universe.mapLayers
+  def forces = universe.forces
 
   def mapNth[T](prime: PrimeNumber, orElse: T, condition: Boolean = true)(body: => T): T = {
     ifNth(prime) {
@@ -297,6 +292,7 @@ class TwilightSparkle(world: DefaultWorld) {
     worldDomination.renderDebug(renderer)
   }
 
+
   val universe: Universe = new Universe {
 
     override def pathfinders = new Pathfinders {
@@ -321,9 +317,9 @@ class TwilightSparkle(world: DefaultWorld) {
 
     override def mapLayers = self.maps
 
-    override def ownUnits = world.ownUnits
+    override def ownUnits = self.ownUnits
 
-    override def enemyUnits = world.enemyUnits
+    override def enemyUnits = self.enemyUnits
 
     override def strategicMap = world.strategicMap
 
@@ -336,8 +332,13 @@ class TwilightSparkle(world: DefaultWorld) {
     override def ferryManager = self.ferryManager
 
     override def plugins = aiModules
+
+    override def forces = self.forces
   }
-  private val bases           = new Bases(world)
+  world.init_!(universe)
+  private val ownUnits        = new Units(world.nativeGame, false, universe)
+  private val enemyUnits      = new Units(world.nativeGame, true, universe)
+  private val bases           = new Bases(world, universe)
   private val resources       = new ResourceManager(universe)
   private val strategy        = new Strategies(universe)
   private val worldDomination = new WorldDominationPlan(universe)
@@ -360,6 +361,15 @@ class TwilightSparkle(world: DefaultWorld) {
     new SendOrdersToStarcraft(universe),
     AIModule.noop(universe)
   )
+
+  private val forces = {
+    val game = world.nativeGame
+    val me = game.self
+    val friends = game.allies()
+    val enemies = game.enemies()
+    new Forces(me, friends.asScala.toSet, enemies.asScala.toSet, universe)
+  }
+
   private val unitManager            = new UnitManager(universe)
   private val upgradeManager         = new UpgradeManager(universe)
   private val maps                   = new MapLayers(universe)
@@ -375,10 +385,10 @@ class TwilightSparkle(world: DefaultWorld) {
   private val unitGrid               = new UnitGrid(universe)
   private val ferryManager           = new FerryManager(universe)
 
-  world.enemyUnits.registerKill_!(onKillOrCreate)
-  world.ownUnits.registerKill_!(onKillOrCreate)
-  world.enemyUnits.registerAdd_!(onKillOrCreate)
-  world.ownUnits.registerAdd_!(onKillOrCreate)
+  enemyUnits.registerKill_!(onKillOrCreate)
+  ownUnits.registerKill_!(onKillOrCreate)
+  enemyUnits.registerAdd_!(onKillOrCreate)
+  ownUnits.registerAdd_!(onKillOrCreate)
 
   def plugins = aiModules
 
@@ -389,8 +399,8 @@ class TwilightSparkle(world: DefaultWorld) {
 
   def queueOrdersForTick(): Unit = {
 
-    world.ownUnits.consumeFresh_! {_.init_!(universe)}
-    world.enemyUnits.consumeFresh_! {_.init_!(universe)}
+    ownUnits.consumeFresh_! {_.init_!(universe)}
+    enemyUnits.consumeFresh_! {_.init_!(universe)}
 
     universe.onTick_!()
     maps.tick()
@@ -421,7 +431,7 @@ class TwilightSparkle(world: DefaultWorld) {
     }
 }
 
-class Bases(world: DefaultWorld) {
+class Bases(world: DefaultWorld, override val universe: Universe) extends HasUniverse {
   private val myBases          = ArrayBuffer.empty[Base]
   private val newBaseListeners = ArrayBuffer.empty[NewBaseListener]
 
@@ -441,16 +451,16 @@ class Bases(world: DefaultWorld) {
 
   def richBasesCount = richBases.size
 
-  def richBases = bases.filter(_.resourceArea.exists(_.rich))
+  def richBases = allBases.filter(_.resourceArea.exists(_.rich))
 
-  def bases = myBases.immutableView
+  def allBases = myBases.immutableView
 
-  def finishedBases = bases.filterNot(_.mainBuilding.isBeingCreated)
+  def finishedBases = allBases.filterNot(_.mainBuilding.isBeingCreated)
 
   def mainBase = myBases.headOption
 
   def tick(): Unit = {
-    val all = world.ownUnits.allByType[MainBuilding]
+    val all = ownUnits.allByType[MainBuilding]
     all.filterNot(known).foreach { main =>
       val newBase = new Base(main)
       myBases += newBase
@@ -513,7 +523,10 @@ case class Base(mainBuilding: MainBuilding) {
       }.flatMap(evaluate(_, false))
 
       val all = ground.sortBy(_._2).map(_._1) ++ air.sortBy(_._2).map(_._1)
-      all.filterNot(_ == resourceArea)
+      all.filterNot(_ == resourceArea).filter { candidate =>
+        mainBuilding.mapLayers.rawWalkableMap
+        .areInSameWalkableArea(candidate.anyTile, mainBuilding.centerTile)
+      }
     }
 
     BWFuture(sortByPath, Nil)
