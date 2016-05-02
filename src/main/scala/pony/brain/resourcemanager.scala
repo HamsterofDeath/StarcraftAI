@@ -335,6 +335,16 @@ case class GasRequest(amount: Int) extends ResourceRequest
 case class SupplyRequest(amount: Int) extends ResourceRequest
 
 case class ResourceRequests(requests: Seq[ResourceRequest], priority: Priority, whatFor: Class[_]) {
+  def minerals = requests.collect { case MineralsRequest(amount) => amount }.sum
+
+  def gas = requests.collect { case GasRequest(amount) => amount }.sum
+
+  def supply = requests.collect { case SupplyRequest(amount) => amount }.sum
+
+  def +(other: ResourceRequests) = {
+    ResourceRequests(requests ++ other.requests, priority, whatFor)
+  }
+
   val sum = requests.foldLeft(ResourceRequestSum.empty)((acc, e) => {
     acc + e
   })
@@ -359,8 +369,8 @@ object ResourceRequests {
     val gas = unitType.toUnitType.gasPrice()
     val supply = unitType.toUnitType.supplyRequired()
 
-    ResourceRequests(Seq(MineralsRequest(mins), GasRequest(gas), SupplyRequest(supply)), priority,
-      unitType)
+    val requestDetails = Seq(MineralsRequest(mins), GasRequest(gas), SupplyRequest(supply))
+    ResourceRequests(requestDetails, priority, unitType)
   }
 }
 

@@ -562,28 +562,36 @@ trait BuildingRequestHelper extends AIModule[WorkerUnit] {
                                      belongsTo: Option[ResourceArea] = None,
                                      priority: Priority = Priority.Default): Unit = {
 
-    val req = ResourceRequests.forUnit(race, buildingType, priority)
-    val result = resources.request(req, buildingEmployer)
-    result.ifSuccess { suc =>
-      val unitReq = UnitJobRequest.newOfType(universe, buildingEmployer, buildingType, suc,
-        customBuildingPosition = customBuildingPosition, belongsTo = belongsTo,
-        priority = priority)
-      trace(s"Financing possible for building $buildingType, requesting build")
-      val result = unitManager.request(unitReq)
-      if (result.hasAnyMissingRequirements) {
-        resources.unlock_!(suc)
-      }
-      if (takeCareOfDependencies) {
-        result.notExistingMissingRequiments.foreach { what =>
-          if (!unitManager.requestedToBuild(what)) {
-            requestBuilding(what, takeCareOfDependencies, saveMoneyIfPoor,
-              AlternativeBuildingSpot.useDefault, belongsTo, priority = priority)
+    val isUpgrader = classOf[UpgradeLimitLifter].isAssignableFrom(buildingType)
+    val satisfied = {
+      isUpgrader && unitManager.countExistingAndPlanned(buildingType) >= 2
+    }
+    if (satisfied) {
+      warn(s"Too many buildings of type $buildingType requested!")
+    } else {
+      val req = ResourceRequests.forUnit(race, buildingType, priority)
+      val result = resources.request(req, buildingEmployer)
+      result.ifSuccess { suc =>
+        val unitReq = UnitJobRequest.newOfType(universe, buildingEmployer, buildingType, suc,
+          customBuildingPosition = customBuildingPosition, belongsTo = belongsTo,
+          priority = priority)
+        trace(s"Financing possible for building $buildingType, requesting build")
+        val result = unitManager.request(unitReq)
+        if (result.hasAnyMissingRequirements) {
+          resources.unlock_!(suc)
+        }
+        if (takeCareOfDependencies) {
+          result.notExistingMissingRequiments.foreach { what =>
+            if (!unitManager.requestedToBuild(what)) {
+              requestBuilding(what, takeCareOfDependencies, saveMoneyIfPoor,
+                AlternativeBuildingSpot.useDefault, belongsTo, priority = priority)
+            }
           }
         }
       }
-    }
-    if (result.failed && saveMoneyIfPoor) {
-      resources.forceLock_!(req, buildingEmployer)
+      if (result.failed && saveMoneyIfPoor) {
+        resources.forceLock_!(req, buildingEmployer)
+      }
     }
   }
 }
@@ -596,6 +604,7 @@ trait UnitRequestHelper extends AIModule[UnitFactory] {
 
   def requestUnit[T <: Mobile](mobileType: Class[_ <: T], takeCareOfDependencies: Boolean) = {
     val req = ResourceRequests.forUnit(race, mobileType)
+    var ok = false
     val result = resources.request(req, mobileEmployer)
     result.ifSuccess { suc =>
       val unitReq = UnitJobRequest.newOfType(universe, mobileEmployer, mobileType, suc)
@@ -605,22 +614,25 @@ trait UnitRequestHelper extends AIModule[UnitFactory] {
         // do not forget to unlock the resources again
         trace(s"Requirement missing for $mobileType, unlocking resource")
         resources.unlock_!(suc)
-      }
-      if (takeCareOfDependencies) {
-        result.notExistingMissingRequiments.foreach { requirement =>
-          trace(s"Checking dependency: $requirement")
-          if (!unitManager.existsOrPlanned(requirement)) {
-            def isAddon = classOf[Addon] >= requirement
-            trace(s"Planning to build $requirement because it is required for $mobileType")
-            if (isAddon) {
-              addonHelper.requestAddon(requirement.asInstanceOf[Class[_ <: Addon]])
-            } else {
-              buildingHelper.requestBuilding(requirement, takeCareOfDependencies = false)
+        if (takeCareOfDependencies) {
+          result.notExistingMissingRequiments.foreach { requirement =>
+            trace(s"Checking dependency: $requirement")
+            if (!unitManager.existsOrPlanned(requirement)) {
+              def isAddon = classOf[Addon] >= requirement
+              trace(s"Planning to build $requirement because it is required for $mobileType")
+              if (isAddon) {
+                addonHelper.requestAddon(requirement.asInstanceOf[Class[_ <: Addon]])
+              } else {
+                buildingHelper.requestBuilding(requirement, takeCareOfDependencies = false)
+              }
             }
           }
         }
+      } else {
+        ok = true
       }
     }
+    ok
   }
 }
 
@@ -694,7 +706,7 @@ class SetupAntiCloakDefenses(universe: Universe)
   extends OrderlessAIModule[WorkerUnit](universe) with BuildingRequestHelper {
 
   private val richBaseCount = oncePerTick {
-    bases.richBasesCount
+    (bases.richBasesCount / 2) max 1
   }
   private val analyzed      = FutureIterator.feed(input).produceAsyncLater { in =>
 
@@ -908,7 +920,7 @@ class EnqueueFactories(universe: Universe)
 
     ratios.foreach { case (cap, existingByType) =>
       if (existingByType < cap.maximumSustainable) {
-        requestBuilding(cap.typeOfFactory, takeCareOfDependencies = true)
+        requestBuilding(cap.typeOfFactory, takeCareOfDependencies = true, cap.highPriorityNow)
       }
     }
   }
@@ -919,7 +931,7 @@ class EnqueueFactories(universe: Universe)
     .groupBy(_.typeOfFactory)
     .values.map { elems =>
       val sum = elems.map(_.maximumSustainable).sum
-      val copy = IdealProducerCount(elems.head.typeOfFactory, sum)(active = true)
+      val copy = elems.head.withNewMaximum(sum)
       copy
     }
   }
@@ -927,10 +939,18 @@ class EnqueueFactories(universe: Universe)
 
 case class IdealProducerCount[T <: UnitFactory](typeOfFactory: Class[_ <: UnitFactory],
                                                 maximumSustainable: Int)
-                                               (active: => Boolean) {
+                                               (active: => Boolean,
+                                                highPriority: => Boolean = false) {
+
+  def withNewMaximum(sum: Int) = {
+    IdealProducerCount(typeOfFactory, sum)(active, highPriority)
+  }
+
   def format = {
     s"${if (active) "A" else "I"}, $maximumSustainable"
   }
+
+  def highPriorityNow = highPriority
 
   def isActive = active
 }
@@ -981,8 +1001,20 @@ class EnqueueArmy(universe: Universe)
   override def onTick_!(): Unit = {
     super.onTick_!()
     val RequestPlan(buildThese, needsSomething) = myRequestPlan.get
+    var resourceResults = Option.empty[ResourceRequests]
     buildThese.filterNot(needsSomething.contains).foreach { case (thisOne, _) =>
-      requestUnit(thisOne, takeCareOfDependencies = false)
+      val needsToSaveMinerals = resourceResults
+                                .exists(_.minerals > resources.unlockedResources.minerals)
+      val needsToSaveGas = resourceResults.exists(_.gas > resources.unlockedResources.gas)
+      val required = ResourceRequests.forUnit(race, thisOne)
+      val mineralsGood = !needsToSaveMinerals
+      val gasGood = !needsToSaveGas || required.gas == 0
+      if (mineralsGood && gasGood) {
+        val accepted = requestUnit(thisOne, takeCareOfDependencies = false)
+        if (!accepted) {
+          resourceResults = resourceResults.fold(required)(_ + required).toSome
+        }
+      }
     }
 
     needsSomething.foreach { case (thisOne, _) =>
@@ -992,7 +1024,7 @@ class EnqueueArmy(universe: Universe)
 
   def plan = myRequestPlan.get
 
-  def percentages = {
+  def percentages: Percentages = {
     val ratios = strategy.current
                  .suggestUnits
                  .filter(_.isActive)
@@ -1028,6 +1060,8 @@ object Strategy {
 
   trait LongTermStrategy extends HasUniverse {
     val timingHelpers = new TimingHelpers
+
+    def hasZeroOf[T <: Building : Manifest] = ownUnits.allByType[T].isEmpty
 
     def name: String
 
@@ -1380,16 +1414,16 @@ object Strategy {
       UpgradeToResearch(Upgrades.Terran.MarineRange)(timingHelpers.phase.isSinceEarlyMid) ::
       UpgradeToResearch(Upgrades.Terran.InfantryWeapons)(timingHelpers.phase.isSinceMid) ::
       UpgradeToResearch(Upgrades.Terran.InfantryArmor)(timingHelpers.phase.isSinceMid) ::
+      UpgradeToResearch(Upgrades.Terran.TankSiegeMode)(timingHelpers.phase.isSinceMid) ::
       Nil
 
     override def suggestUnits = {
       IdealUnitRatio(classOf[Marine], 15)(timingHelpers.phase.isAnyTime) ::
       IdealUnitRatio(classOf[Firebat], 3)(timingHelpers.phase.isSinceEarlyMid) ::
       IdealUnitRatio(classOf[Medic], 4)(timingHelpers.phase.isSinceEarlyMid) ::
-      IdealUnitRatio(classOf[Ghost], 2)(timingHelpers.phase.isSinceLateMid) ::
       IdealUnitRatio(classOf[Vulture], 1)(timingHelpers.phase.isSinceLateMid) ::
-      IdealUnitRatio(classOf[Tank], 1)(timingHelpers.phase.isSinceLateMid) ::
-      IdealUnitRatio(classOf[Goliath], 1)(timingHelpers.phase.isSinceLateMid) ::
+      IdealUnitRatio(classOf[Tank], 3)(timingHelpers.phase.isSinceAlmostMid) ::
+      IdealUnitRatio(classOf[Goliath], 3)(timingHelpers.phase.isSinceLateMid) ::
       IdealUnitRatio(classOf[Wraith], 1)(timingHelpers.phase.isSinceLateMid) ::
       IdealUnitRatio(classOf[Battlecruiser], 1)(timingHelpers.phase.isLate) ::
       IdealUnitRatio(classOf[ScienceVessel], 1)(timingHelpers.phase.isSinceLateMid) ::
@@ -1402,14 +1436,15 @@ object Strategy {
 
     override def suggestProducers = {
       val myBases = bases.myMineralFields.count(_.value > 1000)
-
       IdealProducerCount(classOf[Barracks], myBases + 2)(timingHelpers.phase.isAnyTime) ::
-      IdealProducerCount(classOf[Barracks], myBases)(timingHelpers.phase.isSincePostMid) ::
-      IdealProducerCount(classOf[Factory], myBases)(timingHelpers.phase.isSincePostMid) ::
-      IdealProducerCount(classOf[Starport], myBases)(timingHelpers.phase.isSinceLateMid) ::
+      IdealProducerCount(classOf[Barracks], (myBases / 3) max 1)(
+        timingHelpers.phase.isSincePostMid) ::
+      IdealProducerCount(classOf[Factory], myBases)(timingHelpers.phase.isSinceAlmostMid,
+        hasZeroOf[Factory]) ::
+      IdealProducerCount(classOf[Starport], (myBases / 2) max 1)(timingHelpers.phase.isSinceLateMid,
+        hasZeroOf[Starport]) ::
       Nil
     }
-
   }
 
 }

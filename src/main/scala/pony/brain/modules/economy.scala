@@ -340,7 +340,8 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule(universe
           base.alternativeResourceAreas.find { area =>
             !jobs.exists(e => area.patches.contains(e.patchGroup))
           }.map { e => base -> e }
-        }
+        }.filter(_._2.patches.isDefined)
+
         newTargets.map { case (base, area) =>
           new ManageMiningAtPatchGroup(base, area.patches.get)
         }

@@ -44,6 +44,12 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
     plannedToTrain.exists(e => c >= e.typeOfRequestedUnit)
   }
 
+  def countExistingAndPlanned(c: Class[_ <: WrapsUnit]) = {
+    ownUnits.allByClass(c).size +
+    requestedToBuild.count(e => c >= e.typeOfRequestedUnit) +
+    plannedToTrain.count(e => c >= e.typeOfRequestedUnit)
+  }
+
   def plannedToTrain = allUnfulfilled.iterator.map(_.request)
                        .collect { case t: BuildUnitRequest[_] if t.isMobile => t }
 
