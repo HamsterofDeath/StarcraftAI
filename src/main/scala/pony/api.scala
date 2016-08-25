@@ -1,23 +1,21 @@
 package pony
 
-import bwapi.Player
-
 import scala.collection.mutable.ArrayBuffer
 
 trait AIAPI {
   private val plugins = ArrayBuffer.empty[AIPlugIn]
 
-  def onReceiveText(player: Player, s: String): Unit = {
+  def onReceiveText(player: bwapi.Player, s: String): Unit = {
     trace(s"Received $s from $player")
     plugins.collect { case receiver: AIAPIEventDispatcher => receiver.onReceiveText(player, s) }
   }
 
-  def onPlayerLeft(player: Player): Unit = {
+  def onPlayerLeft(player: bwapi.Player): Unit = {
     trace(s"$player left")
     plugins.collect { case receiver: AIAPIEventDispatcher => receiver.onPlayerLeft(player) }
   }
 
-  def onPlayerDropped(player: Player): Unit = {
+  def onPlayerDropped(player: bwapi.Player): Unit = {
     trace(s"$player dropped")
     plugins.collect { case receiver: AIAPIEventDispatcher => receiver.onPlayerDropped(player) }
   }
@@ -77,17 +75,17 @@ trait AIAPIEventDispatcher extends AIAPI {
     receivers += aiApi
   }
 
-  override def onReceiveText(player: Player, s: String): Unit = {
+  override def onReceiveText(player: bwapi.Player, s: String): Unit = {
     super.onReceiveText(player, s)
     receivers.foreach(_.onReceiveText(player, s))
   }
 
-  override def onPlayerLeft(player: Player): Unit = {
+  override def onPlayerLeft(player: bwapi.Player): Unit = {
     super.onPlayerLeft(player)
     receivers.foreach(_.onPlayerLeft(player))
   }
 
-  override def onPlayerDropped(player: Player): Unit = {
+  override def onPlayerDropped(player: bwapi.Player): Unit = {
     super.onPlayerDropped(player)
     receivers.foreach(_.onPlayerDropped(player))
   }

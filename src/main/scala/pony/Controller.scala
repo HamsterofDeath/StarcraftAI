@@ -1,6 +1,6 @@
 package pony
 
-import bwapi.{BWEventListener, Mirror, Player, Position, Unit => NUnit}
+import bwapi.{BWEventListener, Mirror, Position, Player => NPlayer, Unit => NUnit}
 
 /**
   * Created by HoD on 01.08.2015.
@@ -62,7 +62,7 @@ object Controller {
 
       }
 
-      override def onPlayerDropped(player: Player): Unit = {
+      override def onPlayerDropped(player: bwapi.Player): Unit = {
         world.foreach(_.onPlayerDropped(player))
         ai.foreach(_.onPlayerDropped(player))
       }
@@ -87,7 +87,7 @@ object Controller {
         }
       }
 
-      override def onPlayerLeft(player: Player): Unit = {
+      override def onPlayerLeft(player: bwapi.Player): Unit = {
         world.foreach(_.onPlayerLeft(player))
         ai.foreach(_.onPlayerLeft(player))
       }
@@ -104,7 +104,7 @@ object Controller {
         world.foreach(_.onUnitMorph(unit))
       }
 
-      override def onReceiveText(player: Player, s: String): Unit = {
+      override def onReceiveText(player: bwapi.Player, s: String): Unit = {
         ai.foreach(_.onReceiveText(player, s))
       }
 

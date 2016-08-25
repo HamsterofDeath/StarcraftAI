@@ -1,6 +1,6 @@
 package pony
 
-import bwapi.{Player, Position}
+import bwapi.Position
 
 import scala.collection.mutable.ArrayBuffer
 
@@ -13,11 +13,11 @@ trait WorldListener {
 
   def onUnitRenegade(unit: bwapi.Unit): Unit = {}
 
-  def onPlayerLeft(player: Player): Unit = {}
+  def onPlayerLeft(player: bwapi.Player): Unit = {}
 
   def onUnitHide(unit: bwapi.Unit): Unit = {}
 
-  def onPlayerDropped(player: Player): Unit = {}
+  def onPlayerDropped(player: bwapi.Player): Unit = {}
 
   def onUnitComplete(unit: bwapi.Unit): Unit = {}
 
@@ -52,7 +52,7 @@ trait WorldEventDispatcher extends WorldListener {
     super.onUnitRenegade(unit)
     receivers.foreach(_.onUnitRenegade(unit))
   }
-  override def onPlayerLeft(player: Player): Unit = {
+  override def onPlayerLeft(player: bwapi.Player): Unit = {
     super.onPlayerLeft(player)
     receivers.foreach(_.onPlayerLeft(player))
   }
@@ -60,7 +60,7 @@ trait WorldEventDispatcher extends WorldListener {
     super.onUnitHide(unit)
     receivers.foreach(_.onUnitHide(unit))
   }
-  override def onPlayerDropped(player: Player): Unit = {
+  override def onPlayerDropped(player: bwapi.Player): Unit = {
     super.onPlayerDropped(player)
     receivers.foreach(_.onPlayerDropped(player))
   }
