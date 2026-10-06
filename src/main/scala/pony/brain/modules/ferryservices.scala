@@ -244,7 +244,7 @@ class FerryPlan(val ferry: TransporterUnit, initial: GroundUnit,
   def replaceQueuedUnitIfPossible_!(maybeTransportThis: GroundUnit) = {
     val removeFromPlan = {
       queuedForPickUp.iterator
-      .filter(-_.transportSize + maybeTransportThis.transportSize <= shuttleCapacity)
+      .filter(takenSpace - _.transportSize + maybeTransportThis.transportSize <= shuttleCapacity)
       .filter { e =>
         e.currentTile.distanceSquaredTo(ferry.currentTile) - 25 >
         maybeTransportThis.currentTile.distanceSquaredTo(ferry.currentTile)
