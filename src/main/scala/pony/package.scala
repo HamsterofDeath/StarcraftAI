@@ -322,7 +322,7 @@ package object pony {
   }
 
   implicit class GameWrap(val game: Game) extends AnyVal {
-    def suggestFileName = s"${game.mapName()}_${game.mapHash()}.bin"
+    def suggestFileName = s"${game.mapHash()}.bin"
   }
 
   object Primes {
