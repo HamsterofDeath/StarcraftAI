@@ -77,6 +77,15 @@ class TerranEconomicOpening(universe: Universe)
       mapLayers.slightlyDangerousAsBlocked.free(area.nearbyFreeTile) &&
       unitGrid.enemy.allInRange(area.nearbyFreeTile, 12).isEmpty &&
       mapLayers.rawWalkableMap.areInSameWalkableArea(home, area.nearbyFreeTile)
+    private def unsafeBecause(area: ResourceArea) = {
+      Seq(
+        "covered" -> bases.isCovered(area),
+        "depleted" -> !area.patches.exists(_.patches.exists(_.remaining > 0)),
+        "blocked" -> !mapLayers.slightlyDangerousAsBlocked.free(area.nearbyFreeTile),
+        "enemyNear" -> unitGrid.enemy.allInRange(area.nearbyFreeTile, 12).nonEmpty,
+        "otherArea" -> !mapLayers.rawWalkableMap.areInSameWalkableArea(home, area.nearbyFreeTile)
+      ).collect { case (name, true) => name }.mkString(",")
+    }
     private def chooseDestination(): Unit = {
       destination = strategicMap.resources.filter(safe).toVector.sortBy(_.nearbyFreeTile.distanceSquaredTo(home))
         .iterator.flatMap { area => new ConstructionSiteFinder(universe).forResourceArea(area).find.map(area -> _) }
@@ -111,7 +120,7 @@ class TerranEconomicOpening(universe: Universe)
             val stalled = currentTick - lastProgress > 24 * 120
             if (!returningHome && (unsafeNow || stalled)) {
               NativeMatchEvidence.trace("relocation-abort",
-                s"id=${depot.nativeUnitId} tile=$tile target=$landingTile unsafe=$unsafeNow stalled=$stalled")
+                s"id=${depot.nativeUnitId} tile=$tile target=$landingTile unsafe=$unsafeNow stalled=$stalled reasons=${unsafeBecause(field)}")
               destination = None
               lastProgress = currentTick
               Nil
