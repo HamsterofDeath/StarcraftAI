@@ -91,7 +91,9 @@ object Controller {
           ai = Some(aiGenerator(w))
         }
         catch {
-          case ex: Throwable => ex.printStackTrace()
+          case ex: Throwable =>
+            NativeMatchEvidence.failed(mirror.getGame, ex)
+            throw ex
         }
       }
 

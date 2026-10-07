@@ -35,4 +35,8 @@ object NativeMatchEvidence {
   }
   def started(game: Game): Unit = write(game, "unfinished", None)
   def ended(game: Game, winner: Boolean): Unit = write(game, if (winner) "win" else "loss", Some(winner))
+  def failed(game: Game, error: Throwable): Unit = {
+    write(game, "crash", None)
+    System.err.println("TWAILIGHT_NATIVE_FAILURE " + error.getClass.getName + ": " + error.getMessage)
+  }
 }

@@ -1223,7 +1223,7 @@ object Strategy {
                                          new TerranVsTerran(universe) ::
                                          new TerranVsZerg(universe) ::
                                          Nil
-    private var best: LongTermStrategy = if (race.isTerran) available.head else new IdleAround(universe)
+    private var best: LongTermStrategy = new IdleAround(universe)
 
     def current = best
 
