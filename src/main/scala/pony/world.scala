@@ -524,9 +524,13 @@ class ResourceAnalyzer(map: AnalyzedMap, all: AllUnits) {
         def isNew = !g.contains(mp)
         def isClose = {
           g.allTiles.exists { check =>
-            val path = pathFinder.findSimplePathNow(check, mp.tilePosition, tryFixPath = false)
-            path.exists { p =>
-              p.isPerfectSolution && p.length < 20
+            // path length is a sum of step distances, so far-apart tiles cannot pass the length check below;
+            // the margin covers endpoint shifts and skips the costly search for them
+            check.distanceTo(mp.tilePosition) < 40 && {
+              val path = pathFinder.findSimplePathNow(check, mp.tilePosition, tryFixPath = false)
+              path.exists { p =>
+                p.isPerfectSolution && p.length < 20
+              }
             }
           }
         }
@@ -561,7 +565,8 @@ case class MineralPatchGroup(patchId: Int) {
   def anyTile = allTiles.next()
 
   private val myPatches      = mutable.HashSet.empty[MineralPatch]
-  private val myCenter       = new LazyVal[MapTilePosition](calcCenter)
+  // plain cache: a LazyVal would be bound to the thread that created the group
+  private var myCenter       = Option.empty[MapTilePosition]
   private val myValue        = new
       LazyVal[Int](myPatches.foldLeft(0)((acc, mp) => acc + mp.remaining))
   private val myInitialValue = LazyVal.from(myPatches.foldLeft(0)((acc, mp) => acc + mp.remaining))
@@ -574,7 +579,7 @@ case class MineralPatchGroup(patchId: Int) {
 
   def addPatch(mp: MineralPatch): Unit = {
     myPatches += mp
-    myCenter.invalidate()
+    myCenter = None
     myInitialValue.invalidate()
   }
 
@@ -582,7 +587,11 @@ case class MineralPatchGroup(patchId: Int) {
 
   override def toString = s"Minerals#$patchId($value)@$center"
 
-  def center = myCenter.get
+  def center = myCenter.getOrElse {
+    val c = calcCenter
+    myCenter = Some(c)
+    c
+  }
 
   def value = myValue.get
 
