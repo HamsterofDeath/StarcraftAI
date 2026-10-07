@@ -9,9 +9,11 @@ object NativeMatchEvidence {
   private var completeMapObservedDuringPlay = false
   private var liveFlagSamples = 0
   private var startupFailed = false
+  private var lastLiveFrame = 0
   def observeLiveVision(game: Game): Unit = {
     completeMapObservedDuringPlay ||= game.isFlagEnabled(bwapi.Flag.Enum.CompleteMapInformation.getValue)
     liveFlagSamples += 1
+    lastLiveFrame = lastLiveFrame max game.getFrameCount
   }
   def trace(event: String, detail: String): Unit =
     println("TWAILIGHT_CAMPAIGN frame=" + pony.tickCount + " event=" + event + " detail=" + detail)
@@ -31,7 +33,8 @@ object NativeMatchEvidence {
       "{\"schema\":1,\"run\":" + quoted(sys.props.getOrElse("twailight.run", "interactive")) +
       ",\"producer\":" + quoted(sys.props.getOrElse("twailight.producer", "unrecorded")) +
       ",\"status\":" + quoted(status) + ",\"winner\":" + winner.map(_.toString).getOrElse("null") +
-      ",\"nativeFrame\":" + game.getFrameCount + ",\"selfRace\":" + quoted(game.self().getRace.toString) +
+      ",\"nativeFrame\":" + lastLiveFrame + ",\"callbackNativeFrame\":" + game.getFrameCount +
+      ",\"selfRace\":" + quoted(game.self().getRace.toString) +
       ",\"selfId\":" + game.self().getID + ",\"selfType\":" + quoted(game.self().getType.toString) +
       ",\"opponents\":" + opponents + ",\"map\":" + quoted(game.mapFileName()) + ",\"mapHash\":" + quoted(game.mapHash()) +
       ",\"completeMapInformation\":" + completeMap + ",\"ordinaryVision\":" + !completeMap +
@@ -47,6 +50,7 @@ object NativeMatchEvidence {
     completeMapObservedDuringPlay = false
     liveFlagSamples = 0
     startupFailed = false
+    lastLiveFrame = 0
     observeLiveVision(game)
     write(game, "unfinished", None)
   }

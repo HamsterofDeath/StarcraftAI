@@ -35,7 +35,7 @@ object Controller {
         if (pony.tickCount % 2400 == 0) {
           val game = mirror.getGame
           NativeMatchEvidence.trace("economy-heartbeat",
-            s"nativeFrame=${game.getFrameCount} minerals=${game.self().minerals()} gas=${game.self().gas()} supply=${game.self().supplyUsed()}/${game.self().supplyTotal()}")
+            s"nativeFrame=${game.getFrameCount} paused=${game.isPaused} inGame=${game.isInGame} fps=${game.getFPS} minerals=${game.self().minerals()} gas=${game.self().gas()} supply=${game.self().supplyUsed()}/${game.self().supplyTotal()}")
         }
       }
 
