@@ -34,6 +34,10 @@ class EnemyCampaignMemory {
   private var selected = Option.empty[MapTilePosition]
   def buildings = remembered.values.toVector.sortBy(_.id)
   def target = selected
+  def attackPosition = selected.flatMap { site =>
+    buildings.filter(_.tile.distanceToIsLess(site, 12))
+      .sortBy(b => (!b.base, b.tile.distanceSquaredTo(site), b.tile.x, b.tile.y, b.id)).headOption.map(_.tile)
+  }
   def update(visible: Seq[ObservedEnemyBuilding], observedDestroyed: Set[Int],
              visibleTile: MapTilePosition => Boolean): Unit = {
     visible.foreach(b => remembered.put(b.id, b))
@@ -74,7 +78,8 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
     val learned = memory.buildings.map(_.id).toSet -- before
     if (learned.nonEmpty) NativeMatchEvidence.trace("discovered-buildings", learned.toVector.sorted.mkString(","))
     val home = bases.mainBase.map(_.mainBuilding.tilePosition).getOrElse(MapTilePosition(0, 0))
-    val target = memory.select(home)
+    memory.select(home)
+    val target = memory.attackPosition
     if (target != previousTarget) {
       worldDominationPlan.setCampaignTarget(target)
       NativeMatchEvidence.trace("campaign-target", target.toString)

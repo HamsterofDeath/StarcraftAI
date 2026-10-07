@@ -31,6 +31,11 @@ object Controller {
         // clean up
         pony.tickCount += 1
         ai.foreach(_.onTickOnApi())
+        if (pony.tickCount % 2400 == 0) {
+          val game = mirror.getGame
+          NativeMatchEvidence.trace("economy-heartbeat",
+            s"nativeFrame=${game.getFrameCount} minerals=${game.self().minerals()} gas=${game.self().gas()} supply=${game.self().supplyUsed()}/${game.self().supplyTotal()}")
+        }
       }
 
       override def onUnitShow(unit: NUnit): Unit = {

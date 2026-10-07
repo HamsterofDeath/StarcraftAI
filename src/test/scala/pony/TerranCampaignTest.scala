@@ -53,8 +53,10 @@ class TerranCampaignTest extends Specification {
     m.select(MapTilePosition(0, 0))
     m.update(Seq(gateway, other), Set(1), _ => false)
     val retained = m.target
+    val nextBuilding = m.attackPosition
     m.update(Seq(other), Set(1, 2), _ => false)
-    (retained, m.select(MapTilePosition(0, 0))) mustEqual (Some(nexus.tile), Some(other.tile))
+    (retained, nextBuilding, m.select(MapTilePosition(0, 0))) mustEqual
+      (Some(nexus.tile), Some(gateway.tile), Some(other.tile))
   }
   def emptyFootprint = {
     val m = new EnemyCampaignMemory
