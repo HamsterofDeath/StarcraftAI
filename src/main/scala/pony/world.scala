@@ -565,25 +565,29 @@ case class MineralPatchGroup(patchId: Int) {
   def anyTile = allTiles.next()
 
   private val myPatches      = mutable.HashSet.empty[MineralPatch]
-  // plain cache: a LazyVal would be bound to the thread that created the group
+  // plain caches: a LazyVal would be bound to the thread that created the group
   private var myCenter       = Option.empty[MapTilePosition]
-  private val myValue        = new
-      LazyVal[Int](myPatches.foldLeft(0)((acc, mp) => acc + mp.remaining))
-  private val myInitialValue = LazyVal.from(myPatches.foldLeft(0)((acc, mp) => acc + mp.remaining))
+  private var myInitialValue = Option.empty[Int]
+
+  private def remainingNow = myPatches.foldLeft(0)((acc, mp) => acc + mp.remaining)
 
   def allTiles = myPatches.iterator.flatMap(_.area.tiles)
 
-  def tick() = {
-    myValue.invalidate()
-  }
+  def tick() = {}
 
   def addPatch(mp: MineralPatch): Unit = {
     myPatches += mp
     myCenter = None
-    myInitialValue.invalidate()
+    myInitialValue = None
   }
 
-  def remainingPercentage = myValue / myInitialValue.toDouble
+  def initialValue = myInitialValue.getOrElse {
+    val v = remainingNow
+    myInitialValue = Some(v)
+    v
+  }
+
+  def remainingPercentage = value / initialValue.toDouble
 
   override def toString = s"Minerals#$patchId($value)@$center"
 
@@ -593,7 +597,7 @@ case class MineralPatchGroup(patchId: Int) {
     c
   }
 
-  def value = myValue.get
+  def value = remainingNow
 
   def patches = myPatches.toSet
 
