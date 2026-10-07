@@ -29,6 +29,7 @@ object Controller {
 
       override def onFrame(): Unit = {
         // clean up
+        NativeMatchEvidence.observeLiveVision(mirror.getGame)
         pony.tickCount += 1
         ai.foreach(_.onTickOnApi())
         if (pony.tickCount % 2400 == 0) {
