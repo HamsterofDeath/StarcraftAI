@@ -22,14 +22,17 @@ object Controller {
 
     var ai = Option.empty[AIAPI]
     var world = Option.empty[DefaultWorld]
+    var frameClock = new NativeFrameClock
     val listener = new BWEventListener {
       override def onUnitCreate(unit: NUnit): Unit = {
         world.foreach(_.onUnitCreate(unit))
       }
 
       override def onFrame(): Unit = {
-        // clean up
-        NativeMatchEvidence.observeLiveVision(mirror.getGame)
+        val liveGame = mirror.getGame
+        NativeMatchEvidence.observeLiveVision(liveGame)
+        // Paused native games can deliver repeated callbacks without simulation progress.
+        if (!frameClock.advance(liveGame.getFrameCount)) return
         pony.tickCount += 1
         ai.foreach(_.onTickOnApi())
         if (pony.tickCount % 2400 == 0) {
@@ -85,6 +88,7 @@ object Controller {
       override def onStart(): Unit = {
         try {
           pony.tickCount = 0
+          frameClock = new NativeFrameClock
           NativeMatchEvidence.started(mirror.getGame)
           mirror.getGame.enableFlag(bwapi.Flag.Enum.UserInput.getValue)
           val w = DefaultWorld.spawn(mirror.getGame)
@@ -124,5 +128,13 @@ object Controller {
     mirror.getModule.setEventListener(listener)
     mirror.startGame()
 
+  }
+}
+
+private[pony] class NativeFrameClock {
+  private var previous = -1
+  def advance(nativeFrame: Int): Boolean = {
+    if (nativeFrame <= previous) false
+    else { previous = nativeFrame; true }
   }
 }

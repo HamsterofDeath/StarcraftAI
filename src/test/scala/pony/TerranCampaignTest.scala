@@ -17,6 +17,7 @@ class TerranCampaignTest extends Specification {
     A new match has independent empty campaign state $freshMatch
     Deterministic target ties prefer observed bases then coordinate and id $stableTargets
     Strategy construction does not touch forces before world initialization $initializationOrder
+    Paused duplicate callbacks cannot advance AI time and a fresh match resets it $nativeClock
   """
   private def building(id: Int, x: Int, base: Boolean = true) =
     ObservedEnemyBuilding(id, MapTilePosition(x, 20), 4, 3, base)
@@ -96,5 +97,10 @@ class TerranCampaignTest extends Specification {
           throw new IllegalStateException("World dependency accessed before initialization: " + method.getName)
       }).asInstanceOf[Universe]
     new Strategy.Strategies(uninitialized).current.name mustEqual "Idle"
+  }
+  def nativeClock = {
+    val c = new NativeFrameClock
+    (c.advance(0), c.advance(0), c.advance(0), c.advance(1), c.advance(1), c.advance(0),
+      new NativeFrameClock().advance(0)) mustEqual (true, false, false, true, false, false, true)
   }
 }
