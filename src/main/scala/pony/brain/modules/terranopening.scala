@@ -73,13 +73,17 @@ class TerranEconomicOpening(universe: Universe)
     private var lastProgress = currentTick
     private var landingRetries = 0
     private var returningHome = false
-    private def safe(area: ResourceArea) = !bases.isCovered(area) && area.patches.exists(_.patches.exists(_.remaining > 0)) &&
+    // the flying command center is its own base; it must not cover the field it is flying to
+    private def coveredByOthers(area: ResourceArea) = bases.allBases.exists { b =>
+      b.mainBuilding != depot && b.resourceArea.contains(area)
+    }
+    private def safe(area: ResourceArea) = !coveredByOthers(area) && area.patches.exists(_.patches.exists(_.remaining > 0)) &&
       mapLayers.slightlyDangerousAsBlocked.free(area.nearbyFreeTile) &&
       unitGrid.enemy.allInRange(area.nearbyFreeTile, 12).isEmpty &&
       mapLayers.rawWalkableMap.areInSameWalkableArea(home, area.nearbyFreeTile)
     private def unsafeBecause(area: ResourceArea) = {
       Seq(
-        "covered" -> bases.isCovered(area),
+        "covered" -> coveredByOthers(area),
         "depleted" -> !area.patches.exists(_.patches.exists(_.remaining > 0)),
         "blocked" -> !mapLayers.slightlyDangerousAsBlocked.free(area.nearbyFreeTile),
         "enemyNear" -> unitGrid.enemy.allInRange(area.nearbyFreeTile, 12).nonEmpty,
