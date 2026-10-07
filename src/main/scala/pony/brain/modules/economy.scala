@@ -124,7 +124,7 @@ class ProvideExpansions(universe: Universe)
   }
 
   override def onTick_!(): Unit = {
-    ifNth(Primes.prime241) {
+    ifNth(Primes.prime31) {
       plannedExpansionPoint = plannedExpansionPoint.filter { where =>
         universe.mapLayers.slightlyDangerousAsBlocked.free(where.center) &&
         universe.unitGrid.enemy.allInRange(where.center, 12).isEmpty &&
@@ -146,14 +146,24 @@ class ProvideExpansions(universe: Universe)
             plannedExpansionPoint = None
           }
         case None =>
-          if (!unitManager.requestedToBuild(race.resourceDepositClass)) {
+          val cost = ResourceRequests.forUnit(race, race.resourceDepositClass)
+          val safe = universe.mapLayers.slightlyDangerousAsBlocked.free(resources.center) &&
+            universe.unitGrid.enemy.allInRange(resources.center, 12).isEmpty &&
+            !bases.isCovered(resources) && bases.mainBase.exists { base =>
+              mapLayers.rawWalkableMap.areInSameWalkableArea(resources.nearbyFreeTile, base.mainBuilding.tilePosition)
+            }
+          val funds = universe.resources.unlockedResources
+          if (!unitManager.requestedToBuild(race.resourceDepositClass) &&
+            TerranCampaignConfig.load().expand(funds.minerals, funds.gas, cost.minerals, cost.gas,
+              pending = false, safeReachableSite = safe)) {
             val buildingSpot = AlternativeBuildingSpot
                                .fromExpensive(
                                  new ConstructionSiteFinder(universe).forResourceArea(resources))(
                                  _.find)
             requestBuilding(race.resourceDepositClass, takeCareOfDependencies = false,
-              saveMoneyIfPoor = true,
+              saveMoneyIfPoor = false,
               buildingSpot, belongsTo = plannedExpansionPoint, priority = Priority.Expand)
+            NativeMatchEvidence.trace("expansion-request", s"${resources.center} unlocked=${funds.minerals}")
           }
       }
     }

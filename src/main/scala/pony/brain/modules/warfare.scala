@@ -132,6 +132,32 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
   @volatile private var thinking                                            = false
 
   def allAttacks = attacks.toVector
+  def planningInProgress = thinking
+  def campaignForceSize = attacks.filter(_.campaign).map(_.force.size).sum
+  private var campaignTarget = Option.empty[MapTilePosition]
+  def setCampaignTarget(target: Option[MapTilePosition]): Unit = {
+    if (target != campaignTarget) attacks.retain(a => !a.campaign)
+    campaignTarget = target
+  }
+
+  def initiateCampaignAttack(where: MapTilePosition): Boolean = {
+    if (thinking) return false
+    val employer = new Employer[Mobile](universe)
+    val busy = attacks.flatMap(_.force).toSet
+    val req = UnitJobRequest.idleOfType(employer, classOf[Mobile], 9999).withOnlyAccepting { m =>
+      m.isFigher && !m.isBeingCreated && !m.isInstanceOf[WorkerUnit] &&
+        !m.isInstanceOf[SupportUnit] && !m.isInstanceOf[TransporterUnit] && !busy(m)
+    }
+    val available = unitManager.request(req, buildIfNoneAvailable = false).units.collect {
+      case m: Mobile if m.isFigher && !m.isBeingCreated && !m.isInstanceOf[WorkerUnit] &&
+        !m.isInstanceOf[SupportUnit] && !m.isInstanceOf[TransporterUnit] && !busy(m) => m
+    }.toVector.sortBy(_.nativeUnitId)
+    if (available.isEmpty) false
+    else {
+      initiateAttack(where, available, Lowest, campaign = true)
+      true
+    }
+  }
 
   def renderDebug(renderer: Renderer) = {
     allAttacks.foreach(_.renderDebug(renderer))
@@ -154,7 +180,8 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
     attacks.retain(_.hasNotEnded)
     if (thinking) {
       planInProgress.result.foreach { plan =>
-        attacks ++= plan.complete.parts
+        attacks ++= plan.parts.filter(p => !p.campaign || campaignTarget.contains(p.destination.where))
+          .flatMap(_.complete)
         thinking = false
         planInProgress = BWFuture.none
         majorInfo(s"Attack plan finished!")
@@ -166,7 +193,7 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
 
   def initiateAttack(where: MapTilePosition, priority: AttackPriority = Lowest): Unit = {
     majorInfo(s"Initiating attack of $where")
-    assert(!thinking, s"Cannot multitask yet, sorry")
+    if (thinking) return
     //this attack has priority over an existing one
     if (priority.isHigh) {
       attacks.clear()
@@ -183,7 +210,12 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
     }
   }
 
-  def initiateAttack(where: MapTilePosition, units: Seq[Mobile], priority: AttackPriority): Unit = {
+  def initiateAttack(where: MapTilePosition, units: Seq[Mobile], priority: AttackPriority): Unit =
+    initiateAttack(where, units, priority, campaign = false)
+
+  def initiateAttack(where: MapTilePosition, units: Seq[Mobile], priority: AttackPriority,
+                     campaign: Boolean): Unit = {
+    if (thinking || units.isEmpty) return
     debug(s"Attacking $where with $units")
     val helper = new GroupingHelper(universe.mapLayers.rawWalkableMap, units, universe.allUnits)
     planInProgress = BWFuture.produceFrom {
@@ -201,7 +233,7 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
           }
         }
 
-        new IncompleteAttack(asUnits.toSet, TargetPosition(where, 10), priority)
+        new IncompleteAttack(asUnits.toSet, TargetPosition(where, 10), priority, campaign)
       }
       debug(s"Attack calculation finished, results: $newAttacks")
       IncompleteAttacks(newAttacks)
@@ -226,11 +258,15 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
   }
 
   class IncompleteAttack(private var currentForce: Set[Mobile], targetOfAttack: TargetPosition,
-                         priority: AttackPriority) {
-    def complete = new Attack(currentForce, targetOfAttack)
+                         priority: AttackPriority, val campaign: Boolean) {
+    def destination = targetOfAttack
+    def complete = {
+      val living = currentForce.filter(_.isInGame)
+      if (living.isEmpty) None else Some(new Attack(living, targetOfAttack, campaign))
+    }
   }
 
-  class Attack(private var currentForce: Set[Mobile], targetOfAttack: TargetPosition)
+  class Attack(private var currentForce: Set[Mobile], targetOfAttack: TargetPosition, val campaign: Boolean)
     extends HasLazyVals {
     val uniqueId = WrapsUnit.nextId
 
@@ -286,7 +322,7 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
 
     def hasNotEnded = !hasEnded
 
-    def hasEnded = !hasMembers || (allReachedTargetArea && halfOfForceReachedTargetPoint)
+    def hasEnded = !hasMembers || (!campaign && allReachedTargetArea && halfOfForceReachedTargetPoint)
 
     def hasMembers = currentForce.nonEmpty
 
@@ -317,7 +353,7 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
               case Some((targetTile, attackMove)) =>
                 MoveToPosition(t, targetTile)
               case None =>
-                StayInPosition(t)
+                if (campaign) AttackToPosition(t, targetOfAttack.where) else StayInPosition(t)
             }
           }
 
@@ -347,7 +383,7 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
   case class Attacks(parts: Seq[Attack])
 
   case class IncompleteAttacks(parts: Seq[IncompleteAttack]) {
-    def complete = Attacks(parts.map(_.complete))
+    def complete = Attacks(parts.flatMap(_.complete))
   }
 
 }
@@ -1180,13 +1216,14 @@ object Strategy {
   }
 
   class Strategies(override val universe: Universe) extends HasUniverse {
-    private val available              = new TerranVsProtoss(universe) ::
+    private val available              = new SimpleTerran(universe) ::
+                                         new TerranVsProtoss(universe) ::
                                          new TerranIsland(universe) ::
                                          new TerranIslandRich(universe) ::
                                          new TerranVsTerran(universe) ::
                                          new TerranVsZerg(universe) ::
                                          Nil
-    private var best: LongTermStrategy = new IdleAround(universe)
+    private var best: LongTermStrategy = if (race.isTerran) available.head else new IdleAround(universe)
 
     def current = best
 
@@ -1195,6 +1232,31 @@ object Strategy {
         best = available.maxBy(_.determineScore)
       }
     }
+  }
+
+  class SimpleTerran(override val universe: Universe) extends LongTermStrategy with TerranDefaults {
+    private val config = TerranCampaignConfig.load()
+    override def name = "Default Terran campaign"
+    override def determineScore = if (race.isTerran) 1000 else -1
+    override protected def expandNow = {
+      val cost = ResourceRequests.forUnit(race, race.resourceDepositClass)
+      config.expand(resources.unlockedResources.minerals, resources.unlockedResources.gas,
+        cost.minerals, cost.gas, unitManager.plannedToBuildByType[MainBuilding] > 0 ||
+          unitManager.constructionsInProgress[MainBuilding].nonEmpty, safeReachableSite = true)
+    }
+    override def suggestProducers =
+      IdealProducerCount(classOf[Barracks], 1)(true) ::
+      IdealProducerCount(classOf[Factory], (bases.finishedBases.size max 1) min 4)(true) :: Nil
+    override def suggestUnits =
+      IdealUnitRatio(classOf[Marine], 4)(true) ::
+      IdealUnitRatio(classOf[Vulture], 4)(true) ::
+      IdealUnitRatio(classOf[Tank], 6)(true) ::
+      IdealUnitRatio(classOf[Goliath], 2)(true) :: Nil
+    override def suggestUpgrades =
+      UpgradeToResearch(Upgrades.Terran.TankSiegeMode)(unitManager.existsAndDone(classOf[MachineShop])) ::
+      UpgradeToResearch(Upgrades.Terran.VehicleWeapons)(bases.finishedBases.size >= 2) ::
+      UpgradeToResearch(Upgrades.Terran.VehicleArmor)(bases.finishedBases.size >= 2) ::
+      UpgradeToResearch(Upgrades.Terran.GoliathRange)(bases.finishedBases.size >= 2) :: Nil
   }
 
   class IdleAround(override val universe: Universe) extends LongTermStrategy {

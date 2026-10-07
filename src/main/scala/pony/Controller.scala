@@ -13,7 +13,7 @@ object Controller {
     }
     catch {
       case ex: Throwable => ex.printStackTrace()
-        System.exit(0)
+        System.exit(1)
     }
   }
 
@@ -54,6 +54,7 @@ object Controller {
       }
 
       override def onEnd(b: Boolean): Unit = {
+        NativeMatchEvidence.ended(mirror.getGame, b)
         ai = None
         world = None
       }
@@ -77,6 +78,8 @@ object Controller {
 
       override def onStart(): Unit = {
         try {
+          pony.tickCount = 0
+          NativeMatchEvidence.started(mirror.getGame)
           mirror.getGame.enableFlag(bwapi.Flag.Enum.UserInput.getValue)
           val w = DefaultWorld.spawn(mirror.getGame)
           world = Some(w)

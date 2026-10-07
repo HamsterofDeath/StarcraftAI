@@ -68,6 +68,8 @@ class DefaultWorld(game: Game) extends WorldListener with WorldEventDispatcher {
   val orderQueue = new OrderQueue(game, debugger)
   private val removeQueueOwn   = ArrayBuffer.empty[bwapi.Unit]
   private val removeQueueEnemy = ArrayBuffer.empty[bwapi.Unit]
+  private val destroyedEnemies = mutable.Set.empty[Int]
+  def observedDestroyedEnemies = destroyedEnemies.toSet
   private var ticks            = 0
   private val postTickActions  = ArrayBuffer.empty[() => Unit]
 
@@ -87,6 +89,7 @@ class DefaultWorld(game: Game) extends WorldListener with WorldEventDispatcher {
   override def onUnitDestroy(unit: bwapi.Unit): Unit = {
     super.onUnitDestroy(unit)
     if (unit.getPlayer.isEnemy(game.self())) {
+      destroyedEnemies += unit.getID
       removeQueueEnemy += unit
     } else {
       removeQueueOwn += unit

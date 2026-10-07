@@ -13,7 +13,6 @@ object ConcoctedAI {
     .addPlugin(new WalkableRenderer)
     .addPlugin(new BuildableRenderer(true))
     .addPlugin(new UnitIdRenderer)
-    .addPlugin(new MapReveal)
     .addPlugin(new ChangeSpeed)
     .addPlugin(mainAi)
     .addPlugin(new ChokePointRenderer(mainAi.universe))

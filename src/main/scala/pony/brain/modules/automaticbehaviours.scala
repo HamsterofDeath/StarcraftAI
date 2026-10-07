@@ -1307,7 +1307,7 @@ object Terran {
         nextPath.flatMap {
           case Some(paths) =>
             val close = scout.currentTile.distanceToIsLess(paths.originalDestination, 7) &&
-                        scout.canSee(paths.originalDestination)
+                        nativeGame.isVisible(paths.originalDestination.asTilePosition)
             if (close) {
               if (remainingToCheck.size > 1) {
                 remainingToCheck.remove(0)
@@ -1481,7 +1481,7 @@ object Terran {
       }
 
       def planFor(am: ArmedMobile) = {
-        if (time.phase.isSinceAlmostMid) {
+        if (race.isTerran || time.phase.isSinceAlmostMid) {
           scouts.get(am)
         } else {
           None

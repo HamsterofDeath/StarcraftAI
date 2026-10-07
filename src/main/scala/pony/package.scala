@@ -59,6 +59,7 @@ package object pony {
   }
 
   def setTinyLogLevel_!(newLevel: Level) = {
+    new java.io.File("log").mkdirs()
     val ok = Configurator.defaultConfig()
              .removeAllWriters()
              .level(newLevel)
@@ -82,7 +83,7 @@ package object pony {
       tinylog.Logger.warn(s"[$tick] ${a.toString}")
   }
 
-  setLogLevel_!(LogLevels.LogTrace)
+  setLogLevel_!(LogLevels.LogInfo)
 
   import LogLevels._
 
