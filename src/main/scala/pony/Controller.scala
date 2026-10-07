@@ -23,6 +23,7 @@ object Controller {
     var ai = Option.empty[AIAPI]
     var world = Option.empty[DefaultWorld]
     var frameClock = new NativeFrameClock
+    var repeatedCallbacks = 0
     val listener = new BWEventListener {
       override def onUnitCreate(unit: NUnit): Unit = {
         world.foreach(_.onUnitCreate(unit))
@@ -32,7 +33,13 @@ object Controller {
         val liveGame = mirror.getGame
         NativeMatchEvidence.observeLiveVision(liveGame)
         // Paused native games can deliver repeated callbacks without simulation progress.
-        if (!frameClock.advance(liveGame.getFrameCount)) return
+        if (!frameClock.advance(liveGame.getFrameCount)) {
+          repeatedCallbacks += 1
+          if (repeatedCallbacks == 100) NativeMatchEvidence.trace("native-stall",
+            s"nativeFrame=${liveGame.getFrameCount} paused=${liveGame.isPaused} inGame=${liveGame.isInGame} fps=${liveGame.getFPS}")
+          return
+        }
+        repeatedCallbacks = 0
         pony.tickCount += 1
         ai.foreach(_.onTickOnApi())
         if (pony.tickCount % 2400 == 0) {
@@ -89,6 +96,7 @@ object Controller {
         try {
           pony.tickCount = 0
           frameClock = new NativeFrameClock
+          repeatedCallbacks = 0
           NativeMatchEvidence.started(mirror.getGame)
           mirror.getGame.enableFlag(bwapi.Flag.Enum.UserInput.getValue)
           val w = DefaultWorld.spawn(mirror.getGame)

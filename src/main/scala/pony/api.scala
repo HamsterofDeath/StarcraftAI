@@ -52,8 +52,9 @@ trait AIAPI {
     }
     catch {
       case t: Throwable =>
+        NativeMatchEvidence.failed(world.nativeGame, t)
         t.printStackTrace()
-        System.exit(0)
+        System.exit(1)
     }
   }
 
