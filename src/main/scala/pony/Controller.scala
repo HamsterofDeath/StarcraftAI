@@ -35,8 +35,14 @@ object Controller {
         // Paused native games can deliver repeated callbacks without simulation progress.
         if (!frameClock.advance(liveGame.getFrameCount)) {
           repeatedCallbacks += 1
-          if (repeatedCallbacks == 100) NativeMatchEvidence.trace("native-stall",
-            s"nativeFrame=${liveGame.getFrameCount} paused=${liveGame.isPaused} inGame=${liveGame.isInGame} fps=${liveGame.getFPS}")
+          if (repeatedCallbacks == 100) {
+            NativeMatchEvidence.trace("native-stall",
+              s"nativeFrame=${liveGame.getFrameCount} paused=${liveGame.isPaused} inGame=${liveGame.isInGame} fps=${liveGame.getFPS}")
+            if (liveGame.isInGame && liveGame.isPaused) {
+              liveGame.resumeGame()
+              NativeMatchEvidence.trace("native-resume", "resume paused local match")
+            }
+          }
           return
         }
         repeatedCallbacks = 0
