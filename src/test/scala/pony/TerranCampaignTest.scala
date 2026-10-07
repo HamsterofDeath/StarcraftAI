@@ -1,6 +1,8 @@
 package pony
 
 import org.specs2.Specification
+import java.lang.reflect.{InvocationHandler, Method, Proxy}
+import pony.brain.Universe
 import pony.brain.modules._
 
 class TerranCampaignTest extends Specification {
@@ -14,6 +16,7 @@ class TerranCampaignTest extends Specification {
     Rebuilt and newly discovered bases are selected without hidden coordinates $rebuilt
     A new match has independent empty campaign state $freshMatch
     Deterministic target ties prefer observed bases then coordinate and id $stableTargets
+    Strategy construction does not touch forces before world initialization $initializationOrder
   """
   private def building(id: Int, x: Int, base: Boolean = true) =
     ObservedEnemyBuilding(id, MapTilePosition(x, 20), 4, 3, base)
@@ -85,5 +88,13 @@ class TerranCampaignTest extends Specification {
     val m = new EnemyCampaignMemory
     m.update(Seq(building(3, 1, false), building(2, 40), building(1, 30)), Set.empty, _ => true)
     m.select(MapTilePosition(0, 0)) mustEqual Some(MapTilePosition(30, 20))
+  }
+  def initializationOrder = {
+    val uninitialized = Proxy.newProxyInstance(classOf[Universe].getClassLoader, Array[Class[_]](classOf[Universe]),
+      new InvocationHandler {
+        override def invoke(proxy: AnyRef, method: Method, arguments: Array[AnyRef]): AnyRef =
+          throw new IllegalStateException("World dependency accessed before initialization: " + method.getName)
+      }).asInstanceOf[Universe]
+    new Strategy.Strategies(uninitialized).current.name mustEqual "Idle"
   }
 }
