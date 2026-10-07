@@ -64,4 +64,15 @@ $game = @(Get-CimInstance Win32_Process -Filter "Name='StarCraft.exe' AND Parent
 if ($game.Count -ne 1) { $receipt | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $run 'manifest.json'); throw 'Exact owned game child not identified; preserve receipt and do not launch again.' }
 $receipt.gamePid=$game[0].ProcessId; $receipt.gameStart=$game[0].CreationDate.ToUniversalTime().ToString('o')
 $receipt | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $run 'manifest.json')
+# Dismiss the title screen: BWAPI automates the menus only after a key press. Sound is already off in bwapi.ini.
+$botLog = Join-Path $run 'bot-stdout.log'
+$deadline = (Get-Date).AddSeconds(90)
+while ((Get-Date) -lt $deadline -and -not ((Test-Path -LiteralPath $botLog) -and ((Get-Content -LiteralPath $botLog -Raw) -match 'Waiting'))) { Start-Sleep -Milliseconds 500 }
+Add-Type -AssemblyName Microsoft.VisualBasic
+Add-Type -AssemblyName System.Windows.Forms
+[Microsoft.VisualBasic.Interaction]::AppActivate([int]$game[0].ProcessId) | Out-Null
+Start-Sleep -Milliseconds 500
+[System.Windows.Forms.SendKeys]::SendWait('{ESC}')
+$receipt.titleSkipped = $true
+$receipt | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $run 'manifest.json')
 Write-Output ($receipt | ConvertTo-Json -Depth 6)
