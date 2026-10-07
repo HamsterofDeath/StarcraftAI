@@ -135,7 +135,7 @@ class ProvideExpansions(universe: Universe)
 
     plannedExpansionPoint.filter { _ =>
       // only build one at a time
-      unitManager.plannedToBuildByType[MainBuilding] == 0 &&
+      !unitManager.requestedToBuild(race.resourceDepositClass) &&
       unitManager.constructionsInProgress[MainBuilding].isEmpty
     }.foreach { resources =>
       val plannedMainBuildings = unitManager.constructionsInProgress(race.resourceDepositClass)

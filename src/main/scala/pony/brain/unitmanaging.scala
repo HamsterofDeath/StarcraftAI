@@ -903,6 +903,7 @@ abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: 
 
 trait IssueOrderNTimes[T <: WrapsUnit] extends UnitWithJob[T] {
   private var issued = 0
+  protected def resetIssuedOrders_!(): Unit = { issued = 0 }
   def getOrder: Seq[UnitOrder]
   override def ordersForTick: Seq[UnitOrder] = {
     if (issued == times)
@@ -1283,6 +1284,9 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W,
           with IssueOrderNTimes[W] {
   self =>
 
+  private lazy val travelProgress = new ConstructionTravelProgress(currentTick, unit.currentTile)
+  private var arrivalCommandsReset = false
+
   assert(universe.mapLayers.rawWalkableMap.insideBounds(buildWhere),
     s"Target building spot is outside of map: $buildWhere, check $self")
 
@@ -1335,6 +1339,11 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W,
   override def onTick_!(): Unit = {
     super.onTick_!()
     if (unit.gotUnloaded) resetTimer_!()
+    if (!arrivalCommandsReset && unit.currentTile.distanceToIsLess(buildWhere, 4)) {
+      resetIssuedOrders_!()
+      resetTimer_!()
+      arrivalCommandsReset = true
+    }
     if (startedActualConstruction && !resourcesUnlocked && constructs.isDefined) {
       trace(s"Construction job $this no longer needs to lock resources")
       unlockManually_!()
@@ -1376,8 +1385,9 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W,
   override def jobHasFailedWithoutDeath: Boolean = {
     if (unit.onGround) {
       val byState = {
-        !worker.isInConstructionProcess &&
-        ageSinceFirstNonInterceptedOrder.getOrElse(0) > times + 10 &&
+        travelProgress.failed(currentTick, unit.currentTile,
+          unit.currentTile.distanceToIsLess(buildWhere, 4), worker.isInConstructionProcess,
+          times + 10) &&
         !isFinished
       }
       def expensiveCheck = {
@@ -1467,6 +1477,20 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W,
         candidates.minBy(_._2)._2
       })
     }
+  }
+}
+
+/** A pathfinding Move is ordinary builder travel, not a failed native Build command. */
+private[pony] class ConstructionTravelProgress(startFrame: Int, startPosition: MapTilePosition) {
+  private var lastPosition = startPosition
+  private var lastProgressFrame = startFrame
+  private var arrivedAt = Option.empty[Int]
+  def failed(frame: Int, position: MapTilePosition, atSite: Boolean, constructing: Boolean,
+             buildTimeout: Int): Boolean = {
+    if (position != lastPosition) { lastPosition = position; lastProgressFrame = frame }
+    if (atSite && arrivedAt.isEmpty) arrivedAt = Some(frame)
+    if (!atSite) arrivedAt = None
+    !constructing && (if (atSite) frame - arrivedAt.get > buildTimeout else frame - lastProgressFrame > 24 * 30)
   }
 }
 

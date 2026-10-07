@@ -1105,7 +1105,8 @@ object Terran {
           Orders.ScanWithComsat(comsat, first.center).toList
         } else if (helpThese.nonEmpty && comsat.canCastNow(ScannerSweep)) {
           val first = helpThese.remove(0)
-          if (first.memberUnits.forall(_.underAttackByCloaked)) {
+          val surviving = first.survivingMembers
+          if (surviving.nonEmpty && surviving.forall(_.underAttackByCloaked)) {
             Orders.ScanWithComsat(comsat, first.center).toList
           } else {
             Nil
@@ -1397,26 +1398,8 @@ object Terran {
             val coveredAlready = mutable.HashSet.empty[MapTilePosition]
 
             def findNextBestPairAndScouter() = {
-              val bestPair = {
-                if (pointsToCheck.size == 1) {
-                  pointsToCheck.toList
-                } else {
-                  val checkUs = pointsToCheck.filterNot(coveredAlready).combinations(2)
-
-                  val bestOption = checkUs.map { seq =>
-                    val Seq(a, b) = seq
-                    (a, b) -> {
-                      in.pathfinder.findSimplePathNow(a, b).map(_.length)
-                    }
-                  }.filter(_._2.isDefined)
-                                   .map { case (a, b) => a -> b.get }
-                                   .minByOpt(_._2)
-                                   .map { case ((from, to), _) =>
-                                     List(from, to)
-                                   }.getOrElse(Nil)
-
-                  bestOption
-                }
+              val bestPair = ScoutPointPairs.next(pointsToCheck.toVector, coveredAlready.toSet) { (a, b) =>
+                in.pathfinder.findSimplePathNow(a, b).map(_.length)
               }
 
               val bestScouter = {

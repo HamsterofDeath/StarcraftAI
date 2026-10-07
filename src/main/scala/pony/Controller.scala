@@ -65,6 +65,8 @@ object Controller {
 
       override def onUnitComplete(unit: NUnit): Unit = {
         world.foreach(_.onUnitComplete(unit))
+        if (unit.getPlayer == mirror.getGame.self() && unit.getType.isResourceDepot)
+          NativeMatchEvidence.trace("base-completed", s"id=${unit.getID} tile=${unit.getTilePosition}")
       }
 
       override def onUnitEvade(unit: NUnit): Unit = {

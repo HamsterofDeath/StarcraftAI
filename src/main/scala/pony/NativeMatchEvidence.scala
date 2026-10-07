@@ -10,6 +10,7 @@ object NativeMatchEvidence {
   private var liveFlagSamples = 0
   private var startupFailed = false
   private var lastLiveFrame = 0
+  private var initialState = "{}"
   def observeLiveVision(game: Game): Unit = {
     completeMapObservedDuringPlay ||= game.isFlagEnabled(bwapi.Flag.Enum.CompleteMapInformation.getValue)
     liveFlagSamples += 1
@@ -41,6 +42,7 @@ object NativeMatchEvidence {
       ",\"liveFlagSamples\":" + liveFlagSamples +
       ",\"callbackCompleteMapInformation\":" + game.isFlagEnabled(bwapi.Flag.Enum.CompleteMapInformation.getValue) +
       ",\"mapInputSha256\":" + quoted(sys.props.getOrElse("twailight.mapInputSha256", "unrecorded")) +
+      ",\"initialState\":" + initialState +
       ",\"configuration\":{\"minFighters\":" + config.minFighters + ",\"armyMinerals\":" + config.armyMinerals +
       ",\"armyGas\":" + config.armyGas + ",\"expansionReserve\":" + config.expansionReserve + "}}")
     finally output.close()
@@ -51,6 +53,12 @@ object NativeMatchEvidence {
     liveFlagSamples = 0
     startupFailed = false
     lastLiveFrame = 0
+    val start = game.self().getStartLocation
+    initialState = "{\"minerals\":" + game.self().minerals() + ",\"gas\":" + game.self().gas() +
+      ",\"startTile\":[" + start.getX + "," + start.getY + "],\"ownUnits\":" +
+      game.self().getUnits.asScala.map { unit =>
+        "{\"id\":" + unit.getID + ",\"type\":" + quoted(unit.getType.toString) + "}"
+      }.mkString("[", ",", "]") + "}"
     observeLiveVision(game)
     write(game, "unfinished", None)
   }

@@ -451,12 +451,13 @@ class Group[T <: WrapsUnit](map: Grid2D, source: AllUnits) {
   private var myCenter  = MapTilePosition.zero
 
   def memberUnits = {
-    val typed = (memberIds.flatMap(source.own.byId) ++
-                 memberIds.flatMap(source.other.byId)).toVector
-
+    val typed = survivingMembers
     assert(typed.size == size, s"Expected $size but found only ${typed.size}")
-    typed.asInstanceOf[Vector[T]]
+    typed
   }
+
+  /** Queued observations may outlive their units; consumers of those queues must tolerate loss. */
+  def survivingMembers: Vector[T] = memberIds.flatMap(source.byNativeId).toVector.asInstanceOf[Vector[T]]
 
   def size = myMembers.size
 
@@ -1179,7 +1180,7 @@ object Strategy {
             .filter { where =>
               universe.ownUnits.allByType[TransporterUnit].nonEmpty ||
               mapLayers.rawWalkableMap
-              .areInSameWalkableArea(where.center,
+              .areInSameWalkableArea(where.nearbyFreeTile,
                 bases.mainBase.get.mainBuilding.tilePosition)
             }
           }
@@ -1241,7 +1242,7 @@ object Strategy {
     override protected def expandNow = {
       val cost = ResourceRequests.forUnit(race, race.resourceDepositClass)
       config.expand(resources.unlockedResources.minerals, resources.unlockedResources.gas,
-        cost.minerals, cost.gas, unitManager.plannedToBuildByType[MainBuilding] > 0 ||
+        cost.minerals, cost.gas, unitManager.requestedToBuild(race.resourceDepositClass) ||
           unitManager.constructionsInProgress[MainBuilding].nonEmpty, safeReachableSite = true)
     }
     override def suggestProducers =

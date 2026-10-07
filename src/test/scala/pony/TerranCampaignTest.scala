@@ -2,7 +2,7 @@ package pony
 
 import org.specs2.Specification
 import java.lang.reflect.{InvocationHandler, Method, Proxy}
-import pony.brain.Universe
+import pony.brain.{Universe, ConstructionTravelProgress}
 import pony.brain.modules._
 
 class TerranCampaignTest extends Specification {
@@ -18,6 +18,10 @@ class TerranCampaignTest extends Specification {
     Deterministic target ties prefer observed bases then coordinate and id $stableTargets
     Strategy construction does not touch forces before world initialization $initializationOrder
     Paused duplicate callbacks cannot advance AI time and a fresh match resets it $nativeClock
+    A distant progressing builder survives pathfinding and a stalled builder expires $builderTravel
+    Queued groups safely resolve units which have all died $staleGroup
+    Partially dead queued groups retain only surviving members $partialGroup
+    Singleton scouting terminates and the final unpaired site is still scouted $singletonScout
   """
   private def building(id: Int, x: Int, base: Boolean = true) =
     ObservedEnemyBuilding(id, MapTilePosition(x, 20), 4, 3, base)
@@ -102,5 +106,41 @@ class TerranCampaignTest extends Specification {
     val c = new NativeFrameClock
     (c.advance(0), c.advance(0), c.advance(0), c.advance(1), c.advance(1), c.advance(0),
       new NativeFrameClock().advance(0)) mustEqual (true, false, false, true, false, false, true)
+  }
+  def builderTravel = {
+    val travel = new ConstructionTravelProgress(0, MapTilePosition(0, 0))
+    (travel.failed(61, MapTilePosition(1, 0), false, false, 60),
+      travel.failed(1200, MapTilePosition(50, 0), false, false, 60),
+      travel.failed(1921, MapTilePosition(50, 0), false, false, 60),
+      travel.failed(1922, MapTilePosition(60, 0), true, false, 60),
+      travel.failed(1983, MapTilePosition(60, 0), true, true, 60),
+      travel.failed(1984, MapTilePosition(60, 0), true, false, 60)) mustEqual
+      (false, false, true, false, false, true)
+  }
+  def staleGroup = {
+    val units = AllUnits(new Units(null, false, null), new Units(null, true, null))
+    val group = new Group[WrapsUnit](new Grid2D(10, 10, collection.immutable.BitSet.empty), units)
+    (1 to 3).foreach(id => group.add_!(id -> MapTilePosition(id, 0)))
+    (group.size, group.survivingMembers) mustEqual (3, Vector.empty)
+  }
+  def partialGroup = {
+    val survivor = Proxy.newProxyInstance(classOf[WrapsUnit].getClassLoader, Array[Class[_]](classOf[WrapsUnit]),
+      new InvocationHandler {
+        override def invoke(proxy: AnyRef, method: Method, arguments: Array[AnyRef]): AnyRef =
+          if (method.getName == "nativeUnitId") Int.box(2) else throw new UnsupportedOperationException(method.getName)
+      }).asInstanceOf[WrapsUnit]
+    val own = new Units(null, false, null) { override def byId(id: Int) = if (id == 2) Some(survivor) else None }
+    val group = new Group[WrapsUnit](new Grid2D(10, 10, collection.immutable.BitSet.empty),
+      AllUnits(own, new Units(null, true, null)))
+    (1 to 3).foreach(id => group.add_!(id -> MapTilePosition(id, 0)))
+    group.survivingMembers.map(_.nativeUnitId) mustEqual Vector(2)
+  }
+  def singletonScout = {
+    val a = MapTilePosition(1, 1)
+    val b = MapTilePosition(2, 2)
+    def next(points: Vector[MapTilePosition], covered: Set[MapTilePosition]) =
+      ScoutPointPairs.next(points, covered)((_, _) => Some(1.0))
+    (next(Vector(a), Set.empty), next(Vector(a), Set(a)), next(Vector(a, b), Set(a))) mustEqual
+      (List(a), Nil, List(b))
   }
 }
