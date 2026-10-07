@@ -120,7 +120,7 @@ class Debugger(game: Game, world: DefaultWorld) {
   def isRendering = logLevel.includes(LogLevels.LogTrace)
 
   val renderer = new Renderer(game, Color.Green)
-  private var debugging     = true
+  private var debugging     = false
   private var fullDebugMode = false
   private var countTicks    = 0
 

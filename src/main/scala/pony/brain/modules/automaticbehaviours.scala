@@ -1258,7 +1258,7 @@ object Terran {
       super.renderDebug_!(renderer)
       renderer.in_!(Color.Blue)
       plan.plans.foreach { plan =>
-        plan.covered.grouped(2).foreach { seq =>
+        plan.covered.grouped(2).filter(_.size == 2).foreach { seq =>
           val List(a, b) = seq.toList
           renderer.drawLine(a.nearbyFreeTile, b.nearbyFreeTile)
           if (plan.nextTarget.contains(a.nearbyFreeTile)) {
