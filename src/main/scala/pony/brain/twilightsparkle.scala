@@ -489,7 +489,7 @@ case class Base(mainBuilding: MainBuilding) {
 
   def world = mainBuilding.world
 
-  val resourceArea = {
+  def resourceArea = {
     world.resourceAnalyzer.resourceAreas
     .minByOpt { c =>
       mainBuilding.area.distanceTo(c.center)
@@ -533,8 +533,8 @@ case class Base(mainBuilding: MainBuilding) {
     BWFuture(sortByPath, Nil)
   }
 
-  val myMineralGroup = resourceArea.flatMap(_.patches)
-  val myGeysirs      = resourceArea.map(_.geysirs).getOrElse(Set.empty)
+  def myMineralGroup = resourceArea.flatMap(_.patches)
+  def myGeysirs      = resourceArea.map(_.geysirs).getOrElse(Set.empty)
 
   info(
     s"""

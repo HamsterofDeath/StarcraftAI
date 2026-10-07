@@ -52,6 +52,18 @@ abstract class UnitOrder {
 }
 
 object Orders {
+  case class LiftDepot(myUnit: CommandCenter) extends UnitOrder {
+    override def issueOrderToGame(): Unit = { myUnit.nativeUnit.lift() }
+    override def renderDebug(renderer: Renderer): Unit = {}
+  }
+  case class FlyDepot(myUnit: CommandCenter, to: MapTilePosition) extends UnitOrder {
+    override def issueOrderToGame(): Unit = { myUnit.nativeUnit.move(to.asMapPosition.toNative) }
+    override def renderDebug(renderer: Renderer): Unit = {}
+  }
+  case class LandDepot(myUnit: CommandCenter, to: MapTilePosition) extends UnitOrder {
+    override def issueOrderToGame(): Unit = { myUnit.nativeUnit.land(to.asTilePosition) }
+    override def renderDebug(renderer: Renderer): Unit = {}
+  }
 
   case class ScanWithComsat(comsat: Comsat, where: MapTilePosition) extends UnitOrder {
     override def myUnit = comsat

@@ -1544,7 +1544,18 @@ class Shuttle(unit: APIUnit) extends AnyUnit(unit) with TransporterUnit with Sup
 class Dropship(unit: APIUnit) extends AnyUnit(unit) with TransporterUnit with SupportUnit with IsBig
 
 class CommandCenter(unit: APIUnit)
-  extends AnyUnit(unit) with MainBuilding with CanBuildAddons with TerranBuilding
+  extends AnyUnit(unit) with MainBuilding with CanBuildAddons with TerranBuilding {
+  var relocating = false
+  override def canBuild[T <: Mobile](typeOfUnit: Class[_ <: T]) =
+    !relocating && !isFloating && super.canBuild(typeOfUnit)
+  // Other buildings are static; this depot deliberately changes its resource field after lifting.
+  override def tilePosition = {
+    val p = nativeUnit.getTilePosition
+    MapTilePosition.shared(p.getX, p.getY)
+  }
+  override def area = Area(tilePosition, size)
+  override def areaOnMap = mapLayers.rawWalkableMap.areaOf(centerTile).get
+}
 
 class Nexus(unit: APIUnit) extends AnyUnit(unit) with MainBuilding
 

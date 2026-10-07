@@ -109,6 +109,7 @@ class ProvideNewBuildings(universe: Universe)
 class ProvideExpansions(universe: Universe)
   extends OrderlessAIModule[WorkerUnit](universe) with BuildingRequestHelper {
   private var plannedExpansionPoint = Option.empty[ResourceArea]
+  private lazy val terranOpening = new TerranEconomicOpening(universe)
 
   def forceExpand(patch: MineralPatchGroup) = {
     plannedExpansionPoint = {
@@ -124,6 +125,10 @@ class ProvideExpansions(universe: Universe)
   }
 
   override def onTick_!(): Unit = {
+    if (race.isTerran && strategy.current.isInstanceOf[Strategy.SimpleTerran]) {
+      terranOpening.onTick_!()
+      return
+    }
     ifNth(Primes.prime31) {
       plannedExpansionPoint = plannedExpansionPoint.filter { where =>
         universe.mapLayers.slightlyDangerousAsBlocked.free(where.center) &&
@@ -211,9 +216,13 @@ class ProvideSpareSCVs(universe: Universe) extends OrderlessAIModule[CommandCent
     super.onTick_!()
     ifNth(Primes.prime37) {
       // only for terran!
-      val ok = unitManager.allJobsByUnitType[SCV].exists(_.isIdle)
-      if (!ok) {
-        unitManager.request(UnitJobRequest.idleOfType(emp, classOf[WorkerUnit], 1))
+      val mining = universe.pluginByType[ManageMiningAtBases]
+      val target = mining.workerCapacity + universe.pluginByType[ManageMiningAtGeysirs].workerCapacity + 2
+      val existingAndRequested = unitManager.countExistingAndPlanned(classOf[WorkerUnit])
+      val training = ownUnits.allByType[CommandCenter].count(_.nativeUnit.isTraining)
+      val missing = target - existingAndRequested - training
+      if (missing > 0) {
+        unitManager.request(UnitJobRequest.idleOfType(emp, classOf[WorkerUnit], missing))
       }
     }
   }
@@ -301,8 +310,19 @@ class DefaultBehaviours(universe: Universe) extends OrderlessAIModule[WrapsUnit]
 class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule(universe) {
 
   private val gatheringJobs = ArrayBuffer.empty[ManageMiningAtPatchGroup]
+  private val opening = new TerranEconomicProgress
+  def fieldStates = gatheringJobs.filter(g => g.natural && !g.forBase.mainBuilding.isFloating)
+    .map(g => MiningFieldStatus(g.forBase.resourceArea.get.uniqueId, g.capacity, g.teamSize,
+      g.workingMiners, !g.forBase.mainBuilding.isBeingCreated && g.forBase.mainBuilding.isInGame)).toVector
+  def startingFieldSaturated = opening.startingFieldSaturated
+  def secondBaseOperational = opening.secondBaseOperational(fieldStates)
+  def workerCapacity = gatheringJobs.filter(g => g.natural && !g.forBase.mainBuilding.isFloating).map(_.capacity).sum
 
   override def onTick_!(): Unit = {
+    val detached = gatheringJobs.filter(g => !g.forBase.mainBuilding.isInGame || g.forBase.mainBuilding.isFloating ||
+      !g.forBase.myMineralGroup.contains(g.patchGroup))
+    detached.foreach(_.releaseMiners())
+    gatheringJobs --= detached
     createJobsForBases()
     ifNth(Primes.prime43) {
       val outdated = gatheringJobs.filter(_.unnatural).flatMap { e =>
@@ -328,6 +348,10 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule(universe
       gatheringJobs --= outdated
     }
     gatheringJobs.foreach(_.onTick_!())
+    val before = opening.startingFieldSaturated
+    opening.observe(bases.mainBase.flatMap(_.resourceArea).map(_.uniqueId), fieldStates)
+    if (!before && opening.startingFieldSaturated)
+      NativeMatchEvidence.trace("starting-field-saturated", fieldStates.mkString(";"))
   }
 
   private def createJobsForBases(): Unit = {
@@ -335,6 +359,8 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule(universe
       val naturals = {
         universe.bases
         .finishedBases
+        .filterNot(_.mainBuilding.isFloating)
+        .groupBy(_.resourceArea).values.map(_.head).toVector
         .filterNot(e => gatheringJobs.exists(_.covers(e)))
         .flatMap { base =>
           base.myMineralGroup.map { minerals =>
@@ -379,6 +405,12 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule(universe
     def poor = minerals.remainingPercentage <= 0.1
 
     def forBase = base
+    def capacity = Micro.MiningOrganization.idealNumberOfWorkers
+    def workingMiners = unitManager.allJobsByUnitType[WorkerUnit].count {
+      case job: GatherMineralsAtSinglePatch => minerals.patches.contains(job.targetPatch) &&
+        job.worker.isInGame && (job.worker.isInMiningProcess || job.worker.isCarryingMinerals)
+      case _ => false
+    }
 
     override def onTick_!(): Unit = {
       super.onTick_!()
@@ -403,6 +435,7 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule(universe
     private def idealNumberOfWorkers = Micro.MiningOrganization.idealNumberOfWorkers
 
     def covers(aBase: Base) = base == aBase
+    def releaseMiners(): Unit = unitManager.allJobsByUnitType[WorkerUnit].filter(_.employer == this).foreach(_.fail_!())
 
     override def toString = s"Gathering $minerals at $base"
 
@@ -464,7 +497,7 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule(universe
 
         private val nearestReachableBase = oncePer(Primes.prime71) {
           bases.allBases.filter { b =>
-            worker.currentArea.contains(b.mainBuilding.areaOnMap)
+            !b.mainBuilding.isFloating && worker.currentArea.contains(b.mainBuilding.areaOnMap)
           }.minByOpt { base =>
             base.mainBuilding.area.distanceTo(worker.currentTile)
           }
@@ -633,22 +666,25 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule(universe
 class ManageMiningAtGeysirs(universe: Universe)
   extends OrderlessAIModule[WorkerUnit](universe) with BuildingRequestHelper {
   private val gatheringJobs = ArrayBuffer.empty[ManageMiningAtGeysir]
+  def workerCapacity = gatheringJobs.filter(_.keep).map(_.idealWorkerCount).sum
 
   override def onTick_!(): Unit = {
-    val unattended = unitManager.bases.allBases
+    val unattended = unitManager.bases.finishedBases.filterNot(_.mainBuilding.isFloating)
                      .filter(base => !gatheringJobs.exists(_.covers(base)))
     unattended.foreach { base =>
-      base.myGeysirs.map { geysir =>
+      base.myGeysirs.filterNot(g => gatheringJobs.exists(_.targetGeysir == g)).map { geysir =>
         new ManageMiningAtGeysir(base, geysir)
       }.foreach {gatheringJobs += _}
     }
 
+    gatheringJobs.filterNot(_.keep).foreach(_.releaseMiners())
     gatheringJobs.retain(_.keep).foreach(_.onTick_!())
   }
 
   class ManageMiningAtGeysir(base: Base, geysir: Geysir) extends Employer[WorkerUnit](universe) {
     self =>
-    private val idealWorkerCount            = 3 +
+    val targetGeysir = geysir
+    val idealWorkerCount            = 3 +
                                               (base.mainBuilding.area.distanceTo(geysir.area) / 3)
                                               .toInt
     private val workerCountBeforeWantingGas = universe.mapLayers
@@ -658,7 +694,9 @@ class ManageMiningAtGeysirs(universe: Universe)
 
     override def toString = s"GetGas@${geysir.tilePosition}"
 
-    def keep = geysir.isInGame
+    def keep = geysir.isInGame && base.mainBuilding.isInGame && !base.mainBuilding.isFloating &&
+      base.myGeysirs.contains(geysir)
+    def releaseMiners(): Unit = unitManager.allJobsByUnitType[WorkerUnit].filter(_.employer == this).foreach(_.fail_!())
 
     override def onTick_!(): Unit = {
       super.onTick_!()
@@ -698,7 +736,7 @@ class ManageMiningAtGeysirs(universe: Universe)
       }
     }
 
-    def covers(base: Base) = this.base.mainBuilding == base.mainBuilding
+    def covers(base: Base) = this.base.mainBuilding == base.mainBuilding && base.myGeysirs.contains(geysir)
 
     class MineGasAtGeysir(worker: WorkerUnit, targetGeysir: Geysir)
       extends UnitWithJob[WorkerUnit](self, worker, Priority.ConstructBuilding)
@@ -711,7 +749,7 @@ class ManageMiningAtGeysirs(universe: Universe)
       }
       private val nearestReachableBase = oncePer(Primes.prime71) {
         bases.allBases.filter { b =>
-          worker.currentArea.contains(b.mainBuilding.areaOnMap)
+          !b.mainBuilding.isFloating && worker.currentArea.contains(b.mainBuilding.areaOnMap)
         }.minByOpt { base =>
           base.mainBuilding.area.distanceTo(worker.currentTile)
         }

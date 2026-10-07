@@ -31,6 +31,7 @@ object Controller {
 
       override def onFrame(): Unit = {
         val liveGame = mirror.getGame
+        if (world.isEmpty || !liveGame.isInGame) return
         NativeMatchEvidence.observeLiveVision(liveGame)
         // Paused native games can deliver repeated callbacks without simulation progress.
         if (!frameClock.advance(liveGame.getFrameCount)) {
@@ -106,6 +107,10 @@ object Controller {
           frameClock = new NativeFrameClock
           repeatedCallbacks = 0
           NativeMatchEvidence.started(mirror.getGame)
+          val headless = sys.props.getOrElse("twailight.headless", "false").toBoolean
+          mirror.getGame.setGUI(!headless)
+          mirror.getGame.setLocalSpeed(0)
+          NativeMatchEvidence.trace("native-rendering", s"gui=${!headless} localSpeed=0")
           mirror.getGame.enableFlag(bwapi.Flag.Enum.UserInput.getValue)
           val w = DefaultWorld.spawn(mirror.getGame)
           world = Some(w)

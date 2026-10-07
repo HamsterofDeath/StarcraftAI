@@ -12,7 +12,11 @@ object NativeMatchEvidence {
   private var lastLiveFrame = 0
   private var initialState = "{}"
   def observeLiveVision(game: Game): Unit = {
-    completeMapObservedDuringPlay ||= game.isFlagEnabled(bwapi.Flag.Enum.CompleteMapInformation.getValue)
+    if (!game.isInGame) return
+    val complete = game.isFlagEnabled(bwapi.Flag.Enum.CompleteMapInformation.getValue)
+    if (complete && !completeMapObservedDuringPlay)
+      trace("invalid-live-vision", s"nativeFrame=${game.getFrameCount} inGame=${game.isInGame} paused=${game.isPaused}")
+    completeMapObservedDuringPlay ||= complete
     liveFlagSamples += 1
     lastLiveFrame = lastLiveFrame max game.getFrameCount
   }
@@ -42,9 +46,11 @@ object NativeMatchEvidence {
       ",\"liveFlagSamples\":" + liveFlagSamples +
       ",\"callbackCompleteMapInformation\":" + game.isFlagEnabled(bwapi.Flag.Enum.CompleteMapInformation.getValue) +
       ",\"mapInputSha256\":" + quoted(sys.props.getOrElse("twailight.mapInputSha256", "unrecorded")) +
+      ",\"renderingEnabled\":" + !sys.props.getOrElse("twailight.headless", "false").toBoolean +
       ",\"initialState\":" + initialState +
       ",\"configuration\":{\"minFighters\":" + config.minFighters + ",\"armyMinerals\":" + config.armyMinerals +
-      ",\"armyGas\":" + config.armyGas + ",\"expansionReserve\":" + config.expansionReserve + "}}")
+      ",\"armyGas\":" + config.armyGas + ",\"expansionReserve\":" + config.expansionReserve +
+      ",\"bankMinerals\":" + config.bankMinerals + ",\"bankGas\":" + config.bankGas + "}}")
     finally output.close()
     println("TWAILIGHT_NATIVE_OUTCOME status=" + status + " winner=" + winner + " frame=" + game.getFrameCount)
   }

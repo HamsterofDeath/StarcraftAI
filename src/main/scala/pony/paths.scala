@@ -883,10 +883,10 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
 
   private def evalWithBuildingsAndResources = justBuildings.mutableCopy.or_!(justMineralsAndGas)
 
-  private def evalOnlyBuildings = evalOnlyUnits(ownUnits.allByType[Building])
+  private def evalOnlyBuildings = evalOnlyUnits(ownUnits.allByType[Building].filterNot(_.isFloating))
 
   private def evalOnlyAreasToDefend = {
-    evalOnlyUnitsAsync(ownUnits.allByType[Building].filterNot(_.isInstanceOf[DetectorBuilding]), 8)
+    evalOnlyUnitsAsync(ownUnits.allByType[Building].filterNot(b => b.isFloating || b.isInstanceOf[DetectorBuilding]), 8)
   }
 
   private def evalOnlyUnitsAsync(units: => TraversableOnce[StaticallyPositioned], growBy: Int) = {
@@ -917,7 +917,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
     }
   }
 
-  private def evalPotentialAddonLocations = evalOnlyAddonAreas(ownUnits.allByType[CanBuildAddons])
+  private def evalPotentialAddonLocations = evalOnlyAddonAreas(ownUnits.allByType[CanBuildAddons].filterNot(_.isFloating))
 
   private def evalOnlyAddonAreas(units: TraversableOnce[CanBuildAddons]) = {
     val ret = emptyCopy

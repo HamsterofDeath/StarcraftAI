@@ -1377,7 +1377,8 @@ object Terran {
         val scoutingCandidates = {
           ownUnits.allMobilesWithWeapons
           .flatMap(_.asGroundUnit)
-          .filter(_.onGround)
+          .filter(e => e.onGround && e.isInGame && !e.isBeingCreated &&
+            !e.isInstanceOf[WorkerUnit] && !e.isInstanceOf[SupportUnit] && !e.isInstanceOf[TransporterUnit])
           .map { e =>
             ScoutingCandidate(e.nativeUnitId, e.initialNativeType.topSpeed(), e.currentArea.get,
               e.currentTile)
@@ -1436,6 +1437,7 @@ object Terran {
       }.named("Evaluate scouting plans")
 
       def onTick_!() = {
+        if (race.isTerran && !universe.pluginByType[RunTerranCampaign].reconnaissanceAllowed) return
         val oldSize = scouts.size
         scouts.retain { (_, v) => v.valid }
         if (oldSize != scouts.size) {
@@ -1464,7 +1466,8 @@ object Terran {
       }
 
       def planFor(am: ArmedMobile) = {
-        if (race.isTerran || time.phase.isSinceAlmostMid) {
+        if (!am.isInstanceOf[WorkerUnit] && (if (race.isTerran)
+          universe.pluginByType[RunTerranCampaign].reconnaissanceAllowed else time.phase.isSinceAlmostMid)) {
           scouts.get(am)
         } else {
           None
