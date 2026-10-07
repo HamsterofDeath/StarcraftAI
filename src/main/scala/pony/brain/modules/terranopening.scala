@@ -85,6 +85,8 @@ class TerranEconomicOpening(universe: Universe)
         returningHome = true
         destination = bases.mainBase.flatMap(_.resourceArea).map(_ -> home)
       }
+      NativeMatchEvidence.trace("relocation-destination",
+        s"id=${depot.nativeUnitId} from=${depot.tilePosition} to=${destination.map(_._2)} returningHome=$returningHome")
     }
     override def everyNth = 31
     override def shortDebugString = "Relocate depot: " + phase
@@ -105,7 +107,11 @@ class TerranEconomicOpening(universe: Universe)
         next match {
           case DepotRelocation.Lift => if (depot.nativeUnit.canLift()) Orders.LiftDepot(depot).toSeq else Nil
           case DepotRelocation.Fly =>
-            if (!returningHome && (!safe(field) || currentTick - lastProgress > 24 * 120)) {
+            val unsafeNow = !safe(field)
+            val stalled = currentTick - lastProgress > 24 * 120
+            if (!returningHome && (unsafeNow || stalled)) {
+              NativeMatchEvidence.trace("relocation-abort",
+                s"id=${depot.nativeUnitId} tile=$tile target=$landingTile unsafe=$unsafeNow stalled=$stalled")
               destination = None
               lastProgress = currentTick
               Nil
