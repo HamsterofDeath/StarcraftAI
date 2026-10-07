@@ -1436,7 +1436,7 @@ object Terran {
         }.toList
       }.named("Evaluate scouting plans")
 
-      def onTick_!() = {
+      def onTick_!(): Unit = {
         if (race.isTerran && !universe.pluginByType[RunTerranCampaign].reconnaissanceAllowed) return
         val oldSize = scouts.size
         scouts.retain { (_, v) => v.valid }

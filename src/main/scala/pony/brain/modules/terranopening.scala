@@ -28,7 +28,7 @@ class TerranEconomicOpening(universe: Universe)
   private val depotEmployer = new Employer[CommandCenter](universe)
   private var relocation = Option.empty[RelocateDepot]
   override def onTick_!(): Unit = {
-    if (currentTick % Primes.prime31 != 0) return
+    if (currentTick % Primes.prime31.i != 0) return
     val mining = universe.pluginByType[ManageMiningAtBases]
     relocation = relocation.filterNot(j => j.failedOrObsolete || j.isFinished)
     val depots = ownUnits.allByType[CommandCenter].filter(_.isInGame).toVector
@@ -93,7 +93,7 @@ class TerranEconomicOpening(universe: Universe)
     override def onFinishOrFail(): Unit = { super.onFinishOrFail(); depot.relocating = false }
     override def ordersForTick: Seq[UnitOrder] = {
       if (destination.isEmpty) chooseDestination()
-      destination.toSeq.flatMap { case (field, landingTile) =>
+      destination.toList.flatMap { case (field, landingTile) =>
         val tile = depot.tilePosition
         if (tile != lastTile) { lastTile = tile; lastProgress = currentTick }
         val landedThere = !depot.isFloating && tile == landingTile
