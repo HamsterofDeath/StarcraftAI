@@ -35,6 +35,7 @@ class ProvideNewBuildings(universe: Universe)
         error(s"Computation returned no result: $in")
         BackgroundComputationResult.nothing[WorkerUnit](() => {
           if (in.jobRequest.stillLocksResources) {
+            in.jobRequest.clearableInNextTick_!()
             in.jobRequest.forceUnlockOnDispose_!()
             in.jobRequest.dispose()
           } else {
