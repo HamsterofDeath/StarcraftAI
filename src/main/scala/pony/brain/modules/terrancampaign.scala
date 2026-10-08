@@ -15,6 +15,9 @@ case class TerranCampaignConfig(minFighters: Int = 12, armyMinerals: Int = 1500,
   def ready(secondBaseOperational: Boolean, count: Int, minerals: Int, gas: Int,
             bankM: Int, bankG: Int) = secondBaseOperational && launch(count, minerals, gas) &&
     bankM >= bankMinerals && bankG >= bankGas
+  def holdNewArmy(secondBaseOperational: Boolean, count: Int, minerals: Int, gas: Int,
+                  attackLaunched: Boolean) =
+    secondBaseOperational && !attackLaunched && launch(count, minerals, gas)
   def expand(unlockedMinerals: Int, unlockedGas: Int, costMinerals: Int, costGas: Int,
              pending: Boolean, safeReachableSite: Boolean) =
     !pending && safeReachableSite && unlockedMinerals >= costMinerals + expansionReserve && unlockedGas >= costGas
@@ -47,6 +50,21 @@ private[pony] class TerranEconomicProgress {
   def secondBaseOperational(fields: Seq[MiningFieldStatus]) = saturated &&
     startingField.exists(id => fields.exists(f => f.id == id && f.operational) &&
       fields.exists(f => f.id != id && f.operational))
+}
+
+/** A funded factory job and its visible unfinished SCV describe the same production slot. */
+private[pony] object WorkerProductionQuota {
+  def missing(target: Int, completed: Int, incomplete: Int, reservedTraining: Int,
+              nativeTraining: Int, requests: Seq[Int]): Int = {
+    val production = incomplete max (reservedTraining max nativeTraining)
+    (target - completed - production - requests.sum) max 0
+  }
+}
+
+/** Cargo carried from another field cannot prove that this patch is being worked. */
+private[pony] object LocalMineralMining {
+  def observed(mining: Boolean, assignedPatch: Int, nativeTarget: Option[Int], nearby: Boolean) =
+    mining && nativeTarget.contains(assignedPatch) && nearby
 }
 
 case class ObservedEnemyBuilding(id: Int, tile: MapTilePosition, width: Int, height: Int, base: Boolean) {
@@ -114,6 +132,14 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
     operational && (launched || config.ready(operational, troops.size,
       troops.map(_.nativeUnitType.mineralPrice).sum, troops.map(_.nativeUnitType.gasPrice).sum,
       funds.minerals, funds.gas))
+  }
+
+  // Keep the bank available while the ready army discovers its first target. Existing queues finish.
+  def holdingNewArmy = {
+    val troops = fighters
+    config.holdNewArmy(universe.pluginByType[ManageMiningAtBases].secondBaseOperational,
+      troops.size, troops.map(_.nativeUnitType.mineralPrice).sum,
+      troops.map(_.nativeUnitType.gasPrice).sum, launched)
   }
 
   override def onTick_!(): Unit = {

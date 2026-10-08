@@ -1006,6 +1006,8 @@ Employer[F],
 
   private var startedToProduce = false
 
+  def requestedType = trainType
+
   override def proofForFunding = funding
 
   override def getOrder: Seq[UnitOrder] = {
@@ -1020,6 +1022,8 @@ Employer[F],
     if (!startedToProduce && ageSinceLastReset > patience && factory.isProducing) {
       startedToProduce = true
       trace(s"Job $this started to produce ${trainType.className}")
+      if (classOf[WorkerUnit] >= trainType)
+        NativeMatchEvidence.trace("scv-production", s"depot=${factory.nativeUnitId} tile=${factory.tilePosition}")
       unlockManually_!()
     }
   }

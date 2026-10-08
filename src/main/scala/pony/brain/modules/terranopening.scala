@@ -28,7 +28,7 @@ class TerranEconomicOpening(universe: Universe)
   private val depotEmployer = new Employer[CommandCenter](universe)
   private var relocation = Option.empty[RelocateDepot]
   override def onTick_!(): Unit = {
-    if (currentTick % Primes.prime31 != 0) return
+    if (currentTick % Primes.prime31.i != 0) return
     val mining = universe.pluginByType[ManageMiningAtBases]
     relocation = relocation.filterNot(j => j.failedOrObsolete || j.isFinished)
     val depots = ownUnits.allByType[CommandCenter].filter(_.isInGame).toVector
@@ -78,12 +78,18 @@ class TerranEconomicOpening(universe: Universe)
       unitGrid.enemy.allInRange(area.nearbyFreeTile, 12).isEmpty &&
       mapLayers.rawWalkableMap.areInSameWalkableArea(home, area.nearbyFreeTile)
     private def chooseDestination(): Unit = {
-      destination = strategicMap.resources.filter(safe).toVector.sortBy(_.nearbyFreeTile.distanceSquaredTo(home))
+      returningHome = false
+      destination = strategicMap.resources.filter(safe)
+        .filter(a => strategicMap.defenseLineOf(a.nearbyFreeTile).isDefined).toVector
+        .sortBy(a => (a.nearbyFreeTile.distanceSquaredTo(home), a.uniqueId))
         .iterator.flatMap { area => new ConstructionSiteFinder(universe).forResourceArea(area).find.map(area -> _) }
         .take(1).toList.headOption
       if (destination.isEmpty && depot.isFloating) {
         returningHome = true
-        destination = bases.mainBase.flatMap(_.resourceArea).map(_ -> home)
+        destination = bases.mainBase.flatMap(_.resourceArea).flatMap { field =>
+          new ConstructionSiteFinder(universe).findSpotFor(home, classOf[CommandCenter], maxRange = 25)
+            .map(field -> _)
+        }
       }
     }
     override def everyNth = 31
@@ -93,11 +99,11 @@ class TerranEconomicOpening(universe: Universe)
     override def onFinishOrFail(): Unit = { super.onFinishOrFail(); depot.relocating = false }
     override def ordersForTick: Seq[UnitOrder] = {
       if (destination.isEmpty) chooseDestination()
-      destination.toSeq.flatMap { case (field, landingTile) =>
+      destination.toList.flatMap { case (field, landingTile) =>
         val tile = depot.tilePosition
         if (tile != lastTile) { lastTile = tile; lastProgress = currentTick }
-        val landedThere = !depot.isFloating && tile == landingTile
-        val next = DepotRelocation.next(saturated = true, depot.nativeUnit.isTraining,
+        val landedThere = !depot.isFloating && depot.nativeUnit.isCompleted && tile == landingTile
+        val next = DepotRelocation.next(true, depot.nativeUnit.isTraining,
           depot.isFloating, tile.distanceToIsLess(landingTile, 4), landedThere)
         if (!phase.contains(next)) NativeMatchEvidence.trace("depot-relocation",
           s"id=${depot.nativeUnitId} phase=$next from=$tile to=$landingTile field=${field.uniqueId}")
@@ -109,7 +115,8 @@ class TerranEconomicOpening(universe: Universe)
               destination = None
               lastProgress = currentTick
               Nil
-            } else Orders.FlyDepot(depot, landingTile).toSeq
+            } else if (depot.nativeUnit.isMoving) Nil
+            else Orders.FlyDepot(depot, landingTile).toSeq
           case DepotRelocation.Land =>
             if (depot.nativeUnit.canLand(landingTile.asTilePosition)) {
               landingRetries = 0

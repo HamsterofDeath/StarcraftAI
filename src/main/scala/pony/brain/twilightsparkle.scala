@@ -436,7 +436,8 @@ class Bases(world: DefaultWorld, override val universe: Universe) extends HasUni
   private val myBases          = ArrayBuffer.empty[Base]
   private val newBaseListeners = ArrayBuffer.empty[NewBaseListener]
 
-  def isCovered(field: ResourceArea) = myBases.exists(_.resourceArea.contains(field))
+  def isCovered(field: ResourceArea) = myBases.exists(b =>
+    !b.mainBuilding.isFloating && b.mainBuilding.isInGame && b.resourceArea.contains(field))
 
   def rich = {
     def singleValuable = myMineralFields.exists(_.value > 15000) &&

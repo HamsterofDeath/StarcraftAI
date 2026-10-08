@@ -776,8 +776,8 @@ object Terran {
 
     private val helper = new NonConflictingTargets[TerranBuilding, SCV](universe = universe,
       rateTarget = m => PriorityChain(m.percentageHPOk),
-      validTargetTest = _.isDamaged,
-      subAccept = (m, t) => m.currentArea.contains(t.areaOnMap),
+      validTargetTest = t => t.isDamaged && !t.isFloating,
+      subAccept = (m, t) => !t.isFloating && m.currentArea.contains(t.areaOnMap),
       subRate = (m, t) => PriorityChain(-m.currentTile.distanceSquaredTo(t.centerTile)),
       own = true,
       allowReplacements = true)
@@ -1436,7 +1436,7 @@ object Terran {
         }.toList
       }.named("Evaluate scouting plans")
 
-      def onTick_!() = {
+      def onTick_!(): Unit = {
         if (race.isTerran && !universe.pluginByType[RunTerranCampaign].reconnaissanceAllowed) return
         val oldSize = scouts.size
         scouts.retain { (_, v) => v.valid }

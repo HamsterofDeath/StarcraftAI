@@ -218,9 +218,15 @@ class ProvideSpareSCVs(universe: Universe) extends OrderlessAIModule[CommandCent
       // only for terran!
       val mining = universe.pluginByType[ManageMiningAtBases]
       val target = mining.workerCapacity + universe.pluginByType[ManageMiningAtGeysirs].workerCapacity + 2
-      val existingAndRequested = unitManager.countExistingAndPlanned(classOf[WorkerUnit])
-      val training = ownUnits.allByType[CommandCenter].count(_.nativeUnit.isTraining)
-      val missing = target - existingAndRequested - training
+      val workers = ownUnits.allByType[WorkerUnit].filter(_.isInGame).toVector
+      val reserved = unitManager.allJobsByType[TrainUnit[UnitFactory, Mobile]].count { job =>
+        !job.failedOrObsolete && !job.isFinished && classOf[WorkerUnit] >= job.requestedType
+      }
+      val requests = unitManager.plannedToTrain.filter(r => classOf[WorkerUnit] >= r.typeOfRequestedUnit)
+        .map(_.amount).toVector
+      val missing = WorkerProductionQuota.missing(target, workers.count(!_.isBeingCreated),
+        workers.count(_.isBeingCreated), reserved,
+        ownUnits.allByType[CommandCenter].count(_.nativeUnit.isTraining), requests)
       if (missing > 0) {
         unitManager.request(UnitJobRequest.idleOfType(emp, classOf[WorkerUnit], missing))
       }
@@ -311,6 +317,7 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule(universe
 
   private val gatheringJobs = ArrayBuffer.empty[ManageMiningAtPatchGroup]
   private val opening = new TerranEconomicProgress
+  private var secondWasOperational = false
   def fieldStates = gatheringJobs.filter(g => g.natural && !g.forBase.mainBuilding.isFloating)
     .map(g => MiningFieldStatus(g.forBase.resourceArea.get.uniqueId, g.capacity, g.teamSize,
       g.workingMiners, !g.forBase.mainBuilding.isBeingCreated && g.forBase.mainBuilding.isInGame)).toVector
@@ -319,8 +326,7 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule(universe
   def workerCapacity = gatheringJobs.filter(g => g.natural && !g.forBase.mainBuilding.isFloating).map(_.capacity).sum
 
   override def onTick_!(): Unit = {
-    val detached = gatheringJobs.filter(g => !g.forBase.mainBuilding.isInGame || g.forBase.mainBuilding.isFloating ||
-      !g.forBase.myMineralGroup.contains(g.patchGroup))
+    val detached = gatheringJobs.filterNot(_.attachedToBase)
     detached.foreach(_.releaseMiners())
     gatheringJobs --= detached
     createJobsForBases()
@@ -331,7 +337,7 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule(universe
         val nearest = universe.bases
                       .finishedBases
                       .iterator
-                      .filterNot(_ == base)
+                      .filterNot(b => b == base || b.mainBuilding.isFloating)
                       .minByOpt(_.mainBuilding.centerTile.distanceSquaredTo(e.patchGroup.anyTile))
         nearest.flatMap { bestReplacement =>
           val altDistance = bestReplacement.mainBuilding.centerTile
@@ -345,6 +351,7 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule(universe
         }
       }
       debug(s"Replacing ${outdated.size} outdated mining jobs")
+      outdated.foreach(_.releaseMiners())
       gatheringJobs --= outdated
     }
     gatheringJobs.foreach(_.onTick_!())
@@ -352,6 +359,10 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule(universe
     opening.observe(bases.mainBase.flatMap(_.resourceArea).map(_.uniqueId), fieldStates)
     if (!before && opening.startingFieldSaturated)
       NativeMatchEvidence.trace("starting-field-saturated", fieldStates.mkString(";"))
+    val operational = secondBaseOperational
+    if (operational && !secondWasOperational)
+      NativeMatchEvidence.trace("second-field-mining", fieldStates.mkString(";"))
+    secondWasOperational = operational
   }
 
   private def createJobsForBases(): Unit = {
@@ -360,7 +371,7 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule(universe
         universe.bases
         .finishedBases
         .filterNot(_.mainBuilding.isFloating)
-        .groupBy(_.resourceArea).values.map(_.head).toVector
+        .groupBy(_.resourceArea).values.map(_.minBy(_.mainBuilding.nativeUnitId)).toVector
         .filterNot(e => gatheringJobs.exists(_.covers(e)))
         .flatMap { base =>
           base.myMineralGroup.map { minerals =>
@@ -396,6 +407,10 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule(universe
     extends Employer[WorkerUnit](universe) {
     emp =>
 
+    private val boundField = base.resourceArea.map(_.uniqueId)
+    def attachedToBase = base.mainBuilding.isInGame && !base.mainBuilding.isFloating &&
+      base.resourceArea.map(_.uniqueId) == boundField
+
     def natural = base.resourceArea.exists(_.patches.contains(minerals))
 
     def unnatural = !natural
@@ -408,7 +423,9 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule(universe
     def capacity = Micro.MiningOrganization.idealNumberOfWorkers
     def workingMiners = unitManager.allJobsByUnitType[WorkerUnit].count {
       case job: GatherMineralsAtSinglePatch => minerals.patches.contains(job.targetPatch) &&
-        job.worker.isInGame && (job.worker.isInMiningProcess || job.worker.isCarryingMinerals)
+        job.worker.isInGame && LocalMineralMining.observed(job.worker.isInMiningProcess,
+          job.targetPatch.nativeUnitId, Option(job.worker.nativeUnit.getOrderTarget).map(_.getID),
+          job.worker.centerTile.distanceToIsLess(job.targetPatch.centerTile, 4))
       case _ => false
     }
 

@@ -8,7 +8,10 @@ param(
  [int]$MinFighters = 12,
  [int]$ArmyMinerals = 1500,
  [int]$ArmyGas = 300,
- [int]$ExpansionReserve = 300,
+ [int]$ExpansionReserve = 0,
+ [int]$BankMinerals = 1000,
+ [int]$BankGas = 300,
+ [switch]$Headless,
  [switch]$CheckOnly
 )
 $ErrorActionPreference = 'Stop'
@@ -20,6 +23,7 @@ $Java = (Resolve-Path -LiteralPath $Java).Path
 if ((& git -C $Repository rev-parse HEAD).Trim() -ne $SourceCommit) { throw 'Producer HEAD mismatch.' }
 if (& git -C $Repository status --porcelain --untracked-files=no) { throw 'Tracked source must match the producer.' }
 if ($HeapMb -lt 128 -or $HeapMb -gt 384) { throw 'Use a bounded x86 heap with native address headroom.' }
+if ($MinFighters -lt 1 -or $ArmyMinerals -lt 0 -or $ArmyGas -lt 0 -or $ExpansionReserve -lt 0 -or $BankMinerals -lt 0 -or $BankGas -lt 0) { throw 'Campaign thresholds must be nonnegative with at least one fighter.' }
 if (Get-Process -Name StarCraft,injectory_x86 -ErrorAction SilentlyContinue) { throw 'Native runtime is occupied.' }
 $foreignBot = Get-CimInstance Win32_Process -Filter "Name='java.exe'" | Where-Object { $_.CommandLine -match 'pony\.Controller' }
 if ($foreignBot) { throw 'A bot already owns the native runtime.' }
@@ -54,7 +58,12 @@ New-Item -ItemType Directory -Path (Join-Path $Runtime 'log') -Force | Out-Null
 $dependencies = (Get-Content -LiteralPath $classpathFile -Raw).Trim()
 $classpath = (Join-Path $Repository 'target/scala-2.11/classes') + ';' + $dependencies
 $options = @("-Xmx${HeapMb}M",'-XX:ParallelGCThreads=2','-Dscala.concurrent.context.numThreads=2','-Dscala.concurrent.context.maxThreads=2',"-Dtwailight.run=$RunName","-Dtwailight.producer=$SourceCommit",('-Dtwailight.resultDirectory="'+$run+'"'),"-Dtwailight.mapInputSha256=$mapHash","-Dtwailight.minFighters=$MinFighters","-Dtwailight.armyMinerals=$ArmyMinerals","-Dtwailight.armyGas=$ArmyGas","-Dtwailight.expansionReserve=$ExpansionReserve",'-cp',('"'+$classpath+'"'),'pony.Controller')
+$options = $options[0..($options.Count-4)] + @("-Dtwailight.bankMinerals=$BankMinerals", "-Dtwailight.bankGas=$BankGas", ('-Dtwailight.headless=' + $Headless.IsPresent.ToString().ToLowerInvariant())) + $options[($options.Count-3)..($options.Count-1)]
 $receipt = [ordered]@{ schema=1; run=$RunName; owner='twilight_ai_impl'; producer=$SourceCommit; launchedAt=(Get-Date).ToUniversalTime().ToString('o'); status='unfinished'; game='StarCraft 1.16.1'; bwapiRevision=4615; bwapiSha256=$dllHash; map=$mapRelative; mapInputSha256=$mapHash; javaSha256=(Get-FileHash -LiteralPath $Java -Algorithm SHA256).Hash; heapMb=$HeapMb; nativeWorkerThreads=2; ordinaryVision=$true; revealCheat=$false; opponent='unmodified native Protoss computer'; configuration=@{minFighters=$MinFighters;armyMinerals=$ArmyMinerals;armyGas=$ArmyGas;expansionReserve=$ExpansionReserve} }
+$receipt.renderingEnabled = !$Headless.IsPresent
+$receipt.configuration.bankMinerals = $BankMinerals
+$receipt.configuration.bankGas = $BankGas
+$receipt.configuration.localSpeed = 0
 $bot = Start-Process -FilePath $Java -ArgumentList $options -WorkingDirectory $Runtime -WindowStyle Hidden -RedirectStandardOutput (Join-Path $run 'bot-stdout.log') -RedirectStandardError (Join-Path $run 'bot-stderr.log') -PassThru
 $receipt.botPid=$bot.Id; $receipt.botStart=$bot.StartTime.ToUniversalTime().ToString('o')
 $receipt | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $run 'manifest.json')

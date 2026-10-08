@@ -1037,6 +1037,8 @@ class EnqueueArmy(universe: Universe)
 
   override def onTick_!(): Unit = {
     super.onTick_!()
+    if (race.isTerran && strategy.current.isInstanceOf[Strategy.SimpleTerran] &&
+      universe.pluginByType[RunTerranCampaign].holdingNewArmy) return
     val RequestPlan(buildThese, needsSomething) = myRequestPlan.get
     var resourceResults = Option.empty[ResourceRequests]
     buildThese.filterNot(needsSomething.contains).foreach { case (thisOne, _) =>

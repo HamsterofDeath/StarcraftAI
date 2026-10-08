@@ -22,6 +22,13 @@ class TerranCampaignTest extends Specification {
     Queued groups safely resolve units which have all died $staleGroup
     Partially dead queued groups retain only surviving members $partialGroup
     Singleton scouting terminates and the final unpaired site is still scouted $singletonScout
+    Scouting and offense wait for a staffed expansion and both bank thresholds $economicGate
+    Starting mineral saturation survives builder departure but resets for a new match $saturation
+    Two home depots or old-field cargo cannot establish a second resource field $secondField
+    Relocation waits for saturation and queued SCVs then follows native lift and landing $relocation
+    SCV reservations count request quantities without duplicating visible training $workerQuota
+    Only local mining of the assigned patch proves field operation $localMining
+    A ready defensive army preserves its bank through reconnaissance and resumes after launch $stockpile
   """
   private def building(id: Int, x: Int, base: Boolean = true) =
     ObservedEnemyBuilding(id, MapTilePosition(x, 20), 4, 3, base)
@@ -34,7 +41,7 @@ class TerranCampaignTest extends Specification {
     val c = TerranCampaignConfig()
     def allowed(minerals: Int, pending: Boolean = false, safe: Boolean = true) =
       c.expand(minerals, 0, 400, 0, pending, safe)
-    (allowed(700), allowed(699), allowed(700, true), allowed(700, safe = false)) mustEqual
+    (allowed(400), allowed(399), allowed(400, true), allowed(400, safe = false)) mustEqual
       (true, false, false, false)
   }
   def fog = {
@@ -142,5 +149,57 @@ class TerranCampaignTest extends Specification {
       ScoutPointPairs.next(points, covered)((_, _) => Some(1.0))
     (next(Vector(a), Set.empty), next(Vector(a), Set(a)), next(Vector(a, b), Set(a))) mustEqual
       (List(a), Nil, List(b))
+  }
+  def economicGate = {
+    val c = TerranCampaignConfig()
+    (c.ready(false, 12, 1500, 300, 1000, 300), c.ready(true, 12, 1500, 300, 999, 300),
+      c.ready(true, 12, 1500, 300, 1000, 299), c.ready(true, 11, 1500, 300, 1000, 300),
+      c.ready(true, 12, 1500, 300, 1000, 300)) mustEqual (false, false, false, false, true)
+  }
+  def saturation = {
+    val progress = new TerranEconomicProgress
+    progress.observe(Some(1), Seq(MiningFieldStatus(1, 20, 19, 10, true)))
+    val early = progress.startingFieldSaturated
+    progress.observe(Some(1), Seq(MiningFieldStatus(1, 20, 20, 10, true)))
+    progress.observe(Some(1), Seq(MiningFieldStatus(1, 20, 19, 10, true)))
+    (early, progress.startingFieldSaturated, new TerranEconomicProgress().startingFieldSaturated) mustEqual
+      (false, true, false)
+  }
+  def secondField = {
+    val p = new TerranEconomicProgress
+    val home = MiningFieldStatus(1, 20, 20, 5, true)
+    p.observe(Some(1), Seq(home))
+    val flying = MiningFieldStatus(2, 20, 20, 5, false)
+    val unworked = MiningFieldStatus(2, 20, 10, 0, true)
+    (p.secondBaseOperational(Seq(home, home)), p.secondBaseOperational(Seq(home, flying)),
+      p.secondBaseOperational(Seq(home, unworked)),
+      p.secondBaseOperational(Seq(home, unworked.copy(working = 1)))) mustEqual (false, false, false, true)
+  }
+  def relocation = {
+    import DepotRelocation._
+    (next(false, false, false, false, false), next(true, true, false, false, false),
+      next(true, false, false, false, false), next(true, false, true, false, false),
+      next(true, false, true, true, false), next(true, false, false, true, true),
+      next(false, false, true, false, false)) mustEqual
+      (AwaitSaturation, FinishTraining, Lift, Fly, Land, Established, Fly)
+  }
+  def workerQuota = {
+    def missing(incomplete: Int, reserved: Int, native: Int, requests: Seq[Int]) =
+      WorkerProductionQuota.missing(24, 20, incomplete, reserved, native, requests)
+    (missing(0, 2, 0, Nil), missing(2, 2, 2, Nil), missing(0, 0, 2, Nil),
+      missing(0, 0, 0, Seq(3)), missing(2, 2, 2, Seq(3))) mustEqual (2, 2, 2, 1, 0)
+  }
+  def localMining = {
+    (LocalMineralMining.observed(false, 11, Some(11), true),
+      LocalMineralMining.observed(true, 11, Some(9), true),
+      LocalMineralMining.observed(true, 11, None, true),
+      LocalMineralMining.observed(true, 11, Some(11), false),
+      LocalMineralMining.observed(true, 11, Some(11), true)) mustEqual (false, false, false, false, true)
+  }
+  def stockpile = {
+    val c = TerranCampaignConfig()
+    (c.holdNewArmy(false, 12, 1500, 300, false), c.holdNewArmy(true, 11, 1500, 300, false),
+      c.holdNewArmy(true, 12, 1500, 300, false), c.holdNewArmy(true, 12, 1500, 300, true)) mustEqual
+      (false, false, true, false)
   }
 }
