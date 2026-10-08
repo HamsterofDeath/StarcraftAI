@@ -243,7 +243,15 @@ class TerranBunkerDefense(universe: Universe)
           .filter(mapLayers.rawWalkableMap.insideBounds)
           .filter(mapLayers.blockedByBuildingTiles.free)
         val points = BunkerCoverage.corners(workTiles)
-        val existing = bunkers.filter(b => b.tilePosition.distanceToIsLess(field.center, 15)).map(_.area)
+        // Already completed and in-flight bunkers count as existing coverage so re-planning keeps
+        // them instead of retiring construction the moment the binding changes.
+        val existing = {
+          val completed = bunkers.filter(b => b.tilePosition.distanceToIsLess(field.center, 15)).map(_.area)
+          val inFlight = (unitManager.requestedConstructions[Bunker].flatMap(_.customPosition.requestedPosition) ++
+            unitManager.constructionsInProgress[Bunker].map(_.buildWhere))
+            .filter(_.distanceToIsLess(field.center, 15)).map(p => Area(p, Size(3, 2)))
+          (completed ++ inFlight).distinct
+        }
         val finder = new ConstructionSiteFinder(universe)
         val routeTiles = BunkerCoverage.workerTiles(Nil, Nil, routes.flatten).toSet
         val candidates = finder.bunkerSites(field, workTiles).filterNot(a => a.tiles.exists(routeTiles))
@@ -253,10 +261,14 @@ class TerranBunkerDefense(universe: Universe)
           finder.bunkerSitesSafeTogether, relaxedFallback = true)
         if (routes.nonEmpty && routes.forall(_.isDefined) && points.nonEmpty &&
           (sites.nonEmpty || points.forall(p => existing.exists(BunkerCoverage.covers(_, p, range))))) {
-          plans(field.uniqueId) = points -> (existing ++ sites)
+          val allSites = existing ++ sites
+          // Points a finished building already occupies can never be covered again; store only
+          // what the final site set covers, or readiness would stay false forever.
+          val covered = points.filter(p => allSites.exists(BunkerCoverage.covers(_, p, range)))
+          plans(field.uniqueId) = covered -> allSites
           geometry(field.uniqueId) = binding
           announcedReady -= field.uniqueId
-          NativeMatchEvidence.trace("bunker-coverage-plan", s"field=${field.uniqueId} range=$range model=conservativeNativeApprox points=${points.size} solvedRoutes=${routes.size} jointFootprintsSafe=true sites=${(existing ++ sites).map(_.upperLeft)}")
+          NativeMatchEvidence.trace("bunker-coverage-plan", s"field=${field.uniqueId} range=$range model=conservativeNativeApprox points=${covered.size}/${points.size} solvedRoutes=${routes.size} jointFootprintsSafe=true sites=${allSites.map(_.upperLeft)}")
           uncoveredReported -= field.uniqueId
         } else if (!uncoveredReported(field.uniqueId)) {
           NativeMatchEvidence.trace("bunker-coverage-unavailable", s"field=${field.uniqueId} points=${points.size} safeCandidates=${candidates.size} noGenericFallback=true")
