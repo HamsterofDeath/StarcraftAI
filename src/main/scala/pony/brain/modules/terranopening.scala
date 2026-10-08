@@ -65,14 +65,18 @@ class TerranEconomicOpening(universe: Universe)
     bases.mainBase.foreach { home =>
       // A depot parked on a dead field is not a base: count still-useful fields, not depots, so the
       // loss of a field triggers a replacement CommandCenter even when the depot count is full.
-      // If a landed non-home depot already sits on a dead field, the relocation below recycles that
-      // one instead of paying for another.
+      // But while a landed non-home depot can already be recycled by the relocation below (it sits
+      // on a dead field or shares its field with another depot), pay for no replacement.
       val replaceNeeded = usefulFields.size < TerranCampaignConfig.load().requiredFields
-      val spareOnDeadField = depots.exists { cc =>
-        cc != home.mainBuilding && !cc.isBeingCreated && !cc.isFloating &&
-          bases.allBases.find(_.mainBuilding == cc).flatMap(_.resourceArea).exists(a => !fieldUseful(a))
+      def fieldOf(cc: CommandCenter) =
+        bases.allBases.find(_.mainBuilding == cc).flatMap(_.resourceArea)
+      val landed = depots.filterNot(cc => cc.isBeingCreated || cc.isFloating)
+      val recyclableDepot = landed.exists { cc =>
+        cc != home.mainBuilding && fieldOf(cc).exists { area =>
+          !fieldUseful(area) || landed.exists(other => other != cc && fieldOf(other).contains(area))
+        }
       }
-      if (replaceNeeded && !spareOnDeadField &&
+      if (replaceNeeded && !recyclableDepot && relocation.isEmpty &&
         !unitManager.requestedToBuild(classOf[CommandCenter]) &&
         unitManager.constructionsInProgress[CommandCenter].isEmpty) {
         val cost = ResourceRequests.forUnit(race, classOf[CommandCenter])
@@ -146,7 +150,7 @@ class TerranEconomicOpening(universe: Universe)
         val pending = unitManager.requestedToBuild(classOf[CommandCenter]) ||
           unitManager.constructionsInProgress[CommandCenter].nonEmpty
         val expandState =
-          if (!replaceNeeded || spareOnDeadField) "held"
+          if (!replaceNeeded || recyclableDepot) "held"
           else if (pending) "building"
           else if (cfg.expand(funds.minerals, funds.gas, cost.minerals, cost.gas,
             pending = false, safeReachableSite = true)) "requesting"
