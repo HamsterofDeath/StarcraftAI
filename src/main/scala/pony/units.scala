@@ -285,6 +285,13 @@ trait StaticallyPositioned extends WrapsUnit {
 
   def tilePosition = myTilePosition.get
 
+  /** Recompute the static position cells, e.g. after a building has flown and landed. */
+  protected def refreshPositionCaches(): Unit = {
+    myTilePosition.invalidate()
+    myArea.invalidate()
+    myAreaOnMap.invalidate()
+  }
+
   override def center = area.center
 
   def area = myArea.get
@@ -316,6 +323,16 @@ trait TerranBuilding extends Building {
   }
 
   def currentAreaOnMap = myCurrentArea.get
+
+  /** A lifted building moves; the cached static position must not be used while it flies. */
+  override def tilePosition = if (isFloating) currentTile else super.tilePosition
+
+  override def onTick_!(): Unit = {
+    super.onTick_!()
+    if (!isFloating && super.tilePosition != currentTile) {
+      refreshPositionCaches()
+    }
+  }
 
 }
 
