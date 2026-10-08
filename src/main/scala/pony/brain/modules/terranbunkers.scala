@@ -242,7 +242,7 @@ class TerranBunkerDefense(universe: Universe)
         val workTiles = BunkerCoverage.workerTiles(patches, depots, routes.flatten)
           .filter(mapLayers.rawWalkableMap.insideBounds)
           .filter(mapLayers.blockedByBuildingTiles.free)
-        val points = BunkerCoverage.corners(workTiles)
+        val allPoints = BunkerCoverage.corners(workTiles)
         // Already completed and in-flight bunkers count as existing coverage so re-planning keeps
         // them instead of retiring construction the moment the binding changes.
         val existing = {
@@ -255,6 +255,9 @@ class TerranBunkerDefense(universe: Universe)
         val finder = new ConstructionSiteFinder(universe)
         val routeTiles = BunkerCoverage.workerTiles(Nil, Nil, routes.flatten).toSet
         val candidates = finder.bunkerSites(field, workTiles).filterNot(a => a.tiles.exists(routeTiles))
+        // Points no candidate footprint can reach (map edge lanes, ground occupied by other
+        // buildings) must not demand coverage, or the field could never be planned at all.
+        val points = allPoints.filter(p => (existing ++ candidates).exists(BunkerCoverage.covers(_, p, range)))
         // Cramped terrain (map corners) may admit no jointly split-free set; then keep individual
         // coverage with separated sites instead of refusing to plan any bunkers at all.
         val sites = BunkerCoverage.select(points, candidates, existing, range,
