@@ -41,6 +41,7 @@ class TerranCampaignTest extends Specification {
     Mineral field corners require enough nonoverlapping bunker sites for full coverage $bunkerCoverage
     Garrison reservations stay unique and replace a killed Marine without inventing native cargo $bunkerGarrison
     Three separated mineral sectors need three bunkers and actual four-cargo coverage before readiness $threeBunkers
+    Greedy coverage retains deterministic safety rejection order without validating lower-ranked sites $bunkerRankedSafety
     Bunker coverage uses pinned native approximate distance and does not claim favorable collision extents $bunkerNativeDistance
     An invalid validated bunker preset refuses generic fallback while legacy placements retain it $strictBunkerSite
     Bunker placement admits temporary traffic but refuses permanent obstacles and severed mining access $bunkerStaticPlacement
@@ -360,6 +361,29 @@ class TerranCampaignTest extends Specification {
     (selected.size, BunkerCoverage.ready(points, selected, Map.empty, 160),
       BunkerCoverage.ready(points, selected, full.updated(selected.head.upperLeft, 3), 160),
       BunkerCoverage.ready(points, selected, full, 160)) mustEqual (3, false, false, true)
+  }
+  def bunkerRankedSafety = {
+    def site(x: Int, y: Int) = Area(MapTilePosition(x, y), Size(3, 2))
+    val a = site(10, 10); val b = site(30, 10); val c = site(50, 10)
+    val rejectedFirst = site(9, 10)
+    val alternateB = site(30, 11)
+    val points = Vector(a, b, c).map(s => MapPosition(s.upperLeft.mapX + 48, s.upperLeft.mapY + 32))
+    // All three sectors need coverage, so the single/pair shortcuts cannot satisfy this field.
+    val lowerRanked = (11 to 14).flatMap(y => Vector(10, 30, 50).map(x => site(x, y))).toVector
+    val candidates = Vector(a, b, c, rejectedFirst) ++ lowerRanked
+    def run(input: Vector[Area], jointRefusal: Boolean) = {
+      var checks = Vector.empty[Vector[Area]]
+      val selected = BunkerCoverage.select(points, input, Vector.empty, 96, together => {
+        val set = together.toVector
+        checks :+= set
+        !set.contains(rejectedFirst) && !(jointRefusal && set.contains(a) && set.contains(b))
+      })
+      (selected, checks.size, points.forall(p => selected.exists(BunkerCoverage.covers(_, p, 96))))
+    }
+    (run(candidates, false), run(candidates.reverse, false),
+      run(candidates, true), run(candidates.reverse, true)) mustEqual
+      ((Vector(a, b, c), 4, true), (Vector(a, b, c), 4, true),
+        (Vector(a, c, alternateB), 6, true), (Vector(a, c, alternateB), 6, true))
   }
   def bunkerNativeDistance = {
     (BunkerCoverage.approximateDistance(MapPosition(0, 0), MapPosition(160, 0)),

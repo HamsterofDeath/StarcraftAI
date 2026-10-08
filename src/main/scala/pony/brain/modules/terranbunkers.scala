@@ -58,9 +58,11 @@ private[pony] object BunkerCoverage {
         var left = needed
         var selected = Vector.empty[Area]
         while (left.nonEmpty) {
-          val next = ranked.filter(e => selected.forall(separate(e._1, _)) && safeTogether(selected :+ e._1))
+          // Preserve the same first admissible ranked site; whole-map connectivity is expensive.
+          val next = ranked.filter(e => selected.forall(separate(e._1, _)))
             .map(e => (e._1, e._2 intersect left)).filter(_._2.nonEmpty)
-            .sortBy(e => (-e._2.size, e._1.upperLeft.y, e._1.upperLeft.x)).headOption
+            .sortBy(e => (-e._2.size, e._1.upperLeft.y, e._1.upperLeft.x)).iterator
+            .find(e => safeTogether(selected :+ e._1))
           if (next.isEmpty) return Vector.empty
           selected :+= next.get._1
           left --= next.get._2
@@ -240,6 +242,8 @@ class TerranBunkerDefense(universe: Universe)
           uncoveredReported -= field.uniqueId
         } else if (!uncoveredReported(field.uniqueId)) {
           NativeMatchEvidence.trace("bunker-coverage-unavailable", s"field=${field.uniqueId} points=${points.size} safeCandidates=${candidates.size} noGenericFallback=true")
+          val individuallyUncovered = points.filterNot(p => (existing ++ candidates).exists(BunkerCoverage.covers(_, p, range)))
+          NativeMatchEvidence.trace("bunker-coverage-geometry", s"field=${field.uniqueId} range=$range requiredPoints=$points individuallyUncovered=$individuallyUncovered unsolvedRoutes=${routes.zipWithIndex.filter(_._1.isEmpty).map(_._2)} existing=${existing.map(_.upperLeft)} candidates=${candidates.map(_.upperLeft)}")
           uncoveredReported += field.uniqueId
         }
       }
