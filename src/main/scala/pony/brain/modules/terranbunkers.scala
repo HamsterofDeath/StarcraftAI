@@ -179,7 +179,10 @@ class TerranBunkerDefense(universe: Universe)
   private var announcedReady = Set.empty[Int]
   private var uncoveredReported = Set.empty[Int]
   private var placementReported = Set.empty[MapTilePosition]
-  private def active = race.isTerran && strategy.current.isInstanceOf[Strategy.SimpleTerran]
+  private def active = race.isTerran && (strategy.current match {
+    case s: Strategy.SimpleTerran => s.usesBunkerDefense
+    case _ => false
+  })
   private def bunkers = ownUnits.allByType[Bunker].filter(_.isInGame).toVector
   private def plannedSites = plans.values.flatMap(_._2.map(_.upperLeft)).toSet
   private def activeBunkers = bunkers.filter(b => plannedSites(b.tilePosition))

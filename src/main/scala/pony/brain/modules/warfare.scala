@@ -1295,12 +1295,17 @@ object Strategy {
                                          new TerranVsTerran(universe) ::
                                          new TerranVsZerg(universe) ::
                                          Nil
+    private val byKey = Map(
+      "infantry" -> new TerranInfantryPush(universe),
+      "factory" -> new TerranFactoryOnly(universe),
+      "skywall" -> new TerranSkyWall(universe))
+    private val configured = sys.props.get("twailight.strategy").filterNot(_ == "default").flatMap(byKey.get)
     private var best: LongTermStrategy = new IdleAround(universe)
 
-    def current = best
+    def current = configured.getOrElse(best)
 
     def tick(): Unit = {
-      ifNth(Primes.prime251) {
+      if (configured.isEmpty) ifNth(Primes.prime251) {
         best = available.maxBy(_.determineScore)
       }
     }
@@ -1310,6 +1315,7 @@ object Strategy {
     private val config = TerranCampaignConfig.load()
     override def name = "Default Terran campaign"
     override def determineScore = if (race.isTerran) 1000 else -1
+    def usesBunkerDefense: Boolean = true
     override protected def expandNow = {
       val cost = ResourceRequests.forUnit(race, race.resourceDepositClass)
       config.expand(resources.unlockedResources.minerals, resources.unlockedResources.gas,
@@ -1334,6 +1340,65 @@ object Strategy {
       UpgradeToResearch(Upgrades.Terran.VehicleWeapons)(bases.finishedBases.size >= 2) ::
       UpgradeToResearch(Upgrades.Terran.VehicleArmor)(bases.finishedBases.size >= 2) ::
       UpgradeToResearch(Upgrades.Terran.GoliathRange)(bases.finishedBases.size >= 2) :: Nil
+  }
+
+  /** Maximum-offense infantry: barracks only, every infantry upgrade, no bunkers at home. */
+  class TerranInfantryPush(override val universe: Universe) extends SimpleTerran(universe) {
+    override def name = "Infantry push"
+    override def usesBunkerDefense = false
+    override def suggestProducers =
+      IdealProducerCount(classOf[Barracks], 3)(true) :: Nil
+    override def suggestUnits =
+      IdealUnitRatio(classOf[Marine], 12)(true) ::
+      IdealUnitRatio(classOf[Firebat], 3)(time.minutes >= 3) ::
+      IdealUnitRatio(classOf[Medic], 3)(time.minutes >= 3) :: Nil
+    override def suggestUpgrades =
+      UpgradeToResearch(Upgrades.Terran.InfantryWeapons)(true) ::
+      UpgradeToResearch(Upgrades.Terran.InfantryArmor)(true) ::
+      UpgradeToResearch(Upgrades.Terran.InfantryCooldown)(true) ::
+      UpgradeToResearch(Upgrades.Terran.MarineRange)(true) ::
+      UpgradeToResearch(Upgrades.Terran.MedicEnergy)(true) ::
+      UpgradeToResearch(Upgrades.Terran.MedicHeal)(true) ::
+      UpgradeToResearch(Upgrades.Terran.MedicFlare)(true) :: Nil
+  }
+
+  /** No infantry at all: everything comes from the factory, with vehicle upgrades. */
+  class TerranFactoryOnly(override val universe: Universe) extends SimpleTerran(universe) {
+    override def name = "Factory only"
+    override def usesBunkerDefense = false
+    override def suggestProducers =
+      IdealProducerCount(classOf[Factory], 4)(true) :: Nil
+    override def suggestUnits =
+      IdealUnitRatio(classOf[Vulture], 4)(true) ::
+      IdealUnitRatio(classOf[Tank], 8)(true) ::
+      IdealUnitRatio(classOf[Goliath], 4)(true) :: Nil
+    override def suggestUpgrades =
+      UpgradeToResearch(Upgrades.Terran.TankSiegeMode)(true) ::
+      UpgradeToResearch(Upgrades.Terran.SpiderMines)(true) ::
+      UpgradeToResearch(Upgrades.Terran.VultureSpeed)(true) ::
+      UpgradeToResearch(Upgrades.Terran.VehicleWeapons)(true) ::
+      UpgradeToResearch(Upgrades.Terran.VehicleArmor)(true) ::
+      UpgradeToResearch(Upgrades.Terran.GoliathRange)(true) :: Nil
+  }
+
+  /** Seal the land approach with Supply Depots and fly straight to battlecruisers. */
+  class TerranSkyWall(override val universe: Universe) extends SimpleTerran(universe) {
+    override def name = "Sky wall"
+    override def usesBunkerDefense = false
+    override def suggestProducers =
+      IdealProducerCount(classOf[Barracks], 1)(true) ::
+      IdealProducerCount(classOf[Factory], 1)(true) ::
+      IdealProducerCount(classOf[Starport], 2)(true) :: Nil
+    override def suggestUnits =
+      IdealUnitRatio(classOf[Battlecruiser], 8)(true) ::
+      IdealUnitRatio(classOf[ScienceVessel], 1)(true) :: Nil
+    override def suggestUpgrades =
+      UpgradeToResearch(Upgrades.Terran.ShipWeapons)(true) ::
+      UpgradeToResearch(Upgrades.Terran.ShipArmor)(true) ::
+      UpgradeToResearch(Upgrades.Terran.CruiserEnergy)(true) ::
+      UpgradeToResearch(Upgrades.Terran.CruiserGun)(true) ::
+      UpgradeToResearch(Upgrades.Terran.ScienceVesselEnergy)(true) ::
+      UpgradeToResearch(Upgrades.Terran.Irradiate)(true) :: Nil
   }
 
   class IdleAround(override val universe: Universe) extends LongTermStrategy {
