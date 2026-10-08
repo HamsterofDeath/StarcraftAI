@@ -169,6 +169,13 @@ private[pony] object ScoutPointPairs {
   }
 }
 
+/** The endgame hunt sweeps every resource area, farthest from home first, then starts over. */
+private[pony] object HuntSweep {
+  def order(points: Seq[MapTilePosition], home: Option[MapTilePosition]): Vector[MapTilePosition] =
+    points.toVector.sortBy(p => home.map(h => -p.distanceSquaredTo(h)).getOrElse(0))
+  def next(size: Int, index: Int): Int = if (size <= 0) index else (index + 1) % size
+}
+
 /** One campaign owns the persistent offensive target; existing arbitration and micro own commands. */
 class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](universe) {
   private val config = TerranCampaignConfig.load()
@@ -176,6 +183,11 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
   private var previousTarget = Option.empty[MapTilePosition]
   private var launched = false
   private var wasReady = false
+  private var campaignCommitted = false
+  private var huntPoints = Vector.empty[MapTilePosition]
+  private var huntIndex = 0
+  private var huntTarget = Option.empty[MapTilePosition]
+  private var huntInitiated = false
   private val defenseRoster = new TerranDefenseRoster(6)
   private val defenses = oncePerTick {
     if (strategy.current.isInstanceOf[Strategy.SimpleTerran]) {
@@ -257,7 +269,27 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
     if (learned.nonEmpty) NativeMatchEvidence.trace("discovered-buildings", learned.toVector.sorted.mkString(","))
     val home = bases.mainBase.map(_.mainBuilding.tilePosition).getOrElse(MapTilePosition(0, 0))
     memory.select(home)
-    val target = memory.attackPosition
+    val known = memory.attackPosition
+    // With the enemy wiped from memory but the match still running, sweep the map for remnants
+    // instead of letting the army stand idle waiting for a slow scout to find the last building.
+    val sweepDone = !worldDominationPlan.planningInProgress && worldDominationPlan.campaignForceSize == 0
+    if (known.isDefined) {
+      huntTarget = None
+      huntInitiated = false
+    } else if (campaignCommitted && !worldDominationPlan.baseDefenseActive) {
+      if (huntTarget.isEmpty || (huntInitiated && sweepDone)) {
+        if (huntPoints.isEmpty) {
+          huntPoints = HuntSweep.order(strategicMap.resources.map(_.nearbyFreeTile).toSeq,
+            bases.mainBase.map(_.mainBuilding.tilePosition))
+        }
+        huntTarget = if (huntPoints.isEmpty) None else Some(huntPoints(huntIndex % huntPoints.size))
+        if (huntTarget.isDefined) huntIndex = HuntSweep.next(huntPoints.size, huntIndex)
+        huntInitiated = false
+        huntTarget.foreach(p =>
+          NativeMatchEvidence.trace("hunt-sweep", s"point=$p index=$huntIndex areas=${huntPoints.size}"))
+      }
+    }
+    val target = known.orElse(huntTarget)
     if (target != previousTarget) {
       worldDominationPlan.setCampaignTarget(target)
       NativeMatchEvidence.trace("campaign-target", target.toString)
@@ -281,6 +313,8 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
       if (ready && !worldDominationPlan.planningInProgress) {
         val accepted = worldDominationPlan.initiateCampaignAttack(where, troops.map(_.nativeUnitId).toSet)
         if (accepted) {
+          if (huntTarget.contains(where)) huntInitiated = true
+          campaignCommitted = true
           NativeMatchEvidence.trace(if (launched) "reinforce" else "launch",
             s"$where count=${troops.size} minerals=$minerals gas=$gas")
           launched = true

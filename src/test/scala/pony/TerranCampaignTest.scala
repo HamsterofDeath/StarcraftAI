@@ -60,6 +60,7 @@ class TerranCampaignTest extends Specification with MustMatchers {
     Cancelled funded construction is disposed once and its in-flight factory never starts $cancelledConstruction
     A real background placement refusal logs immutable data without reading live worker caches $backgroundPlacementRefusal
     A mineral field at or below fifteen percent is no longer useful $fieldReplenishment
+    An endgame hunt sweeps every resource area farthest from home first and wraps around $huntSweep
   """
   private def building(id: Int, x: Int, base: Boolean = true) =
     ObservedEnemyBuilding(id, MapTilePosition(x, 20), 4, 3, base)
@@ -220,6 +221,16 @@ class TerranCampaignTest extends Specification with MustMatchers {
       next(true, false, true, true, false), next(true, false, false, true, true),
       next(false, false, true, false, false)) ===
       (AwaitSaturation, FinishTraining, Lift, Fly, Land, Established, Fly)
+  }
+  def huntSweep = {
+    import HuntSweep._
+    val home = Some(MapTilePosition(10, 10))
+    val near = MapTilePosition(11, 11)
+    val mid = MapTilePosition(30, 30)
+    val far = MapTilePosition(50, 50)
+    (order(Seq(near, mid, far), home), order(Seq(near, mid, far), None),
+      next(3, 2), next(3, 0), next(0, 2)) ===
+      (Vector(far, mid, near), Vector(near, mid, far), 0, 1, 2)
   }
   def workerQuota = {
     def missing(incomplete: Int, reserved: Int, native: Int, requests: Seq[Int]) =
