@@ -206,6 +206,7 @@ trait BackgroundComputation[T <: WrapsUnit] extends AIModule[T] {
                 }
                 unitManager.requestWithoutTracking[T](req, recycle)
               }
+              var assigned = false
               candidates.headOption.foreach { replacement =>
                 if (switch.failedOrObsolete) {
                   warn(s"Construction job failed while calculations were ongoing")
@@ -214,16 +215,23 @@ trait BackgroundComputation[T <: WrapsUnit] extends AIModule[T] {
                     val newRequest = switch.copyOfJobForNewUnit(replacement)
                     trace(s"Unit ${switch.unit} replaced by $replacement")
                     assignJob_!(newRequest)
+                    assigned = true
                   } else {
                     trace(s"Unit ${switch.unit} kept its job after a background calculation",
                       replacement == switch.unit)
                     assignJob_!(switch)
+                    assigned = true
                   }
                 }
               }
               warn(
                 s"Background calculation finished, but no unit could do the job anymore: $switch",
                 candidates.isEmpty)
+              if (!assigned) {
+                switch.fail_!()
+                // Unassigned jobs will never reach UnitManager's normal terminal listeners.
+                if (!unitManager.jobOptOf(switch.unit).contains(switch)) switch.onFinishOrFail()
+              }
             case job =>
               trace(s"Unit ${job.unit} kept its job after a background calculation")
               assignJob_!(job)

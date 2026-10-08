@@ -1278,7 +1278,8 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W,
                                                                    val buildWhere: MapTilePosition,
                                                                    funding: ResourceApprovalSuccess,
                                                                    val belongsTo:
-                                                                   Option[ResourceArea] = None)
+                                                                   Option[ResourceArea] = None,
+                                                                   sharedTravelProgress: Option[ConstructionTravelProgress] = None)
   extends UnitWithJob[W](employer, worker, Priority.ConstructBuilding)
           with JobHasFunding[W]
           with CreatesUnit[W]
@@ -1289,7 +1290,11 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W,
           with IssueOrderNTimes[W] {
   self =>
 
-  private lazy val travelProgress = new ConstructionTravelProgress(currentTick, unit.currentTile)
+  private lazy val travelProgress = sharedTravelProgress.getOrElse {
+    val target = if (strategy.current.isInstanceOf[Strategy.SimpleTerran] &&
+      (isMainBuilding || buildingType == classOf[Bunker])) Some(buildWhere) else None
+    new ConstructionTravelProgress(currentTick, unit.currentTile, target)
+  }
   private var arrivalCommandsReset = false
 
   assert(universe.mapLayers.rawWalkableMap.insideBounds(buildWhere),
@@ -1458,7 +1463,8 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W,
     assert(!failedOrObsolete)
     stopManagingResource_!()
     markObsolete_!()
-    new ConstructBuilding(replacement, buildingType, employer, buildWhere, funding, belongsTo)
+    new ConstructBuilding(replacement, buildingType, employer, buildWhere, funding, belongsTo,
+      Some(travelProgress))
   }
 
   override protected def pathTargetPosition = {
@@ -1486,13 +1492,22 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W,
 }
 
 /** A pathfinding Move is ordinary builder travel, not a failed native Build command. */
-private[pony] class ConstructionTravelProgress(startFrame: Int, startPosition: MapTilePosition) {
+private[pony] class ConstructionTravelProgress(startFrame: Int, startPosition: MapTilePosition,
+                                              target: Option[MapTilePosition] = None) {
   private var lastPosition = startPosition
   private var lastProgressFrame = startFrame
+  private var closest = target.map(startPosition.distanceSquaredTo)
   private var arrivedAt = Option.empty[Int]
   def failed(frame: Int, position: MapTilePosition, atSite: Boolean, constructing: Boolean,
              buildTimeout: Int): Boolean = {
-    if (position != lastPosition) { lastPosition = position; lastProgressFrame = frame }
+    if (position != lastPosition) {
+      val distance = target.map(position.distanceSquaredTo)
+      if (distance.isEmpty || distance.zip(closest).exists { case (now, best) => now < best }) {
+        closest = distance
+        lastProgressFrame = frame
+      }
+      lastPosition = position
+    }
     if (atSite && arrivedAt.isEmpty) arrivedAt = Some(frame)
     if (!atSite) arrivedAt = None
     !constructing && (if (atSite) frame - arrivedAt.get > buildTimeout else frame - lastProgressFrame > 24 * 30)
