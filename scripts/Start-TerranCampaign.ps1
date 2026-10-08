@@ -32,7 +32,8 @@ $dllHash = (Get-FileHash -LiteralPath $dll -Algorithm SHA256).Hash
 if ($dllHash -ne 'D06D2A3E338BD92E963D93BCEC86E4B576A949C2E8C4622AC70FBCF1CC7BFC86') { throw 'Expected verified BWAPI 4.1.0 Beta2 revision 4615.' }
 $mapRelative = 'maps/BroodWar/aiide/(2)Destination.scx'
 $mapHash = (Get-FileHash -LiteralPath (Join-Path $Runtime $mapRelative) -Algorithm SHA256).Hash
-$classpathFile = Join-Path $Repository 'target/streams/compile/dependencyClasspath/$global/streams/export'
+$buildOut = Join-Path $Repository 'target/out/jvm/scala-3.10.0/starcrafter'
+$classpathFile = Join-Path $buildOut 'streams/compile/dependencyClasspath/_global/streams/export'
 if (-not (Test-Path -LiteralPath $classpathFile)) { throw 'Build the exact producer locally first.' }
 $registry = [Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::CurrentUser,[Microsoft.Win32.RegistryView]::Registry32)
 $key = $registry.OpenSubKey('SOFTWARE/Blizzard Entertainment/Starcraft'.Replace('/','\'))
@@ -60,8 +61,13 @@ foreach ($entry in $pins.GetEnumerator()) {
 Set-Content -LiteralPath $iniPath -Value $ini -Encoding ASCII
 Copy-Item -LiteralPath $iniPath -Destination (Join-Path $run 'bwapi.ini')
 New-Item -ItemType Directory -Path (Join-Path $Runtime 'log') -Force | Out-Null
-$dependencies = (Get-Content -LiteralPath $classpathFile -Raw).Trim()
-$classpath = (Join-Path $Repository 'target/scala-2.11/classes') + ';' + $dependencies
+$rawClasspath = (Get-Content -LiteralPath $classpathFile -Raw).Trim()
+if ($rawClasspath -match '^List\((.*)\)$') { $entries = $Matches[1] -split ',\s*' } else { $entries = $rawClasspath -split ';' }
+$coursierCache = Join-Path $env:LOCALAPPDATA 'Coursier\cache\v1'
+$entries = $entries | ForEach-Object { $_.Replace('${BASE}', $Repository).Replace('${CSR_CACHE}', $coursierCache) }
+foreach ($entry in $entries) { if (-not (Test-Path -LiteralPath $entry)) { throw ('Missing runtime classpath entry: ' + $entry) } }
+$dependencies = ($entries -join ';')
+$classpath = (Join-Path $buildOut 'classes') + ';' + $dependencies
 $options = @("-Xmx${HeapMb}M",'-XX:ParallelGCThreads=2','-Dscala.concurrent.context.numThreads=2','-Dscala.concurrent.context.maxThreads=2',"-Dtwailight.run=$RunName","-Dtwailight.producer=$SourceCommit",('-Dtwailight.resultDirectory="'+$run+'"'),"-Dtwailight.mapInputSha256=$mapHash","-Dtwailight.minFighters=$MinFighters","-Dtwailight.armyMinerals=$ArmyMinerals","-Dtwailight.armyGas=$ArmyGas","-Dtwailight.expansionReserve=$ExpansionReserve",'-cp',('"'+$classpath+'"'),'pony.Controller')
 $options = $options[0..($options.Count-4)] + @("-Dtwailight.bankMinerals=$BankMinerals", "-Dtwailight.bankGas=$BankGas", ('-Dtwailight.headless=' + $Headless.IsPresent.ToString().ToLowerInvariant())) + $options[($options.Count-3)..($options.Count-1)]
 $receipt = [ordered]@{ schema=1; run=$RunName; owner='twilight_ai_impl'; producer=$SourceCommit; launchedAt=(Get-Date).ToUniversalTime().ToString('o'); status='unfinished'; game='StarCraft 1.16.1'; bwapiRevision=4615; bwapiSha256=$dllHash; map=$mapRelative; mapInputSha256=$mapHash; javaSha256=(Get-FileHash -LiteralPath $Java -Algorithm SHA256).Hash; heapMb=$HeapMb; nativeWorkerThreads=2; ordinaryVision=$true; revealCheat=$false; opponent='unmodified native Protoss computer'; configuration=@{minFighters=$MinFighters;armyMinerals=$ArmyMinerals;armyGas=$ArmyGas;expansionReserve=$ExpansionReserve} }
