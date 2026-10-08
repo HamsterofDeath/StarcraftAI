@@ -151,11 +151,12 @@ object BackgroundComputationResult {
   }
 
   def result[T <: WrapsUnit, J <: UnitWithJob[T]](myJobs: Traversable[() => J],
-                                                  checkValidityNow: () => Boolean)
+                                                  checkValidityNow: () => Boolean,
+                                                  canCreateNow: () => Boolean = () => true)
                                                  (afterComputationDone: Traversable[J] => Unit) = new
       BackgroundComputationResult[T] {
 
-    private lazy val executed = myJobs.map(_.apply())
+    private lazy val executed = if (canCreateNow()) myJobs.map(_.apply()) else Nil
 
     override def jobs = executed
 

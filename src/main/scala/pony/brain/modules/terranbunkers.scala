@@ -117,8 +117,10 @@ private[pony] class BunkerBoardingRetry {
 /** Indexed dead cargo is not a survivor; visible training and its job are one slot. */
 private[pony] object BunkerMarineQuota {
   def missing(seats: Int, nativeCompleted: Set[Int], nativeIncomplete: Set[Int],
-              trainingJobs: Int, fundedRequests: Seq[Int], campaignHeld: Set[Int] = Set.empty): Int =
-    (seats - (nativeCompleted -- campaignHeld).size - (nativeIncomplete.size max trainingJobs) - fundedRequests.sum) max 0
+              trainingJobs: Int, fundedRequests: Seq[Int], campaignHeld: Set[Int] = Set.empty,
+              obsoleteCargo: Set[Int] = Set.empty): Int =
+    (seats - (nativeCompleted -- campaignHeld -- obsoleteCargo).size -
+      (nativeIncomplete.size max trainingJobs) - fundedRequests.sum) max 0
 }
 
 private[pony] object BunkerRepairAdmission {
@@ -150,7 +152,11 @@ private[pony] class RepairDefensiveBunker(worker: SCV, bunker: Bunker, owner: Em
 
 class TerranBunkerDefense(universe: Universe)
   extends OrderlessAIModule[UnitFactory](universe) with UnitRequestHelper {
-  private val builder = new HelperAIModule[WorkerUnit](universe) with BuildingRequestHelper
+  private val ownedRequests = mutable.ArrayBuffer.empty[BuildUnitRequest[_ <: Building]]
+  private val builder = new HelperAIModule[WorkerUnit](universe) with BuildingRequestHelper {
+    override protected def onBuildingRequested(request: BuildUnitRequest[_ <: Building]): Unit =
+      if (request.typeOfRequestedUnit == classOf[Bunker]) ownedRequests += request
+  }
   private val plans = mutable.Map.empty[Int, (Vector[MapPosition], Vector[Area])]
   private val geometry = mutable.Map.empty[Int, Vector[Area]]
   private val garrison = new BunkerGarrison
@@ -161,16 +167,20 @@ class TerranBunkerDefense(universe: Universe)
   private var placementReported = Set.empty[MapTilePosition]
   private def active = race.isTerran && strategy.current.isInstanceOf[Strategy.SimpleTerran]
   private def bunkers = ownUnits.allByType[Bunker].filter(_.isInGame).toVector
+  private def plannedSites = plans.values.flatMap(_._2.map(_.upperLeft)).toSet
+  private def activeBunkers = bunkers.filter(b => plannedSites(b.tilePosition))
   private def nativeCargo(b: Bunker): Set[Int] = b.nativeUnit.getLoadedUnits.asScala.filter { u =>
     u.getType == bwapi.UnitType.Terran_Marine && u.isLoaded &&
       Option(u.getTransport).exists(_.getID == b.nativeUnitId)
   }.map(_.getID).toSet
   private val boarding = oncePerTick {
     if (active) {
-      val ready = bunkers.filterNot(_.isBeingCreated)
+      val ready = activeBunkers.filterNot(_.isBeingCreated)
       val slots = ready.map(b => (b.nativeUnitId, b.tilePosition, nativeCargo(b)))
       val nativeIds = nativeGame.self().getUnits.asScala.map(_.getID).toSet
+      val activeCargo = ready.flatMap(nativeCargo).toSet
       val candidates = ownUnits.allByType[Marine].filter(m => nativeIds(m.nativeUnitId) && m.isInGame && !m.isBeingCreated &&
+        (!m.nativeUnit.isLoaded || activeCargo(m.nativeUnitId)) &&
         !worldDominationPlan.attackOf(m).exists(_.campaign)).map(m => m.nativeUnitId -> m.currentTile).toVector
       garrison.update(slots, candidates)
     } else garrison.update(Nil, Nil)
@@ -198,9 +208,10 @@ class TerranBunkerDefense(universe: Universe)
     val range = nativeGame.self().weaponMaxRange(bwapi.UnitType.Terran_Marine.groundWeapon()) + 64
     val fields = bases.allBases.filter(b => !b.mainBuilding.isBeingCreated && !b.mainBuilding.isFloating)
       .flatMap(_.resourceArea).groupBy(_.uniqueId).values.map(_.head).toVector
+    val fieldIds = fields.map(_.uniqueId).toSet
+    plans.keys.filterNot(fieldIds).toVector.foreach { id => plans.remove(id); geometry.remove(id) }
     fields.foreach { field =>
-      val depots = bases.allBases.filter(b => !b.mainBuilding.isBeingCreated && !b.mainBuilding.isFloating &&
-        b.resourceArea.exists(_.uniqueId == field.uniqueId)).map(_.mainBuilding.area).toVector
+      val depots = universe.pluginByType[ManageMiningAtBases].servingMineralDepots(field.uniqueId).map(_.area)
       val patches = field.patches.toList.flatMap(_.patches.map(_.area))
       val binding = (depots ++ patches).sortBy(a => (a.upperLeft.y, a.upperLeft.x))
       if (!plans.contains(field.uniqueId) || !geometry.get(field.uniqueId).contains(binding)) {
@@ -252,6 +263,18 @@ class TerranBunkerDefense(universe: Universe)
         }
       }
     }
+    val activeSites = plannedSites
+    ownedRequests.filter(r => !r.clearable && r.stillLocksResources && resources.hasStillLocked(r.funding) &&
+      r.customPosition.requestedPosition.exists(p => !activeSites(p))).foreach { r =>
+      r.forceUnlockOnDispose_!()
+      r.clearableInNextTick_!()
+      NativeMatchEvidence.trace("bunker-request-retired", s"site=${r.customPosition.requestedPosition}")
+    }
+    val ownedFunding = ownedRequests.map(_.funding).toSet
+    unitManager.constructionsInProgress[Bunker].filter(j => ownedFunding(j.proofForFunding) &&
+      !activeSites(j.buildWhere) && !j.unit.isConstructingBuilding && j.building.isEmpty &&
+      ownUnits.buildingAt(j.buildWhere).isEmpty).foreach(_.fail_!())
+    ownedRequests --= ownedRequests.filterNot(r => resources.hasStillLocked(r.funding))
     val desired = plans.values.map(_._2.size * 4).sum
     val nativeMarines = nativeGame.self().getUnits.asScala.filter(_.getType == bwapi.UnitType.Terran_Marine).toVector
     val expeditionMarines = ownUnits.allByType[Marine].filter(m =>
@@ -262,7 +285,8 @@ class TerranBunkerDefense(universe: Universe)
     val funded = unitManager.plannedToTrain.filter(r => !r.clearable && r.typeOfRequestedUnit == classOf[Marine] &&
       r.funding.isSuccess && resources.hasStillLocked(r.funding)).map(_.amount).toVector
     val missing = BunkerMarineQuota.missing(desired, nativeMarines.filter(_.isCompleted).map(_.getID).toSet,
-      nativeMarines.filterNot(_.isCompleted).map(_.getID).toSet, training, funded, expeditionMarines)
+      nativeMarines.filterNot(_.isCompleted).map(_.getID).toSet, training, funded, expeditionMarines,
+      bunkers.filterNot(b => activeSites(b.tilePosition)).flatMap(nativeCargo).toSet)
     if (missing > 0) {
       val accepted = requestUnit(classOf[Marine], takeCareOfDependencies = true, priority = Priority.Supply)
       if (currentTick % (31 * 16) == 0) NativeMatchEvidence.trace("bunker-replacement-request",

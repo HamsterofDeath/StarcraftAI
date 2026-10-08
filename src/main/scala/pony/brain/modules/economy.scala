@@ -45,8 +45,10 @@ class ProvideNewBuildings(universe: Universe)
         BackgroundComputationResult
         .result[WorkerUnit, ConstructBuilding[WorkerUnit, _ <: Building]](
           myJobs = newJobFactory.toSeq,
-          checkValidityNow = () => false) { jobs =>
-          val job = jobs.headAssert
+          checkValidityNow = () => false,
+          canCreateNow = () => !in.jobRequest.clearable && in.jobRequest.stillLocksResources &&
+            resources.hasStillLocked(in.jobRequest.funding)) { jobs =>
+          jobs.headOption.foreach { job =>
           info(s"Planning to build ${in.buildingType.className} at ${job.buildWhere} by ${
             in.worker
           }")
@@ -54,6 +56,7 @@ class ProvideNewBuildings(universe: Universe)
           mapLayers.blockBuilding_!(job.area)
           //maybe there is a better worker for this than the one that was initially chosen
           unitManager.tryFindBetterEmployeeFor(job)
+          }
         }
     }
   }
@@ -66,6 +69,7 @@ class ProvideNewBuildings(universe: Universe)
       buildingRelated.iterator.collect {
         case buildIt: BuildUnitRequest[Building]
           if buildIt.proofForFunding.isSuccess &&
+             !buildIt.clearable &&
              !buildIt.isAddon &&
              universe.resources.hasStillLocked(buildIt.funding) =>
           buildIt
@@ -322,6 +326,18 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule(universe
   def startingFieldSaturated = opening.startingFieldSaturated
   def secondBaseEstablished = opening.secondBaseEstablished
   def workerCapacity = gatheringJobs.filter(g => g.natural && !g.forBase.mainBuilding.isFloating).map(_.capacity).sum
+  def servingMineralDepots(field: Int): Vector[MainBuilding] = {
+    val employers = gatheringJobs.filter(g => g.natural && g.attachedToBase &&
+      g.forBase.resourceArea.exists(_.uniqueId == field)).map(_.forBase.mainBuilding)
+    val returningTo = unitManager.allJobsByUnitType[WorkerUnit].collect {
+      case job: GatherMineralsAtSinglePatch if job.worker.isCarryingMinerals =>
+        Option(job.worker.nativeUnit.getOrderTarget).map(_.getID)
+    }.flatten.toSet
+    val observed = bases.finishedBases.filter(b => !b.mainBuilding.isFloating &&
+      b.resourceArea.exists(_.uniqueId == field) && returningTo(b.mainBuilding.nativeUnitId))
+      .map(_.mainBuilding)
+    (employers ++ observed).distinct.toVector
+  }
 
   override def onTick_!(): Unit = {
     val detached = gatheringJobs.filterNot(g => g.attachedToBase && g.permittedStaffing)

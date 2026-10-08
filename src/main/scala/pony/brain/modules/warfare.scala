@@ -624,6 +624,7 @@ object AlternativeBuildingSpot {
 
 trait BuildingRequestHelper extends AIModule[WorkerUnit] {
   private val buildingEmployer = new Employer[Building](universe)
+  protected def onBuildingRequested(request: BuildUnitRequest[_ <: Building]): Unit = {}
 
   def requestBuilding[T <: Building](buildingType: Class[_ <: T],
                                      takeCareOfDependencies: Boolean = false,
@@ -647,6 +648,7 @@ trait BuildingRequestHelper extends AIModule[WorkerUnit] {
         val unitReq = UnitJobRequest.newOfType(universe, buildingEmployer, buildingType, suc,
           customBuildingPosition = customBuildingPosition, belongsTo = belongsTo,
           priority = priority)
+        onBuildingRequested(unitReq.request.asInstanceOf[BuildUnitRequest[T]])
         trace(s"Financing possible for building $buildingType, requesting build")
         val result = unitManager.request(unitReq)
         if (result.hasAnyMissingRequirements) {

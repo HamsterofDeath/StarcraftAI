@@ -54,6 +54,8 @@ class TerranCampaignTest extends Specification {
     Mineral coverage includes actual depot return lanes, not only remote patch corners $bunkerWorkerApproaches
     Return routes reject unsolved fields and rasterize solved detours across sparse waypoints $bunkerSolvedRoutes
     Individually admissible bunker sites cannot jointly close a worker corridor $bunkerJointFootprints
+    Obsolete loaded home crews cannot fill or suppress active expansion seats $obsoleteBunkerCargo
+    Cancelled funded construction is disposed once and its in-flight factory never starts $cancelledConstruction
   """
   private def building(id: Int, x: Int, base: Boolean = true) =
     ObservedEnemyBuilding(id, MapTilePosition(x, 20), 4, 3, base)
@@ -554,5 +556,53 @@ class TerranCampaignTest extends Specification {
     val b = Area(MapTilePosition(6, 5), Size(3, 2))
     (BunkerSitePlacement.permitted(a, corridor), BunkerSitePlacement.permitted(b, corridor),
       BunkerSitePlacement.permittedTogether(Seq(a, b), corridor)) mustEqual (true, true, false)
+  }
+  def obsoleteBunkerCargo = {
+    val garrison = new BunkerGarrison
+    val obsolete = (1 to 4).toSet
+    val active = (5 to 8).toSet
+    val home = MapTilePosition(10, 10); val expansion = MapTilePosition(30, 30)
+    garrison.update(Seq((100, home, obsolete)), obsolete.toVector.map(_ -> home))
+    garrison.update(Seq((200, expansion, active), (201, MapTilePosition(34, 30), Set.empty[Int])),
+      active.toVector.map(_ -> expansion))
+    val missing = BunkerMarineQuota.missing(8, obsolete ++ active, Set.empty, 0, Nil,
+      obsoleteCargo = obsolete)
+    val fresh = (9 to 12).toSet
+    garrison.update(Seq((200, expansion, active), (201, MapTilePosition(34, 30), Set.empty[Int])),
+      (active ++ fresh).toVector.map(_ -> expansion))
+    (missing, obsolete.exists(garrison.reserved), fresh.forall(id => garrison.target(id).contains(201)),
+      BunkerMarineQuota.missing(8, obsolete ++ active ++ fresh, Set.empty, 0, Nil, obsoleteCargo = obsolete)) mustEqual
+      (4, false, true, 0)
+  }
+  def cancelledConstruction = {
+    var ledger: ResourceManager = null
+    val universe = Proxy.newProxyInstance(classOf[Universe].getClassLoader, Array[Class[_]](classOf[Universe]),
+      new InvocationHandler {
+        override def invoke(proxy: AnyRef, method: Method, arguments: Array[AnyRef]): AnyRef = method.getName match {
+          case "register_$bang" => null
+          case "resources" => ledger
+          case other => throw new IllegalStateException("Unexpected native dependency: " + other)
+        }
+      }).asInstanceOf[Universe]
+    var locked = true; var released = 0; var created = 0
+    ledger = new ResourceManager(universe) {
+      override def informUsage[T <: WrapsUnit](proof: ResourceApproval, owner: HasFunding): Unit = {}
+      override def hasStillLocked(proof: ResourceApproval) = locked
+      override def unlock_!(proof: ResourceApprovalSuccess): Unit = {
+        require(locked); locked = false; released += 1
+      }
+    }
+    val proof = ResourceApprovalSuccess(100, 0, 0, ResourceApprovalId(1))
+    val request = BuildUnitRequest[Building](universe, classOf[Bunker], 1, proof, Priority.Default,
+      AlternativeBuildingSpot.useDefault)
+    request.persistant_!()
+    val computation = BackgroundComputationResult.result[WorkerUnit, UnitWithJob[WorkerUnit]](
+      Seq(() => { created += 1; throw new IllegalStateException("Cancelled construction must never start") }),
+      () => false, () => !request.clearable && ledger.hasStillLocked(proof))(_ => ())
+    request.forceUnlockOnDispose_!(); request.clearableInNextTick_!()
+    computation.afterComputation()
+    val noJobs = computation.jobs.isEmpty
+    request.dispose()
+    (noJobs, computation.jobs.isEmpty, created, released, locked) mustEqual (true, true, 0, 1, false)
   }
 }
