@@ -2,7 +2,7 @@ package pony
 package brain
 package modules
 
-import pony.AttackPriorities.{AttackPriority, Lowest}
+import pony.AttackPriorities.{AttackPriority, Highest, Lowest}
 
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
@@ -130,6 +130,22 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
                                                                               .empty[Attack]
   private           var planInProgress: BWFuture[Option[IncompleteAttacks]] = BWFuture(None)
   @volatile private var thinking                                            = false
+  private val baseDefense = new CampaignDefenseControl
+  def baseDefenseActive = baseDefense.pressure
+  def setBaseDefensePressure(active: Boolean): Unit = {
+    val changed = active != baseDefense.pressure
+    baseDefense.setPressure(active)
+    if (active) attacks.retain(a => !a.campaign)
+    if (changed) NativeMatchEvidence.trace("base-defense-pressure", s"active=$active")
+  }
+  def requestBaseDefense(where: MapTilePosition): Unit = {
+    if (baseDefense.pressure && (baseDefense.target.forall(_.distanceToIsMore(where, 6)) ||
+      (!thinking && attacks.isEmpty))) baseDefense.queue(where)
+  }
+  def immediateBaseDefenseOrder(unit: Mobile): Option[UnitOrder] = {
+    if (!baseDefense.pressure || attackOf(unit).exists(_.migrationPlan.isDefined)) None
+    else baseDefense.target.map(where => Orders.AttackMove(unit, where))
+  }
 
   def allAttacks = attacks.toVector
   def planningInProgress = thinking
@@ -140,16 +156,16 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
     campaignTarget = target
   }
 
-  def initiateCampaignAttack(where: MapTilePosition): Boolean = {
-    if (thinking) return false
+  def initiateCampaignAttack(where: MapTilePosition, expeditionIds: Set[Int]): Boolean = {
+    if (thinking || baseDefense.pressure) return false
     val employer = new Employer[Mobile](universe)
     val busy = attacks.flatMap(_.force).toSet
     val req = UnitJobRequest.idleOfType(employer, classOf[Mobile], 9999).withOnlyAccepting { m =>
-      m.isFigher && !m.isBeingCreated && !m.isInstanceOf[WorkerUnit] &&
+      expeditionIds(m.nativeUnitId) && m.isFigher && !m.isBeingCreated && !m.isInstanceOf[WorkerUnit] &&
         !m.isInstanceOf[SupportUnit] && !m.isInstanceOf[TransporterUnit] && !busy(m)
     }
     val available = unitManager.request(req, buildIfNoneAvailable = false).units.collect {
-      case m: Mobile if m.isFigher && !m.isBeingCreated && !m.isInstanceOf[WorkerUnit] &&
+      case m: Mobile if expeditionIds(m.nativeUnitId) && m.isFigher && !m.isBeingCreated && !m.isInstanceOf[WorkerUnit] &&
         !m.isInstanceOf[SupportUnit] && !m.isInstanceOf[TransporterUnit] && !busy(m) => m
     }.toVector.sortBy(_.nativeUnitId)
     if (available.isEmpty) false
@@ -180,12 +196,17 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
     attacks.retain(_.hasNotEnded)
     if (thinking) {
       planInProgress.result.foreach { plan =>
-        attacks ++= plan.parts.filter(p => !p.campaign || campaignTarget.contains(p.destination.where))
+        attacks ++= plan.parts.filter(p => !p.campaign ||
+          (campaignTarget.contains(p.destination.where) && baseDefense.acceptsCampaign(p.defenseGeneration)))
           .flatMap(_.complete)
         thinking = false
         planInProgress = BWFuture.none
         majorInfo(s"Attack plan finished!")
       }
+    }
+    baseDefense.takeReady(thinking).foreach { where =>
+      NativeMatchEvidence.trace("base-defense-recall", where.toString)
+      initiateAttack(where, Highest)
     }
   }
 
@@ -218,6 +239,7 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
     if (thinking || units.isEmpty) return
     debug(s"Attacking $where with $units")
     val helper = new GroupingHelper(universe.mapLayers.rawWalkableMap, units, universe.allUnits)
+    val defenseGeneration = baseDefense.generation
     planInProgress = BWFuture.produceFrom {
       val on = universe.mapLayers.rawWalkableMap
       val grouped = helper.evaluateUnitGroups
@@ -233,7 +255,7 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
           }
         }
 
-        new IncompleteAttack(asUnits.toSet, TargetPosition(where, 10), priority, campaign)
+        new IncompleteAttack(asUnits.toSet, TargetPosition(where, 10), priority, campaign, defenseGeneration)
       }
       debug(s"Attack calculation finished, results: $newAttacks")
       IncompleteAttacks(newAttacks)
@@ -258,7 +280,7 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
   }
 
   class IncompleteAttack(private var currentForce: Set[Mobile], targetOfAttack: TargetPosition,
-                         priority: AttackPriority, val campaign: Boolean) {
+                         priority: AttackPriority, val campaign: Boolean, val defenseGeneration: Int) {
     def destination = targetOfAttack
     def complete = {
       val living = currentForce.filter(_.isInGame)
@@ -854,6 +876,13 @@ class HandleDefenses(universe: Universe) extends OrderlessAIModule[Mobile](unive
   private var backgroundOp = BWFuture.none[Seq[Group[Mobile]]]
 
   override def onTick_!(): Unit = {
+    if (race.isTerran && strategy.current.isInstanceOf[Strategy.SimpleTerran]) {
+      val localThreats = mapLayers.defendedTiles.allBlocked.flatMap(tile => unitGrid.enemy.onTile(tile))
+        .filterNot(_.isHarmlessNow).toVector
+      worldDominationPlan.setBaseDefensePressure(localThreats.nonEmpty)
+      localThreats.headOption.foreach(threat => worldDominationPlan.requestBaseDefense(threat.currentTile))
+      return
+    }
     if (backgroundOp.result.isEmpty) {
       ifNth(Primes.prime43) {
         val allEnemies = mapLayers.defendedTiles.allBlocked.flatMap { tile =>

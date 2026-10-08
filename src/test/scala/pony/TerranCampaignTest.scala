@@ -34,6 +34,10 @@ class TerranCampaignTest extends Specification {
     Home depots reject the native mineral exclusion zone while ordinary buildings retain placement $depotPlacement
     A refused PlaceBuilding order expires while actual construction remains protected $refusedPlacement
     Native terminal flag batches are separate while genuine live reveal remains invalid $terminalVision
+    Both fields retain stable local defenders and replace casualties before expedition admission $defensiveReserve
+    Postreserve expedition thresholds keep army production active until the deployable force qualifies $expeditionThresholds
+    Local raids invalidate async offense, wait for a busy planner, and clear before offense resumes $defensiveRecall
+    A lost guard cannot reserve a fighter still owned by an expedition $reserveCustody
   """
   private def building(id: Int, x: Int, base: Boolean = true) =
     ObservedEnemyBuilding(id, MapTilePosition(x, 20), 4, 3, base)
@@ -258,5 +262,52 @@ class TerranCampaignTest extends Specification {
       fair.terminalCompleteMap, fair.ordinaryVision, invalid.ordinaryVision,
       new NativeVisionCoverage().ordinaryVision) mustEqual
       (true, false, 1, 100, 1, true, true, false, false)
+  }
+  def defensiveReserve = {
+    val roster = new TerranDefenseRoster(2)
+    val fields = Seq(DefenseField(1, MapTilePosition(10, 10)), DefenseField(2, MapTilePosition(80, 80)))
+    val troops = (1 to 3).map(id => DefenseFighter(id, MapTilePosition(10 + id, 10))) ++
+      (4 to 6).map(id => DefenseFighter(id, MapTilePosition(80 + id, 80)))
+    roster.update(fields, troops)
+    val first = roster.reserved
+    val deployable = troops.map(_.id).filterNot(first)
+    roster.update(fields, troops.filterNot(_.id == 1))
+    (first, deployable, roster.reserved, roster.rallyFor(4), roster.rallyFor(6)) mustEqual
+      (Set(1, 2, 4, 5), Seq(3, 6), Set(2, 3, 4, 5), Some(MapTilePosition(80, 80)), None)
+  }
+  def expeditionThresholds = {
+    val c = TerranCampaignConfig()
+    val total = 18
+    val reserved = 12
+    val expedition = total - reserved
+    (c.ready(true, expedition, 600, 200, 2000, 1000),
+      c.holdNewArmy(true, expedition, 600, 200, false),
+      c.ready(true, 12, 1500, 300, 1000, 300),
+      c.holdNewArmy(true, 12, 1500, 300, false)) mustEqual (false, false, true, true)
+  }
+  def defensiveRecall = {
+    val control = new CampaignDefenseControl
+    val offensiveVersion = control.generation
+    control.setPressure(true)
+    val raid = MapTilePosition(10, 10)
+    control.queue(raid)
+    val duringPlanning = control.takeReady(true)
+    val recalled = control.takeReady(false)
+    val staleRejected = !control.acceptsCampaign(offensiveVersion)
+    val whileRaided = control.acceptsCampaign(control.generation)
+    control.setPressure(false)
+    (duringPlanning, recalled, staleRejected, whileRaided,
+      control.acceptsCampaign(offensiveVersion), control.acceptsCampaign(control.generation),
+      control.takeReady(false)) mustEqual (None, Some(raid), true, false, false, true, None)
+  }
+  def reserveCustody = {
+    val roster = new TerranDefenseRoster(1)
+    val field = Seq(DefenseField(1, MapTilePosition(10, 10)))
+    roster.update(field, Seq(DefenseFighter(1, MapTilePosition(10, 10))))
+    roster.update(field, Seq(DefenseFighter(2, MapTilePosition(11, 10), campaignAssigned = true)))
+    val whileAway = roster.reserved
+    roster.update(field, Seq(DefenseFighter(2, MapTilePosition(11, 10), campaignAssigned = true),
+      DefenseFighter(3, MapTilePosition(12, 10))))
+    (whileAway, roster.reserved) mustEqual (Set.empty[Int], Set(3))
   }
 }

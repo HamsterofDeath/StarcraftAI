@@ -58,6 +58,47 @@ private[pony] object MineralFieldStaffing {
     !defaultCampaign || landedField.contains(miningField)
 }
 
+private[pony] case class DefenseField(id: Int, rally: MapTilePosition)
+private[pony] case class DefenseFighter(id: Int, tile: MapTilePosition, campaignAssigned: Boolean = false)
+/** Stable guards stay with each distinct landed field; casualties are replaced locally. */
+private[pony] class TerranDefenseRoster(perField: Int) {
+  private var members = Map.empty[Int, Vector[Int]]
+  private var fields = Map.empty[Int, MapTilePosition]
+  def update(currentFields: Seq[DefenseField], fighters: Seq[DefenseFighter]): Unit = {
+    fields = currentFields.map(f => f.id -> f.rally).toMap
+    val live = fighters.map(_.id).toSet
+    members = members.filter(p => fields.contains(p._1)).map { case (field, ids) => field -> ids.filter(live) }
+    var used = members.values.flatten.toSet
+    currentFields.sortBy(_.id).foreach { field =>
+      val kept = members.getOrElse(field.id, Vector.empty)
+      val replacements = fighters.filterNot(f => used(f.id) || f.campaignAssigned)
+        .sortBy(f => (f.tile.distanceSquaredTo(field.rally), f.id)).take(perField - kept.size).map(_.id)
+      members += field.id -> (kept ++ replacements)
+      used ++= replacements
+    }
+  }
+  def reserved = members.values.flatten.toSet
+  def rallyFor(id: Int) = members.find(_._2.contains(id)).flatMap(p => fields.get(p._1))
+}
+
+/** A raid invalidates in-flight offensive plans and survives a busy planner until admitted. */
+private[pony] class CampaignDefenseControl {
+  var pressure = false
+  var generation = 0
+  var target = Option.empty[MapTilePosition]
+  private var pending = Option.empty[MapTilePosition]
+  def setPressure(now: Boolean): Unit = {
+    if (now != pressure) generation += 1
+    pressure = now
+    if (!now) { target = None; pending = None }
+  }
+  def queue(where: MapTilePosition): Unit = { target = Some(where); pending = Some(where) }
+  def takeReady(planning: Boolean): Option[MapTilePosition] = {
+    if (planning) None else { val result = pending; pending = None; result }
+  }
+  def acceptsCampaign(version: Int) = !pressure && generation == version
+}
+
 /** A funded factory job and its visible unfinished SCV describe the same production slot. */
 private[pony] object WorkerProductionQuota {
   def missing(target: Int, completed: Int, incomplete: Int, reservedTraining: Int,
@@ -124,26 +165,47 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
   private var previousTarget = Option.empty[MapTilePosition]
   private var launched = false
   private var wasReady = false
+  private val defenseRoster = new TerranDefenseRoster(6)
+  private val defenses = oncePerTick {
+    if (strategy.current.isInstanceOf[Strategy.SimpleTerran]) {
+      val fields = bases.allBases.filter(b => b.mainBuilding.isInGame &&
+        !b.mainBuilding.isBeingCreated && !b.mainBuilding.isFloating).flatMap { base =>
+        base.resourceArea.map { area =>
+          val rally = strategicMap.defenseLineOf(base).flatMap(_.pointsInside
+            .filter(mapLayers.freeWalkableTiles.free).toVector.sortBy(_.distanceSquaredTo(base.mainBuilding.centerTile)).headOption)
+            .getOrElse(area.nearbyFreeTile)
+          DefenseField(area.uniqueId, rally)
+        }
+      }.groupBy(_.id).values.map(_.head).toVector
+      defenseRoster.update(fields, fighters.map(m => DefenseFighter(m.nativeUnitId, m.currentTile,
+        worldDominationPlan.attackOf(m).exists(_.campaign))))
+    } else defenseRoster.update(Nil, Nil)
+    defenseRoster
+  }
+  def isReservedDefender(unit: WrapsUnit) = defenses.get.reserved(unit.nativeUnitId)
+  def guardPosition(unit: WrapsUnit) = defenses.get.rallyFor(unit.nativeUnitId)
   override def onNth = 31
 
   private def fighters = ownUnits.allMobilesWithWeapons.filter { m =>
     m.isInGame && !m.isBeingCreated && m.isFigher && !m.isInstanceOf[WorkerUnit] &&
       !m.isInstanceOf[SupportUnit] && !m.isInstanceOf[TransporterUnit]
   }.groupBy(_.nativeUnitId).values.map(_.head).toVector
+  private def expedition = fighters.filterNot(isReservedDefender).filterNot(m =>
+    worldDominationPlan.attackOf(m).exists(a => !a.campaign))
 
   def reconnaissanceAllowed = {
-    val troops = fighters
+    val troops = expedition
     val funds = resources.currentResources
     val operational = universe.pluginByType[ManageMiningAtBases].secondBaseEstablished
-    operational && (launched || config.ready(operational, troops.size,
+    operational && !worldDominationPlan.baseDefenseActive && (launched || config.ready(operational, troops.size,
       troops.map(_.nativeUnitType.mineralPrice).sum, troops.map(_.nativeUnitType.gasPrice).sum,
       funds.minerals, funds.gas))
   }
 
   // Keep the bank available while the ready army discovers its first target. Existing queues finish.
   def holdingNewArmy = {
-    val troops = fighters
-    config.holdNewArmy(universe.pluginByType[ManageMiningAtBases].secondBaseEstablished,
+    val troops = expedition
+    !worldDominationPlan.baseDefenseActive && config.holdNewArmy(universe.pluginByType[ManageMiningAtBases].secondBaseEstablished,
       troops.size, troops.map(_.nativeUnitType.mineralPrice).sum,
       troops.map(_.nativeUnitType.gasPrice).sum, launched)
   }
@@ -170,7 +232,7 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
       previousTarget = target
       launched = false
     }
-    val troops = fighters
+    val troops = expedition
     val minerals = troops.map(_.nativeUnitType.mineralPrice).sum
     val gas = troops.map(_.nativeUnitType.gasPrice).sum
     if (!worldDominationPlan.planningInProgress && worldDominationPlan.campaignForceSize == 0) launched = false
@@ -180,7 +242,7 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
     wasReady = ready
     target.foreach { where =>
       if (ready && !worldDominationPlan.planningInProgress) {
-        val accepted = worldDominationPlan.initiateCampaignAttack(where)
+        val accepted = worldDominationPlan.initiateCampaignAttack(where, troops.map(_.nativeUnitId).toSet)
         if (accepted) {
           NativeMatchEvidence.trace(if (launched) "reinforce" else "launch",
             s"$where count=${troops.size} minerals=$minerals gas=$gas")

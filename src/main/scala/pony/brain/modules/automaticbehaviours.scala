@@ -901,9 +901,14 @@ object Terran {
       override def describeShort = "--> X"
 
       override protected def toOrder(what: Objective) = {
+        val campaign = universe.pluginByType[RunTerranCampaign]
+        val guardOrder = campaign.guardPosition(unit).filter(p =>
+          unit.currentTile.distanceToIsMore(p, 5) && worldDominationPlan.attackOf(unit).isEmpty)
+          .map(p => Orders.AttackMove(unit, p))
+        worldDominationPlan.immediateBaseDefenseOrder(unit).orElse(guardOrder).map(_.toList).getOrElse(
         worldDominationPlan.attackOf(unit).map { attack =>
           attack.suggestActionFor(unit).asOrder.toList
-        }.getOrElse(Nil)
+        }.getOrElse(Nil))
       }
     }
 
@@ -1038,7 +1043,8 @@ object Terran {
         override def describeShort: String = "Goto IP"
 
         override def toOrder(what: Objective) = {
-          if (universe.time.minutes <= 5 || ignore(unit) || unit.isBeingCreated) {
+          if (universe.time.minutes <= 5 || ignore(unit) || unit.isBeingCreated ||
+            universe.pluginByType[RunTerranCampaign].isReservedDefender(unit)) {
             Nil
           } else {
             helper.allInsideNonBlacklisted.toStream.headOption.map { where =>
@@ -1379,6 +1385,7 @@ object Terran {
           .flatMap(_.asGroundUnit)
           .filter(e => e.onGround && e.isInGame && !e.isBeingCreated &&
             !e.isInstanceOf[WorkerUnit] && !e.isInstanceOf[SupportUnit] && !e.isInstanceOf[TransporterUnit])
+          .filterNot(universe.pluginByType[RunTerranCampaign].isReservedDefender)
           .map { e =>
             ScoutingCandidate(e.nativeUnitId, e.initialNativeType.topSpeed(), e.currentArea.get,
               e.currentTile)
@@ -1466,7 +1473,7 @@ object Terran {
       }
 
       def planFor(am: ArmedMobile) = {
-        if (!am.isInstanceOf[WorkerUnit] && (if (race.isTerran)
+        if (!am.isInstanceOf[WorkerUnit] && !universe.pluginByType[RunTerranCampaign].isReservedDefender(am) && (if (race.isTerran)
           universe.pluginByType[RunTerranCampaign].reconnaissanceAllowed else time.phase.isSinceAlmostMid)) {
           scouts.get(am)
         } else {
