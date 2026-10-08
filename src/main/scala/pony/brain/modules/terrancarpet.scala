@@ -224,6 +224,7 @@ class TankBoxes(universe: Universe) extends OrderlessAIModule[WorkerUnit](univer
 class FlyFactoriesToNatural(universe: Universe) extends OrderlessAIModule[Factory](universe) {
   private val employers = new Employer[Factory](universe)
   private var flight = Option.empty[RelocateFactory]
+  private val claimedFields = collection.mutable.Set.empty[Int]
 
   private def carpet = strategy.current.isInstanceOf[Strategy.TerranCarpet]
   private def wall = universe.pluginByType[WallWithDepots]
@@ -245,7 +246,7 @@ class FlyFactoriesToNatural(universe: Universe) extends OrderlessAIModule[Factor
         val request = UnitJobRequest.idleOfType(employers, classOf[Factory], priority = Priority.Expand)
           .withOnlyAccepting(_.nativeUnitId == factory.nativeUnitId)
         unitManager.request(request).units.headOption.foreach { unit =>
-          val job = new RelocateFactory(employers, unit)
+          val job = new RelocateFactory(employers, unit, claimedFields)
           employers.assignJob_!(job)
           flight = Some(job)
           NativeMatchEvidence.trace("factory-flight",
@@ -256,7 +257,8 @@ class FlyFactoriesToNatural(universe: Universe) extends OrderlessAIModule[Factor
 }
 
 /** Lift one factory, fly it to the open field nearest home and land it there. */
-private[pony] class RelocateFactory(employer: Employer[Factory], factory: Factory)
+private[pony] class RelocateFactory(employer: Employer[Factory], factory: Factory,
+                                    claimedFields: collection.mutable.Set[Int])
   extends UnitWithJob[Factory](employer, factory, Priority.Expand) {
   private var destination = Option.empty[MapTilePosition]
   private var destinationField = Option.empty[ResourceArea]
@@ -278,7 +280,7 @@ private[pony] class RelocateFactory(employer: Employer[Factory], factory: Factor
     val homeAreaId = bases.mainBase.flatMap(_.resourceArea).map(_.uniqueId)
     val forceHome = factory.isFloating && failedFields.size >= 2
     val found = if (forceHome) None else strategicMap.resources.filterNot(a => homeAreaId.contains(a.uniqueId))
-      .filterNot(a => failedFields.contains(a.uniqueId))
+      .filterNot(a => failedFields.contains(a.uniqueId) || claimedFields.contains(a.uniqueId))
       .filter(safe)
       .toVector.sortBy(a => (a.nearbyFreeTile.distanceSquaredTo(homeTile), a.uniqueId))
       .iterator.flatMap { area =>
@@ -287,6 +289,7 @@ private[pony] class RelocateFactory(employer: Employer[Factory], factory: Factor
       }.take(1).toList.headOption
     destination = found.map(_._2)
     destinationField = found.map(_._1)
+    found.foreach { case (area, _) => claimedFields += area.uniqueId }
     if (destination.isEmpty && factory.isFloating) {
       // Never strand a lifted factory: fall back to the home plateau.
       destination = new ConstructionSiteFinder(universe).findSpotFor(homeTile, classOf[Factory], maxRange = 25)
