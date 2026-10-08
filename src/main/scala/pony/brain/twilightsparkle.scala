@@ -366,6 +366,7 @@ class TwilightSparkle(world: DefaultWorld) {
     new TerranBunkerDefense(universe),
     new WallWithDepots(universe),
     new CarpetSpread(universe),
+    new TankBoxes(universe),
     new FlyFactoriesToNatural(universe),
     new RunTerranCampaign(universe),
     new SetupAntiCloakDefenses(universe),
