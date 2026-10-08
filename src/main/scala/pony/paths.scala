@@ -1199,6 +1199,19 @@ class ConstructionSiteFinder(universe: Universe) {
   private val helper = new GeometryHelpers(universe.world.map.sizeX, universe.world.map.sizeY)
   private val resourceDepotBuffer = universe.mapLayers.blockedForResourceDeposit.mutableCopy.guaranteeImmutability
 
+  /** Static construction masks preserve mineral traffic, depots and planned addons. */
+  def bunkerSites(resources: ResourceArea): Vector[Area] = {
+    val tiles = resources.allPatchTiles
+    if (tiles.isEmpty) Vector.empty
+    else (for {
+      x <- (tiles.map(_.x).min - 6) to (tiles.map(_.x).max + 6)
+      y <- (tiles.map(_.y).min - 6) to (tiles.map(_.y).max + 6)
+      area = Area(MapTilePosition(x, y), Size(3, 2))
+      if freeToBuildOnIgnoreUnits.inBounds(area) && freeToBuildOnIgnoreUnits.free(area)
+      if area.growBy(1).outline.forall(freeToBuildOnIgnoreUnits.freeAndInBounds)
+    } yield area).toVector
+  }
+
   def forResourceArea(resources: ResourceArea): SubFinder = {
     val size = Size(4 + 2, 3) // include space for comsat
     //main thread

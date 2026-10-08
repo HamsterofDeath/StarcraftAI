@@ -38,6 +38,10 @@ class TerranCampaignTest extends Specification {
     Postreserve expedition thresholds keep army production active until the deployable force qualifies $expeditionThresholds
     Local raids invalidate async offense, wait for a busy planner, and clear before offense resumes $defensiveRecall
     A lost guard cannot reserve a fighter still owned by an expedition $reserveCustody
+    Mineral field corners require enough nonoverlapping bunker sites for full coverage $bunkerCoverage
+    Garrison reservations stay unique and replace a killed Marine without inventing native cargo $bunkerGarrison
+    Three separated mineral sectors need three bunkers and actual four-cargo coverage before readiness $threeBunkers
+    Bunker coverage uses pinned native approximate distance and does not claim favorable collision extents $bunkerNativeDistance
   """
   private def building(id: Int, x: Int, base: Boolean = true) =
     ObservedEnemyBuilding(id, MapTilePosition(x, 20), 4, 3, base)
@@ -308,6 +312,43 @@ class TerranCampaignTest extends Specification {
     val whileAway = roster.reserved
     roster.update(field, Seq(DefenseFighter(2, MapTilePosition(11, 10), campaignAssigned = true),
       DefenseFighter(3, MapTilePosition(12, 10))))
-    (whileAway, roster.reserved) mustEqual (Set.empty[Int], Set(3))
+      (whileAway, roster.reserved) mustEqual (Set.empty[Int], Set(3))
+  }
+  def bunkerCoverage = {
+    val left = Area(MapTilePosition(10, 10), Size(3, 2))
+    val right = Area(MapTilePosition(18, 10), Size(3, 2))
+    val corners = BunkerCoverage.corners(Seq(MapTilePosition(8, 10), MapTilePosition(22, 10)))
+    val selected = BunkerCoverage.select(corners, Vector(left, right), Vector.empty, 160)
+    val oneCannotCover = BunkerCoverage.select(corners, Vector(left), Vector.empty, 160)
+    val single = BunkerCoverage.select(BunkerCoverage.corners(Seq(MapTilePosition(10, 12))),
+      Vector(left, right), Vector.empty, 160)
+    (selected.size, corners.forall(p => selected.exists(BunkerCoverage.covers(_, p, 160))),
+      oneCannotCover, single.size) mustEqual (2, true, Vector.empty, 1)
+  }
+  def bunkerGarrison = {
+    val g = new BunkerGarrison
+    val homes = Seq((100, MapTilePosition(10, 10), Set(1, 2)), (200, MapTilePosition(80, 80), Set.empty[Int]))
+    val marines = (1 to 4).map(i => i -> MapTilePosition(10, 10)) ++
+      (5 to 8).map(i => i -> MapTilePosition(80, 80))
+    g.update(homes, marines)
+    val before = g.reserved
+    g.update(homes.map { case (id, p, cargo) => (id, p, cargo - 1) },
+      marines.filterNot(_._1 == 1) :+ (9 -> MapTilePosition(11, 10)))
+    (before, g.reserved, g.target(9), g.target(5)) mustEqual
+      (Set(1, 2, 3, 4, 5, 6, 7, 8), Set(2, 3, 4, 5, 6, 7, 8, 9), Some(100), Some(200))
+  }
+  def threeBunkers = {
+    val points = BunkerCoverage.corners(Seq(MapTilePosition(8, 10), MapTilePosition(18, 10), MapTilePosition(30, 10)))
+    val candidates = Vector(10, 18, 26).map(x => Area(MapTilePosition(x, 10), Size(3, 2)))
+    val selected = BunkerCoverage.select(points, candidates, Vector.empty, 160)
+    val full = selected.map(_.upperLeft -> 4).toMap
+    (selected.size, BunkerCoverage.ready(points, selected, Map.empty, 160),
+      BunkerCoverage.ready(points, selected, full.updated(selected.head.upperLeft, 3), 160),
+      BunkerCoverage.ready(points, selected, full, 160)) mustEqual (3, false, false, true)
+  }
+  def bunkerNativeDistance = {
+    (BunkerCoverage.approximateDistance(MapPosition(0, 0), MapPosition(160, 0)),
+      BunkerCoverage.approximateDistance(MapPosition(0, 0), MapPosition(160, 160)),
+      BunkerCoverage.approximateDistance(MapPosition(160, 160), MapPosition(0, 0))) mustEqual (160, 209, 209)
   }
 }

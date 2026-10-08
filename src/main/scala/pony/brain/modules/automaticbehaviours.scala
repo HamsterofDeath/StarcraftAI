@@ -77,6 +77,7 @@ abstract class DefaultBehaviour[T <: WrapsUnit : Manifest](override val universe
 object Terran {
   def allBehaviours(universe: Universe): Seq[DefaultBehaviour[WrapsUnit]] = {
     val allOfThem = (new StimSelf(universe) ::
+                     new EnterDefensiveBunker(universe) ::
                      new StopMechanic(universe) ::
                      new SetupMineField(universe) ::
                      new ShieldUnit(universe) ::
@@ -110,6 +111,17 @@ object Terran {
                      Nil)
                     .map(_.cast)
     allOfThem
+  }
+
+  class EnterDefensiveBunker(universe: Universe) extends DefaultBehaviour[Marine](universe) {
+    override def priority = SecondPriority.Max
+    override protected def wrapBase(unit: Marine) = new SingleUnitBehaviour[Marine](unit, meta) {
+      override def describeShort = "Garrison bunker"
+      override def toOrder(what: Objective): Seq[UnitOrder] = {
+        if (unit.nativeUnit.isLoaded) Orders.NoUpdate(unit).toList
+        else universe.pluginByType[TerranBunkerDefense].bunkerFor(unit).map(b => Orders.EnterBunker(unit, b)).toList
+      }
+    }
   }
 
   class TransportGroundUnits(universe: Universe)

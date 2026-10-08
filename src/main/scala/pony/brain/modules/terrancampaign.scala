@@ -182,7 +182,8 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
     } else defenseRoster.update(Nil, Nil)
     defenseRoster
   }
-  def isReservedDefender(unit: WrapsUnit) = defenses.get.reserved(unit.nativeUnitId)
+  def isReservedDefender(unit: WrapsUnit) = defenses.get.reserved(unit.nativeUnitId) ||
+    universe.pluginByType[TerranBunkerDefense].reserved(unit)
   def guardPosition(unit: WrapsUnit) = defenses.get.rallyFor(unit.nativeUnitId)
   override def onNth = 31
 
@@ -197,7 +198,8 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
     val troops = expedition
     val funds = resources.currentResources
     val operational = universe.pluginByType[ManageMiningAtBases].secondBaseEstablished
-    operational && !worldDominationPlan.baseDefenseActive && (launched || config.ready(operational, troops.size,
+    operational && universe.pluginByType[TerranBunkerDefense].coverageReady &&
+      !worldDominationPlan.baseDefenseActive && (launched || config.ready(operational, troops.size,
       troops.map(_.nativeUnitType.mineralPrice).sum, troops.map(_.nativeUnitType.gasPrice).sum,
       funds.minerals, funds.gas))
   }

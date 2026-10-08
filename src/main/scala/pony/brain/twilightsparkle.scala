@@ -352,6 +352,7 @@ class TwilightSparkle(world: DefaultWorld) {
     new ProvideNewBuildings(universe),
     new ProvideSuggestedAndRequestedAddons(universe),
     new HandleDefenses(universe),
+    new TerranBunkerDefense(universe),
     new RunTerranCampaign(universe),
     new SetupAntiCloakDefenses(universe),
     new EnqueueFactories(universe),

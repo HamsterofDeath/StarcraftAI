@@ -216,6 +216,11 @@ object Orders {
     }
   }
 
+  case class EnterBunker(myUnit: Marine, bunker: Bunker) extends UnitOrder {
+    override def issueOrderToGame(): Unit = { myUnit.nativeUnit.rightClick(bunker.nativeUnit) }
+    override def renderDebug(renderer: Renderer): Unit = {}
+  }
+
   case class LoadUnit(ferry: TransporterUnit, loadThis: GroundUnit) extends UnitOrder {
     override def issueOrderToGame(): Unit = {
       myUnit.nativeUnit.rightClick(loadThis.nativeUnit)
