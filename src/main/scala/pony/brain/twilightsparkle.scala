@@ -418,27 +418,26 @@ class TwilightSparkle(world: DefaultWorld) {
     // Cheap per-frame pipeline: job lifecycle, command emission and action bookkeeping must
     // advance every frame so interruptability and order-lock semantics keep their frame meaning.
     unitManager.tick()
-    sendOrders.ordersForTick.foreach(world.orderQueue.queue_!)
 
     val tick = world.tickCount
-    if (!AiCadence.heavyNow(tick)) {
-      universe.afterTick()
-      return
+    if (AiCadence.heavyNow(tick)) {
+      // Expensive planning runs once per heavy tick (a game second by default).
+      maps.tick()
+      resources.tick()
+      strategy.tick()
+      bases.tick()
+      worldDomination.onTick_!()
+      unitGrid.onTick_!()
+      ferryManager.onTick_!()
+
+      val heavyTick = tick / AiCadence.frames
+      val activeInThisTick = aiModules.filter(e => tick == 0 || heavyTick % math.max(1, e.onNth / AiCadence.frames) == 0)
+      activeInThisTick.flatMap(_.ordersForTick).foreach(world.orderQueue.queue_!)
     }
 
-    // Expensive planning runs once per heavy tick (a game second by default).
-    maps.tick()
-    resources.tick()
-    strategy.tick()
-    bases.tick()
-    worldDomination.onTick_!()
-    unitGrid.onTick_!()
-    ferryManager.onTick_!()
-
-    val heavyTick = tick / AiCadence.frames
-    val activeInThisTick = aiModules.filter(e => tick == 0 || heavyTick % math.max(1, e.onNth / AiCadence.frames) == 0)
-    activeInThisTick.flatMap(_.ordersForTick).foreach(world.orderQueue.queue_!)
-
+    // Emit job orders after this frame's planning so freshly hired jobs command their units
+    // in the same frame (keeps the order-history liveness check from failing new jobs).
+    sendOrders.ordersForTick.foreach(world.orderQueue.queue_!)
     universe.afterTick()
 
   }
