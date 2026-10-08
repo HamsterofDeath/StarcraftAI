@@ -351,6 +351,7 @@ class TwilightSparkle(world: DefaultWorld) {
   private val resources       = new ResourceManager(universe)
   private val strategy        = new Strategies(universe)
   private val worldDomination = new WorldDominationPlan(universe)
+  private val sendOrders      = new SendOrdersToStarcraft(universe)
   private val aiModules       = List(
     new DefaultBehaviours(universe),
     new ManageMiningAtBases(universe),
@@ -369,7 +370,6 @@ class TwilightSparkle(world: DefaultWorld) {
     new ProvideUpgrades(universe),
     new ProvideExpansions(universe),
     new JobReAssignments(universe),
-    new SendOrdersToStarcraft(universe),
     AIModule.noop[WrapsUnit](universe)
   )
 
@@ -415,12 +415,20 @@ class TwilightSparkle(world: DefaultWorld) {
 
     universe.onTick_!()
 
-    val tick = world.tickCount
-    if (!AiCadence.heavyNow(tick)) return
+    // Cheap per-frame pipeline: job lifecycle, command emission and action bookkeeping must
+    // advance every frame so interruptability and order-lock semantics keep their frame meaning.
+    unitManager.tick()
+    sendOrders.ordersForTick.foreach(world.orderQueue.queue_!)
 
+    val tick = world.tickCount
+    if (!AiCadence.heavyNow(tick)) {
+      universe.afterTick()
+      return
+    }
+
+    // Expensive planning runs once per heavy tick (a game second by default).
     maps.tick()
     resources.tick()
-    unitManager.tick()
     strategy.tick()
     bases.tick()
     worldDomination.onTick_!()
