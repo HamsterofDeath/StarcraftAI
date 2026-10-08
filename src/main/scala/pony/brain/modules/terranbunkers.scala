@@ -127,6 +127,7 @@ class TerranBunkerDefense(universe: Universe)
     }
   }
   override def onTick_!(): Unit = {
+    super.onTick_!()
     if (!active || currentTick < 31 || currentTick % 31 != 0) return
     boarding.get
     val range = nativeGame.self().weaponMaxRange(bwapi.UnitType.Terran_Marine.groundWeapon()) + 64

@@ -45,6 +45,7 @@ class TerranCampaignTest extends Specification {
     An invalid validated bunker preset refuses generic fallback while legacy placements retain it $strictBunkerSite
     Bunker placement admits temporary traffic but refuses permanent obstacles and severed mining access $bunkerStaticPlacement
     Refused boarding is retried while progressing approaches and loaded Marines receive no reset orders $bunkerBoardingRetry
+    The real bunker module refreshes cold garrison caches on completion and destruction ticks $bunkerCacheLifecycle
   """
   private def building(id: Int, x: Int, base: Boolean = true) =
     ObservedEnemyBuilding(id, MapTilePosition(x, 20), 4, 3, base)
@@ -391,5 +392,32 @@ class TerranCampaignTest extends Specification {
       retry.issue(220, MapTilePosition(12, 10), false, true, true),
       retry.issue(240, MapTilePosition(12, 10), true, false, false)) mustEqual
       (true, false, true, false, false, true, false)
+  }
+  def bunkerCacheLifecycle = {
+    var frame = 0
+    val universe = Proxy.newProxyInstance(classOf[Universe].getClassLoader, Array[Class[_]](classOf[Universe]),
+      new InvocationHandler {
+        override def invoke(proxy: AnyRef, method: Method, arguments: Array[AnyRef]): AnyRef = method.getName match {
+          case "register_$bang" => null
+          case "currentTick" => Int.box(frame)
+          case other => throw new IllegalStateException("Unexpected native dependency: " + other)
+        }
+      }).asInstanceOf[Universe]
+    val module = new TerranBunkerDefense(universe) {
+      override def race = pony.Terran
+      override val strategy = new Strategy.Strategies(universe)
+    }
+    val garrison = new BunkerGarrison
+    var completed = false
+    val snapshot = module.oncePerTick {
+      val bunkers = if (completed) Seq((100, MapTilePosition(10, 10), Set.empty[Int])) else Nil
+      garrison.update(bunkers, (1 to 4).map(_ -> MapTilePosition(10, 10)))
+      garrison.reserved
+    }
+    val cold = snapshot.get
+    completed = true; frame = 1; module.onTick_!()
+    val afterCompletion = snapshot.get
+    completed = false; frame = 2; module.onTick_!()
+    (cold, afterCompletion, snapshot.get) mustEqual (Set.empty[Int], Set(1, 2, 3, 4), Set.empty[Int])
   }
 }
