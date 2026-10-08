@@ -110,32 +110,35 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
       segmentThrough(f.chokePoint.center, cutting.absoluteFrom, cutting.absoluteTo))
     val span = segments.distinct.flatten.distinct
     if (span.isEmpty) { probe("no pinnable pass at the choke"); return Vector.empty }
-    val candidates = span.flatMap(placementsCovering).distinct
-    if (candidates.isEmpty) { probe(s"span=${span.size} candidates=0"); return Vector.empty }
-    val covered = mutable.Set.empty[MapTilePosition]
-    val chosen = mutable.ArrayBuffer.empty[MapTilePosition]
-    def covers(a: MapTilePosition) = footprint(a).filter(span.contains)
-    while (!span.forall(covered.contains) && chosen.size <= 12) {
-      val best = candidates.filterNot(chosen.contains)
-        .filterNot(a => chosen.exists(b => overlaps(a, b)))
-        .maxByOpt(a => covers(a).count(t => !covered.contains(t)))
-      best.filter(a => covers(a).exists(t => !covered.contains(t))) match {
-        case Some(a) =>
-          chosen += a
-          covered ++= covers(a)
-        case None =>
-          probe(s"span=${span.size} candidates=${candidates.size} stuck uncovered=${span.count(t => !covered.contains(t))} at=${span.filterNot(covered.contains).mkString(",")}")
-          return Vector.empty
+    val allCandidates = span.flatMap(placementsCovering).distinct
+    if (allCandidates.isEmpty) { probe(s"span=${span.size} candidates=0"); return Vector.empty }
+    val coveredByCandidate = allCandidates.map(a => a -> footprint(a).filter(span.contains).toSet).toMap
+    val tileToCandidates = span.map(t => t -> allCandidates.filter(a => footprint(a).exists(_ == t))).toMap
+    var budget = 20000
+    def solve(uncovered: Set[MapTilePosition], chosen: Vector[MapTilePosition]): Option[Vector[MapTilePosition]] = {
+      if (uncovered.isEmpty) Some(chosen)
+      else if (chosen.size > 12 || budget <= 0) None
+      else {
+        budget -= 1
+        val target = uncovered.minBy(t => (t.y, t.x))
+        tileToCandidates.getOrElse(target, Vector.empty)
+          .filterNot(a => chosen.exists(b => overlaps(a, b)))
+          .sortBy(a => (-coveredByCandidate(a).count(uncovered.contains), a.y, a.x))
+          .iterator.flatMap(a => solve(uncovered -- coveredByCandidate(a), chosen :+ a).iterator)
+          .nextOption()
       }
     }
-    if (!span.forall(covered.contains)) {
-      probe(s"span=${span.size} candidates=${candidates.size} tooWide depots=${chosen.size} uncovered=${span.count(t => !covered.contains(t))}")
+    val solved = solve(span.toSet, Vector.empty)
+    if (solved.isEmpty) {
+      val missing = span.filter(t => tileToCandidates.getOrElse(t, Vector.empty).isEmpty)
+      probe(s"span=${span.size} candidates=${allCandidates.size} noCover missing=${missing.mkString(",")}")
       return Vector.empty
     }
+    def covers(a: MapTilePosition) = footprint(a).filter(span.contains)
 
     // Protoss probes, zealots and dragoons must not slip between or around the depots.
     // A leak is plugged along the breach path, nearest to the wall first.
-    var anchors = chosen.toVector
+    var anchors = solved.get
     var attempts = 0
     var breach = breachPath(home, anchors)
     while (breach.isDefined && attempts < 6 && anchors.size <= 20) {
@@ -147,7 +150,7 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
         .map { a =>
           val onPath = footprint(a).count(t => pathSet.contains(t))
           val wallDistance = anchors.map(b => (a.x - b.x).abs.max((a.y - b.y).abs)).min
-          val spanCover = covers(a).count(span.contains)
+          val spanCover = covers(a).size
           (a, onPath, wallDistance, spanCover)
         }
         .sortBy { case (a, onPath, wallDistance, spanCover) => (-onPath, wallDistance, -spanCover, a.y, a.x) }
