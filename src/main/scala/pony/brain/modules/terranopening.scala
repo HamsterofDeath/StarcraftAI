@@ -42,6 +42,21 @@ class TerranEconomicOpening(universe: Universe)
       .groupBy(_.uniqueId).values.map(_.head).toVector
   }
 
+  /** The field the saturated opener would fly to: the nearest safe, useful one. */
+  private def likelySecondField(home: Base): Option[ResourceArea] = {
+    val homeTile = home.mainBuilding.tilePosition
+    strategicMap.resources
+      .filter { a =>
+        !bases.isCovered(a) && fieldUseful(a) &&
+          mapLayers.slightlyDangerousAsBlocked.free(a.nearbyFreeTile) &&
+          unitGrid.enemy.allInRange[Mobile](a.nearbyFreeTile, 12).isEmpty &&
+          mapLayers.rawWalkableMap.areInSameWalkableArea(homeTile, a.nearbyFreeTile) &&
+          strategicMap.defenseLineOf(a.nearbyFreeTile).isDefined
+      }
+      .toVector.sortBy(a => (a.nearbyFreeTile.distanceSquaredTo(homeTile), a.uniqueId))
+      .headOption
+  }
+
   override def onTick_!(): Unit = {
     if (currentTick % Primes.prime31.i != 0) return
     val mining = universe.pluginByType[ManageMiningAtBases]
@@ -55,8 +70,18 @@ class TerranEconomicOpening(universe: Universe)
         val funds = resources.unlockedResources
         if (TerranCampaignConfig.load().expand(funds.minerals, funds.gas, cost.minerals, cost.gas,
           pending = false, safeReachableSite = true)) {
-          requestBuilding(classOf[CommandCenter], belongsTo = home.resourceArea, priority = Priority.Expand)
-          NativeMatchEvidence.trace("home-depot-request", s"unlocked=${funds.minerals}")
+          // Build the future flier as close as possible to the field it will later fly to.
+          val field = likelySecondField(home)
+          val custom = field.map { target =>
+            AlternativeBuildingSpot.fromExpensive(new ConstructionSiteFinder(universe)) { finder =>
+              finder.findSpotFor(home.mainBuilding.tilePosition, classOf[CommandCenter],
+                preferNear = Some(target.nearbyFreeTile))
+            }
+          }.getOrElse(AlternativeBuildingSpot.useDefault)
+          requestBuilding(classOf[CommandCenter], customBuildingPosition = custom,
+            belongsTo = home.resourceArea, priority = Priority.Expand)
+          NativeMatchEvidence.trace("home-depot-request",
+            s"unlocked=${funds.minerals} toward=${field.map(_.uniqueId)}")
         }
       }
       val secondBasePending = !mining.secondBaseEstablished && mining.startingFieldSaturated

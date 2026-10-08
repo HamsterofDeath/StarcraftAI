@@ -54,15 +54,47 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
       def alive(a: MapTilePosition) = ownUnits.allByType[SupplyDepot]
         .find(d => d.isInGame && !d.isBeingCreated && d.tilePosition == a)
       val singles = wall.iterator.filter { a =>
-        alive(a).isDefined && breachPath(home, wall.filterNot(_ == a), footprint(a).toSet).isDefined
+        alive(a).isDefined && opensWay(home, footprint(a).toSet)
       }.take(1).map(a => Set(a)).toList
       val pairs = if (singles.nonEmpty) Nil else wall.combinations(2).filter { pair =>
-        pair.forall(a => alive(a).isDefined) &&
-          breachPath(home, wall.filterNot(pair.contains), pair.flatMap(footprint).toSet).isDefined
+        pair.forall(a => alive(a).isDefined) && opensWay(home, pair.flatMap(footprint).toSet)
       }.take(1).toList.map(_.toSet)
       (singles ++ pairs).headOption.map(_.flatMap(a => alive(a).map(_.nativeUnitId)))
     }
   }.getOrElse(Set.empty)
+
+  /** True when freeing the given tiles lets a ground path from home escape the defended region. */
+  private def opensWay(home: Base, freed: Set[MapTilePosition]): Boolean = {
+    strategicMap.defenseLineOf(home).exists { front =>
+      def allowed(t: MapTilePosition): Boolean =
+        mapLayers.rawWalkableMap.insideBounds(t) && mapLayers.rawWalkableMap.free(t) &&
+          (freed(t) ||
+            (mapLayers.blockedByBuildingTiles.free(t) && mapLayers.blockedByPlannedBuildings.free(t))) &&
+          mapLayers.blockedByResources.free(t)
+      mapLayers.rawWalkableMap.nearestFree(home.mainBuilding.tilePosition).exists { start =>
+        val visited = mutable.Set.empty[MapTilePosition]
+        val queue = mutable.Queue.empty[MapTilePosition]
+        visited += start
+        queue += start
+        var escaped = false
+        var steps = 0
+        while (queue.nonEmpty && !escaped && steps < 20000) {
+          val cur = queue.dequeue()
+          steps += 1
+          if (!front.defended.free(cur)) escaped = true
+          else for (dx <- -1 to 1; dy <- -1 to 1 if dx != 0 || dy != 0) {
+            val n = cur.movedBy(dx, dy)
+            val corner = dx == 0 || dy == 0 || allowed(cur.movedBy(dx, 0)) || allowed(cur.movedBy(0, dy))
+            if (!visited(n) && allowed(n) && corner) {
+              visited += n
+              queue += n
+            }
+          }
+        }
+        escaped
+      }
+    }
+  }
 
   /** While the wall is incomplete, the economy's next supply depot should be a wall depot. */
   def nextSupplySpot: Option[MapTilePosition] = {
@@ -238,14 +270,12 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
   }
 
   /** A free path from a known outside tile to the defended side means the wall leaks. */
-  private def breachPath(home: Base, anchors: Vector[MapTilePosition],
-                         freeEvenIfBuilt: Set[MapTilePosition] = Set.empty): Option[Vector[MapTilePosition]] = {
+  private def breachPath(home: Base, anchors: Vector[MapTilePosition]): Option[Vector[MapTilePosition]] = {
     strategicMap.defenseLineOf(home).flatMap { front =>
       val wallTiles = anchors.flatMap(footprint).toSet
       def allowed(t: MapTilePosition): Boolean =
         mapLayers.rawWalkableMap.insideBounds(t) && mapLayers.rawWalkableMap.free(t) &&
-          (freeEvenIfBuilt(t) ||
-            (mapLayers.blockedByBuildingTiles.free(t) && mapLayers.blockedByPlannedBuildings.free(t))) &&
+          mapLayers.blockedByBuildingTiles.free(t) && mapLayers.blockedByPlannedBuildings.free(t) &&
           mapLayers.blockedByResources.free(t) &&
           !wallTiles(t)
       val seeds = (mapLayers.rawWalkableMap.spiralAround(front.chokePoint.center, 16) ++

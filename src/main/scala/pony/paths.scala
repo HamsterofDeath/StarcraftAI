@@ -1293,7 +1293,8 @@ class ConstructionSiteFinder(universe: Universe) {
   }
 
   def findSpotFor[T <: Building](near: MapTilePosition, building: Class[_ <: T], maxRange: Int = 75,
-                                 bestOfN: Int = 256) = {
+                                 bestOfN: Int = 256,
+                                 preferNear: Option[MapTilePosition] = None) = {
     // this happens in the background
     val unitType = building.toUnitType
     val necessarySize = Size.shared(unitType.tileWidth(), unitType.tileHeight())
@@ -1321,7 +1322,10 @@ class ConstructionSiteFinder(universe: Universe) {
         areaFree && (outlineFree || noLock)
       }
       // Native depots cannot be placed inside the mineral/geyser exclusion zone, even at home.
-      if (containsArea && ResourceDepotPlacement.permitted(area, unitType.isResourceDepot, resourceDepotBuffer) && free) {
+      // A preferred anchor also has to stay reachable on foot from the base's own area.
+      val reachable = preferNear.isEmpty ||
+        universe.mapLayers.rawWalkableMap.areInSameWalkableArea(near, upperLeft)
+      if (containsArea && reachable && ResourceDepotPlacement.permitted(area, unitType.isResourceDepot, resourceDepotBuffer) && free) {
         val freeSurroundingTiles = area.growBy(1).outline
                                    .count(outlineTouchCountArea.freeAndInBounds)
         val distanceToCenter = area.centerTile.distanceTo(near)
@@ -1330,7 +1334,10 @@ class ConstructionSiteFinder(universe: Universe) {
         None
       }
     }.take(bestOfN)
-    .minByOpt { case (_, b, c) => (b, c) }
+    .minByOpt { case (upperLeft, distanceKey, freeSurroundingTiles) =>
+      (preferNear.map(p => upperLeft.distanceTo(p).toDouble / 6.0).getOrElse(distanceKey),
+        freeSurroundingTiles)
+    }
     .map(_._1)
   }
 }
