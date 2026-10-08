@@ -41,7 +41,8 @@ private[pony] object BunkerCoverage {
   }
   private def separate(a: Area, b: Area) = !a.growBy(1).tiles.exists(b.tiles.toSet)
   def select(points: Vector[MapPosition], candidates: Vector[Area], existing: Vector[Area], range: Int,
-             safeTogether: Seq[Area] => Boolean = _ => true): Vector[Area] = {
+             safeTogether: Seq[Area] => Boolean = _ => true,
+             relaxedFallback: Boolean = false): Vector[Area] = {
     val needed = points.indices.filterNot(i => existing.exists(covers(_, points(i), range))).toSet
     val ranked = candidates.filter(c => existing.forall(separate(c, _))).map { c =>
       c -> needed.filter(i => covers(c, points(i), range))
@@ -59,10 +60,11 @@ private[pony] object BunkerCoverage {
         var selected = Vector.empty[Area]
         while (left.nonEmpty) {
           // Preserve the same first admissible ranked site; whole-map connectivity is expensive.
-          val next = ranked.filter(e => selected.forall(separate(e._1, _)))
+          val options = ranked.filter(e => selected.forall(separate(e._1, _)))
             .map(e => (e._1, e._2 intersect left)).filter(_._2.nonEmpty)
-            .sortBy(e => (-e._2.size, e._1.upperLeft.y, e._1.upperLeft.x)).iterator
-            .find(e => safeTogether(selected :+ e._1))
+            .sortBy(e => (-e._2.size, e._1.upperLeft.y, e._1.upperLeft.x))
+          val next = options.iterator.find(e => safeTogether(selected :+ e._1))
+            .orElse(if (relaxedFallback) options.iterator.nextOption() else None)
           if (next.isEmpty) return Vector.empty
           selected :+= next.get._1
           left --= next.get._2
@@ -232,7 +234,10 @@ class TerranBunkerDefense(universe: Universe)
         val finder = new ConstructionSiteFinder(universe)
         val routeTiles = BunkerCoverage.workerTiles(Nil, Nil, routes.flatten).toSet
         val candidates = finder.bunkerSites(field, workTiles).filterNot(a => a.tiles.exists(routeTiles))
-        val sites = BunkerCoverage.select(points, candidates, existing, range, finder.bunkerSitesSafeTogether)
+        // Cramped terrain (map corners) may admit no jointly split-free set; then keep individual
+        // coverage with separated sites instead of refusing to plan any bunkers at all.
+        val sites = BunkerCoverage.select(points, candidates, existing, range,
+          finder.bunkerSitesSafeTogether, relaxedFallback = true)
         if (routes.nonEmpty && routes.forall(_.isDefined) && points.nonEmpty &&
           (sites.nonEmpty || points.forall(p => existing.exists(BunkerCoverage.covers(_, p, range))))) {
           plans(field.uniqueId) = points -> (existing ++ sites)
