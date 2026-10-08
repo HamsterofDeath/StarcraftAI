@@ -33,6 +33,7 @@ trait AIAPI {
     try {
       debugger.renderer.beforeTick()
       world.tick()
+      val heavyFrame = AiCadence.heavyNow(world.tickCount)
       val before = System.nanoTime()
       plugins.filter(_.isActive).foreach(_.onTickOnPlugin())
       val after = System.nanoTime()
@@ -42,6 +43,9 @@ trait AIAPI {
       val afterAfter = System.nanoTime()
       val nativeNanos = afterAfter - after
       nativeMS += nativeNanos
+      if (heavyFrame)
+        NativeMatchEvidence.trace("ai-heavy",
+          s"pluginMs=${aiNanos / 1000000.0} nativeMs=${nativeNanos / 1000000.0}")
       debug(
         s"AI took ${aiNanos.nanoToMillis} ms for calculations and then ${nativeNanos.nanoToMillis}")
       if (aiMS.size > 100) aiMS.remove(0)

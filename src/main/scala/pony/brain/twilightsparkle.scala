@@ -414,6 +414,10 @@ class TwilightSparkle(world: DefaultWorld) {
     enemyUnits.consumeFresh_! {_.init_!(universe)}
 
     universe.onTick_!()
+
+    val tick = world.tickCount
+    if (!AiCadence.heavyNow(tick)) return
+
     maps.tick()
     resources.tick()
     unitManager.tick()
@@ -423,9 +427,8 @@ class TwilightSparkle(world: DefaultWorld) {
     unitGrid.onTick_!()
     ferryManager.onTick_!()
 
-    val tick = world.tickCount
-
-    val activeInThisTick = aiModules.filter(e => tick == 0 || tick % e.onNth == 0)
+    val heavyTick = tick / AiCadence.frames
+    val activeInThisTick = aiModules.filter(e => tick == 0 || heavyTick % math.max(1, e.onNth / AiCadence.frames) == 0)
     activeInThisTick.flatMap(_.ordersForTick).foreach(world.orderQueue.queue_!)
 
     universe.afterTick()

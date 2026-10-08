@@ -111,9 +111,10 @@ object Controller {
           repeatedCallbacks = 0
           NativeMatchEvidence.started(clientRef.getGame)
           val headless = sys.props.getOrElse("twailight.headless", "false").toBoolean
+          val localSpeed = sys.props.getOrElse("twailight.localSpeed", "0").toInt
           clientRef.getGame.setGUI(!headless)
-          clientRef.getGame.setLocalSpeed(0)
-          NativeMatchEvidence.trace("native-rendering", s"gui=${!headless} localSpeed=0")
+          clientRef.getGame.setLocalSpeed(localSpeed)
+          NativeMatchEvidence.trace("native-rendering", s"gui=${!headless} localSpeed=$localSpeed")
           clientRef.getGame.enableFlag(bwapi.Flag.UserInput)
           val w = DefaultWorld.spawn(clientRef.getGame)
           world = Some(w)

@@ -387,7 +387,7 @@ class OrderQueue(game: Game, debugger: Debugger) {
     }
   }
 
-  def issueAll(): Unit = {
+  def issueAll(elapsedFrames: Int): Unit = {
     val tickOrders = queue.filterNot(_.isNoop)
     trace(s"Orders: ${tickOrders.mkString(", ")}", queue.nonEmpty)
     tickOrders.foreach(_.record())
@@ -396,7 +396,7 @@ class OrderQueue(game: Game, debugger: Debugger) {
       delegatedToBasicAI.put(order.myUnit, order)
       val isLocked = locked.get(order.myUnit).exists(_ > 0)
       if (isLocked) {
-        locked.put(order.myUnit, locked(order.myUnit) - 1)
+        locked.put(order.myUnit, locked(order.myUnit) - elapsedFrames)
       } else {
         order.issueOrderToGame()
         locked.put(order.myUnit, order.lockTicks)

@@ -105,13 +105,19 @@ class DefaultWorld(game: Game) extends WorldListener with WorldEventDispatcher {
     myUniverse.enemyUnits.tick()
   }
 
+  private var lastIssueTick = -1
+
   def postTick(): Unit = {
     debugger.renderer.allow()
     postTickActions.foreach(e => e())
     debugger.renderer.disallow()
     postTickActions.clear()
     orderQueue.debugAll()
-    orderQueue.issueAll()
+    if (AiCadence.heavyNow(ticks)) {
+      val elapsed = if (lastIssueTick < 0) 1 else math.max(1, ticks - lastIssueTick)
+      lastIssueTick = ticks
+      orderQueue.issueAll(elapsed)
+    }
     ticks += 1
   }
 }
