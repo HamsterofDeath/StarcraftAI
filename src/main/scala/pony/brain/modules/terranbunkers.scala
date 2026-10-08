@@ -215,6 +215,20 @@ class TerranBunkerDefense(universe: Universe)
       })
     }
   }
+  /** Attack entry gate: every landed field planned and at least one base fully fortified. */
+  def defenseSufficient: Boolean = {
+    if (!active) true
+    else {
+      val fields = bases.allBases.filter(b => !b.mainBuilding.isBeingCreated && !b.mainBuilding.isFloating)
+        .flatMap(_.resourceArea).map(_.uniqueId).toSet
+      val completed = bunkers.filterNot(_.isBeingCreated).map(b => b.tilePosition -> nativeCargo(b).size).toMap
+      val range = nativeGame.self().weaponMaxRange(bwapi.UnitType.Terran_Marine.groundWeapon()) + 64
+      fields.nonEmpty && fields.forall(plans.contains) &&
+        fields.exists(id => plans.get(id).exists { case (points, sites) =>
+          BunkerCoverage.ready(points, sites, completed, range)
+        })
+    }
+  }
   override def onTick_!(): Unit = {
     super.onTick_!()
     if (!active || currentTick < 31 || currentTick % 31 != 0) return
@@ -254,7 +268,12 @@ class TerranBunkerDefense(universe: Universe)
         }
         val finder = new ConstructionSiteFinder(universe)
         val routeTiles = BunkerCoverage.workerTiles(Nil, Nil, routes.flatten).toSet
-        val candidates = finder.bunkerSites(field, workTiles).filterNot(a => a.tiles.exists(routeTiles))
+        // A bunker must never claim the footprint reserved for a (re)built or relocating CommandCenter.
+        val depotFootprints = (unitManager.requestedConstructions[CommandCenter].flatMap(_.customPosition.requestedPosition) ++
+          unitManager.constructionsInProgress[CommandCenter].map(_.buildWhere)).map(p => Area(p, Size(4, 3)))
+        val candidates = finder.bunkerSites(field, workTiles)
+          .filterNot(a => a.tiles.exists(routeTiles))
+          .filterNot(a => depotFootprints.exists(cc => a.growBy(1).tiles.exists(cc.tiles.toSet)))
         // Points no candidate footprint can reach (map edge lanes, ground occupied by other
         // buildings) must not demand coverage, or the field could never be planned at all.
         val points = allPoints.filter(p => (existing ++ candidates).exists(BunkerCoverage.covers(_, p, range)))

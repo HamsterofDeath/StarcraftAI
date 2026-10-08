@@ -210,10 +210,10 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
     val troops = expedition
     val funds = resources.currentResources
     val operational = universe.pluginByType[ManageMiningAtBases].secondBaseEstablished
-    operational && universe.pluginByType[TerranBunkerDefense].coverageReady &&
-      !worldDominationPlan.baseDefenseActive && (launched || config.ready(operational, troops.size,
-      troops.map(_.nativeUnitType.mineralPrice).sum, troops.map(_.nativeUnitType.gasPrice).sum,
-      funds.minerals, funds.gas))
+    operational && !worldDominationPlan.baseDefenseActive && (launched ||
+      (universe.pluginByType[TerranBunkerDefense].defenseSufficient && config.ready(operational,
+        troops.size, troops.map(_.nativeUnitType.mineralPrice).sum, troops.map(_.nativeUnitType.gasPrice).sum,
+        funds.minerals, funds.gas)))
   }
 
   def enemyLocated = memory.buildings.nonEmpty
