@@ -182,6 +182,14 @@ class ProvideExpansions(universe: Universe)
 class ProvideNewSupply(universe: Universe) extends OrderlessAIModule[WorkerUnit](universe) {
   private val supplyEmployer = new Employer[SupplyProvider](universe)
 
+  private def wallPlugin = universe.plugins.collectFirst { case w: WallWithDepots => w }
+
+  private def wallAwareSpot: AlternativeBuildingSpot = wallPlugin.flatMap(_.nextSupplySpot) match {
+    case Some(spot) =>
+      AlternativeBuildingSpot.fromValidatedPreset(spot)(wallPlugin.exists(_.supplySpotValid(spot)))
+    case None => AlternativeBuildingSpot.useDefault
+  }
+
   override def onTick_!() = {
 
     val cur = plannedSupplies
@@ -196,7 +204,7 @@ class ProvideNewSupply(universe: Universe) extends OrderlessAIModule[WorkerUnit]
         trace(s"More supply approved! $suc, requesting ${race.supplyClass.className}")
         val ofType = UnitJobRequest
                      .newOfType(universe, supplyEmployer, classOf[SupplyProvider], suc,
-                       priority = Priority.Supply)
+                       priority = Priority.Supply, customBuildingPosition = wallAwareSpot)
 
         // this will always be unfulfilled
         val result = unitManager.request(ofType)

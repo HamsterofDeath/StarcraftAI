@@ -34,6 +34,24 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
   /** True once planning concluded that no depot wall can seal the main approach. */
   def refused: Boolean = refusedPlanning
 
+  /** While the wall is incomplete, the next generic supply depot should double as a wall depot. */
+  def nextSupplySpot: Option[MapTilePosition] = {
+    if (refusedPlanning) None
+    else anchors.flatMap { wall =>
+      val existing = ownUnits.allByType[SupplyDepot].filter(_.isInGame).map(_.tilePosition).toSet
+      val pending = (unitManager.requestedConstructions[SupplyDepot].flatMap(_.customPosition.requestedPosition) ++
+        unitManager.constructionsInProgress[SupplyDepot].map(_.buildWhere)).toSet
+      wall.filterNot(a => existing(a) || pending(a)).find(depotFree)
+    }
+  }
+
+  /** True while the given spot is still a planned, unoccupied and free wall anchor. */
+  def supplySpotValid(spot: MapTilePosition): Boolean =
+    anchors.exists(_.contains(spot)) && depotFree(spot)
+
+  /** A 2x2 supply depot fits and is unoccupied: shared by the wall and the tank boxes. */
+  def depotSpotFree(anchor: MapTilePosition): Boolean = depotFree(anchor)
+
   private def probe(reason: String): Unit = if (!probed) {
     probed = true
     NativeMatchEvidence.trace("wall-probe", reason)
