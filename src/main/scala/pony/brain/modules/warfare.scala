@@ -674,12 +674,13 @@ trait UnitRequestHelper extends AIModule[UnitFactory] {
   private val buildingHelper = new HelperAIModule[WorkerUnit](universe) with BuildingRequestHelper
   private val addonHelper    = new HelperAIModule[CanBuildAddons](universe) with AddonRequestHelper
 
-  def requestUnit[T <: Mobile](mobileType: Class[_ <: T], takeCareOfDependencies: Boolean) = {
-    val req = ResourceRequests.forUnit(race, mobileType)
+  def requestUnit[T <: Mobile](mobileType: Class[_ <: T], takeCareOfDependencies: Boolean,
+                               priority: Priority = Priority.Default) = {
+    val req = ResourceRequests.forUnit(race, mobileType, priority)
     var ok = false
     val result = resources.request(req, mobileEmployer)
     result.ifSuccess { suc =>
-      val unitReq = UnitJobRequest.newOfType(universe, mobileEmployer, mobileType, suc)
+      val unitReq = UnitJobRequest.newOfType(universe, mobileEmployer, mobileType, suc, priority = priority)
       trace(s"Financing possible for mobile unit $mobileType, requesting training")
       val result = unitManager.request(unitReq)
       if (result.hasAnyMissingRequirements) {

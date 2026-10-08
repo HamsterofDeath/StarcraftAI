@@ -86,11 +86,46 @@ private[pony] class BunkerBoardingRetry {
   }
 }
 
+/** Indexed dead cargo is not a survivor; visible training and its job are one slot. */
+private[pony] object BunkerMarineQuota {
+  def missing(seats: Int, nativeCompleted: Set[Int], nativeIncomplete: Set[Int],
+              trainingJobs: Int, fundedRequests: Seq[Int]): Int =
+    (seats - nativeCompleted.size - (nativeIncomplete.size max trainingJobs) - fundedRequests.sum) max 0
+}
+
+private[pony] object BunkerRepairAdmission {
+  def eligible(damaged: Boolean, completed: Boolean, alive: Boolean, local: Boolean,
+               mineralOrIdle: Boolean) = damaged && completed && alive && local && mineralOrIdle
+}
+
+private[pony] object BunkerRepairState {
+  sealed trait State
+  case object Repairing extends State
+  case object Finished extends State
+  case object Failed extends State
+  def apply(workerAlive: Boolean, targetAlive: Boolean, damaged: Boolean, floating: Boolean): State =
+    if (!workerAlive) Failed else if (!targetAlive || !damaged) Finished else if (floating) Failed else Repairing
+}
+
+/** Temporary custody steals only local mineral/idle SCVs, and returns them through the normal market. */
+private[pony] class RepairDefensiveBunker(worker: SCV, bunker: Bunker, owner: Employer[SCV])
+  extends UnitWithJob[SCV](owner, worker, Priority.Supply) with Interruptable[SCV] {
+  override def shortDebugString = s"Repair bunker ${bunker.nativeUnitId}"
+  private def state = BunkerRepairState(worker.nativeUnit.exists && !worker.isDead, bunker.nativeUnit.exists,
+    bunker.nativeUnit.getHitPoints < bunker.nativeUnit.getType.maxHitPoints, bunker.isFloating)
+  override def isFinished = state == BunkerRepairState.Finished
+  override def jobHasFailedWithoutDeath = state == BunkerRepairState.Failed
+  override def everyNth = 23
+  override def ordersForTick = Orders.RepairBuilding(worker, bunker).toSeq
+  def targetId = bunker.nativeUnitId
+}
+
 class TerranBunkerDefense(universe: Universe)
   extends OrderlessAIModule[UnitFactory](universe) with UnitRequestHelper {
   private val builder = new HelperAIModule[WorkerUnit](universe) with BuildingRequestHelper
   private val plans = mutable.Map.empty[Int, (Vector[MapPosition], Vector[Area])]
   private val garrison = new BunkerGarrison
+  private val repairers = new Employer[SCV](universe)
   private var cargoObserved = Map.empty[Int, Set[Int]]
   private var announcedReady = Set.empty[Int]
   private var uncoveredReported = Set.empty[Int]
@@ -105,7 +140,8 @@ class TerranBunkerDefense(universe: Universe)
     if (active) {
       val ready = bunkers.filterNot(_.isBeingCreated)
       val slots = ready.map(b => (b.nativeUnitId, b.tilePosition, nativeCargo(b)))
-      val candidates = ownUnits.allByType[Marine].filter(m => m.isInGame && !m.isBeingCreated &&
+      val nativeIds = nativeGame.self().getUnits.asScala.map(_.getID).toSet
+      val candidates = ownUnits.allByType[Marine].filter(m => nativeIds(m.nativeUnitId) && m.isInGame && !m.isBeingCreated &&
         !worldDominationPlan.attackOf(m).exists(_.campaign)).map(m => m.nativeUnitId -> m.currentTile).toVector
       garrison.update(slots, candidates)
     } else garrison.update(Nil, Nil)
@@ -170,15 +206,42 @@ class TerranBunkerDefense(universe: Universe)
       }
     }
     val desired = plans.values.map(_._2.size * 4).sum
-    if (unitManager.countExistingAndPlanned(classOf[Marine]) < desired)
-      requestUnit(classOf[Marine], takeCareOfDependencies = true)
+    val nativeMarines = nativeGame.self().getUnits.asScala.filter(_.getType == bwapi.UnitType.Terran_Marine).toVector
+    val nativeIds = nativeGame.self().getUnits.asScala.map(_.getID).toSet
+    val training = unitManager.allJobsByType[TrainUnit[UnitFactory, Mobile]].count(j =>
+      j.requestedType == classOf[Marine] && nativeIds(j.unit.nativeUnitId) && !j.failedOrObsolete && !j.isFinished)
+    val funded = unitManager.plannedToTrain.filter(r => !r.clearable && r.typeOfRequestedUnit == classOf[Marine] &&
+      r.funding.isSuccess && resources.hasStillLocked(r.funding)).map(_.amount).toVector
+    val missing = BunkerMarineQuota.missing(desired, nativeMarines.filter(_.isCompleted).map(_.getID).toSet,
+      nativeMarines.filterNot(_.isCompleted).map(_.getID).toSet, training, funded)
+    if (missing > 0) {
+      val accepted = requestUnit(classOf[Marine], takeCareOfDependencies = true, priority = Priority.Supply)
+      if (currentTick % (31 * 16) == 0) NativeMatchEvidence.trace("bunker-replacement-request",
+        s"desired=$desired native=${nativeMarines.size} indexed=${ownUnits.allByType[Marine].size} training=$training funded=$funded missing=$missing accepted=$accepted unlocked=${resources.unlockedResources}")
+    }
+    bunkers.filter(b => b.nativeUnit.exists && b.nativeUnit.isCompleted && b.nativeUnit.getHitPoints < b.nativeUnit.getType.maxHitPoints).foreach { b =>
+      val assigned = unitManager.allJobsByType[RepairDefensiveBunker].count(j =>
+        j.targetId == b.nativeUnitId && !j.failedOrObsolete && !j.isFinished)
+      if (assigned < 2) {
+        val request = UnitJobRequest.idleOfType(repairers, classOf[SCV], 2 - assigned, Priority.Supply)
+          .withOnlyAccepting { w =>
+            val job = unitManager.jobOf(w)
+            BunkerRepairAdmission.eligible(b.isDamaged, !b.isBeingCreated, nativeIds(w.nativeUnitId),
+              w.currentTile.distanceToIsLess(b.centerTile, 12) && w.currentArea.contains(b.areaOnMap),
+              job.isIdle || job.isInstanceOf[GatherMineralsAtSinglePatch])
+          }.withRequest(_.withCherryPicker_!(UnitRequest.CherryPickers.cherryPickWorkerByDistance[SCV](b.centerTile)()))
+        unitManager.request(request, buildIfNoneAvailable = false).units.foreach { w =>
+          repairers.assignJob_!(new RepairDefensiveBunker(w, b, repairers))
+          NativeMatchEvidence.trace("bunker-repair-assigned", s"bunker=${b.nativeUnitId} scv=${w.nativeUnitId} hp=${b.nativeUnit.getHitPoints}")
+        }
+      }
+    }
     val cargo = bunkers.filterNot(_.isBeingCreated).map(b => b.nativeUnitId -> nativeCargo(b)).toMap
     if (currentTick % (31 * 16) == 0 && !coverageReady) {
-      val nativeMarines = nativeGame.self().getUnits.asScala.filter(_.getType == bwapi.UnitType.Terran_Marine).toVector
       val eligible = ownUnits.allByType[Marine].filter(m => m.isInGame && !m.isBeingCreated).map(_.nativeUnitId).toVector
       val producers = ownUnits.allByType[Barracks].map(b => s"${b.nativeUnitId}:${b.nativeUnit.isTraining}:${b.nativeUnit.getRemainingTrainTime}:${unitManager.jobOf(b).shortDebugString}").toVector
       val assigned = bunkers.map(b => b.nativeUnitId -> boarding.get.reserved.toVector.filter(id => boarding.get.target(id).contains(b.nativeUnitId)))
-      NativeMatchEvidence.trace("bunker-garrison-status", s"nativeMarines=${nativeMarines.map(_.getID)} eligible=$eligible planned=${unitManager.plannedToTrain.count(_.typeOfRequestedUnit == classOf[Marine])} producers=$producers assigned=$assigned")
+      NativeMatchEvidence.trace("bunker-garrison-status", s"desired=$desired indexed=${ownUnits.allByType[Marine].size} nativeMarines=${nativeMarines.map(_.getID)} eligible=$eligible planned=${unitManager.plannedToTrain.count(_.typeOfRequestedUnit == classOf[Marine])} producers=$producers assigned=$assigned unlocked=${resources.unlockedResources}")
     }
     cargo.foreach { case (id, ids) =>
       if (!cargoObserved.get(id).contains(ids)) NativeMatchEvidence.trace("bunker-native-cargo", s"id=$id marines=${ids.toVector.sorted} count=${ids.size}")

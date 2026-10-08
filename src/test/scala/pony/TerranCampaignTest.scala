@@ -46,6 +46,10 @@ class TerranCampaignTest extends Specification {
     Bunker placement admits temporary traffic but refuses permanent obstacles and severed mining access $bunkerStaticPlacement
     Refused boarding is retried while progressing approaches and loaded Marines receive no reset orders $bunkerBoardingRetry
     The real bunker module refreshes cold garrison caches on completion and destruction ticks $bunkerCacheLifecycle
+    Vanished native bunker crews reopen quotas without double counting unfinished training $bunkerCasualtyQuota
+    Damaged completed bunkers admit local mineral workers but never gas, builders or unreachable workers $bunkerRepair
+    Garrison Marines cannot occupy the mobile defense roster after boarding $bunkerMobileReserve
+    Repair healing, target destruction and worker death each terminate in exactly one lifecycle state $bunkerRepairLifecycle
   """
   private def building(id: Int, x: Int, base: Boolean = true) =
     ObservedEnemyBuilding(id, MapTilePosition(x, 20), 4, 3, base)
@@ -419,5 +423,36 @@ class TerranCampaignTest extends Specification {
     val afterCompletion = snapshot.get
     completed = false; frame = 2; module.onTick_!()
     (cold, afterCompletion, snapshot.get) mustEqual (Set.empty[Int], Set(1, 2, 3, 4), Set.empty[Int])
+  }
+  def bunkerCasualtyQuota = {
+    val before = (1 to 8).toSet
+    val after = before -- (5 to 8)
+    (BunkerMarineQuota.missing(8, before, Set.empty, 0, Nil),
+      BunkerMarineQuota.missing(8, after, Set.empty, 0, Nil),
+      BunkerMarineQuota.missing(8, after, Set(9), 1, Seq(1)),
+      BunkerMarineQuota.missing(8, Set.empty, Set.empty, 0, Nil)) mustEqual (0, 4, 2, 8)
+  }
+  def bunkerRepair = {
+    def admit(damaged: Boolean = true, completed: Boolean = true, alive: Boolean = true,
+              local: Boolean = true, mineralOrIdle: Boolean = true) =
+      BunkerRepairAdmission.eligible(damaged, completed, alive, local, mineralOrIdle)
+    (admit(), admit(damaged = false), admit(completed = false), admit(alive = false),
+      admit(local = false), admit(mineralOrIdle = false)) mustEqual (true, false, false, false, false, false)
+  }
+  def bunkerMobileReserve = {
+    val roster = new TerranDefenseRoster(2)
+    val field = Seq(DefenseField(1, MapTilePosition(10, 10)))
+    roster.update(field, Seq(DefenseFighter(1, MapTilePosition(10, 10)), DefenseFighter(2, MapTilePosition(10, 10))))
+    roster.update(field, Seq(DefenseFighter(1, MapTilePosition(10, 10), garrisonReserved = true),
+      DefenseFighter(2, MapTilePosition(10, 10), garrisonReserved = true),
+      DefenseFighter(3, MapTilePosition(11, 10)), DefenseFighter(4, MapTilePosition(12, 10))))
+    (roster.reserved, roster.rallyFor(1)) mustEqual (Set(3, 4), None)
+  }
+  def bunkerRepairLifecycle = {
+    import BunkerRepairState._
+    (BunkerRepairState(true, true, true, false), BunkerRepairState(true, true, false, false),
+      BunkerRepairState(true, false, true, false), BunkerRepairState(false, true, false, false),
+      BunkerRepairState(false, false, true, false), BunkerRepairState(true, true, true, true)) mustEqual
+      (Repairing, Finished, Finished, Failed, Failed, Failed)
   }
 }

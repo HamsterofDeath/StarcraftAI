@@ -59,19 +59,21 @@ private[pony] object MineralFieldStaffing {
 }
 
 private[pony] case class DefenseField(id: Int, rally: MapTilePosition)
-private[pony] case class DefenseFighter(id: Int, tile: MapTilePosition, campaignAssigned: Boolean = false)
+private[pony] case class DefenseFighter(id: Int, tile: MapTilePosition, campaignAssigned: Boolean = false,
+                                      garrisonReserved: Boolean = false)
 /** Stable guards stay with each distinct landed field; casualties are replaced locally. */
 private[pony] class TerranDefenseRoster(perField: Int) {
   private var members = Map.empty[Int, Vector[Int]]
   private var fields = Map.empty[Int, MapTilePosition]
   def update(currentFields: Seq[DefenseField], fighters: Seq[DefenseFighter]): Unit = {
     fields = currentFields.map(f => f.id -> f.rally).toMap
-    val live = fighters.map(_.id).toSet
+    val mobile = fighters.filterNot(_.garrisonReserved)
+    val live = mobile.map(_.id).toSet
     members = members.filter(p => fields.contains(p._1)).map { case (field, ids) => field -> ids.filter(live) }
     var used = members.values.flatten.toSet
     currentFields.sortBy(_.id).foreach { field =>
       val kept = members.getOrElse(field.id, Vector.empty)
-      val replacements = fighters.filterNot(f => used(f.id) || f.campaignAssigned)
+      val replacements = mobile.filterNot(f => used(f.id) || f.campaignAssigned)
         .sortBy(f => (f.tile.distanceSquaredTo(field.rally), f.id)).take(perField - kept.size).map(_.id)
       members += field.id -> (kept ++ replacements)
       used ++= replacements
@@ -178,7 +180,8 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
         }
       }.groupBy(_.id).values.map(_.head).toVector
       defenseRoster.update(fields, fighters.map(m => DefenseFighter(m.nativeUnitId, m.currentTile,
-        worldDominationPlan.attackOf(m).exists(_.campaign))))
+        worldDominationPlan.attackOf(m).exists(_.campaign),
+        universe.pluginByType[TerranBunkerDefense].reserved(m))))
     } else defenseRoster.update(Nil, Nil)
     defenseRoster
   }

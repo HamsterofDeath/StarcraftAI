@@ -346,7 +346,9 @@ object Orders {
 
   case class RepairBuilding(myUnit: SCV, fixWhat: TerranBuilding) extends UnitOrder {
     override def issueOrderToGame(): Unit = {
-      myUnit.nativeUnit.repair(fixWhat.nativeUnit)
+      val accepted = myUnit.nativeUnit.repair(fixWhat.nativeUnit)
+      if (fixWhat.isInstanceOf[Bunker] && myUnit.universe.currentTick % 120 < 24)
+        NativeMatchEvidence.trace("bunker-native-repair", s"scv=${myUnit.nativeUnitId} bunker=${fixWhat.nativeUnitId} accepted=$accepted hp=${fixWhat.nativeUnit.getHitPoints} order=${myUnit.nativeUnit.getOrder} error=${myUnit.universe.world.nativeGame.getLastError}")
     }
 
     override def renderDebug(renderer: Renderer): Unit = {
