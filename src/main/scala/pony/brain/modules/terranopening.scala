@@ -48,7 +48,8 @@ class TerranEconomicOpening(universe: Universe)
     relocation = relocation.filterNot(j => j.failedOrObsolete || j.isFinished)
     val depots = ownUnits.allByType[CommandCenter].filter(_.isInGame).toVector
     bases.mainBase.foreach { home =>
-      if (depots.size < 2 && !unitManager.requestedToBuild(classOf[CommandCenter]) &&
+      if (depots.size < TerranCampaignConfig.load().requiredFields &&
+        !unitManager.requestedToBuild(classOf[CommandCenter]) &&
         unitManager.constructionsInProgress[CommandCenter].isEmpty) {
         val cost = ResourceRequests.forUnit(race, classOf[CommandCenter])
         val funds = resources.unlockedResources
@@ -68,10 +69,15 @@ class TerranEconomicOpening(universe: Universe)
               !cc.isBeingCreated && bases.allBases.find(_.mainBuilding == cc).exists(_.resourceArea == home.resourceArea)
             }
           } else {
-            // Never hold a depleted field: move its depot to a fresh one so two useful fields stay open.
-            depots.filterNot(_.isBeingCreated).filterNot(_.isFloating)
-              .filter(cc => bases.allBases.find(_.mainBuilding == cc).flatMap(_.resourceArea).exists(a => !fieldUseful(a)))
-              .sortBy(_.nativeUnitId).headOption
+            // Free a depleted field's depot, or a spare sharing a still-useful field, so a fresh field
+            // can open; never move the only depot of a useful field.
+            val landed = depots.filterNot(_.isBeingCreated).filterNot(_.isFloating).filterNot(_ == home.mainBuilding)
+            def areaOf(cc: CommandCenter) = bases.allBases.find(_.mainBuilding == cc).flatMap(_.resourceArea)
+            landed.filter { cc =>
+              areaOf(cc).exists { area =>
+                !fieldUseful(area) || landed.count(other => other != cc && areaOf(other).contains(area)) > 0
+              }
+            }.sortBy(_.nativeUnitId).headOption
           }
         spare.foreach { cc =>
           cc.relocating = true // let an already funded SCV finish, but do not start another queue.
