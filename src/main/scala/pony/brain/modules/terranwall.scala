@@ -34,20 +34,14 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
   /** True once planning concluded that no depot wall can seal the main approach. */
   def refused: Boolean = refusedPlanning
 
-  /** While the wall is incomplete, the next generic supply depot should double as a wall depot. */
-  def nextSupplySpot: Option[MapTilePosition] = {
-    if (refusedPlanning) None
-    else anchors.flatMap { wall =>
+  /** True while the wall expects another depot at a buildable anchor: supply defers to it. */
+  def supplyWanted: Boolean =
+    !refusedPlanning && anchors.exists { wall =>
       val existing = ownUnits.allByType[SupplyDepot].filter(_.isInGame).map(_.tilePosition).toSet
       val pending = (unitManager.requestedConstructions[SupplyDepot].flatMap(_.customPosition.requestedPosition) ++
         unitManager.constructionsInProgress[SupplyDepot].map(_.buildWhere)).toSet
-      wall.filterNot(a => existing(a) || pending(a)).find(depotFree)
+      wall.exists(a => !existing(a) && (pending(a) || depotFree(a)))
     }
-  }
-
-  /** True while the given spot is still a planned, unoccupied and free wall anchor. */
-  def supplySpotValid(spot: MapTilePosition): Boolean =
-    anchors.exists(_.contains(spot)) && depotFree(spot)
 
   /** A 2x2 supply depot fits and is unoccupied: shared by the wall and the tank boxes. */
   def depotSpotFree(anchor: MapTilePosition): Boolean = depotFree(anchor)
@@ -286,11 +280,10 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
           }
         } else {
           missing.filter(depotFree).foreach { a =>
-            val last = lastAttempt.getOrElse(a, -1)
-            val due = last < 0 || currentTick - last > 24 * 60
-            if (due && !pending(a) && !existing(a)) {
+            if (!pending(a) && !existing(a)) {
+              val due = lastAttempt.getOrElse(a, -1) < 0 || currentTick - lastAttempt(a) > 24 * 60
+              if (due) NativeMatchEvidence.trace("wall-depot-request", s"at=$a")
               lastAttempt(a) = currentTick
-              NativeMatchEvidence.trace("wall-depot-request", s"at=$a")
               requestBuilding(classOf[SupplyDepot], takeCareOfDependencies = false,
                 customBuildingPosition = AlternativeBuildingSpot.fromValidatedPreset(a)(depotFree(a)),
                 priority = Priority.Expand)

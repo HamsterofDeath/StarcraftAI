@@ -182,13 +182,7 @@ class ProvideExpansions(universe: Universe)
 class ProvideNewSupply(universe: Universe) extends OrderlessAIModule[WorkerUnit](universe) {
   private val supplyEmployer = new Employer[SupplyProvider](universe)
 
-  private def wallPlugin = universe.plugins.collectFirst { case w: WallWithDepots => w }
-
-  private def wallAwareSpot: AlternativeBuildingSpot = wallPlugin.flatMap(_.nextSupplySpot) match {
-    case Some(spot) =>
-      AlternativeBuildingSpot.fromValidatedPreset(spot)(wallPlugin.exists(_.supplySpotValid(spot)))
-    case None => AlternativeBuildingSpot.useDefault
-  }
+  private def wall = universe.plugins.collectFirst { case w: WallWithDepots => w }
 
   override def onTick_!() = {
 
@@ -196,7 +190,9 @@ class ProvideNewSupply(universe: Universe) extends OrderlessAIModule[WorkerUnit]
     val needsMore = cur.supplyUsagePercent >= 0.6 && cur.total < 400
 
     trace(s"Need more supply: $cur ($plannedSupplies planned)", needsMore)
-    if (needsMore) {
+    // While the wall still needs depots at buildable anchors it must build them first:
+    // those depots add the supply and must not compete with economy depot requests.
+    if (needsMore && !wall.exists(_.supplyWanted)) {
       // can't use helper because overlords are not buildings :|
       val result = resources.request(
         ResourceRequests.forUnit(race, classOf[SupplyProvider], Priority.Supply), this)
@@ -204,7 +200,7 @@ class ProvideNewSupply(universe: Universe) extends OrderlessAIModule[WorkerUnit]
         trace(s"More supply approved! $suc, requesting ${race.supplyClass.className}")
         val ofType = UnitJobRequest
                      .newOfType(universe, supplyEmployer, classOf[SupplyProvider], suc,
-                       priority = Priority.Supply, customBuildingPosition = wallAwareSpot)
+                       priority = Priority.Supply)
 
         // this will always be unfulfilled
         val result = unitManager.request(ofType)
