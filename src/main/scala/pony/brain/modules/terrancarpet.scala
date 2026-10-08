@@ -262,6 +262,8 @@ private[pony] class RelocateFactory(employer: Employer[Factory], factory: Factor
   private var lastTile = factory.tilePosition
   private var lastProgress = currentTick
   private var landingRetries = 0
+  private var failedFields = Set.empty[Int]
+  private var lastTelemetry = 0
 
   private def home = bases.mainBase.map(_.mainBuilding.tilePosition)
 
@@ -272,7 +274,9 @@ private[pony] class RelocateFactory(employer: Employer[Factory], factory: Factor
   private def chooseDestination(): Unit = {
     val homeTile = home.getOrElse(factory.tilePosition)
     val homeAreaId = bases.mainBase.flatMap(_.resourceArea).map(_.uniqueId)
-    val found = strategicMap.resources.filterNot(a => homeAreaId.contains(a.uniqueId))
+    val forceHome = factory.isFloating && failedFields.size >= 2
+    val found = if (forceHome) None else strategicMap.resources.filterNot(a => homeAreaId.contains(a.uniqueId))
+      .filterNot(a => failedFields.contains(a.uniqueId))
       .filter(safe)
       .toVector.sortBy(a => (a.nearbyFreeTile.distanceSquaredTo(homeTile), a.uniqueId))
       .iterator.flatMap { area =>
@@ -307,13 +311,28 @@ private[pony] class RelocateFactory(employer: Employer[Factory], factory: Factor
         case DepotRelocation.Lift =>
           if (factory.nativeUnit.canLift()) Orders.LiftBuilding(factory).toSeq else Nil
         case DepotRelocation.Fly =>
+          if (currentTick - lastTelemetry > 240) {
+            lastTelemetry = currentTick
+            NativeMatchEvidence.trace("factory-flight",
+              s"id=${factory.nativeUnitId} phase=Fly at=${factory.tilePosition} moving=${factory.nativeUnit.isMoving} to=$landingTile sinceProgress=${currentTick - lastProgress}")
+          }
           if (destinationField.exists(f => !safe(f)) || currentTick - lastProgress > 24 * 120) {
+            destinationField.foreach(f => failedFields += f.uniqueId)
             destination = None
             destinationField = None
             lastProgress = currentTick
             Nil
           } else if (factory.nativeUnit.isMoving) Nil
-          else Orders.FlyBuilding(factory, landingTile).toSeq
+          else {
+            // Long flights can stall at the edge of what the engine can path for a building;
+            // hop toward the target so every order makes bounded progress.
+            val here = factory.tilePosition
+            val distance = math.max(math.abs(landingTile.x - here.x), math.abs(landingTile.y - here.y))
+            val step = math.min(8, distance)
+            val towards = MapTilePosition(here.x + Integer.signum(landingTile.x - here.x) * step,
+              here.y + Integer.signum(landingTile.y - here.y) * step)
+            Orders.FlyBuilding(factory, towards).toSeq
+          }
         case DepotRelocation.Land =>
           if (factory.nativeUnit.canLand(landingTile.asTilePosition)) {
             landingRetries = 0
