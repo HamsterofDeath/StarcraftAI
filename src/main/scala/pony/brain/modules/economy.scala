@@ -37,7 +37,6 @@ class ProvideNewBuildings(universe: Universe)
           if (in.jobRequest.stillLocksResources) {
             in.jobRequest.clearableInNextTick_!()
             in.jobRequest.forceUnlockOnDispose_!()
-            in.jobRequest.dispose()
           } else {
             warn(s"Why is the same request processed again? -> ${in.jobRequest}")
           }

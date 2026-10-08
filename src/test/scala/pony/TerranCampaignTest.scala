@@ -44,6 +44,7 @@ class TerranCampaignTest extends Specification {
     Bunker coverage uses pinned native approximate distance and does not claim favorable collision extents $bunkerNativeDistance
     An invalid validated bunker preset refuses generic fallback while legacy placements retain it $strictBunkerSite
     Bunker placement admits temporary traffic but refuses permanent obstacles and severed mining access $bunkerStaticPlacement
+    Refused boarding is retried while progressing approaches and loaded Marines receive no reset orders $bunkerBoardingRetry
   """
   private def building(id: Int, x: Int, base: Boolean = true) =
     ObservedEnemyBuilding(id, MapTilePosition(x, 20), 4, 3, base)
@@ -378,5 +379,17 @@ class TerranCampaignTest extends Specification {
       BunkerSitePlacement.permitted(site, traffic), BunkerSitePlacement.permitted(site, adjacent),
       BunkerSitePlacement.permitted(Area(MapTilePosition(5, 2), Size(3, 2)), corridor)) mustEqual
       (true, false, false, true, false)
+  }
+  def bunkerBoardingRetry = {
+    val retry = new BunkerBoardingRetry
+    val initial = MapTilePosition(10, 10)
+    // First native command may be refused: unchanged target/state must get another command.
+    (retry.issue(0, initial, false, false, false), retry.issue(1, initial, false, false, false),
+      retry.issue(12, initial, false, false, false),
+      retry.issue(24, MapTilePosition(11, 10), false, true, true),
+      retry.issue(100, MapTilePosition(12, 10), false, true, true),
+      retry.issue(220, MapTilePosition(12, 10), false, true, true),
+      retry.issue(240, MapTilePosition(12, 10), true, false, false)) mustEqual
+      (true, false, true, false, false, true, false)
   }
 }

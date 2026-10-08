@@ -52,6 +52,7 @@ abstract class UnitOrder {
 }
 
 object Orders {
+  private val bunkerBoardingReported = scala.collection.mutable.Map.empty[Int, (Boolean, Int, Int)]
   case class LiftDepot(myUnit: CommandCenter) extends UnitOrder {
     override def issueOrderToGame(): Unit = { myUnit.nativeUnit.lift() }
     override def renderDebug(renderer: Renderer): Unit = {}
@@ -217,7 +218,15 @@ object Orders {
   }
 
   case class EnterBunker(myUnit: Marine, bunker: Bunker) extends UnitOrder {
-    override def issueOrderToGame(): Unit = { myUnit.nativeUnit.rightClick(bunker.nativeUnit) }
+    override def issueOrderToGame(): Unit = {
+      val accepted = myUnit.nativeUnit.rightClick(bunker.nativeUnit)
+      val now = myUnit.universe.currentTick
+      val previous = bunkerBoardingReported.get(myUnit.nativeUnitId)
+      if (!previous.exists(p => p._1 == accepted && p._2 == bunker.nativeUnitId && now - p._3 < 120)) {
+        NativeMatchEvidence.trace("bunker-boarding-order", s"marine=${myUnit.nativeUnitId} target=${bunker.nativeUnitId} accepted=$accepted error=${game.getLastError} order=${myUnit.nativeUnit.getOrder} loaded=${myUnit.nativeUnit.isLoaded}")
+        bunkerBoardingReported(myUnit.nativeUnitId) = (accepted, bunker.nativeUnitId, now)
+      }
+    }
     override def renderDebug(renderer: Renderer): Unit = {}
   }
 

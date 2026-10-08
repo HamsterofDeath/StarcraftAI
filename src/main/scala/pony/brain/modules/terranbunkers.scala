@@ -74,6 +74,18 @@ private[pony] class BunkerGarrison {
   def reserved = assigned.values.flatten.toSet
 }
 
+/** Retry refused boarding, but leave a progressing native approach untouched. */
+private[pony] class BunkerBoardingRetry {
+  private var lastAttempt = -1000
+  private var lastProgress = 0
+  private var lastPosition = Option.empty[MapTilePosition]
+  def issue(frame: Int, position: MapTilePosition, loaded: Boolean, headingToBunker: Boolean, moving: Boolean): Boolean = {
+    if (!lastPosition.contains(position)) { lastPosition = Some(position); lastProgress = frame }
+    if (loaded || frame - lastAttempt < 12 || (headingToBunker && moving && frame - lastProgress < 120)) false
+    else { lastAttempt = frame; true }
+  }
+}
+
 class TerranBunkerDefense(universe: Universe)
   extends OrderlessAIModule[UnitFactory](universe) with UnitRequestHelper {
   private val builder = new HelperAIModule[WorkerUnit](universe) with BuildingRequestHelper
@@ -160,6 +172,13 @@ class TerranBunkerDefense(universe: Universe)
     if (unitManager.countExistingAndPlanned(classOf[Marine]) < desired)
       requestUnit(classOf[Marine], takeCareOfDependencies = true)
     val cargo = bunkers.filterNot(_.isBeingCreated).map(b => b.nativeUnitId -> nativeCargo(b)).toMap
+    if (currentTick % (31 * 16) == 0 && !coverageReady) {
+      val nativeMarines = nativeGame.self().getUnits.asScala.filter(_.getType == bwapi.UnitType.Terran_Marine).toVector
+      val eligible = ownUnits.allByType[Marine].filter(m => m.isInGame && !m.isBeingCreated).map(_.nativeUnitId).toVector
+      val producers = ownUnits.allByType[Barracks].map(b => s"${b.nativeUnitId}:${b.nativeUnit.isTraining}:${b.nativeUnit.getRemainingTrainTime}:${unitManager.jobOf(b).shortDebugString}").toVector
+      val assigned = bunkers.map(b => b.nativeUnitId -> boarding.get.reserved.toVector.filter(id => boarding.get.target(id).contains(b.nativeUnitId)))
+      NativeMatchEvidence.trace("bunker-garrison-status", s"nativeMarines=${nativeMarines.map(_.getID)} eligible=$eligible planned=${unitManager.plannedToTrain.count(_.typeOfRequestedUnit == classOf[Marine])} producers=$producers assigned=$assigned")
+    }
     cargo.foreach { case (id, ids) =>
       if (!cargoObserved.get(id).contains(ids)) NativeMatchEvidence.trace("bunker-native-cargo", s"id=$id marines=${ids.toVector.sorted} count=${ids.size}")
     }
