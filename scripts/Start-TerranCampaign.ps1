@@ -36,7 +36,12 @@ $classpathFile = Join-Path $Repository 'target/streams/compile/dependencyClasspa
 if (-not (Test-Path -LiteralPath $classpathFile)) { throw 'Build the exact producer locally first.' }
 $registry = [Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::CurrentUser,[Microsoft.Win32.RegistryView]::Registry32)
 $key = $registry.OpenSubKey('SOFTWARE/Blizzard Entertainment/Starcraft'.Replace('/','\'))
-try { if (-not $key -or $key.GetValue('InstallPath') -ne $Runtime) { throw 'Compatible native installation is not registered at this runtime.' } }
+try {
+  $registered = if ($key) { $key.GetValue('InstallPath') } else { $null }
+  if (-not $registered -or [System.IO.Path]::GetFullPath($registered) -ne [System.IO.Path]::GetFullPath($Runtime)) {
+    throw 'Compatible native installation is not registered at this runtime.'
+  }
+}
 finally { if ($key) { $key.Close() }; $registry.Close() }
 if ($CheckOnly) { 'Runtime, source and ordinary native slot checks passed.'; return }
 $run = Join-Path $Repository ('target/native-runs/' + $RunName)
