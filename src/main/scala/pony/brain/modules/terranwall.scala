@@ -128,11 +128,15 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
           .nextOption()
       }
     }
-    val solved = solve(span.toSet, Vector.empty)
+    val unbuildable = span.filter(t => tileToCandidates.getOrElse(t, Vector.empty).isEmpty)
+    val required = span.filterNot(unbuildable.contains)
+    val solved = solve(required.toSet, Vector.empty)
     if (solved.isEmpty) {
-      val missing = span.filter(t => tileToCandidates.getOrElse(t, Vector.empty).isEmpty)
-      probe(s"span=${span.size} candidates=${allCandidates.size} noCover missing=${missing.mkString(",")}")
+      probe(s"span=${span.size} candidates=${allCandidates.size} noCover missing=${unbuildable.mkString(",")}")
       return Vector.empty
+    }
+    if (unbuildable.nonEmpty) {
+      NativeMatchEvidence.trace("wall-slit", s"unbuildable=${unbuildable.mkString(",")} depots=${solved.get.size}")
     }
     def covers(a: MapTilePosition) = footprint(a).filter(span.contains)
 
@@ -149,7 +153,7 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
         .filterNot(a => anchors.exists(b => overlaps(a, b)))
         .map { a =>
           val onPath = footprint(a).count(t => pathSet.contains(t))
-          val wallDistance = anchors.map(b => (a.x - b.x).abs.max((a.y - b.y).abs)).min
+          val wallDistance = if (anchors.isEmpty) 0 else anchors.map(b => (a.x - b.x).abs.max((a.y - b.y).abs)).min
           val spanCover = covers(a).size
           (a, onPath, wallDistance, spanCover)
         }
