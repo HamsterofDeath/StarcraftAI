@@ -54,10 +54,11 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
       def alive(a: MapTilePosition) = ownUnits.allByType[SupplyDepot]
         .find(d => d.isInGame && !d.isBeingCreated && d.tilePosition == a)
       val singles = wall.iterator.filter { a =>
-        alive(a).isDefined && breachPath(home, wall.filterNot(_ == a)).isDefined
+        alive(a).isDefined && breachPath(home, wall.filterNot(_ == a), footprint(a).toSet).isDefined
       }.take(1).map(a => Set(a)).toList
       val pairs = if (singles.nonEmpty) Nil else wall.combinations(2).filter { pair =>
-        pair.forall(a => alive(a).isDefined) && breachPath(home, wall.filterNot(pair.contains)).isDefined
+        pair.forall(a => alive(a).isDefined) &&
+          breachPath(home, wall.filterNot(pair.contains), pair.flatMap(footprint).toSet).isDefined
       }.take(1).toList.map(_.toSet)
       (singles ++ pairs).headOption.map(_.flatMap(a => alive(a).map(_.nativeUnitId)))
     }
@@ -237,12 +238,14 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
   }
 
   /** A free path from a known outside tile to the defended side means the wall leaks. */
-  private def breachPath(home: Base, anchors: Vector[MapTilePosition]): Option[Vector[MapTilePosition]] = {
+  private def breachPath(home: Base, anchors: Vector[MapTilePosition],
+                         freeEvenIfBuilt: Set[MapTilePosition] = Set.empty): Option[Vector[MapTilePosition]] = {
     strategicMap.defenseLineOf(home).flatMap { front =>
       val wallTiles = anchors.flatMap(footprint).toSet
       def allowed(t: MapTilePosition): Boolean =
         mapLayers.rawWalkableMap.insideBounds(t) && mapLayers.rawWalkableMap.free(t) &&
-          mapLayers.blockedByBuildingTiles.free(t) && mapLayers.blockedByPlannedBuildings.free(t) &&
+          (freeEvenIfBuilt(t) ||
+            (mapLayers.blockedByBuildingTiles.free(t) && mapLayers.blockedByPlannedBuildings.free(t))) &&
           mapLayers.blockedByResources.free(t) &&
           !wallTiles(t)
       val seeds = (mapLayers.rawWalkableMap.spiralAround(front.chokePoint.center, 16) ++
