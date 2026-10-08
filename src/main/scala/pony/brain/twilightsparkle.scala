@@ -352,11 +352,12 @@ class TwilightSparkle(world: DefaultWorld) {
   private val strategy        = new Strategies(universe)
   private val worldDomination = new WorldDominationPlan(universe)
   private val sendOrders      = new SendOrdersToStarcraft(universe)
+  // Failed hiring requests live two frames; satisfying them must not wait for a heavy tick.
+  private val provideNewUnits = new ProvideNewUnits(universe)
   private val aiModules       = List(
     new DefaultBehaviours(universe),
     new ManageMiningAtBases(universe),
     new ManageMiningAtGeysirs(universe),
-    new ProvideNewUnits(universe),
     new ProvideSpareSCVs(universe),
     new ProvideNewSupply(universe),
     new ProvideNewBuildings(universe),
@@ -418,6 +419,9 @@ class TwilightSparkle(world: DefaultWorld) {
     // Cheap per-frame pipeline: job lifecycle, command emission and action bookkeeping must
     // advance every frame so interruptability and order-lock semantics keep their frame meaning.
     unitManager.tick()
+
+    // Satisfy failed hiring requests while they are still alive (they clear after two frames).
+    provideNewUnits.onTick_!()
 
     val tick = world.tickCount
     if (AiCadence.heavyNow(tick)) {
