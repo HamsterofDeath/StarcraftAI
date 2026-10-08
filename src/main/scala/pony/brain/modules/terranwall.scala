@@ -145,6 +145,9 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
     var anchors = solved.get
     var attempts = 0
     var breach = breachPath(home, anchors)
+    if (breach.isDefined) {
+      NativeMatchEvidence.trace("wall-leak", s"pathLen=${breach.get.size} path=${breach.get.take(24).mkString(",")}")
+    }
     while (breach.isDefined && attempts < 6 && anchors.size <= 20) {
       val path = breach.get
       val pathSet = path.toSet
@@ -177,7 +180,7 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
     if (breach.isDefined) {
       if (!reportedSealFailure) {
         reportedSealFailure = true
-        NativeMatchEvidence.trace("wall-seal-failed", s"attempts=$attempts anchors=${anchors.mkString(",")}")
+        NativeMatchEvidence.trace("wall-seal-failed", s"attempts=$attempts pathLen=${breach.get.size} path=${breach.get.take(24).mkString(",")} anchors=${anchors.mkString(",")}")
       }
       Vector.empty
     } else {
