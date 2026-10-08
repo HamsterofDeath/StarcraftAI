@@ -39,7 +39,7 @@ object NativeMatchEvidence {
     val player = game.self()
     // These exact native victory/defeat fields are exported with the final synthetic flag batch.
     val terminal = player != null && (player.isDefeated || player.isVictorious)
-    val complete = game.isFlagEnabled(bwapi.Flag.Enum.CompleteMapInformation.getValue)
+    val complete = game.isFlagEnabled(bwapi.Flag.CompleteMapInformation)
     val wasInvalid = vision.completeMapDuringPlay
     val playing = vision.observe(game.getFrameCount, true, terminal, complete)
     if (!playing && vision.terminalSamples == 1)
@@ -74,7 +74,7 @@ object NativeMatchEvidence {
       ",\"liveFlagSamples\":" + vision.liveSamples +
       ",\"terminalFlagSamples\":" + vision.terminalSamples + ",\"terminalNativeFrame\":" + vision.terminalFrame +
       ",\"terminalCompleteMapInformation\":" + vision.terminalCompleteMap +
-      ",\"callbackCompleteMapInformation\":" + game.isFlagEnabled(bwapi.Flag.Enum.CompleteMapInformation.getValue) +
+      ",\"callbackCompleteMapInformation\":" + game.isFlagEnabled(bwapi.Flag.CompleteMapInformation) +
       ",\"mapInputSha256\":" + quoted(sys.props.getOrElse("twailight.mapInputSha256", "unrecorded")) +
       ",\"renderingEnabled\":" + !sys.props.getOrElse("twailight.headless", "false").toBoolean +
       ",\"initialState\":" + initialState +

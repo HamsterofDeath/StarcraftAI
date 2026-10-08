@@ -1,6 +1,6 @@
 package pony
 
-import bwapi.{BWEventListener, Mirror, Position, Player => NPlayer, Unit => NUnit}
+import bwapi.{BWClient, BWEventListener, Position, Unit => NUnit}
 
 /**
   * Created by HoD on 01.08.2015.
@@ -18,7 +18,7 @@ object Controller {
   }
 
   def hookOnToBroodwar(aiGenerator: (DefaultWorld) => AIAPI) = {
-    val mirror = new Mirror
+    var clientRef: BWClient = null
 
     var ai = Option.empty[AIAPI]
     var world = Option.empty[DefaultWorld]
@@ -30,7 +30,7 @@ object Controller {
       }
 
       override def onFrame(): Unit = {
-        val liveGame = mirror.getGame
+        val liveGame = clientRef.getGame
         if (world.isEmpty || !liveGame.isInGame) return
         if (!NativeMatchEvidence.observeLiveVision(liveGame)) return
         // Paused native games can deliver repeated callbacks without simulation progress.
@@ -50,12 +50,12 @@ object Controller {
         pony.tickCount += 1
         ai.foreach(_.onTickOnApi())
         if (pony.tickCount % 2400 == 0) {
-          val game = mirror.getGame
+          val game = clientRef.getGame
           val own = game.self().getUnits
           import scala.jdk.CollectionConverters._
           val ownUnits = own.asScala
           NativeMatchEvidence.trace("economy-heartbeat",
-            s"nativeFrame=${game.getFrameCount} paused=${game.isPaused} inGame=${game.isInGame} fps=${game.getFPS} minerals=${game.self().minerals()} gas=${game.self().gas()} supply=${game.self().supplyUsed()}/${game.self().supplyTotal()} scvs=${ownUnits.count(_.getType == bwapi.UnitType.Terran_SCV)} depots=${ownUnits.count(_.getType == bwapi.UnitType.Terran_Command_Center)} completeMap=${game.isFlagEnabled(bwapi.Flag.Enum.CompleteMapInformation.getValue)}")
+            s"nativeFrame=${game.getFrameCount} paused=${game.isPaused} inGame=${game.isInGame} fps=${game.getFPS} minerals=${game.self().minerals()} gas=${game.self().gas()} supply=${game.self().supplyUsed()}/${game.self().supplyTotal()} scvs=${ownUnits.count(_.getType == bwapi.UnitType.Terran_SCV)} depots=${ownUnits.count(_.getType == bwapi.UnitType.Terran_Command_Center)} completeMap=${game.isFlagEnabled(bwapi.Flag.CompleteMapInformation)}")
         }
       }
 
@@ -69,7 +69,7 @@ object Controller {
 
       override def onUnitComplete(unit: NUnit): Unit = {
         world.foreach(_.onUnitComplete(unit))
-        if (unit.getPlayer == mirror.getGame.self() && unit.getType.isResourceDepot)
+        if (unit.getPlayer == clientRef.getGame.self() && unit.getType.isResourceDepot)
           NativeMatchEvidence.trace("base-completed", s"id=${unit.getID} tile=${unit.getTilePosition}")
       }
 
@@ -82,7 +82,7 @@ object Controller {
       }
 
       override def onEnd(b: Boolean): Unit = {
-        NativeMatchEvidence.ended(mirror.getGame, b)
+        NativeMatchEvidence.ended(clientRef.getGame, b)
         ai = None
         world = None
       }
@@ -109,19 +109,19 @@ object Controller {
           pony.tickCount = 0
           frameClock = new NativeFrameClock
           repeatedCallbacks = 0
-          NativeMatchEvidence.started(mirror.getGame)
+          NativeMatchEvidence.started(clientRef.getGame)
           val headless = sys.props.getOrElse("twailight.headless", "false").toBoolean
-          mirror.getGame.setGUI(!headless)
-          mirror.getGame.setLocalSpeed(0)
+          clientRef.getGame.setGUI(!headless)
+          clientRef.getGame.setLocalSpeed(0)
           NativeMatchEvidence.trace("native-rendering", s"gui=${!headless} localSpeed=0")
-          mirror.getGame.enableFlag(bwapi.Flag.Enum.UserInput.getValue)
-          val w = DefaultWorld.spawn(mirror.getGame)
+          clientRef.getGame.enableFlag(bwapi.Flag.UserInput)
+          val w = DefaultWorld.spawn(clientRef.getGame)
           world = Some(w)
           ai = Some(aiGenerator(w))
         }
         catch {
           case ex: Throwable =>
-            NativeMatchEvidence.failed(mirror.getGame, ex)
+            NativeMatchEvidence.failed(clientRef.getGame, ex)
             throw ex
         }
       }
@@ -149,8 +149,8 @@ object Controller {
 
     }
 
-    mirror.getModule.setEventListener(listener)
-    mirror.startGame()
+    clientRef = new BWClient(listener)
+    clientRef.startGame()
 
   }
 }

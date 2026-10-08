@@ -176,7 +176,7 @@ object Orders {
       val accepted = myUnit.nativeUnit.build(buildingUnitType, where.asTilePosition)
       if ((buildingUnitType.isResourceDepot || buildingUnitType == bwapi.UnitType.Terran_Bunker) && !accepted)
         NativeMatchEvidence.trace("depot-build-refused",
-          s"worker=${myUnit.nativeUnitId} from=${myUnit.currentTile} to=$where error=${game.getLastError}")
+          s"worker=${myUnit.nativeUnitId} from=${myUnit.currentTile} to=$where error=n/a")
     }
 
     private def buildingUnitType = buildingType.toUnitType
@@ -223,7 +223,7 @@ object Orders {
       val now = myUnit.universe.currentTick
       val previous = bunkerBoardingReported.get(myUnit.nativeUnitId)
       if (!previous.exists(p => p._1 == accepted && p._2 == bunker.nativeUnitId && now - p._3 < 120)) {
-        NativeMatchEvidence.trace("bunker-boarding-order", s"marine=${myUnit.nativeUnitId} target=${bunker.nativeUnitId} accepted=$accepted error=${game.getLastError} order=${myUnit.nativeUnit.getOrder} loaded=${myUnit.nativeUnit.isLoaded}")
+        NativeMatchEvidence.trace("bunker-boarding-order", s"marine=${myUnit.nativeUnitId} target=${bunker.nativeUnitId} accepted=$accepted error=n/a order=${myUnit.nativeUnit.getOrder} loaded=${myUnit.nativeUnit.isLoaded}")
         bunkerBoardingReported(myUnit.nativeUnitId) = (accepted, bunker.nativeUnitId, now)
       }
     }
@@ -348,7 +348,7 @@ object Orders {
     override def issueOrderToGame(): Unit = {
       val accepted = myUnit.nativeUnit.repair(fixWhat.nativeUnit)
       if (fixWhat.isInstanceOf[Bunker] && myUnit.universe.currentTick % 120 < 24)
-        NativeMatchEvidence.trace("bunker-native-repair", s"scv=${myUnit.nativeUnitId} bunker=${fixWhat.nativeUnitId} accepted=$accepted hp=${fixWhat.nativeUnit.getHitPoints} order=${myUnit.nativeUnit.getOrder} error=${myUnit.universe.world.nativeGame.getLastError}")
+        NativeMatchEvidence.trace("bunker-native-repair", s"scv=${myUnit.nativeUnitId} bunker=${fixWhat.nativeUnitId} accepted=$accepted hp=${fixWhat.nativeUnit.getHitPoints} order=${myUnit.nativeUnit.getOrder} error=n/a")
     }
 
     override def renderDebug(renderer: Renderer): Unit = {

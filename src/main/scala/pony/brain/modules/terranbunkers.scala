@@ -256,7 +256,7 @@ class TerranBunkerDefense(universe: Universe)
             if (safe) {
               if (!placementReported(site.upperLeft)) {
                 val now = nativeGame.canBuildHere(site.upperLeft.asTilePosition, bwapi.UnitType.Terran_Bunker)
-                NativeMatchEvidence.trace("bunker-construction-request", s"field=${field.uniqueId} site=${site.upperLeft} nativeSpaceNow=$now error=${nativeGame.getLastError}")
+                NativeMatchEvidence.trace("bunker-construction-request", s"field=${field.uniqueId} site=${site.upperLeft} nativeSpaceNow=$now error=n/a")
                 placementReported += site.upperLeft
               }
               builder.requestBuilding(classOf[Bunker], takeCareOfDependencies = true,

@@ -1,16 +1,16 @@
 package pony;
 
+import bwapi.BWClient;
 import bwapi.DefaultBWListener;
 import bwapi.Game;
-import bwapi.Mirror;
 import bwapi.Player;
-import bwapi.Text.Size.Enum;
+import bwapi.Text.Size;
 import bwapi.Unit;
 import bwapi.UnitType;
 
 public class SampleBot extends DefaultBWListener {
 
-    private Mirror mirror = new Mirror();
+    private BWClient client;
 
     private Game game;
 
@@ -21,8 +21,8 @@ public class SampleBot extends DefaultBWListener {
     }
 
     public void run() {
-        mirror.getModule().setEventListener(this);
-        mirror.startGame();
+        client = new BWClient(this);
+        client.startGame();
     }
 
     @Override
@@ -32,7 +32,7 @@ public class SampleBot extends DefaultBWListener {
 
     @Override
     public void onStart() {
-        game = mirror.getGame();
+        game = client.getGame();
         self = game.self();
 
         //Use BWTA to analyze map
@@ -42,7 +42,7 @@ public class SampleBot extends DefaultBWListener {
 
     @Override
     public void onFrame() {
-        game.setTextSize(Enum.Default);
+        game.setTextSize(Size.Default);
         game.drawTextScreen(10, 10, "Playing as " + self.getName() + " - " + self.getRace());
 
         StringBuilder units = new StringBuilder("My units:\n");
