@@ -1294,7 +1294,8 @@ class ConstructionSiteFinder(universe: Universe) {
 
   def findSpotFor[T <: Building](near: MapTilePosition, building: Class[_ <: T], maxRange: Int = 75,
                                  bestOfN: Int = 256,
-                                 preferNear: Option[MapTilePosition] = None) = {
+                                 preferNear: Option[MapTilePosition] = None,
+                                 acceptableArea: Area => Boolean = _ => true) = {
     // this happens in the background
     val unitType = building.toUnitType
     val necessarySize = Size.shared(unitType.tileWidth(), unitType.tileHeight())
@@ -1325,7 +1326,7 @@ class ConstructionSiteFinder(universe: Universe) {
       // A preferred anchor also has to stay reachable on foot from the base's own area.
       val reachable = preferNear.isEmpty ||
         universe.mapLayers.rawWalkableMap.areInSameWalkableArea(near, upperLeft)
-      if (containsArea && reachable && ResourceDepotPlacement.permitted(area, unitType.isResourceDepot, resourceDepotBuffer) && free) {
+      if (containsArea && reachable && acceptableArea(area) && ResourceDepotPlacement.permitted(area, unitType.isResourceDepot, resourceDepotBuffer) && free) {
         val freeSurroundingTiles = area.growBy(1).outline
                                    .count(outlineTouchCountArea.freeAndInBounds)
         val distanceToCenter = area.centerTile.distanceTo(near)

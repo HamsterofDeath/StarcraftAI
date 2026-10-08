@@ -70,15 +70,23 @@ class TerranEconomicOpening(universe: Universe)
         val funds = resources.unlockedResources
         if (TerranCampaignConfig.load().expand(funds.minerals, funds.gas, cost.minerals, cost.gas,
           pending = false, safeReachableSite = true)) {
-          // Build the future flier as close as possible to the field it will later fly to.
-          // Everything lazy or native is read here, on the main thread; the background closure
-          // only reads captured values.
+          // Build the future flier as close as possible to the field it will later fly to, while
+          // staying on the home side of the pairing rule so the depot still rebinds to the home
+          // field and the relocation can trigger. Everything lazy or native is read here, on the
+          // main thread; the background closure only reads captured values.
           val field = likelySecondField(home)
           val homeTile = home.mainBuilding.tilePosition
+          val homeCenter = home.resourceArea.map(_.center)
           val custom = field.map { target =>
             val targetTile = target.nearbyFreeTile
+            val targetCenter = target.center
             AlternativeBuildingSpot.fromExpensive(new ConstructionSiteFinder(universe)) { finder =>
-              finder.findSpotFor(homeTile, classOf[CommandCenter], preferNear = Some(targetTile))
+              val staysHomeField: Area => Boolean = homeCenter match {
+                case Some(hc) => area => area.distanceTo(hc) + 4.0 <= area.distanceTo(targetCenter)
+                case None     => _ => true
+              }
+              finder.findSpotFor(homeTile, classOf[CommandCenter], preferNear = Some(targetTile),
+                acceptableArea = staysHomeField)
             }
           }.getOrElse(AlternativeBuildingSpot.useDefault)
           requestBuilding(classOf[CommandCenter], customBuildingPosition = custom,
