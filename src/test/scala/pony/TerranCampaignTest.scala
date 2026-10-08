@@ -31,6 +31,9 @@ class TerranCampaignTest extends Specification {
     A ready defensive army preserves its bank through reconnaissance and resumes after launch $stockpile
     Exhausting START cannot revoke a genuinely established second field $exhaustedStart
     Default mineral staffing transfers to landed fields without remote worker demand $coveredStaffing
+    Home depots reject the native mineral exclusion zone while ordinary buildings retain placement $depotPlacement
+    A refused PlaceBuilding order expires while actual construction remains protected $refusedPlacement
+    Native terminal flag batches are separate while genuine live reveal remains invalid $terminalVision
   """
   private def building(id: Int, x: Int, base: Boolean = true) =
     ObservedEnemyBuilding(id, MapTilePosition(x, 20), 4, 3, base)
@@ -225,5 +228,35 @@ class TerranCampaignTest extends Specification {
     (demand(true, Some(2)), demand(true, None), demand(false, Some(2)),
       WorkerProductionQuota.missing(demand(true, Some(2)) + 6, 24, 0, 0, 0, Nil)) mustEqual
       (14, 0, 94, 0)
+  }
+  def depotPlacement = {
+    val blocked = new Grid2D(128, 128, collection.immutable.BitSet.empty).mutableCopy
+    blocked.block_!(Area(MapTilePosition(71, 115), Size(2, 1)).growBy(3))
+    val refusedNativeSite = Area(MapTilePosition(69, 110), Size(4, 3))
+    val clearHomeSite = Area(MapTilePosition(55, 108), Size(4, 3))
+    (ResourceDepotPlacement.permitted(refusedNativeSite, true, blocked),
+      ResourceDepotPlacement.permitted(clearHomeSite, true, blocked),
+      ResourceDepotPlacement.permitted(refusedNativeSite, false, blocked)) mustEqual (false, true, true)
+  }
+  def refusedPlacement = {
+    val refused = new ConstructionTravelProgress(8323, MapTilePosition(70, 115))
+    val building = new ConstructionTravelProgress(8323, MapTilePosition(69, 110))
+    // PlaceBuilding is an attempted command, not native ConstructingBuilding.
+    (refused.failed(8324, MapTilePosition(70, 115), false, false, 60),
+      refused.failed(9044, MapTilePosition(70, 115), false, false, 60),
+      building.failed(8324, MapTilePosition(69, 110), true, true, 60),
+      building.failed(12000, MapTilePosition(69, 110), true, true, 60)) mustEqual (false, true, false, false)
+  }
+  def terminalVision = {
+    val fair = new NativeVisionCoverage
+    val live = fair.observe(100, true, false, false)
+    val terminal = fair.observe(101, true, true, true)
+    val invalid = new NativeVisionCoverage
+    invalid.observe(100, true, false, true) // No native victory/defeat proof: this is real invalid coverage.
+    invalid.observe(101, true, true, false)
+    (live, terminal, fair.liveSamples, fair.lastLiveFrame, fair.terminalSamples,
+      fair.terminalCompleteMap, fair.ordinaryVision, invalid.ordinaryVision,
+      new NativeVisionCoverage().ordinaryVision) mustEqual
+      (true, false, 1, 100, 1, true, true, false, false)
   }
 }

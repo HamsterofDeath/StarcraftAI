@@ -1390,7 +1390,7 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W,
     if (unit.onGround) {
       val byState = {
         travelProgress.failed(currentTick, unit.currentTile,
-          unit.currentTile.distanceToIsLess(buildWhere, 4), worker.isInConstructionProcess,
+          unit.currentTile.distanceToIsLess(buildWhere, 4), worker.isConstructingBuilding,
           times + 10) &&
         !isFinished
       }

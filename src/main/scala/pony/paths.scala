@@ -1163,6 +1163,11 @@ trait SubFinder {
   def find: Option[MapTilePosition]
 }
 
+private[pony] object ResourceDepotPlacement {
+  def permitted(area: Area, resourceDepot: Boolean, resourceBuffer: Grid2D): Boolean =
+    !resourceDepot || resourceBuffer.free(area)
+}
+
 class ConstructionSiteFinder(universe: Universe) {
 
   // initialisation happens in the main thread
@@ -1192,6 +1197,7 @@ class ConstructionSiteFinder(universe: Universe) {
   }
 
   private val helper = new GeometryHelpers(universe.world.map.sizeX, universe.world.map.sizeY)
+  private val resourceDepotBuffer = universe.mapLayers.blockedForResourceDeposit.mutableCopy.guaranteeImmutability
 
   def forResourceArea(resources: ResourceArea): SubFinder = {
     val size = Size(4 + 2, 3) // include space for comsat
@@ -1266,7 +1272,8 @@ class ConstructionSiteFinder(universe: Universe) {
 
         areaFree && (outlineFree || noLock)
       }
-      if (containsArea && free) {
+      // Native depots cannot be placed inside the mineral/geyser exclusion zone, even at home.
+      if (containsArea && ResourceDepotPlacement.permitted(area, unitType.isResourceDepot, resourceDepotBuffer) && free) {
         val freeSurroundingTiles = area.growBy(1).outline
                                    .count(outlineTouchCountArea.freeAndInBounds)
         val distanceToCenter = area.centerTile.distanceTo(near)

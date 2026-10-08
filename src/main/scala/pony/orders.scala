@@ -172,7 +172,10 @@ object Orders {
     }
 
     override def issueOrderToGame(): Unit = {
-      myUnit.nativeUnit.build(buildingUnitType, where.asTilePosition)
+      val accepted = myUnit.nativeUnit.build(buildingUnitType, where.asTilePosition)
+      if (buildingUnitType.isResourceDepot && !accepted)
+        NativeMatchEvidence.trace("depot-build-refused",
+          s"worker=${myUnit.nativeUnitId} from=${myUnit.currentTile} to=$where error=${game.getLastError}")
     }
 
     private def buildingUnitType = buildingType.toUnitType

@@ -32,7 +32,7 @@ object Controller {
       override def onFrame(): Unit = {
         val liveGame = mirror.getGame
         if (world.isEmpty || !liveGame.isInGame) return
-        NativeMatchEvidence.observeLiveVision(liveGame)
+        if (!NativeMatchEvidence.observeLiveVision(liveGame)) return
         // Paused native games can deliver repeated callbacks without simulation progress.
         if (!frameClock.advance(liveGame.getFrameCount)) {
           repeatedCallbacks += 1
