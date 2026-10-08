@@ -61,7 +61,7 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
   def containsAndFree(p: MapTilePosition): Boolean = inBounds(p) && free(p)
 
   def insideBounds(t: MapTilePosition) = {
-    t.y >= 0 && t.x < cols && t.y >= 0 && t.y < rows
+    t.x >= 0 && t.x < cols && t.y >= 0 && t.y < rows
   }
 
   def areInSameWalkableArea(a: MapTilePosition, b: MapTilePosition) =
