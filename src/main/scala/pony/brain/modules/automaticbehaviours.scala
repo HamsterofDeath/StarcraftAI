@@ -1489,7 +1489,17 @@ object Terran {
           val allowed = if (minimal) math.max(0, minimalCap - scouts.size) else Int.MaxValue
           NativeMatchEvidence.trace("scout-plan-options",
             s"minimal=$minimal allowed=$allowed plans=${plans.map(p => s"${p.sc.id}:${p.resourceAreaIdsInOrder.mkString("/")}").mkString(" ")}")
-          plans.take(allowed).foreach { plan =>
+          // A minimal scout exists to find the enemy; visiting one area pair at a time would take
+          // many replacement scouts. Instead it tours every unvisited field, likely enemy first.
+          val minimalTour = if (minimal) {
+            val home = bases.mainBase.map(_.mainBuilding.tilePosition)
+            plans.flatMap(_.resourceAreaIdsInOrder).distinct
+              .sortBy(id => home.map(h => -strategicMap.resourceAreaById(id).nearbyFreeTile.distanceSquaredTo(h))
+                .getOrElse(0))
+          } else Nil
+          val chosen = if (minimal) plans.headOption.map(p => p.copy(resourceAreaIds = minimalTour.drop(1),
+            startHere = minimalTour.head)).toList else plans.take(allowed)
+          chosen.foreach { plan =>
             ownUnits.byId(plan.sc.id).foreach { stillLiving =>
               val resourceAreas = plan.resourceAreaIdsInOrder.map(strategicMap.resourceAreaById)
               val startHere = strategicMap.resourceAreaById(plan.startHere)
