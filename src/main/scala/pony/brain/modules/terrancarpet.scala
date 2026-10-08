@@ -235,8 +235,10 @@ class FlyFactoriesToNatural(universe: Universe) extends OrderlessAIModule[Factor
     val wallSealed = wall.complete || wall.refused
     val tanks = ownUnits.allByType[Tank].count(t => t.isInGame && !t.isBeingCreated)
     if (!wallSealed || tanks < CarpetQuotas.tanksBeforeFlight) return
+    val homeAreaId = bases.mainBase.map(_.mainBuilding.tilePosition)
     ownUnits.allByType[Factory].filter(f => f.isInGame && !f.isBeingCreated && !f.isFloating &&
       !f.nativeUnit.isTraining && f.nativeUnit.getRemainingTrainTime == 0 &&
+      homeAreaId.forall(ht => f.tilePosition.distanceToIsLess(ht, 20)) &&
       unitManager.jobOf(f).isIdle)
       .toVector.sortBy(f => (f.tilePosition.y, f.tilePosition.x, f.nativeUnitId))
       .headOption.foreach { factory =>
