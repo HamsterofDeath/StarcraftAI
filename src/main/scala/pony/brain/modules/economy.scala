@@ -468,7 +468,8 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule[WrapsUni
             val job = new Micro.MineMineralsAtPatch(worker, patch)
             patch.lockToPatch_!(job)
             NativeMatchEvidence.trace("mining-assign",
-              s"worker=${worker.nativeUnitId} patch=${patch.patch.nativeUnitId}")
+              s"worker=${worker.nativeUnitId} patch=${patch.patch.nativeUnitId} hist=" +
+                worker.asInstanceOf[OrderHistorySupport].unitHistory.take(3).map(_.order.toString).mkString(","))
             job
           }
         }

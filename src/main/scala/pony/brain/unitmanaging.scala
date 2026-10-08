@@ -193,6 +193,9 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
     trace(s"Cleaning up ${removeUs.size} finished/failed jobs", removeUs.nonEmpty)
 
     removeUs.foreach { job =>
+      if (universe.currentTick < 6000 && job.unit.isInstanceOf[WorkerUnit])
+        NativeMatchEvidence.trace("job-removed",
+          s"${job.getClass.getSimpleName} #${job.unit.nativeUnitId} ${job.failureDebug}")
       job.unit match {
         case m: Mobile if !m.isDead =>
           // stop whatever you were doing so the next employer doesn't hire a rebel
@@ -884,6 +887,8 @@ abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: 
   }
 
   def failedOrObsolete = dead || forceFail || obsolete || jobHasFailedWithoutDeath
+
+  def failureDebug = s"dead=$dead forceFail=$forceFail obsolete=$obsolete withoutDeath=$jobHasFailedWithoutDeath"
 
   private val inactive = Set(Order.PlayerGuard)
 
