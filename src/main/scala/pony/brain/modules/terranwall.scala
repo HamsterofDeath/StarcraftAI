@@ -49,20 +49,6 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
     }
   }
 
-  /** Corridor tiles of the main choke. */
-  private def corridorTiles(home: Base): Vector[MapTilePosition] = {
-    val corridor = mutable.LinkedHashSet.empty[MapTilePosition]
-    strategicMap.defenseLineOf(home).toVector.foreach { front =>
-      front.chokePoint.lines.foreach { cutting =>
-        AreaHelper.traverseTilesOfLine(cutting.absoluteFrom, cutting.absoluteTo,
-          (x, y) => corridor += MapTilePosition(x, y))
-      }
-    }
-    corridor.toVector
-      .filter(mapLayers.rawWalkableMap.insideBounds)
-      .filter(mapLayers.rawWalkableMap.free)
-  }
-
   private def placementsCovering(t: MapTilePosition): Vector[MapTilePosition] =
     Vector(t, MapTilePosition(t.x - 1, t.y), MapTilePosition(t.x, t.y - 1), MapTilePosition(t.x - 1, t.y - 1))
       .filter(depotFree)
@@ -72,18 +58,11 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
   private def overlaps(a: MapTilePosition, b: MapTilePosition) =
     (a.x - b.x).abs < 2 && (a.y - b.y).abs < 2
 
-  /** Direction of the choke's cut line, used to extend the wall to real terrain barriers. */
-  private def cutDirection(home: Base): Option[(Int, Int)] =
-    strategicMap.defenseLineOf(home).flatMap(_.chokePoint.lines.headOption).map { line =>
-      (Integer.signum(line.absoluteTo.x - line.absoluteFrom.x),
-        Integer.signum(line.absoluteTo.y - line.absoluteFrom.y))
-    }.filterNot(_ == (0, 0))
-
   private def barrierForGround(t: MapTilePosition) =
     !mapLayers.rawWalkableMap.insideBounds(t) ||
       !mapLayers.rawWalkableMap.free(t) || mapLayers.blockedByResources.blocked(t)
 
-  /** Walk from the corridor end along the cut direction until a terrain or resource barrier. */
+  /** Walk from the end of the pass along the cut direction until a terrain or resource barrier. */
   private def extendToBarrier(from: MapTilePosition, dx: Int, dy: Int): Option[Vector[MapTilePosition]] = {
     val out = mutable.ArrayBuffer.empty[MapTilePosition]
     var t = from.movedBy(dx, dy)
@@ -94,24 +73,43 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
     Option.when(barrierForGround(t))(out.toVector)
   }
 
-  /** Span the whole choke: corridor tiles plus both extensions, every tile covered by a depot,
-    * and no walkable path from outside to inside remains. */
-  private def computeWall(home: Base): Vector[MapTilePosition] = {
-    val corridor = corridorTiles(home)
-    if (corridor.isEmpty) { probe("corridor=0"); return Vector.empty }
-    val direction = cutDirection(home)
-    if (direction.isEmpty) { probe(s"corridor=${corridor.size} no direction"); return Vector.empty }
-    val (dx, dy) = direction.get
-    def projection(t: MapTilePosition) = t.x * dx + t.y * dy
-    val start = corridor.minBy(projection)
-    val end = corridor.maxBy(projection)
-    val before = extendToBarrier(start, -dx, -dy)
-    val after = extendToBarrier(end, dx, dy)
-    if (before.isEmpty || after.isEmpty) {
-      probe(s"corridor=${corridor.size} extendTooLong start=$start end=$end")
-      return Vector.empty
+  /** The pass the cut line crosses: the free run along the line around the choke center, pinned by
+    * terrain or resource barriers on both sides (extending the line if it was truncated first). */
+  private def segmentThrough(center: MapTilePosition, from: MapTilePosition, to: MapTilePosition): Option[Vector[MapTilePosition]] = {
+    val lineTiles = mutable.ArrayBuffer.empty[MapTilePosition]
+    AreaHelper.traverseTilesOfLine(from, to, (x, y) => lineTiles += MapTilePosition(x, y))
+    val freeIndices = lineTiles.indices.filter(i => !barrierForGround(lineTiles(i)))
+    if (freeIndices.isEmpty) None
+    else {
+      val startIndex = freeIndices.minBy(i => lineTiles(i).distanceSquaredTo(center))
+      var lo = startIndex
+      while (lo > 0 && !barrierForGround(lineTiles(lo - 1))) lo -= 1
+      var hi = startIndex
+      while (hi + 1 < lineTiles.size && !barrierForGround(lineTiles(hi + 1))) hi += 1
+      val dx = Integer.signum(to.x - from.x)
+      val dy = Integer.signum(to.y - from.y)
+      val left = if (lo > 0) Some(Vector.empty[MapTilePosition])
+        else extendToBarrier(lineTiles(lo), -dx, -dy)
+      val right = if (hi < lineTiles.size - 1) Some(Vector.empty[MapTilePosition])
+        else extendToBarrier(lineTiles(hi), dx, dy)
+      for {
+        l <- left
+        r <- right
+        segment = (l ++ lineTiles.slice(lo, hi + 1).toVector ++ r).distinct
+        if segment.nonEmpty && segment.size <= 14
+      } yield segment
     }
-    val span = (before.get ++ corridor ++ after.get).distinct
+  }
+
+  /** Span the pass with depots and check that no walkable path from outside to inside remains. */
+  private def computeWall(home: Base): Vector[MapTilePosition] = {
+    val front = strategicMap.defenseLineOf(home)
+    if (front.isEmpty) { probe("no defense line"); return Vector.empty }
+    val f = front.get
+    val segments = f.chokePoint.lines.flatMap(cutting =>
+      segmentThrough(f.chokePoint.center, cutting.absoluteFrom, cutting.absoluteTo))
+    val span = segments.distinct.flatten.distinct
+    if (span.isEmpty) { probe("no pinnable pass at the choke"); return Vector.empty }
     val candidates = span.flatMap(placementsCovering).distinct
     if (candidates.isEmpty) { probe(s"span=${span.size} candidates=0"); return Vector.empty }
     val covered = mutable.Set.empty[MapTilePosition]
@@ -126,7 +124,7 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
           chosen += a
           covered ++= covers(a)
         case None =>
-          probe(s"span=${span.size} candidates=${candidates.size} stuck uncovered=${span.count(t => !covered.contains(t))}")
+          probe(s"span=${span.size} candidates=${candidates.size} stuck uncovered=${span.count(t => !covered.contains(t))} at=${span.filterNot(covered.contains).mkString(",")}")
           return Vector.empty
       }
     }
@@ -176,7 +174,7 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
       }
       Vector.empty
     } else {
-      probe(s"corridor=${corridor.size} span=${span.size} depots=${anchors.size} sealed=true")
+      probe(s"span=${span.size} depots=${anchors.size} sealed=true")
       anchors
     }
   }
