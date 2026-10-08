@@ -494,7 +494,8 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
 trait PreHiringResult[T <: WrapsUnit] {
   def hasAnyMissingRequirements = notExistingMissingRequiments.nonEmpty ||
                                   inProgressMissingRequirements.nonEmpty ||
-                                  plannedMissingRequirements.nonEmpty
+                                  plannedMissingRequirements.nonEmpty ||
+                                  jobbedMissingRequirements.nonEmpty
 
   def notExistingMissingRequiments: Set[Class[_ <: Building]] = Set.empty
   def inProgressMissingRequirements: Set[Class[_ <: Building]] = Set.empty

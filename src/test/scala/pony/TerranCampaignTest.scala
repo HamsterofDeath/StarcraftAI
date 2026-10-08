@@ -2,7 +2,7 @@ package pony
 
 import org.specs2.Specification
 import java.lang.reflect.{InvocationHandler, Method, Proxy}
-import pony.brain.{Universe, ConstructionTravelProgress}
+import pony.brain._
 import pony.brain.modules._
 
 class TerranCampaignTest extends Specification {
@@ -50,6 +50,10 @@ class TerranCampaignTest extends Specification {
     Damaged completed bunkers admit local mineral workers but never gas, builders or unreachable workers $bunkerRepair
     Garrison Marines cannot occupy the mobile defense roster after boarding $bunkerMobileReserve
     Repair healing, target destruction and worker death each terminate in exactly one lifecycle state $bunkerRepairLifecycle
+    The real mobile request flow releases repeated jobbed and incomplete dependency funding, preserving completed-producer admission $producerFundingLifecycle
+    Mineral coverage includes actual depot return lanes, not only remote patch corners $bunkerWorkerApproaches
+    Return routes reject unsolved fields and rasterize solved detours across sparse waypoints $bunkerSolvedRoutes
+    Individually admissible bunker sites cannot jointly close a worker corridor $bunkerJointFootprints
   """
   private def building(id: Int, x: Int, base: Boolean = true) =
     ObservedEnemyBuilding(id, MapTilePosition(x, 20), 4, 3, base)
@@ -430,7 +434,8 @@ class TerranCampaignTest extends Specification {
     (BunkerMarineQuota.missing(8, before, Set.empty, 0, Nil),
       BunkerMarineQuota.missing(8, after, Set.empty, 0, Nil),
       BunkerMarineQuota.missing(8, after, Set(9), 1, Seq(1)),
-      BunkerMarineQuota.missing(8, Set.empty, Set.empty, 0, Nil)) mustEqual (0, 4, 2, 8)
+      BunkerMarineQuota.missing(8, Set.empty, Set.empty, 0, Nil),
+      BunkerMarineQuota.missing(8, before, Set.empty, 0, Nil, campaignHeld = before)) mustEqual (0, 4, 2, 8, 8)
   }
   def bunkerRepair = {
     def admit(damaged: Boolean = true, completed: Boolean = true, alive: Boolean = true,
@@ -454,5 +459,100 @@ class TerranCampaignTest extends Specification {
       BunkerRepairState(true, false, true, false), BunkerRepairState(false, true, false, false),
       BunkerRepairState(false, false, true, false), BunkerRepairState(true, true, true, true)) mustEqual
       (Repairing, Finished, Finished, Failed, Failed, Failed)
+  }
+  def producerFundingLifecycle = {
+    var ledger: ResourceManager = null
+    var manager: UnitManager = null
+    val universe = Proxy.newProxyInstance(classOf[Universe].getClassLoader, Array[Class[_]](classOf[Universe]),
+      new InvocationHandler {
+        override def invoke(proxy: AnyRef, method: Method, arguments: Array[AnyRef]): AnyRef = method.getName match {
+          case "register_$bang" => null
+          case "resources" => ledger
+          case "unitManager" => manager
+          case "currentTick" => Int.box(0)
+          case other => throw new IllegalStateException("Unexpected native dependency: " + other)
+        }
+      }).asInstanceOf[Universe]
+    val locks = scala.collection.mutable.Map.empty[ResourceApprovalSuccess, ResourceRequestSum]
+    val holders = scala.collection.mutable.Map.empty[ResourceApproval, HasFunding]
+    var serial = 0
+    ledger = new ResourceManager(universe) {
+      override def request[T <: WrapsUnit](cost: ResourceRequests, employer: Employer[T], lock: Boolean): ResourceApproval = {
+        serial += 1
+        val proof = ResourceApprovalSuccess(cost.minerals, cost.gas, cost.supply, ResourceApprovalId(serial))
+        locks(proof) = cost.sum
+        proof
+      }
+      override def informUsage[T <: WrapsUnit](proof: ResourceApproval, owner: HasFunding): Unit = {
+        require(locks.contains(proof.assumeSuccessful))
+        holders(proof) = owner
+      }
+      override def unlock_!(proof: ResourceApprovalSuccess): Unit = {
+        require(locks.remove(proof).isDefined, "Exact funding must be released only once")
+        holders.remove(proof)
+      }
+    }
+    var producer = "jobbed"
+    val pending = scala.collection.mutable.ArrayBuffer.empty[UnitJobRequest[_]]
+    manager = new UnitManager(universe) {
+      override def request[T <: WrapsUnit : Manifest](req: UnitJobRequest[T], buildIfNoneAvailable: Boolean): PreHiringResult[T] = {
+        val barracks = Set[Class[_ <: Building]](classOf[Barracks])
+        producer match {
+          case "jobbed" => new MissingRequirementResult[T](Set.empty, Set.empty, Set.empty, barracks)
+          case "incomplete" => new MissingRequirementResult[T](Set.empty, barracks, Set.empty, Set.empty)
+          case _ => pending += req; new FailedPreHiringResult[T]
+        }
+      }
+    }
+    val owner = new Employer[Mobile](universe)
+    val module = new HelperAIModule[UnitFactory](universe) with UnitRequestHelper {
+      override protected def mobileCost[T <: Mobile](kind: Class[_ <: T], priority: Priority) =
+        ResourceRequests(Seq(MineralsRequest(50), SupplyRequest(2)), priority, kind)
+      override protected def mobileRequest[T <: Mobile](kind: Class[_ <: T], proof: ResourceApprovalSuccess, priority: Priority) = {
+        val request = BuildUnitRequest[Mobile](universe, kind, 1, proof, priority, AlternativeBuildingSpot.useDefault)
+        request.persistant_!()
+        UnitJobRequest[Mobile](request, owner, priority)
+      }
+    }
+    val jobbed = (1 to 100).map(_ => module.requestUnit(classOf[Marine], takeCareOfDependencies = false))
+    val afterJobbed = (locks.size, holders.size, pending.size)
+    producer = "incomplete"
+    val incomplete = (1 to 100).map(_ => module.requestUnit(classOf[Marine], takeCareOfDependencies = false))
+    val afterIncomplete = (locks.size, holders.size, pending.size)
+    producer = "completed"
+    val admitted = module.requestUnit(classOf[Marine], takeCareOfDependencies = false)
+    (jobbed.forall(!_), incomplete.forall(!_), afterJobbed, afterIncomplete,
+      admitted, pending.size, holders.size, locks.values.map(_.minerals).sum, locks.values.map(_.supply).sum) mustEqual
+      (true, true, (0, 0, 0), (0, 0, 0), true, 1, 1, 50, 2)
+  }
+  def bunkerWorkerApproaches = {
+    val patch = Area(MapTilePosition(25, 10), Size(2, 1))
+    val depot = Area(MapTilePosition(8, 9), Size(4, 3))
+    val tiles = BunkerCoverage.workerTiles(Seq(patch), Seq(depot), Seq(Vector(MapTilePosition(11, 10), MapTilePosition(24, 10))))
+    val points = BunkerCoverage.corners(tiles)
+    val onlyRemoteBunker = Area(MapTilePosition(25, 12), Size(3, 2))
+    (tiles.contains(MapTilePosition(17, 10)), depot.outline.forall(tiles.contains),
+      points.forall(BunkerCoverage.covers(onlyRemoteBunker, _, 192)),
+      BunkerCoverage.workerTiles(Seq(patch), Nil, Nil).contains(MapTilePosition(17, 10))) mustEqual
+      (true, true, false, false)
+  }
+  def bunkerSolvedRoutes = {
+    val grid = new Grid2D(32, 24, collection.immutable.BitSet.empty).mutableCopy
+    grid.block_!(Area(MapTilePosition(18, 0), Size(1, 15)))
+    val from = MapTilePosition(11, 10); val to = MapTilePosition(24, 10)
+    val detour = BunkerWorkerRoutes.between(from, to, grid).get
+    val tiles = BunkerCoverage.workerTiles(Nil, Nil, Seq(detour))
+    grid.block_!(Area(MapTilePosition(18, 15), Size(1, 9)))
+    (detour.head, detour.last, tiles.exists(_.y >= 15),
+      BunkerWorkerRoutes.between(from, to, grid)) mustEqual (from, to, true, None)
+  }
+  def bunkerJointFootprints = {
+    val corridor = new Grid2D(16, 10, collection.immutable.BitSet.empty).mutableCopy
+    corridor.block_!(Area(MapTilePosition(0, 0), Size(16, 3)))
+    corridor.block_!(Area(MapTilePosition(0, 7), Size(16, 3)))
+    val a = Area(MapTilePosition(6, 3), Size(3, 2))
+    val b = Area(MapTilePosition(6, 5), Size(3, 2))
+    (BunkerSitePlacement.permitted(a, corridor), BunkerSitePlacement.permitted(b, corridor),
+      BunkerSitePlacement.permittedTogether(Seq(a, b), corridor)) mustEqual (true, true, false)
   }
 }

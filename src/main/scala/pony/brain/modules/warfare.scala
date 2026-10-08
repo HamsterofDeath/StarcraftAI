@@ -668,25 +668,36 @@ trait BuildingRequestHelper extends AIModule[WorkerUnit] {
   }
 }
 
+private[pony] object MobileRequestAdmission {
+  def accept(result: PreHiringResult[_])(releaseFunding: => Unit): Boolean = {
+    if (result.hasAnyMissingRequirements) { releaseFunding; false } else true
+  }
+}
+
 trait UnitRequestHelper extends AIModule[UnitFactory] {
   private val mobileEmployer = new Employer[Mobile](universe)
 
   private val buildingHelper = new HelperAIModule[WorkerUnit](universe) with BuildingRequestHelper
   private val addonHelper    = new HelperAIModule[CanBuildAddons](universe) with AddonRequestHelper
 
+  protected def mobileCost[T <: Mobile](mobileType: Class[_ <: T], priority: Priority) =
+    ResourceRequests.forUnit(race, mobileType, priority)
+  protected def mobileRequest[T <: Mobile](mobileType: Class[_ <: T], funding: ResourceApprovalSuccess,
+                                           priority: Priority) =
+    UnitJobRequest.newOfType(universe, mobileEmployer, mobileType, funding, priority = priority)
+
   def requestUnit[T <: Mobile](mobileType: Class[_ <: T], takeCareOfDependencies: Boolean,
                                priority: Priority = Priority.Default) = {
-    val req = ResourceRequests.forUnit(race, mobileType, priority)
+    val req = mobileCost(mobileType, priority)
     var ok = false
     val result = resources.request(req, mobileEmployer)
     result.ifSuccess { suc =>
-      val unitReq = UnitJobRequest.newOfType(universe, mobileEmployer, mobileType, suc, priority = priority)
+      val unitReq = mobileRequest(mobileType, suc, priority)
       trace(s"Financing possible for mobile unit $mobileType, requesting training")
       val result = unitManager.request(unitReq)
-      if (result.hasAnyMissingRequirements) {
+      if (!MobileRequestAdmission.accept(result)(resources.unlock_!(suc))) {
         // do not forget to unlock the resources again
         trace(s"Requirement missing for $mobileType, unlocking resource")
-        resources.unlock_!(suc)
         if (takeCareOfDependencies) {
           result.notExistingMissingRequiments.foreach { requirement =>
             trace(s"Checking dependency: $requirement")

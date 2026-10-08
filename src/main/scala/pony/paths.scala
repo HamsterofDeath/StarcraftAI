@@ -1179,6 +1179,14 @@ private[pony] object BunkerSitePlacement {
       blocked.areaCountExpensive == staticGrid.areaCount
     }
   }
+  def permittedTogether(areas: Seq[Area], staticGrid: Grid2D): Boolean = {
+    val blocked = staticGrid.mutableCopy
+    areas.forall { area =>
+      val safe = permitted(area, blocked)
+      if (safe) blocked.block_!(area)
+      safe
+    }
+  }
 }
 
 class ConstructionSiteFinder(universe: Universe) {
@@ -1216,8 +1224,10 @@ class ConstructionSiteFinder(universe: Universe) {
   def bunkerSiteSafe(area: Area): Boolean = {
     BunkerSitePlacement.permitted(area, freeToBuildOnIgnoreUnits)
   }
-  def bunkerSites(resources: ResourceArea): Vector[Area] = {
-    val tiles = resources.allPatchTiles
+  def bunkerSitesSafeTogether(areas: Seq[Area]): Boolean =
+    BunkerSitePlacement.permittedTogether(areas, freeToBuildOnIgnoreUnits)
+  def bunkerSites(resources: ResourceArea, workerCoverage: Seq[MapTilePosition] = Nil): Vector[Area] = {
+    val tiles = resources.allPatchTiles.toVector ++ workerCoverage
     if (tiles.isEmpty) Vector.empty
     else (for {
       x <- (tiles.map(_.x).min - 6) to (tiles.map(_.x).max + 6)

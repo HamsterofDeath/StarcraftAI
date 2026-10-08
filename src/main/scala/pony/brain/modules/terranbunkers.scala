@@ -6,6 +6,21 @@ import scala.collection.JavaConverters._
 import scala.collection.mutable
 
 private[pony] object BunkerCoverage {
+  /** Match the existing mineral-path mask: every patch lane plus actual depot return approaches. */
+  def workerTiles(patches: Seq[Area], depots: Seq[Area], routes: Seq[Seq[MapTilePosition]]): Vector[MapTilePosition] = {
+    val tiles = mutable.Set.empty[MapTilePosition]
+    patches.foreach(p => tiles ++= p.growBy(1).tiles)
+    depots.foreach { depot =>
+      tiles ++= depot.outline
+      tiles ++= depot.growBy(1).outline
+    }
+    routes.foreach { path =>
+      tiles ++= path
+      path.sliding(2).foreach { pair => if (pair.size == 2)
+        AreaHelper.traverseTilesOfLine(pair.head, pair.last, (x, y) => tiles += MapTilePosition(x, y)) }
+    }
+    tiles.toVector.sortBy(p => (p.y, p.x))
+  }
   // BWAPI 4.1 Position.h: native approximation; ignoring collision extents is conservative.
   def approximateDistance(a: MapPosition, b: MapPosition): Int = {
     val dx = math.abs(a.x - b.x); val dy = math.abs(a.y - b.y)
@@ -25,22 +40,25 @@ private[pony] object BunkerCoverage {
     approximateDistance(center, point) <= range
   }
   private def separate(a: Area, b: Area) = !a.growBy(1).tiles.exists(b.tiles.toSet)
-  def select(points: Vector[MapPosition], candidates: Vector[Area], existing: Vector[Area], range: Int): Vector[Area] = {
+  def select(points: Vector[MapPosition], candidates: Vector[Area], existing: Vector[Area], range: Int,
+             safeTogether: Seq[Area] => Boolean = _ => true): Vector[Area] = {
     val needed = points.indices.filterNot(i => existing.exists(covers(_, points(i), range))).toSet
     val ranked = candidates.filter(c => existing.forall(separate(c, _))).map { c =>
       c -> needed.filter(i => covers(c, points(i), range))
     }.filter(_._2.nonEmpty).sortBy { case (c, hit) => (-hit.size, c.upperLeft.y, c.upperLeft.x) }
     if (needed.isEmpty) Vector.empty
-    else ranked.find(_._2 == needed).map(e => Vector(e._1)).getOrElse {
+    else ranked.find(e => e._2 == needed && safeTogether(Vector(e._1))).map(e => Vector(e._1)).getOrElse {
       val pair = ranked.indices.iterator.flatMap { i =>
+        val left = needed -- ranked(i)._2
         (i + 1 until ranked.size).iterator.filter(j => separate(ranked(i)._1, ranked(j)._1) &&
-          ((ranked(i)._2 ++ ranked(j)._2) == needed)).map(j => Vector(ranked(i)._1, ranked(j)._1))
+          left.subsetOf(ranked(j)._2) && safeTogether(Vector(ranked(i)._1, ranked(j)._1)))
+          .map(j => Vector(ranked(i)._1, ranked(j)._1))
       }.take(1).toVector.headOption
       pair.getOrElse {
         var left = needed
         var selected = Vector.empty[Area]
         while (left.nonEmpty) {
-          val next = ranked.filter(e => selected.forall(separate(e._1, _)))
+          val next = ranked.filter(e => selected.forall(separate(e._1, _)) && safeTogether(selected :+ e._1))
             .map(e => (e._1, e._2 intersect left)).filter(_._2.nonEmpty)
             .sortBy(e => (-e._2.size, e._1.upperLeft.y, e._1.upperLeft.x)).headOption
           if (next.isEmpty) return Vector.empty
@@ -50,6 +68,16 @@ private[pony] object BunkerCoverage {
         selected
       }
     }
+  }
+}
+
+private[pony] object BunkerWorkerRoutes {
+  def between(from: MapTilePosition, to: MapTilePosition, grid: Grid2D): Option[Vector[MapTilePosition]] = {
+    if (!grid.freeAndInBounds(from) || !grid.freeAndInBounds(to)) None
+    else if (grid.connectedByLine(from, to)) Some(Vector(from, to))
+    else new PathFinder(grid, true).findSimplePathNow(from, to, tryFixPath = false)
+      .filter(_.solved).map(p => (Vector(from) ++ p.waypoints :+ to).distinct)
+      .filter(route => route.sliding(2).forall(p => p.size < 2 || grid.connectedByLine(p.head, p.last)))
   }
 }
 
@@ -89,8 +117,8 @@ private[pony] class BunkerBoardingRetry {
 /** Indexed dead cargo is not a survivor; visible training and its job are one slot. */
 private[pony] object BunkerMarineQuota {
   def missing(seats: Int, nativeCompleted: Set[Int], nativeIncomplete: Set[Int],
-              trainingJobs: Int, fundedRequests: Seq[Int]): Int =
-    (seats - nativeCompleted.size - (nativeIncomplete.size max trainingJobs) - fundedRequests.sum) max 0
+              trainingJobs: Int, fundedRequests: Seq[Int], campaignHeld: Set[Int] = Set.empty): Int =
+    (seats - (nativeCompleted -- campaignHeld).size - (nativeIncomplete.size max trainingJobs) - fundedRequests.sum) max 0
 }
 
 private[pony] object BunkerRepairAdmission {
@@ -124,6 +152,7 @@ class TerranBunkerDefense(universe: Universe)
   extends OrderlessAIModule[UnitFactory](universe) with UnitRequestHelper {
   private val builder = new HelperAIModule[WorkerUnit](universe) with BuildingRequestHelper
   private val plans = mutable.Map.empty[Int, (Vector[MapPosition], Vector[Area])]
+  private val geometry = mutable.Map.empty[Int, Vector[Area]]
   private val garrison = new BunkerGarrison
   private val repairers = new Employer[SCV](universe)
   private var cargoObserved = Map.empty[Int, Set[Int]]
@@ -170,15 +199,33 @@ class TerranBunkerDefense(universe: Universe)
     val fields = bases.allBases.filter(b => !b.mainBuilding.isBeingCreated && !b.mainBuilding.isFloating)
       .flatMap(_.resourceArea).groupBy(_.uniqueId).values.map(_.head).toVector
     fields.foreach { field =>
-      if (!plans.contains(field.uniqueId)) {
-        val workTiles = field.patches.toList.flatMap(_.patches.toVector.flatMap(_.area.growBy(1).tiles)).distinct
+      val depots = bases.allBases.filter(b => !b.mainBuilding.isBeingCreated && !b.mainBuilding.isFloating &&
+        b.resourceArea.exists(_.uniqueId == field.uniqueId)).map(_.mainBuilding.area).toVector
+      val patches = field.patches.toList.flatMap(_.patches.map(_.area))
+      val binding = (depots ++ patches).sortBy(a => (a.upperLeft.y, a.upperLeft.x))
+      if (!plans.contains(field.uniqueId) || !geometry.get(field.uniqueId).contains(binding)) {
+        plans.remove(field.uniqueId)
+        val ground = mapLayers.freeWalkableIgnoringMobiles.guaranteeImmutability
+        val routes = for (depot <- depots; patch <- patches) yield {
+          val pairs = for (from <- depot.growBy(1).outline.filter(ground.freeAndInBounds);
+                           to <- patch.growBy(1).outline.filter(ground.freeAndInBounds)) yield (from, to)
+          pairs.toVector.sortBy(p => p._1.distanceSquaredTo(p._2)).iterator
+            .map(p => BunkerWorkerRoutes.between(p._1, p._2, ground)).find(_.isDefined).flatten
+        }
+        val workTiles = BunkerCoverage.workerTiles(patches, depots, routes.flatten)
+          .filter(mapLayers.rawWalkableMap.insideBounds)
         val points = BunkerCoverage.corners(workTiles)
         val existing = bunkers.filter(b => b.tilePosition.distanceToIsLess(field.center, 15)).map(_.area)
-        val candidates = new ConstructionSiteFinder(universe).bunkerSites(field)
-        val sites = BunkerCoverage.select(points, candidates, existing, range)
-        if (points.nonEmpty && (sites.nonEmpty || points.forall(p => existing.exists(BunkerCoverage.covers(_, p, range))))) {
+        val finder = new ConstructionSiteFinder(universe)
+        val routeTiles = BunkerCoverage.workerTiles(Nil, Nil, routes.flatten).toSet
+        val candidates = finder.bunkerSites(field, workTiles).filterNot(a => a.tiles.exists(routeTiles))
+        val sites = BunkerCoverage.select(points, candidates, existing, range, finder.bunkerSitesSafeTogether)
+        if (routes.nonEmpty && routes.forall(_.isDefined) && points.nonEmpty &&
+          (sites.nonEmpty || points.forall(p => existing.exists(BunkerCoverage.covers(_, p, range))))) {
           plans(field.uniqueId) = points -> (existing ++ sites)
-          NativeMatchEvidence.trace("bunker-coverage-plan", s"field=${field.uniqueId} range=$range model=conservativeNativeApprox points=${points.size} sites=${(existing ++ sites).map(_.upperLeft)}")
+          geometry(field.uniqueId) = binding
+          announcedReady -= field.uniqueId
+          NativeMatchEvidence.trace("bunker-coverage-plan", s"field=${field.uniqueId} range=$range model=conservativeNativeApprox points=${points.size} solvedRoutes=${routes.size} jointFootprintsSafe=true sites=${(existing ++ sites).map(_.upperLeft)}")
           uncoveredReported -= field.uniqueId
         } else if (!uncoveredReported(field.uniqueId)) {
           NativeMatchEvidence.trace("bunker-coverage-unavailable", s"field=${field.uniqueId} points=${points.size} safeCandidates=${candidates.size} noGenericFallback=true")
@@ -207,13 +254,15 @@ class TerranBunkerDefense(universe: Universe)
     }
     val desired = plans.values.map(_._2.size * 4).sum
     val nativeMarines = nativeGame.self().getUnits.asScala.filter(_.getType == bwapi.UnitType.Terran_Marine).toVector
+    val expeditionMarines = ownUnits.allByType[Marine].filter(m =>
+      worldDominationPlan.attackOf(m).exists(_.campaign)).map(_.nativeUnitId).toSet
     val nativeIds = nativeGame.self().getUnits.asScala.map(_.getID).toSet
     val training = unitManager.allJobsByType[TrainUnit[UnitFactory, Mobile]].count(j =>
       j.requestedType == classOf[Marine] && nativeIds(j.unit.nativeUnitId) && !j.failedOrObsolete && !j.isFinished)
     val funded = unitManager.plannedToTrain.filter(r => !r.clearable && r.typeOfRequestedUnit == classOf[Marine] &&
       r.funding.isSuccess && resources.hasStillLocked(r.funding)).map(_.amount).toVector
     val missing = BunkerMarineQuota.missing(desired, nativeMarines.filter(_.isCompleted).map(_.getID).toSet,
-      nativeMarines.filterNot(_.isCompleted).map(_.getID).toSet, training, funded)
+      nativeMarines.filterNot(_.isCompleted).map(_.getID).toSet, training, funded, expeditionMarines)
     if (missing > 0) {
       val accepted = requestUnit(classOf[Marine], takeCareOfDependencies = true, priority = Priority.Supply)
       if (currentTick % (31 * 16) == 0) NativeMatchEvidence.trace("bunker-replacement-request",
@@ -242,6 +291,12 @@ class TerranBunkerDefense(universe: Universe)
       val producers = ownUnits.allByType[Barracks].map(b => s"${b.nativeUnitId}:${b.nativeUnit.isTraining}:${b.nativeUnit.getRemainingTrainTime}:${unitManager.jobOf(b).shortDebugString}").toVector
       val assigned = bunkers.map(b => b.nativeUnitId -> boarding.get.reserved.toVector.filter(id => boarding.get.target(id).contains(b.nativeUnitId)))
       NativeMatchEvidence.trace("bunker-garrison-status", s"desired=$desired indexed=${ownUnits.allByType[Marine].size} nativeMarines=${nativeMarines.map(_.getID)} eligible=$eligible planned=${unitManager.plannedToTrain.count(_.typeOfRequestedUnit == classOf[Marine])} producers=$producers assigned=$assigned unlocked=${resources.unlockedResources}")
+    }
+    if (currentTick % (31 * 16) == 0) {
+      val locks = resources.detailedLocks.groupBy(_.whatFor.className).map { case (kind, entries) =>
+        s"$kind:${entries.size}:${entries.map(_.reqs.minerals).sum}/${entries.map(_.reqs.supply).sum}"
+      }.toVector.sorted
+      NativeMatchEvidence.trace("resource-reservations", s"bank=${resources.currentResources} locked=${resources.lockedResources} spendable=${resources.unlockedResources} holders=$locks fundedRequests=${unitManager.plannedToTrain.count(r => r.funding.isSuccess && resources.hasStillLocked(r.funding))} trainingJobs=${unitManager.allJobsByType[TrainUnit[UnitFactory, Mobile]].size}")
     }
     cargo.foreach { case (id, ids) =>
       if (!cargoObserved.get(id).contains(ids)) NativeMatchEvidence.trace("bunker-native-cargo", s"id=$id marines=${ids.toVector.sorted} count=${ids.size}")
