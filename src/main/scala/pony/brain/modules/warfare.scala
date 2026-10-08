@@ -1412,16 +1412,20 @@ object Strategy {
   /** Depot wall, tanks behind it, then flying factories and a mine-backed tank carpet. */
   class TerranCarpet(override val universe: Universe) extends SimpleTerran(universe) {
     override def name = "Carpet"
-    override def usesBunkerDefense = false
+    private def wallRefused = universe.pluginByType[WallWithDepots].refused
+    // An unsealable choke falls back to the default bunker defense so raids find no naked base.
+    override def usesBunkerDefense = wallRefused
     override def usesWallDefense = true
     override def usesCampaignLaunch = false
     private def spendScale = ((resources.unlockedResources.minerals - 800) / 600).max(0).min(8)
     override def suggestProducers = {
       val scale = spendScale
+      IdealProducerCount(classOf[Barracks], if (wallRefused) 1 else 0)(true) ::
       IdealProducerCount(classOf[Factory], ((bases.finishedBases.size max 1) + scale) min 6)(true) :: Nil
     }
     override def suggestUnits = {
       val scale = spendScale
+      IdealUnitRatio(classOf[Marine], if (wallRefused) 8 else 0)(true) ::
       IdealUnitRatio(classOf[Tank], 8 + scale * 3)(true) ::
       IdealUnitRatio(classOf[Vulture], 6 + scale * 2)(true) ::
       IdealUnitRatio(classOf[Goliath], 2 + scale)(true) :: Nil

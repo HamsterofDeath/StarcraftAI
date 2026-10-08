@@ -12,7 +12,9 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
   private var anchors = Option.empty[Vector[MapTilePosition]]
   private var reportedNone = false
   private var reportedComplete = false
-  private var lastWallAttempt = Int.MinValue
+  private var refusedPlanning = false
+  private var probed = false
+  private var lastWallAttempt = -1
   private val lastAttempt = mutable.Map.empty[MapTilePosition, Int]
   private val repairers = new Employer[SCV](universe)
 
@@ -29,7 +31,12 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
   }
 
   /** True once planning concluded that no depot wall can seal the main approach. */
-  def refused: Boolean = reportedNone
+  def refused: Boolean = refusedPlanning
+
+  private def probe(reason: String): Unit = if (!probed) {
+    probed = true
+    NativeMatchEvidence.trace("wall-probe", reason)
+  }
 
   private def depotFree(anchor: MapTilePosition): Boolean = {
     val area = Area(anchor, Size(2, 2))
@@ -37,8 +44,7 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
       mapLayers.rawWalkableMap.free(t) &&
       mapLayers.freeTilesForConstruction.free(t) &&
       mapLayers.blockedByBuildingTiles.free(t) &&
-      mapLayers.blockedByPlannedBuildings.free(t) &&
-      mapLayers.blockedByPotentialAddons.free(t)
+      mapLayers.blockedByPlannedBuildings.free(t)
     }
   }
 
@@ -65,8 +71,9 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
   /** Every corridor tile covered by a depot, and no walkable path from outside to inside remains. */
   private def computeWall(home: Base): Vector[MapTilePosition] = {
     val corridor = corridorTiles(home)
-    if (corridor.isEmpty) return Vector.empty
+    if (corridor.isEmpty) { probe("corridor=0"); return Vector.empty }
     val candidates = corridor.flatMap(placementsCovering).distinct
+    if (candidates.isEmpty) { probe(s"corridor=${corridor.size} candidates=0"); return Vector.empty }
     val covered = mutable.Set.empty[MapTilePosition]
     val chosen = mutable.ArrayBuffer.empty[MapTilePosition]
     def covers(a: MapTilePosition) = footprint(a).filter(corridor.contains)
@@ -76,17 +83,24 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
         case Some(a) =>
           chosen += a
           covered ++= covers(a)
-        case None => return Vector.empty
+        case None =>
+          probe(s"corridor=${corridor.size} candidates=${candidates.size} stuck uncovered=${corridor.count(t => !covered.contains(t))}")
+          return Vector.empty
       }
     }
-    if (!corridor.forall(covered.contains)) return Vector.empty
+    if (!corridor.forall(covered.contains)) {
+      probe(s"corridor=${corridor.size} candidates=${candidates.size} tooWide depots=${chosen.size} uncovered=${corridor.count(t => !covered.contains(t))}")
+      return Vector.empty
+    }
 
     // Protoss probes, zealots and dragoons must not slip between or around the depots.
     var anchors = chosen.toVector
     var attempts = 0
     while (attempts < 3) {
       breachPath(home, anchors) match {
-        case None => return anchors
+        case None =>
+          probe(s"corridor=${corridor.size} depots=${anchors.size} sealed=true")
+          return anchors
         case Some(path) =>
           val crossing = path.reverse.find { t =>
             anchors.exists(a => footprint(a).exists(_ == t)) ||
@@ -109,7 +123,10 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
     if (breachPath(home, anchors).isDefined) {
       NativeMatchEvidence.trace("wall-seal-failed", s"attempts=$attempts")
       Vector.empty
-    } else anchors
+    } else {
+      probe(s"corridor=${corridor.size} depots=${anchors.size} sealed=true")
+      anchors
+    }
   }
 
   /** A free path from a known outside tile to the defended side means the wall leaks. */
@@ -158,10 +175,11 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
     bases.mainBase.foreach { home =>
       val wall = anchors.getOrElse {
         // A refused plan is retried rarely; terrain and the corridor do not change quickly.
-        if (currentTick - lastWallAttempt < 24 * 60 * 5) Vector.empty
+        if (lastWallAttempt >= 0 && currentTick - lastWallAttempt < 24 * 60 * 5) Vector.empty
         else {
           lastWallAttempt = currentTick
           val chosen = computeWall(home)
+          refusedPlanning = chosen.isEmpty
           if (chosen.nonEmpty) {
             anchors = Some(chosen)
             NativeMatchEvidence.trace("wall-planned", s"depots=${chosen.size} at=${chosen.mkString(",")}")
@@ -170,7 +188,7 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
         }
       }
       if (wall.isEmpty) {
-        if (!reportedNone && anchors.isEmpty && currentTick > 24 * 60 * 5) {
+        if (refusedPlanning && !reportedNone) {
           NativeMatchEvidence.trace("wall-none", "no achievable land choke; skipping the depot wall")
           reportedNone = true
         }
@@ -186,7 +204,8 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
           }
         } else {
           missing.filter(depotFree).foreach { a =>
-            val due = currentTick - lastAttempt.getOrElse(a, Int.MinValue) > 24 * 60
+            val last = lastAttempt.getOrElse(a, -1)
+            val due = last < 0 || currentTick - last > 24 * 60
             if (due && !pending(a) && !existing(a)) {
               lastAttempt(a) = currentTick
               NativeMatchEvidence.trace("wall-depot-request", s"at=$a")
