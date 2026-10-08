@@ -371,6 +371,10 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule[WrapsUni
       gatheringJobs --= outdated
     }
     gatheringJobs.foreach(_.onTick_!())
+    if (universe.currentTick < 3000 && (gatheringJobs.isEmpty || gatheringJobs.map(_.teamSize).sum == 0))
+      NativeMatchEvidence.trace("mining-scan",
+        s"jobs=${gatheringJobs.size} staffed=${gatheringJobs.map(_.teamSize).sum} detachedNow=${detached.size} first=" +
+          gatheringJobs.headOption.map(g => s"attached=${g.attachedToBase} permitted=${g.permittedStaffing}").getOrElse("none"))
     val before = opening.startingFieldSaturated
     opening.observe(bases.mainBase.flatMap(_.resourceArea).map(_.uniqueId), fieldStates)
     if (!before && opening.startingFieldSaturated)
@@ -455,11 +459,16 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule[WrapsUni
       if (missing > 0) {
         val result = this.universe.unitManager
                      .request(UnitJobRequest.idleOfType(emp, classOf[WorkerUnit], missing))
+        if (this.universe.currentTick < 3000)
+          NativeMatchEvidence.trace("mining-hire",
+            s"missing=$missing team=$teamSize result=${result.getClass.getSimpleName} units=${result.units.size}")
         val jobs = result.units.flatMap { worker =>
           Micro.MiningOrganization.findBestPatch(worker).map { patch =>
             info(s"Added $worker to mining team of $patch")
             val job = new Micro.MineMineralsAtPatch(worker, patch)
             patch.lockToPatch_!(job)
+            NativeMatchEvidence.trace("mining-assign",
+              s"worker=${worker.nativeUnitId} patch=${patch.patch.nativeUnitId}")
             job
           }
         }
