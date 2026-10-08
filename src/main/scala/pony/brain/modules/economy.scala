@@ -185,7 +185,7 @@ class ProvideNewSupply(universe: Universe) extends OrderlessAIModule[WorkerUnit]
   override def onTick_!() = {
 
     val cur = plannedSupplies
-    val needsMore = cur.supplyUsagePercent >= 0.8 && cur.total < 400
+    val needsMore = cur.supplyUsagePercent >= 0.6 && cur.total < 400
 
     trace(s"Need more supply: $cur ($plannedSupplies planned)", needsMore)
     if (needsMore) {

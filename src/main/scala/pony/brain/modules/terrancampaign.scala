@@ -207,12 +207,15 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
       funds.minerals, funds.gas))
   }
 
-  // Keep the bank available while the ready army discovers its first target. Existing queues finish.
+  // Keep spending toward the launch reserve instead of freezing a rich bank.
   def holdingNewArmy = {
     val troops = expedition
+    val funds = resources.currentResources
     !worldDominationPlan.baseDefenseActive && config.holdNewArmy(universe.pluginByType[ManageMiningAtBases].secondBaseEstablished,
       troops.size, troops.map(_.nativeUnitType.mineralPrice).sum,
-      troops.map(_.nativeUnitType.gasPrice).sum, launched)
+      troops.map(_.nativeUnitType.gasPrice).sum, launched) &&
+      funds.minerals < config.bankMinerals + 600 &&
+      funds.gas < config.bankGas + 300
   }
 
   override def onTick_!(): Unit = {

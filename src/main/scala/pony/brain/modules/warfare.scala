@@ -1303,14 +1303,19 @@ object Strategy {
         cost.minerals, cost.gas, unitManager.requestedToBuild(race.resourceDepositClass) ||
           unitManager.constructionsInProgress[MainBuilding].nonEmpty, safeReachableSite = true)
     }
-    override def suggestProducers =
-      IdealProducerCount(classOf[Barracks], 1)(true) ::
-      IdealProducerCount(classOf[Factory], (bases.finishedBases.size max 1) min 4)(true) :: Nil
-    override def suggestUnits =
-      IdealUnitRatio(classOf[Marine], 4)(true) ::
-      IdealUnitRatio(classOf[Vulture], 4)(true) ::
-      IdealUnitRatio(classOf[Tank], 6)(true) ::
-      IdealUnitRatio(classOf[Goliath], 2)(true) :: Nil
+    private def spendScale = ((resources.unlockedResources.minerals - 800) / 600).max(0).min(8)
+    override def suggestProducers = {
+      val scale = spendScale
+      IdealProducerCount(classOf[Barracks], if (scale >= 4) 2 else 1)(true) ::
+      IdealProducerCount(classOf[Factory], ((bases.finishedBases.size max 1) + scale) min 6)(true) :: Nil
+    }
+    override def suggestUnits = {
+      val scale = spendScale
+      IdealUnitRatio(classOf[Marine], 4 + scale * 2)(true) ::
+      IdealUnitRatio(classOf[Vulture], 4 + scale * 2)(true) ::
+      IdealUnitRatio(classOf[Tank], 6 + scale * 3)(true) ::
+      IdealUnitRatio(classOf[Goliath], 2 + scale)(true) :: Nil
+    }
     override def suggestUpgrades =
       UpgradeToResearch(Upgrades.Terran.TankSiegeMode)(unitManager.existsAndDone(classOf[MachineShop])) ::
       UpgradeToResearch(Upgrades.Terran.VehicleWeapons)(bases.finishedBases.size >= 2) ::
