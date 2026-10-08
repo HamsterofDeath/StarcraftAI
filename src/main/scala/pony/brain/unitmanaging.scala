@@ -360,7 +360,8 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
             case None =>
               if (universe.currentTick < 3000)
                 NativeMatchEvidence.trace("hire-none",
-                  s"employer=${req.employer} type=${req.requestedUnitType.getSimpleName} assigned=${assignments.size} nobody=${assignments.count(_._2.employer == Nobody)} idle=${assignments.count(_._2.isIdle)}")
+                  s"employer=${req.employer} type=${req.requestedUnitType.getSimpleName} assigned=${assignments.size} nobody=${assignments.count(_._2.employer == Nobody)} idle=${assignments.count(_._2.isIdle)} workers=" +
+                    assignments.collect { case (u, j) if u.isInstanceOf[WorkerUnit] => s"#${u.nativeUnitId}:${j.getClass.getSimpleName}:${j.priority}:${j.isIdle}" }.mkString(","))
               if (buildIfNoneAvailable) unfulfilledRequestsThisTick += req
               new FailedPreHiringResult[T]
             case Some(team) if !team.complete =>
@@ -609,22 +610,24 @@ Universe)
     val um = unitManager
     val available = {
       val potential = {
-        val targetType = req.requestedUnitType
-
         def allWithType = um.allOfEmployerAndType(um.Nobody, req.requestedUnitType).iterator ++
                           um.allNotOfEmployerButType(um.Nobody, req.requestedUnitType)
 
-        val defaultSuggestions = allWithType.filter(_.unit.isInGame)
-                                 .filter {
-                                   _.unit match {
-                                     case a: AutoPilot => a.isManuallyControlled
-                                     case _ => true
-                                   }
-                                 }
-                                 .filter(_.priority < req.priority)
-                                 .filter(interrupts)
-                                 .filter(requests)
-        val withExplicitCandidates = defaultSuggestions ++ includeCandidates
+        val stage0 = allWithType.toVector
+        val stage1 = stage0.filter(_.unit.isInGame)
+        val stage2 = stage1.filter {
+          _.unit match {
+            case a: AutoPilot => a.isManuallyControlled
+            case _ => true
+          }
+        }
+        val stage3 = stage2.filter(_.priority < req.priority)
+        val stage4 = stage3.filter(interrupts)
+        val stage5 = stage4.filter(requests)
+        if (universe.currentTick < 3000 && stage5.isEmpty)
+          NativeMatchEvidence.trace("collector-stages",
+            s"type=${req.requestedUnitType.getSimpleName} all=${stage0.size} inGame=${stage1.size} auto=${stage2.size} prio=${stage3.size} intr=${stage4.size} wants=${stage5.size} reqPrio=${req.priority} sample=${stage0.take(8).map(j => s"#${j.unit.nativeUnitId}:${j.priority}:${j.isIdle}:${j.unit.getClass.getSimpleName}").mkString(",")}")
+        val withExplicitCandidates = stage5 ++ includeCandidates
         withExplicitCandidates.map(typed).toVector
       }
       priorityRule.fold(potential) { rule =>
