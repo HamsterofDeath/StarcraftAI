@@ -296,7 +296,7 @@ class PathFinder(on: Grid2D, isOnGround: Boolean) {
       if (tryFixPath) {
         fromFixed.flatMap { e =>
           on.areaOf(e).flatMap(_.nearestFreeNoGap(to))
-        }
+        }.orElse(on.nearestFree(to))
       } else {Some(to)}
     }
     warn(s"Could not fix start $from", fromFixed.isEmpty)
