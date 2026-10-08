@@ -14,6 +14,7 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
   private var reportedComplete = false
   private var refusedPlanning = false
   private var probed = false
+  private var reportedSealFailure = false
   private var lastWallAttempt = -1
   private val lastAttempt = mutable.Map.empty[MapTilePosition, Int]
   private val repairers = new Employer[SCV](universe)
@@ -68,6 +69,9 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
 
   private def footprint(a: MapTilePosition) = Area(a, Size(2, 2)).tiles
 
+  private def overlaps(a: MapTilePosition, b: MapTilePosition) =
+    (a.x - b.x).abs < 2 && (a.y - b.y).abs < 2
+
   /** Every corridor tile covered by a depot, and no walkable path from outside to inside remains. */
   private def computeWall(home: Base): Vector[MapTilePosition] = {
     val corridor = corridorTiles(home)
@@ -78,7 +82,9 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
     val chosen = mutable.ArrayBuffer.empty[MapTilePosition]
     def covers(a: MapTilePosition) = footprint(a).filter(corridor.contains)
     while (!corridor.forall(covered.contains) && chosen.size <= 8) {
-      val best = candidates.filterNot(chosen.contains).maxByOpt(a => covers(a).count(t => !covered.contains(t)))
+      val best = candidates.filterNot(chosen.contains)
+        .filterNot(a => chosen.exists(b => overlaps(a, b)))
+        .maxByOpt(a => covers(a).count(t => !covered.contains(t)))
       best.filter(a => covers(a).exists(t => !covered.contains(t))) match {
         case Some(a) =>
           chosen += a
@@ -94,34 +100,44 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
     }
 
     // Protoss probes, zealots and dragoons must not slip between or around the depots.
+    // A leak is plugged by extending the wall along the breach path, nearest to the wall first.
     var anchors = chosen.toVector
     var attempts = 0
-    while (attempts < 3) {
-      breachPath(home, anchors) match {
+    var breach = breachPath(home, anchors)
+    while (breach.isDefined && attempts < 12 && anchors.size <= 16) {
+      val path = breach.get
+      val pathSet = path.toSet
+      val fix = path.flatMap(placementsCovering).distinct
+        .filterNot(anchors.contains)
+        .filterNot(a => anchors.exists(b => overlaps(a, b)))
+        .map { a =>
+          val onPath = footprint(a).count(t => pathSet.contains(t))
+          val wallDistance = anchors.map(b => (a.x - b.x).abs.max((a.y - b.y).abs)).min
+          val corridorCover = covers(a).count(corridor.contains)
+          (a, onPath, wallDistance, corridorCover)
+        }
+        .sortBy { case (a, onPath, wallDistance, corridorCover) => (-onPath, wallDistance, -corridorCover, a.y, a.x) }
+        .headOption
+      fix match {
+        case Some((a, onPath, _, _)) =>
+          anchors :+= a
+          attempts += 1
+          NativeMatchEvidence.trace("wall-seal-fix", s"attempt=$attempts at=$a onPath=$onPath")
         case None =>
-          probe(s"corridor=${corridor.size} depots=${anchors.size} sealed=true")
-          return anchors
-        case Some(path) =>
-          val crossing = path.reverse.find { t =>
-            anchors.exists(a => footprint(a).exists(_ == t)) ||
-              corridor.exists(c => c.distanceSquaredTo(t) <= 2)
+          if (!reportedSealFailure) {
+            reportedSealFailure = true
+            NativeMatchEvidence.trace("wall-seal-failed",
+              s"pathLen=${path.size} buildable=${path.count(t => placementsCovering(t).nonEmpty)} anchors=${anchors.mkString(",")} path=${path.take(16).mkString(",")}")
           }
-          val fixes = crossing.toVector.flatMap(placementsCovering)
-            .filterNot(anchors.contains)
-            .sortBy(a => -covers(a).count(corridor.contains))
-          fixes.headOption match {
-            case Some(a) =>
-              anchors :+= a
-              attempts += 1
-              NativeMatchEvidence.trace("wall-seal-fix", s"attempt=$attempts at=$a")
-            case None =>
-              NativeMatchEvidence.trace("wall-seal-failed", s"crossing=$crossing pathLength=${path.size}")
-              return Vector.empty
-          }
+          return Vector.empty
       }
+      breach = breachPath(home, anchors)
     }
-    if (breachPath(home, anchors).isDefined) {
-      NativeMatchEvidence.trace("wall-seal-failed", s"attempts=$attempts")
+    if (breach.isDefined) {
+      if (!reportedSealFailure) {
+        reportedSealFailure = true
+        NativeMatchEvidence.trace("wall-seal-failed", s"attempts=$attempts anchors=${anchors.mkString(",")}")
+      }
       Vector.empty
     } else {
       probe(s"corridor=${corridor.size} depots=${anchors.size} sealed=true")
