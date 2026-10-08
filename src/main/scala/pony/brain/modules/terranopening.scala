@@ -94,6 +94,26 @@ class TerranEconomicOpening(universe: Universe)
           }
         }
       }
+      if (currentTick % (Primes.prime31.i * 16) == 0) {
+        val cfg = TerranCampaignConfig.load()
+        val cost = ResourceRequests.forUnit(race, classOf[CommandCenter])
+        val funds = resources.unlockedResources
+        val pending = unitManager.requestedToBuild(classOf[CommandCenter]) ||
+          unitManager.constructionsInProgress[CommandCenter].nonEmpty
+        val expandState =
+          if (depots.size >= cfg.requiredFields) "held"
+          else if (pending) "building"
+          else if (cfg.expand(funds.minerals, funds.gas, cost.minerals, cost.gas,
+            pending = false, safeReachableSite = true)) "requesting"
+          else "waiting-for-minerals"
+        val relocateState =
+          if (relocation.isDefined) "recycling-depot"
+          else if (secondBasePending) "pending-second-base"
+          else if (replenishNeeded) "pending-fresh-field"
+          else "idle"
+        NativeMatchEvidence.trace("strategy-expansion",
+          s"fields=${usefulFields.size}/${cfg.requiredFields} ccs=${depots.size}/${cfg.requiredFields} unlockedMinerals=${funds.minerals}/${cost.minerals + cfg.expansionReserve} pending=$pending saturated=${mining.startingFieldSaturated} secondBase=${mining.secondBaseEstablished} expand=$expandState relocate=$relocateState")
+      }
     }
   }
 

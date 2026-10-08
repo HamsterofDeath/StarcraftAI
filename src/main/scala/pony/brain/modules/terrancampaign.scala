@@ -321,5 +321,21 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
         }
       }
     }
+    if (currentTick % (31 * 16) == 0) {
+      val mining = universe.pluginByType[ManageMiningAtBases]
+      val bunkers = universe.pluginByType[TerranBunkerDefense]
+      val funds = resources.currentResources
+      val overwhelming = troops.size >= config.minFighters * 2 &&
+        minerals >= config.armyMinerals + config.bankMinerals &&
+        gas >= config.armyGas + config.bankGas
+      val mode =
+        if (huntTarget.isDefined && known.isEmpty) "sweep"
+        else if (target.isDefined) "attack"
+        else "idle"
+      NativeMatchEvidence.trace("strategy-offense",
+        s"operational=${mining.secondBaseEstablished} defense=${bunkers.defenseSufficient} coverage=${bunkers.coverageReady} pressure=${worldDominationPlan.baseDefenseActive} mode=$mode launched=$launched planning=${worldDominationPlan.planningInProgress} fighters=${troops.size}/${config.minFighters} armyMinerals=$minerals/${config.armyMinerals} armyGas=$gas/${config.armyGas} bankMinerals=${funds.minerals}/${config.bankMinerals} bankGas=${funds.gas}/${config.bankGas} overwhelming=$overwhelming target=$target")
+      NativeMatchEvidence.trace("strategy-scouting",
+        s"minimal=$minimalScoutingActive reconnaissance=$reconnaissanceAllowed enemyLocated=$enemyLocated")
+    }
   }
 }

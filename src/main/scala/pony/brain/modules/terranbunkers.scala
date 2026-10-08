@@ -377,6 +377,9 @@ class TerranBunkerDefense(universe: Universe)
         s"$kind:${entries.size}:${entries.map(_.reqs.minerals).sum}/${entries.map(_.reqs.supply).sum}"
       }.toVector.sorted
       NativeMatchEvidence.trace("resource-reservations", s"bank=${resources.currentResources} locked=${resources.lockedResources} spendable=${resources.unlockedResources} holders=$locks fundedRequests=${unitManager.plannedToTrain.count(r => r.funding.isSuccess && resources.hasStillLocked(r.funding))} trainingJobs=${unitManager.allJobsByType[TrainUnit[UnitFactory, Mobile]].size}")
+      val completedBunkers = bunkers.count(b => b.nativeUnit.exists && b.nativeUnit.isCompleted)
+      NativeMatchEvidence.trace("strategy-defense",
+        s"plannedFields=${plans.size} sites=${plans.values.map(_._2.size).sum} completedBunkers=$completedBunkers desiredMarines=$desired loadedMarines=${cargo.values.map(_.size).sum} coverage=$coverageReady sufficient=$defenseSufficient")
     }
     cargo.foreach { case (id, ids) =>
       if (!cargoObserved.get(id).contains(ids)) NativeMatchEvidence.trace("bunker-native-cargo", s"id=$id marines=${ids.toVector.sorted} count=${ids.size}")
