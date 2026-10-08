@@ -1324,7 +1324,7 @@ object Terran {
         FutureIterator
         .feed((scout.currentTile, remainingToCheck.head, pathfinder))
         .produceAsync { case (from, to, pathfinder) =>
-          pathfinder.findPathNow(from, to).map(_.toMigration(universe))
+          pathfinder.findUnclampedPathNow(from, to).map(_.toMigration(universe))
         }.named("Single scout plan")
       }
 

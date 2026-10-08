@@ -277,6 +277,13 @@ class PathFinder(on: Grid2D, isOnGround: Boolean) {
     evalPath(from, to, paths, tryFixPath)
   }
 
+  /** Route to the goal across walkable regions without clamping it into the start's area. */
+  def findUnclampedPathNow(from: MapTilePosition, to: MapTilePosition): Option[Paths] = {
+    val fromFixed = on.nearestFree(from)
+    val toFixed = if (on.containsAndFree(to)) Some(to) else on.nearestFree(to)
+    for (a <- fromFixed; b <- toFixed) yield spawn.findPaths(a, b, 1, to)
+  }
+
   def findPaths(from: MapTilePosition, to: MapTilePosition, paths: Int = 10,
                 tryFixPath: Boolean = true) = BWFuture {
     findPathNow(from, to, paths, tryFixPath)
