@@ -316,12 +316,22 @@ private[pony] class RelocateFactory(employer: Employer[Factory], factory: Factor
             NativeMatchEvidence.trace("factory-flight",
               s"id=${factory.nativeUnitId} phase=Fly at=${factory.tilePosition} moving=${factory.nativeUnit.isMoving} to=$landingTile sinceProgress=${currentTick - lastProgress}")
           }
-          if (destinationField.exists(f => !safe(f)) || currentTick - lastProgress > 24 * 120) {
+          val stuck = currentTick - lastProgress > 24 * 120
+          if (stuck && factory.isFloating && factory.nativeUnit.canLand(factory.tilePosition.asTilePosition)) {
+            // Cannot reach the field; settle where we are instead of hovering forever.
+            destination = Some(factory.tilePosition)
+            destinationField = None
+            lastProgress = currentTick
+            Nil
+          } else if (destinationField.exists(f => !safe(f)) || stuck) {
             destinationField.foreach(f => failedFields += f.uniqueId)
             destination = None
             destinationField = None
             lastProgress = currentTick
             Nil
+          } else if (!factory.isFloating) {
+            // Landed somewhere unexpected mid-flight; lift again and keep going.
+            if (factory.nativeUnit.canLift()) Orders.LiftBuilding(factory).toSeq else Nil
           } else if (factory.nativeUnit.isMoving) Nil
           else {
             // Long flights can stall at the edge of what the engine can path for a building;

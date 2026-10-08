@@ -72,7 +72,11 @@ object Orders {
     override def renderDebug(renderer: Renderer): Unit = {}
   }
   case class FlyBuilding(myUnit: TerranBuilding, to: MapTilePosition) extends UnitOrder {
-    override def issueOrderToGame(): Unit = { myUnit.nativeUnit.move(to.asMapPosition.toNative) }
+    override def issueOrderToGame(): Unit = {
+      val accepted = myUnit.nativeUnit.move(to.asMapPosition.toNative)
+      if (!accepted) NativeMatchEvidence.trace("building-fly-refused",
+        s"id=${myUnit.nativeUnitId} from=${myUnit.tilePosition} to=$to")
+    }
     override def renderDebug(renderer: Renderer): Unit = {}
   }
   case class LandBuilding(myUnit: TerranBuilding, to: MapTilePosition) extends UnitOrder {
