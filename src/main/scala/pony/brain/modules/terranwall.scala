@@ -213,7 +213,10 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
           if (front.defended.free(cur)) breach = Some(cur)
           else for (dx <- -1 to 1; dy <- -1 to 1 if dx != 0 || dy != 0) {
             val n = cur.movedBy(dx, dy)
-            if (!visited(n) && allowed(n)) {
+            // Units cannot cut a corner through two blocked tiles, so diagonal steps
+            // are only legal when at least one shared orthogonal tile is walkable.
+            val corner = dx == 0 || dy == 0 || allowed(cur.movedBy(dx, 0)) || allowed(cur.movedBy(0, dy))
+            if (!visited(n) && allowed(n) && corner) {
               visited += n
               parent(n) = cur
               queue += n
