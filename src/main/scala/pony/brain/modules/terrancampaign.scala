@@ -201,14 +201,18 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
         }
       }.groupBy(_.id).values.map(_.head).toVector
       defenseRoster.update(fields, fighters.map(m => DefenseFighter(m.nativeUnitId, m.currentTile,
-        worldDominationPlan.attackOf(m).exists(_.campaign),
+        worldDominationPlan.attackOf(m).exists(_.campaign) || carpetPost(m.nativeUnitId).isDefined,
         universe.pluginByType[TerranBunkerDefense].reserved(m))))
     } else defenseRoster.update(Nil, Nil)
     defenseRoster
   }
+  def fieldGuardReserved(id: Int) = defenses.get.reserved(id)
+  private def carpetPost(id: Int) = universe.pluginByType[CarpetSpread].postOf(id)
   def isReservedDefender(unit: WrapsUnit) = defenses.get.reserved(unit.nativeUnitId) ||
+    carpetPost(unit.nativeUnitId).isDefined ||
     universe.pluginByType[TerranBunkerDefense].reserved(unit)
-  def guardPosition(unit: WrapsUnit) = defenses.get.rallyFor(unit.nativeUnitId)
+  def guardPosition(unit: WrapsUnit) =
+    carpetPost(unit.nativeUnitId).orElse(defenses.get.rallyFor(unit.nativeUnitId))
   override def onNth = 31
 
   private def fighters = ownUnits.allMobilesWithWeapons.filter { m =>
@@ -243,8 +247,13 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
 
   def scoutingAllowed = reconnaissanceAllowed || minimalScoutingActive
 
+  def campaignLaunchEnabled = strategy.current match {
+    case s: Strategy.SimpleTerran => s.usesCampaignLaunch
+    case _ => true
+  }
+
   // Keep spending toward the launch reserve instead of freezing a rich bank.
-  def holdingNewArmy = {
+  def holdingNewArmy = campaignLaunchEnabled && {
     val troops = expedition
     val funds = resources.currentResources
     !worldDominationPlan.baseDefenseActive && config.holdNewArmy(universe.pluginByType[ManageMiningAtBases].secondBaseEstablished,
@@ -309,7 +318,7 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
         s"operational=${universe.pluginByType[ManageMiningAtBases].secondBaseEstablished} defense=${bunkers.defenseSufficient} coverage=${bunkers.coverageReady} pressure=${worldDominationPlan.baseDefenseActive} launched=$launched planning=${worldDominationPlan.planningInProgress} fighters=${troops.size} army=$minerals/$gas bank=${resources.currentResources} target=$target")
     }
     wasReady = ready
-    target.foreach { where =>
+    if (campaignLaunchEnabled) target.foreach { where =>
       if (ready && !worldDominationPlan.planningInProgress) {
         val accepted = worldDominationPlan.initiateCampaignAttack(where, troops.map(_.nativeUnitId).toSet)
         if (accepted) {

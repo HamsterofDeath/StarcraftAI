@@ -3,20 +3,33 @@ package brain
 package modules
 
 import scala.collection.mutable
+import scala.jdk.CollectionConverters._
 
-/** The sky-wall opening seals the main base's land approach with Supply Depots. */
+/** The wall opening seals the main base's land approach with Supply Depots. */
 class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](universe)
   with BuildingRequestHelper {
 
   private var anchors = Option.empty[Vector[MapTilePosition]]
   private var reportedNone = false
   private var reportedComplete = false
+  private var lastWallAttempt = Int.MinValue
   private val lastAttempt = mutable.Map.empty[MapTilePosition, Int]
+  private val repairers = new Employer[SCV](universe)
 
   private def active = race.isTerran && (strategy.current match {
-    case _: Strategy.TerranSkyWall => true
+    case s: Strategy.SimpleTerran => s.usesWallDefense
     case _ => false
   })
+
+  /** True once every planned wall depot stands completed. */
+  def complete: Boolean = anchors.exists { wall =>
+    wall.nonEmpty && wall.forall { a =>
+      ownUnits.allByType[SupplyDepot].exists(d => d.isInGame && !d.isBeingCreated && d.tilePosition == a)
+    }
+  }
+
+  /** True once planning concluded that no depot wall can seal the main approach. */
+  def refused: Boolean = reportedNone
 
   private def depotFree(anchor: MapTilePosition): Boolean = {
     val area = Area(anchor, Size(2, 2))
@@ -29,39 +42,135 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
     }
   }
 
-  /** Corridor tiles of the main choke, each replaced by a depot footprint that can host it. */
-  private def computeWall(home: Base): Vector[MapTilePosition] = {
-    val corridor = mutable.Set.empty[MapTilePosition]
+  /** Corridor tiles of the main choke. */
+  private def corridorTiles(home: Base): Vector[MapTilePosition] = {
+    val corridor = mutable.LinkedHashSet.empty[MapTilePosition]
     strategicMap.defenseLineOf(home).toVector.foreach { front =>
       front.chokePoint.lines.foreach { cutting =>
         AreaHelper.traverseTilesOfLine(cutting.absoluteFrom, cutting.absoluteTo,
           (x, y) => corridor += MapTilePosition(x, y))
       }
     }
-    val spots = corridor.toVector
+    corridor.toVector
       .filter(mapLayers.rawWalkableMap.insideBounds)
       .filter(mapLayers.rawWalkableMap.free)
-      .flatMap { t =>
-        Vector(t, MapTilePosition(t.x - 1, t.y), MapTilePosition(t.x, t.y - 1), MapTilePosition(t.x - 1, t.y - 1))
-          .find(depotFree)
-      }.distinct.sortBy(p => (p.y, p.x))
-    // A line too wide for a few depots is not a wall; refuse instead of fencing the map.
-    if (spots.size <= 8) spots else Vector.empty
+  }
+
+  private def placementsCovering(t: MapTilePosition): Vector[MapTilePosition] =
+    Vector(t, MapTilePosition(t.x - 1, t.y), MapTilePosition(t.x, t.y - 1), MapTilePosition(t.x - 1, t.y - 1))
+      .filter(depotFree)
+
+  private def footprint(a: MapTilePosition) = Area(a, Size(2, 2)).tiles
+
+  /** Every corridor tile covered by a depot, and no walkable path from outside to inside remains. */
+  private def computeWall(home: Base): Vector[MapTilePosition] = {
+    val corridor = corridorTiles(home)
+    if (corridor.isEmpty) return Vector.empty
+    val candidates = corridor.flatMap(placementsCovering).distinct
+    val covered = mutable.Set.empty[MapTilePosition]
+    val chosen = mutable.ArrayBuffer.empty[MapTilePosition]
+    def covers(a: MapTilePosition) = footprint(a).filter(corridor.contains)
+    while (!corridor.forall(covered.contains) && chosen.size <= 8) {
+      val best = candidates.filterNot(chosen.contains).maxByOpt(a => covers(a).count(t => !covered.contains(t)))
+      best.filter(a => covers(a).exists(t => !covered.contains(t))) match {
+        case Some(a) =>
+          chosen += a
+          covered ++= covers(a)
+        case None => return Vector.empty
+      }
+    }
+    if (!corridor.forall(covered.contains)) return Vector.empty
+
+    // Protoss probes, zealots and dragoons must not slip between or around the depots.
+    var anchors = chosen.toVector
+    var attempts = 0
+    while (attempts < 3) {
+      breachPath(home, anchors) match {
+        case None => return anchors
+        case Some(path) =>
+          val crossing = path.reverse.find { t =>
+            anchors.exists(a => footprint(a).exists(_ == t)) ||
+              corridor.exists(c => c.distanceSquaredTo(t) <= 2)
+          }
+          val fixes = crossing.toVector.flatMap(placementsCovering)
+            .filterNot(anchors.contains)
+            .sortBy(a => -covers(a).count(corridor.contains))
+          fixes.headOption match {
+            case Some(a) =>
+              anchors :+= a
+              attempts += 1
+              NativeMatchEvidence.trace("wall-seal-fix", s"attempt=$attempts at=$a")
+            case None =>
+              NativeMatchEvidence.trace("wall-seal-failed", s"crossing=$crossing pathLength=${path.size}")
+              return Vector.empty
+          }
+      }
+    }
+    if (breachPath(home, anchors).isDefined) {
+      NativeMatchEvidence.trace("wall-seal-failed", s"attempts=$attempts")
+      Vector.empty
+    } else anchors
+  }
+
+  /** A free path from a known outside tile to the defended side means the wall leaks. */
+  private def breachPath(home: Base, anchors: Vector[MapTilePosition]): Option[Vector[MapTilePosition]] = {
+    strategicMap.defenseLineOf(home).flatMap { front =>
+      val wallTiles = anchors.flatMap(footprint).toSet
+      def allowed(t: MapTilePosition): Boolean =
+        mapLayers.rawWalkableMap.insideBounds(t) && mapLayers.rawWalkableMap.free(t) &&
+          mapLayers.blockedByBuildingTiles.free(t) && mapLayers.blockedByPlannedBuildings.free(t) &&
+          !wallTiles(t)
+      val seeds = (mapLayers.rawWalkableMap.spiralAround(front.chokePoint.center, 16) ++
+        mapLayers.rawWalkableMap.spiralAround(front.chokePoint.center, 24))
+        .filter(t => allowed(t) && front.outerTerritory.free(t) && !front.defended.free(t)).take(2)
+      if (seeds.isEmpty) None
+      else {
+        val visited = mutable.Set.empty[MapTilePosition]
+        val parent = mutable.Map.empty[MapTilePosition, MapTilePosition]
+        val queue = mutable.Queue.empty[MapTilePosition]
+        seeds.foreach { s => visited += s; queue += s }
+        var breach = Option.empty[MapTilePosition]
+        while (queue.nonEmpty && breach.isEmpty) {
+          val cur = queue.dequeue()
+          if (front.defended.free(cur)) breach = Some(cur)
+          else for (dx <- -1 to 1; dy <- -1 to 1 if dx != 0 || dy != 0) {
+            val n = cur.movedBy(dx, dy)
+            if (!visited(n) && allowed(n)) {
+              visited += n
+              parent(n) = cur
+              queue += n
+            }
+          }
+        }
+        breach.map { b =>
+          val path = mutable.ArrayBuffer.empty[MapTilePosition]
+          var p = b
+          path += p
+          while (parent.contains(p)) { p = parent(p); path += p }
+          path.toVector
+        }
+      }
+    }
   }
 
   override def onTick_!(): Unit = {
     if (!active || currentTick < 31 || currentTick % Primes.prime31.i != 0) return
     bases.mainBase.foreach { home =>
       val wall = anchors.getOrElse {
-        val chosen = computeWall(home)
-        if (chosen.nonEmpty) {
-          anchors = Some(chosen)
-          NativeMatchEvidence.trace("wall-planned", s"depots=${chosen.size} at=${chosen.mkString(",")}")
+        // A refused plan is retried rarely; terrain and the corridor do not change quickly.
+        if (currentTick - lastWallAttempt < 24 * 60 * 5) Vector.empty
+        else {
+          lastWallAttempt = currentTick
+          val chosen = computeWall(home)
+          if (chosen.nonEmpty) {
+            anchors = Some(chosen)
+            NativeMatchEvidence.trace("wall-planned", s"depots=${chosen.size} at=${chosen.mkString(",")}")
+          }
+          chosen
         }
-        chosen
       }
       if (wall.isEmpty) {
-        if (!reportedNone) {
+        if (!reportedNone && anchors.isEmpty && currentTick > 24 * 60 * 5) {
           NativeMatchEvidence.trace("wall-none", "no achievable land choke; skipping the depot wall")
           reportedNone = true
         }
@@ -87,7 +196,52 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
             }
           }
         }
+        // Repair the wall while it is attacked; the guard has no units yet in the opening.
+        val damagedWall = wall.flatMap { a =>
+          ownUnits.allByType[SupplyDepot].find(d =>
+            d.isInGame && !d.isBeingCreated && !d.isFloating && d.tilePosition == a)
+        }.filter(d => d.nativeUnit.getHitPoints < d.nativeUnit.getType.maxHitPoints)
+        damagedWall.foreach { d =>
+          val assigned = unitManager.allJobsByType[RepairWallDepot].count(j =>
+            j.targetId == d.nativeUnitId && !j.failedOrObsolete && !j.isFinished)
+          if (assigned < 2) {
+            val nativeIds = nativeGame.self().getUnits.asScala.map(_.getID).toSet
+            val request = UnitJobRequest.idleOfType(repairers, classOf[SCV], 2 - assigned, Priority.Supply)
+              .withOnlyAccepting { w =>
+                val job = unitManager.jobOf(w)
+                nativeIds(w.nativeUnitId) && w.currentTile.distanceToIsLess(d.centerTile, 12) &&
+                  w.currentArea.contains(d.areaOnMap) &&
+                  (job.isIdle || job.isInstanceOf[GatherMineralsAtSinglePatch])
+              }.withRequest(_.withCherryPicker_!(UnitRequest.CherryPickers.cherryPickWorkerByDistance[SCV](d.centerTile)()))
+            unitManager.request(request, buildIfNoneAvailable = false).units.foreach { w =>
+              repairers.assignJob_!(new RepairWallDepot(w, d, repairers))
+              NativeMatchEvidence.trace("wall-repair-assigned", s"depot=${d.nativeUnitId} scv=${w.nativeUnitId} hp=${d.nativeUnit.getHitPoints}")
+            }
+          }
+        }
       }
     }
   }
+}
+
+private[pony] object WallRepairState {
+  sealed trait State
+  case object Repairing extends State
+  case object Finished extends State
+  case object Failed extends State
+  def apply(workerAlive: Boolean, targetAlive: Boolean, damaged: Boolean, floating: Boolean): State =
+    if (!workerAlive) Failed else if (!targetAlive || !damaged) Finished else if (floating) Failed else Repairing
+}
+
+/** An SCV patches a wall depot while it is under attack and returns to mining afterwards. */
+private[pony] class RepairWallDepot(worker: SCV, depot: SupplyDepot, owner: Employer[SCV])
+  extends UnitWithJob[SCV](owner, worker, Priority.Supply) with Interruptable[SCV] {
+  override def shortDebugString = s"Repair wall depot ${depot.nativeUnitId}"
+  private def state = WallRepairState(worker.nativeUnit.exists && !worker.isDead, depot.nativeUnit.exists,
+    depot.nativeUnit.getHitPoints < depot.nativeUnit.getType.maxHitPoints, depot.isFloating)
+  override def isFinished = state == WallRepairState.Finished
+  override def jobHasFailedWithoutDeath = state == WallRepairState.Failed
+  override def everyNth = 23
+  override def ordersForTick = Orders.RepairBuilding(worker, depot).toSeq
+  def targetId = depot.nativeUnitId
 }

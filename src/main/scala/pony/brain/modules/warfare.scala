@@ -145,6 +145,8 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
   }
   def immediateBaseDefenseOrder(unit: Mobile): Option[UnitOrder] = {
     if (!baseDefense.pressure || attackOf(unit).exists(_.migrationPlan.isDefined)) None
+    // Carpet pairs hold their spread posts; the wall guard covers the main.
+    else if (universe.pluginByType[CarpetSpread].postOf(unit.nativeUnitId).isDefined) None
     else baseDefense.target.map(where => Orders.AttackMove(unit, where))
   }
 
@@ -1298,7 +1300,8 @@ object Strategy {
     private val byKey = Map(
       "infantry" -> new TerranInfantryPush(universe),
       "factory" -> new TerranFactoryOnly(universe),
-      "skywall" -> new TerranSkyWall(universe))
+      "skywall" -> new TerranSkyWall(universe),
+      "carpet" -> new TerranCarpet(universe))
     private val configured = sys.props.get("twailight.strategy").filterNot(_ == "default").flatMap(byKey.get)
     private var best: LongTermStrategy = new IdleAround(universe)
 
@@ -1316,6 +1319,10 @@ object Strategy {
     override def name = "Default Terran campaign"
     override def determineScore = if (race.isTerran) 1000 else -1
     def usesBunkerDefense: Boolean = true
+    /** Seal the main land choke with Supply Depots (WallWithDepots). */
+    def usesWallDefense: Boolean = false
+    /** The campaign may mass the army and attack the enemy base. */
+    def usesCampaignLaunch: Boolean = true
     override protected def expandNow = {
       val cost = ResourceRequests.forUnit(race, race.resourceDepositClass)
       config.expand(resources.unlockedResources.minerals, resources.unlockedResources.gas,
@@ -1385,6 +1392,7 @@ object Strategy {
   class TerranSkyWall(override val universe: Universe) extends SimpleTerran(universe) {
     override def name = "Sky wall"
     override def usesBunkerDefense = false
+    override def usesWallDefense = true
     override def suggestProducers =
       IdealProducerCount(classOf[Barracks], 1)(true) ::
       IdealProducerCount(classOf[Factory], 1)(true) ::
@@ -1399,6 +1407,32 @@ object Strategy {
       UpgradeToResearch(Upgrades.Terran.CruiserGun)(true) ::
       UpgradeToResearch(Upgrades.Terran.ScienceVesselEnergy)(true) ::
       UpgradeToResearch(Upgrades.Terran.Irradiate)(true) :: Nil
+  }
+
+  /** Depot wall, tanks behind it, then flying factories and a mine-backed tank carpet. */
+  class TerranCarpet(override val universe: Universe) extends SimpleTerran(universe) {
+    override def name = "Carpet"
+    override def usesBunkerDefense = false
+    override def usesWallDefense = true
+    override def usesCampaignLaunch = false
+    private def spendScale = ((resources.unlockedResources.minerals - 800) / 600).max(0).min(8)
+    override def suggestProducers = {
+      val scale = spendScale
+      IdealProducerCount(classOf[Factory], ((bases.finishedBases.size max 1) + scale) min 6)(true) :: Nil
+    }
+    override def suggestUnits = {
+      val scale = spendScale
+      IdealUnitRatio(classOf[Tank], 8 + scale * 3)(true) ::
+      IdealUnitRatio(classOf[Vulture], 6 + scale * 2)(true) ::
+      IdealUnitRatio(classOf[Goliath], 2 + scale)(true) :: Nil
+    }
+    override def suggestUpgrades =
+      UpgradeToResearch(Upgrades.Terran.TankSiegeMode)(true) ::
+      UpgradeToResearch(Upgrades.Terran.SpiderMines)(true) ::
+      UpgradeToResearch(Upgrades.Terran.VultureSpeed)(true) ::
+      UpgradeToResearch(Upgrades.Terran.VehicleWeapons)(true) ::
+      UpgradeToResearch(Upgrades.Terran.VehicleArmor)(true) ::
+      UpgradeToResearch(Upgrades.Terran.GoliathRange)(true) :: Nil
   }
 
   class IdleAround(override val universe: Universe) extends LongTermStrategy {

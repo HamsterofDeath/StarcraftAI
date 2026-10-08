@@ -61,6 +61,7 @@ class TerranCampaignTest extends Specification with MustMatchers {
     A real background placement refusal logs immutable data without reading live worker caches $backgroundPlacementRefusal
     A mineral field at or below fifteen percent is no longer useful $fieldReplenishment
     An endgame hunt sweeps every resource area farthest from home first and wraps around $huntSweep
+    A farthest-point carpet spread picks far-apart posts in a deterministic order $carpetPosts
   """
   private def building(id: Int, x: Int, base: Boolean = true) =
     ObservedEnemyBuilding(id, MapTilePosition(x, 20), 4, 3, base)
@@ -231,6 +232,16 @@ class TerranCampaignTest extends Specification with MustMatchers {
     (order(Seq(near, mid, far), home), order(Seq(near, mid, far), None),
       next(3, 2), next(3, 0), next(0, 2)) ===
       (Vector(far, mid, near), Vector(near, mid, far), 0, 1, 2)
+  }
+  def carpetPosts = {
+    import CarpetPosts._
+    val corners = Vector(MapTilePosition(0, 0), MapTilePosition(1, 0),
+      MapTilePosition(10, 0), MapTilePosition(11, 0))
+    (order(corners, 2), order(corners, 4), order(Vector.empty, 3),
+      order(Vector(MapTilePosition(5, 5)), 2)) ===
+      (Vector(MapTilePosition(0, 0), MapTilePosition(11, 0)),
+        Vector(MapTilePosition(0, 0), MapTilePosition(11, 0), MapTilePosition(1, 0), MapTilePosition(10, 0)),
+        Vector.empty[MapTilePosition], Vector(MapTilePosition(5, 5)))
   }
   def workerQuota = {
     def missing(incomplete: Int, reserved: Int, native: Int, requests: Seq[Int]) =

@@ -15,7 +15,7 @@ param(
  [int]$MinScoutFighters = 6,
  [int]$MinScouts = 1,
  [double]$FieldUsefulFraction = 0.15,
- [ValidateSet('default','infantry','factory','skywall')][string]$Strategy = 'default',
+ [ValidateSet('default','infantry','factory','skywall','carpet')][string]$Strategy = 'default',
  [int]$LocalSpeedMs = 0,
  [int]$AiTickFrames = 24,
  [switch]$Headless,

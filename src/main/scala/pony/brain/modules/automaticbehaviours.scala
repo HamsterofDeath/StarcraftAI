@@ -1167,7 +1167,9 @@ object Terran {
       val neutralResourceFields = universe.resourceFields.resourceAreas.filterNot { field =>
         universe.bases.isCovered(field)
       }.map {_.nearbyFreeTile}
-      defense //++ neutralResourceFields
+      // The carpet spreads vulture mines over every neutral field instead of only the front line.
+      if (universe.strategy.current.isInstanceOf[Strategy.TerranCarpet]) defense ++ neutralResourceFields
+      else defense
     }
 
     override def onTick_!(): Unit = {
