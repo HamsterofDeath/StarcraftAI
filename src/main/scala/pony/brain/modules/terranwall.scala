@@ -16,7 +16,6 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
   private var probed = false
   private var reportedSealFailure = false
   private var lastWallAttempt = -1
-  private val lastAttempt = mutable.Map.empty[MapTilePosition, Int]
   private val repairers = new Employer[SCV](universe)
 
   private def active = race.isTerran && (strategy.current match {
@@ -34,14 +33,20 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
   /** True once planning concluded that no depot wall can seal the main approach. */
   def refused: Boolean = refusedPlanning
 
-  /** True while the wall expects another depot at a buildable anchor: supply defers to it. */
-  def supplyWanted: Boolean =
-    !refusedPlanning && anchors.exists { wall =>
+  /** While the wall is incomplete, the economy's next supply depot should be a wall depot. */
+  def nextSupplySpot: Option[MapTilePosition] = {
+    if (refusedPlanning) None
+    else anchors.flatMap { wall =>
       val existing = ownUnits.allByType[SupplyDepot].filter(_.isInGame).map(_.tilePosition).toSet
       val pending = (unitManager.requestedConstructions[SupplyDepot].flatMap(_.customPosition.requestedPosition) ++
         unitManager.constructionsInProgress[SupplyDepot].map(_.buildWhere)).toSet
-      wall.exists(a => !existing(a) && (pending(a) || depotFree(a)))
+      wall.filterNot(a => existing(a) || pending(a)).find(depotFree)
     }
+  }
+
+  /** True while the given spot is still a planned, unoccupied and free wall anchor. */
+  def supplySpotValid(spot: MapTilePosition): Boolean =
+    anchors.exists(_.contains(spot)) && depotFree(spot)
 
   /** A 2x2 supply depot fits and is unoccupied: shared by the wall and the tank boxes. */
   def depotSpotFree(anchor: MapTilePosition): Boolean = depotFree(anchor)
@@ -269,31 +274,20 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
           reportedNone = true
         }
       } else {
-        val existing = ownUnits.allByType[SupplyDepot].filter(_.isInGame).map(_.tilePosition).toSet
-        val pending = (unitManager.requestedConstructions[SupplyDepot].flatMap(_.customPosition.requestedPosition) ++
-          unitManager.constructionsInProgress[SupplyDepot].map(_.buildWhere)).toSet
-        val missing = wall.filterNot(a => existing(a) || pending(a))
-        if (missing.isEmpty) {
-          if (!reportedComplete) {
-            NativeMatchEvidence.trace("wall-complete", s"depots=${wall.size}")
-            reportedComplete = true
-          }
-        } else {
-          missing.filter(depotFree).foreach { a =>
-            if (!pending(a) && !existing(a)) {
-              val due = lastAttempt.getOrElse(a, -1) < 0 || currentTick - lastAttempt(a) > 24 * 60
-              if (due) NativeMatchEvidence.trace("wall-depot-request", s"at=$a")
-              lastAttempt(a) = currentTick
-              requestBuilding(classOf[SupplyDepot], takeCareOfDependencies = false,
-                customBuildingPosition = AlternativeBuildingSpot.fromValidatedPreset(a)(depotFree(a)),
-                priority = Priority.Expand)
-            }
-          }
+        // The economy's supply requests carry the wall anchors while any depot is missing;
+        // see ProvideNewSupply, and WallWithDepots.nextSupplySpot for the spot it picks.
+        val built = wall.forall { a =>
+          ownUnits.allByType[SupplyDepot].exists(d => d.isInGame && !d.isBeingCreated && d.tilePosition == a)
+        }
+        if (built && !reportedComplete) {
+          NativeMatchEvidence.trace("wall-complete", s"depots=${wall.size}")
+          reportedComplete = true
         }
         // Repair the wall while it is attacked; the guard has no units yet in the opening.
+        // Unfinished depots are included so the repair order resumes their construction.
         val damagedWall = wall.flatMap { a =>
           ownUnits.allByType[SupplyDepot].find(d =>
-            d.isInGame && !d.isBeingCreated && !d.isFloating && d.tilePosition == a)
+            d.isInGame && !d.isFloating && d.tilePosition == a)
         }.filter(d => d.nativeUnit.getHitPoints < d.nativeUnit.getType.maxHitPoints)
         damagedWall.foreach { d =>
           val assigned = unitManager.allJobsByType[RepairWallDepot].count(j =>
