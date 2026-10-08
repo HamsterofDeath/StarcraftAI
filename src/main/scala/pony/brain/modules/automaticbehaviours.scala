@@ -1491,28 +1491,43 @@ object Terran {
           val allowed = if (minimal) math.max(0, minimalCap - scouts.size) else Int.MaxValue
           NativeMatchEvidence.trace("scout-plan-options",
             s"minimal=$minimal allowed=$allowed plans=${plans.map(p => s"${p.sc.id}:${p.resourceAreaIdsInOrder.mkString("/")}").mkString(" ")}")
-          // A minimal scout exists to find the enemy; visiting one area pair at a time would take
-          // many replacement scouts. Instead it tours every unvisited field, likely enemy first.
-          val minimalTour = if (minimal) {
-            val home = bases.mainBase.map(_.mainBuilding.tilePosition)
-            plans.flatMap(_.resourceAreaIdsInOrder).distinct
-              .sortBy(id => home.map(h => -strategicMap.resourceAreaById(id).nearbyFreeTile.distanceSquaredTo(h))
-                .getOrElse(0))
-          } else Nil
-          val chosen = if (minimal) plans.headOption.map(p => p.copy(resourceAreaIds = minimalTour.drop(1),
-            startHere = minimalTour.head)).toList else plans.take(allowed)
-          chosen.foreach { plan =>
-            ownUnits.byId(plan.sc.id).foreach { stillLiving =>
-              val resourceAreas = plan.resourceAreaIdsInOrder.map(strategicMap.resourceAreaById)
-              val startHere = strategicMap.resourceAreaById(plan.startHere)
-              val unit = stillLiving.asInstanceOf[ArmedMobile]
-              val actualPlan = new ScoutPlan(unit, resourceAreas)
-              scouts.put(unit, actualPlan)
-              NativeMatchEvidence.trace("scout-plan",
-                s"unit=${plan.sc.id} minimal=$minimal start=${plan.startHere} order=${plan.resourceAreaIdsInOrder.mkString(",")}")
+          // A minimal scout exists to find the enemy; visiting same-region area pairs would never
+          // cross into the enemy's region. Instead it tours every unvisited field, farthest first.
+          val chosen: List[RawScoutingPlan] = if (minimal) {
+            val tour: List[Int] = if (scouts.nonEmpty) Nil else {
+              val covered = coveredRightNow.get
+              val home = bases.mainBase.map(_.mainBuilding.tilePosition)
+              strategicMap.resources
+                .filterNot(bases.isCovered)
+                .filterNot(covered)
+                .toVector.sortBy(ra => home.map(h => -ra.nearbyFreeTile.distanceSquaredTo(h)).getOrElse(0))
+                .map(_.uniqueId).toList
+            }
+            val scout = if (tour.isEmpty) None else ownUnits.allMobilesWithWeapons
+              .flatMap(_.asGroundUnit)
+              .filter(e => e.onGround && e.isInGame && !e.isBeingCreated &&
+                !e.isInstanceOf[WorkerUnit] && !e.isInstanceOf[SupportUnit] && !e.isInstanceOf[TransporterUnit])
+              .filterNot(universe.pluginByType[RunTerranCampaign].isReservedDefender)
+              .toVector.sortBy(-_.initialNativeType.topSpeed()).headOption
+            for {
+              unit <- scout.toList
+              start <- tour.headOption.toList
+            } yield RawScoutingPlan(ScoutingCandidate(unit.nativeUnitId, 0, unit.currentArea.get, unit.currentTile),
+              tour.drop(1), start)
+          } else plans.take(allowed)
+          chosen.groupBy(_.sc.id).foreach { case (id, unitPlans) =>
+            ownUnits.byId(id).foreach { stillLiving =>
+              val ordered = unitPlans.flatMap(_.resourceAreaIdsInOrder).distinct
+              ordered.headOption.foreach { start =>
+                val resourceAreas = ordered.map(strategicMap.resourceAreaById)
+                val unit = stillLiving.asInstanceOf[ArmedMobile]
+                scouts.put(unit, new ScoutPlan(unit, resourceAreas))
+                NativeMatchEvidence.trace("scout-plan",
+                  s"unit=$id minimal=$minimal start=$start order=${ordered.mkString(",")}")
+              }
             }
           }
-          if (plans.nonEmpty) {
+          if (plans.nonEmpty || chosen.nonEmpty) {
             coveredRightNow.invalidate()
           }
         }
