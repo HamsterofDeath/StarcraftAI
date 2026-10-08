@@ -961,12 +961,14 @@ class ProvideUpgrades(universe: Universe) extends OrderlessAIModule[Upgrader](un
   self =>
   private val helper     = new HelperAIModule[WorkerUnit](universe) with BuildingRequestHelper
   private val researched = collection.mutable.Map.empty[Upgrade, Int]
+  private val inProgress = collection.mutable.Set.empty[Upgrade]
 
   override def onTick_!(): Unit = {
     val maxLimitEnabled = hasLimitDisabler
     val requested = {
       strategy.current.suggestUpgrades
       .filterNot(e => researched.getOrElse(e.upgrade, 0) == maxLimitEnabled.ifElse(e.maxLevel, 1))
+      .filterNot(e => inProgress.contains(e.upgrade))
       .filter(_.isActive)
     }
 
@@ -994,7 +996,9 @@ class ProvideUpgrades(universe: Universe) extends OrderlessAIModule[Upgrader](un
           result.ifSuccess { app =>
             info(s"Starting research of $wantedUpgrade")
             val researchUpgrade = new ResearchUpgrade(self, up, wantedUpgrade, app)
+            inProgress += wantedUpgrade
             researchUpgrade.listen_!(failed => {
+              inProgress -= wantedUpgrade
               if (!failed) {
                 info(s"Research of $wantedUpgrade completed")
                 val current = researched.getOrElse(wantedUpgrade, 0)
