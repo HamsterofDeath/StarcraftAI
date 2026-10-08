@@ -42,7 +42,6 @@ package object pony {
   setTinyLogLevel_!(Level.TRACE)
   implicit val exCon: ExecutionContext = ExecutionContext.global
   val tileSize  = 32
-  var tickCount = 0
 
   private var tinyLogLevel: LogLevel = LogLevels.LogTrace
 
@@ -94,7 +93,7 @@ package object pony {
       Logger.info("{}", s"[$tick] ${a.toString}")
   }
 
-  def tick = tickCount
+  def tick = TickCounter.tickCount
 
   @elidable(LOGLEVEL)
   def majorInfo(a: => Any, doIt: Boolean = true): Unit = {

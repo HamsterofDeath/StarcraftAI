@@ -47,9 +47,9 @@ object Controller {
           return
         }
         repeatedCallbacks = 0
-        pony.tickCount += 1
+        TickCounter.tickCount += 1
         ai.foreach(_.onTickOnApi())
-        if (pony.tickCount % 2400 == 0) {
+        if (TickCounter.tickCount % 2400 == 0) {
           val game = clientRef.getGame
           val own = game.self().getUnits
           import scala.jdk.CollectionConverters._
@@ -106,7 +106,7 @@ object Controller {
 
       override def onStart(): Unit = {
         try {
-          pony.tickCount = 0
+          TickCounter.tickCount = 0
           frameClock = new NativeFrameClock
           repeatedCallbacks = 0
           NativeMatchEvidence.started(clientRef.getGame)

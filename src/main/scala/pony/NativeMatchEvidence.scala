@@ -49,7 +49,7 @@ object NativeMatchEvidence {
     playing
   }
   def trace(event: String, detail: String): Unit =
-    println("TWAILIGHT_CAMPAIGN frame=" + pony.tickCount + " event=" + event + " detail=" + detail)
+    println("TWAILIGHT_CAMPAIGN frame=" + TickCounter.tickCount + " event=" + event + " detail=" + detail)
   private def quoted(s: String) = "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
   private def write(game: Game, status: String, winner: Option[Boolean]): Unit = {
     val directory = new File(sys.props.getOrElse("twailight.resultDirectory", "log"))
