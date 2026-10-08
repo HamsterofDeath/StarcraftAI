@@ -43,7 +43,7 @@ class TerranEconomicOpening(universe: Universe)
           NativeMatchEvidence.trace("home-depot-request", s"unlocked=${funds.minerals}")
         }
       }
-      if (!mining.secondBaseOperational && mining.startingFieldSaturated && relocation.isEmpty) {
+      if (!mining.secondBaseEstablished && mining.startingFieldSaturated && relocation.isEmpty) {
         val spare = depots.filterNot(_ == home.mainBuilding).find { cc =>
           !cc.isBeingCreated && bases.allBases.find(_.mainBuilding == cc).exists(_.resourceArea == home.resourceArea)
         }

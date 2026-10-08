@@ -322,11 +322,11 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule(universe
     .map(g => MiningFieldStatus(g.forBase.resourceArea.get.uniqueId, g.capacity, g.teamSize,
       g.workingMiners, !g.forBase.mainBuilding.isBeingCreated && g.forBase.mainBuilding.isInGame)).toVector
   def startingFieldSaturated = opening.startingFieldSaturated
-  def secondBaseOperational = opening.secondBaseOperational(fieldStates)
+  def secondBaseEstablished = opening.secondBaseEstablished
   def workerCapacity = gatheringJobs.filter(g => g.natural && !g.forBase.mainBuilding.isFloating).map(_.capacity).sum
 
   override def onTick_!(): Unit = {
-    val detached = gatheringJobs.filterNot(_.attachedToBase)
+    val detached = gatheringJobs.filterNot(g => g.attachedToBase && g.permittedStaffing)
     detached.foreach(_.releaseMiners())
     gatheringJobs --= detached
     createJobsForBases()
@@ -359,7 +359,7 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule(universe
     opening.observe(bases.mainBase.flatMap(_.resourceArea).map(_.uniqueId), fieldStates)
     if (!before && opening.startingFieldSaturated)
       NativeMatchEvidence.trace("starting-field-saturated", fieldStates.mkString(";"))
-    val operational = secondBaseOperational
+    val operational = secondBaseEstablished
     if (operational && !secondWasOperational)
       NativeMatchEvidence.trace("second-field-mining", fieldStates.mkString(";"))
     secondWasOperational = operational
@@ -379,7 +379,7 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule(universe
           }
         }
       }
-      val unnaturals = {
+      val unnaturals = if (strategy.current.isInstanceOf[Strategy.SimpleTerran]) Nil else {
         val poor = gatheringJobs.groupBy(_.forBase)
                    .filter(_._2.forall(_.poor))
 
@@ -410,6 +410,8 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule(universe
     private val boundField = base.resourceArea.map(_.uniqueId)
     def attachedToBase = base.mainBuilding.isInGame && !base.mainBuilding.isFloating &&
       base.resourceArea.map(_.uniqueId) == boundField
+    def permittedStaffing = MineralFieldStaffing.permitted(
+      strategy.current.isInstanceOf[Strategy.SimpleTerran], base.myMineralGroup.map(_.patchId), minerals.patchId)
 
     def natural = base.resourceArea.exists(_.patches.contains(minerals))
 

@@ -29,6 +29,8 @@ class TerranCampaignTest extends Specification {
     SCV reservations count request quantities without duplicating visible training $workerQuota
     Only local mining of the assigned patch proves field operation $localMining
     A ready defensive army preserves its bank through reconnaissance and resumes after launch $stockpile
+    Exhausting START cannot revoke a genuinely established second field $exhaustedStart
+    Default mineral staffing transfers to landed fields without remote worker demand $coveredStaffing
   """
   private def building(id: Int, x: Int, base: Boolean = true) =
     ObservedEnemyBuilding(id, MapTilePosition(x, 20), 4, 3, base)
@@ -171,9 +173,9 @@ class TerranCampaignTest extends Specification {
     p.observe(Some(1), Seq(home))
     val flying = MiningFieldStatus(2, 20, 20, 5, false)
     val unworked = MiningFieldStatus(2, 20, 10, 0, true)
-    (p.secondBaseOperational(Seq(home, home)), p.secondBaseOperational(Seq(home, flying)),
-      p.secondBaseOperational(Seq(home, unworked)),
-      p.secondBaseOperational(Seq(home, unworked.copy(working = 1)))) mustEqual (false, false, false, true)
+    def observe(fields: Seq[MiningFieldStatus]) = { p.observe(Some(1), fields); p.secondBaseEstablished }
+    (observe(Seq(home, home)), observe(Seq(home, flying)), observe(Seq(home, unworked)),
+      observe(Seq(home, unworked.copy(working = 1)))) mustEqual (false, false, false, true)
   }
   def relocation = {
     import DepotRelocation._
@@ -201,5 +203,27 @@ class TerranCampaignTest extends Specification {
     (c.holdNewArmy(false, 12, 1500, 300, false), c.holdNewArmy(true, 11, 1500, 300, false),
       c.holdNewArmy(true, 12, 1500, 300, false), c.holdNewArmy(true, 12, 1500, 300, true)) mustEqual
       (false, false, true, false)
+  }
+  def exhaustedStart = {
+    val p = new TerranEconomicProgress
+    val home = MiningFieldStatus(1, 20, 20, 5, true)
+    val next = MiningFieldStatus(2, 14, 5, 1, true)
+    p.observe(Some(1), Seq(home))
+    p.observe(Some(1), Seq(home, next))
+    p.observe(Some(1), Seq(home.copy(capacity = 0, assigned = 0, working = 0), next))
+    val c = TerranCampaignConfig()
+    (p.startingFieldSaturated, p.secondBaseEstablished,
+      c.ready(p.secondBaseEstablished, 30, 3000, 1000, 1000, 300),
+      new TerranEconomicProgress().secondBaseEstablished) mustEqual (true, true, true, false)
+  }
+  def coveredStaffing = {
+    // A relocated depot serves field2; the old field and distant field3 must not enqueue workers.
+    val requests = Seq(1 -> 20, 2 -> 14, 3 -> 60)
+    def demand(default: Boolean, landed: Option[Int]) = requests.filter { case (field, _) =>
+      MineralFieldStaffing.permitted(default, landed, field)
+    }.map(_._2).sum
+    (demand(true, Some(2)), demand(true, None), demand(false, Some(2)),
+      WorkerProductionQuota.missing(demand(true, Some(2)) + 6, 24, 0, 0, 0, Nil)) mustEqual
+      (14, 0, 94, 0)
   }
 }

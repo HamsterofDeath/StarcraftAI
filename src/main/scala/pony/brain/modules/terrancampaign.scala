@@ -42,14 +42,20 @@ case class MiningFieldStatus(id: Int, capacity: Int, assigned: Int, working: Int
 private[pony] class TerranEconomicProgress {
   private var startingField = Option.empty[Int]
   private var saturated = false
+  private var secondEstablished = false
   def observe(start: Option[Int], fields: Seq[MiningFieldStatus]): Unit = {
     if (startingField.isEmpty) startingField = start
     saturated ||= startingField.exists(id => fields.exists(f => f.id == id && f.saturated))
+    secondEstablished ||= saturated && startingField.exists(id =>
+      fields.exists(f => f.id != id && f.operational))
   }
   def startingFieldSaturated = saturated
-  def secondBaseOperational(fields: Seq[MiningFieldStatus]) = saturated &&
-    startingField.exists(id => fields.exists(f => f.id == id && f.operational) &&
-      fields.exists(f => f.id != id && f.operational))
+  def secondBaseEstablished = secondEstablished
+}
+
+private[pony] object MineralFieldStaffing {
+  def permitted(defaultCampaign: Boolean, landedField: Option[Int], miningField: Int) =
+    !defaultCampaign || landedField.contains(miningField)
 }
 
 /** A funded factory job and its visible unfinished SCV describe the same production slot. */
@@ -128,7 +134,7 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
   def reconnaissanceAllowed = {
     val troops = fighters
     val funds = resources.currentResources
-    val operational = universe.pluginByType[ManageMiningAtBases].secondBaseOperational
+    val operational = universe.pluginByType[ManageMiningAtBases].secondBaseEstablished
     operational && (launched || config.ready(operational, troops.size,
       troops.map(_.nativeUnitType.mineralPrice).sum, troops.map(_.nativeUnitType.gasPrice).sum,
       funds.minerals, funds.gas))
@@ -137,7 +143,7 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
   // Keep the bank available while the ready army discovers its first target. Existing queues finish.
   def holdingNewArmy = {
     val troops = fighters
-    config.holdNewArmy(universe.pluginByType[ManageMiningAtBases].secondBaseOperational,
+    config.holdNewArmy(universe.pluginByType[ManageMiningAtBases].secondBaseEstablished,
       troops.size, troops.map(_.nativeUnitType.mineralPrice).sum,
       troops.map(_.nativeUnitType.gasPrice).sum, launched)
   }
@@ -170,7 +176,7 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
     if (!worldDominationPlan.planningInProgress && worldDominationPlan.campaignForceSize == 0) launched = false
     val ready = reconnaissanceAllowed
     if (ready && !wasReady) NativeMatchEvidence.trace("offense-ready",
-      s"operationalSecondBase=true fighters=${troops.size} army=$minerals/$gas bank=${resources.currentResources}")
+      s"establishedSecondBase=true fighters=${troops.size} army=$minerals/$gas bank=${resources.currentResources}")
     wasReady = ready
     target.foreach { where =>
       if (ready && !worldDominationPlan.planningInProgress) {
