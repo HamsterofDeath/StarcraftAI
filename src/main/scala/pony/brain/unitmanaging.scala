@@ -895,7 +895,10 @@ abstract class UnitWithJob[T <: WrapsUnit](val employer: Employer[T], val unit: 
   def jobHasFailedWithoutDeath: Boolean = {
     unit match {
       case ohs: OrderHistorySupport if !isNoopJob => {
-        val failedForUnknownReason = ohs.unitHistory.take(24).forall(e => inactive(e.order))
+        // Only count frames this job was responsible for: stale history from earlier jobs
+        // (or from before the hire) must not fail a fresh job before it can command its unit.
+        val ownRecent = ohs.unitHistory.take(24).takeWhile(e => e.job eq this).toVector
+        val failedForUnknownReason = ownRecent.size >= 24 && ownRecent.forall(e => inactive(e.order))
         failedForUnknownReason
       }
       case _ => false
