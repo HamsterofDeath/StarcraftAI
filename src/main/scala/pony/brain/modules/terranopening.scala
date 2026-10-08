@@ -63,7 +63,16 @@ class TerranEconomicOpening(universe: Universe)
     relocation = relocation.filterNot(j => j.failedOrObsolete || j.isFinished)
     val depots = ownUnits.allByType[CommandCenter].filter(_.isInGame).toVector
     bases.mainBase.foreach { home =>
-      if (depots.size < TerranCampaignConfig.load().requiredFields &&
+      // A depot parked on a dead field is not a base: count still-useful fields, not depots, so the
+      // loss of a field triggers a replacement CommandCenter even when the depot count is full.
+      // If a landed non-home depot already sits on a dead field, the relocation below recycles that
+      // one instead of paying for another.
+      val replaceNeeded = usefulFields.size < TerranCampaignConfig.load().requiredFields
+      val spareOnDeadField = depots.exists { cc =>
+        cc != home.mainBuilding && !cc.isBeingCreated && !cc.isFloating &&
+          bases.allBases.find(_.mainBuilding == cc).flatMap(_.resourceArea).exists(a => !fieldUseful(a))
+      }
+      if (replaceNeeded && !spareOnDeadField &&
         !unitManager.requestedToBuild(classOf[CommandCenter]) &&
         unitManager.constructionsInProgress[CommandCenter].isEmpty) {
         val cost = ResourceRequests.forUnit(race, classOf[CommandCenter])
@@ -137,7 +146,7 @@ class TerranEconomicOpening(universe: Universe)
         val pending = unitManager.requestedToBuild(classOf[CommandCenter]) ||
           unitManager.constructionsInProgress[CommandCenter].nonEmpty
         val expandState =
-          if (depots.size >= cfg.requiredFields) "held"
+          if (!replaceNeeded || spareOnDeadField) "held"
           else if (pending) "building"
           else if (cfg.expand(funds.minerals, funds.gas, cost.minerals, cost.gas,
             pending = false, safeReachableSite = true)) "requesting"
