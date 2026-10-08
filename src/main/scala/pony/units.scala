@@ -324,12 +324,15 @@ trait TerranBuilding extends Building {
 
   def currentAreaOnMap = myCurrentArea.get
 
-  /** A lifted building moves; the cached static position must not be used while it flies. */
-  override def tilePosition = if (isFloating) currentTile else super.tilePosition
+  /** A lifted building moves; always read the live native position, never the static cache. */
+  override def tilePosition = {
+    val position = nativeUnit.getTilePosition
+    MapTilePosition.shared(position.getX, position.getY)
+  }
 
   override def onTick_!(): Unit = {
     super.onTick_!()
-    if (!isFloating && super.tilePosition != currentTile) {
+    if (!isFloating && super.tilePosition != tilePosition) {
       refreshPositionCaches()
     }
   }
