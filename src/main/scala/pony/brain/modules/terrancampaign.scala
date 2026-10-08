@@ -3,7 +3,7 @@ package brain
 package modules
 
 import scala.collection.mutable
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 
 case class TerranCampaignConfig(minFighters: Int = 12, armyMinerals: Int = 1500,
                                 armyGas: Int = 300, expansionReserve: Int = 0,

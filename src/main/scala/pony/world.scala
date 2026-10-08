@@ -326,10 +326,10 @@ class Units(game: Game, hostile: Boolean, override val universe: Universe) exten
 
   def allCanDie = allByType[CanDie]
 
-  import scala.collection.JavaConverters._
+  import scala.jdk.CollectionConverters._
 
   def firstByType[T: Manifest]: Option[T] = {
-    val lookFor = manifest[T].runtimeClass
+    val lookFor = implicitly[Manifest[T]].runtimeClass
     inFaction.find(lookFor.isInstance).map(_.asInstanceOf[T])
   }
 

@@ -278,7 +278,7 @@ trait ResourceApproval {
     assert(success)
     this.asInstanceOf[ResourceApprovalSuccess]
   }
-  def ifSuccess[T](then: ResourceApprovalSuccess => T): T
+  def ifSuccess[T](body: ResourceApprovalSuccess => T): T
 }
 
 case class Supplies(used: Int, total: Int) {
@@ -316,7 +316,7 @@ object ResourceApprovalFail extends ResourceApproval {
 
   override def success = false
 
-  override def ifSuccess[T](then: (ResourceApprovalSuccess) => T): T = {
+  override def ifSuccess[T](body: (ResourceApprovalSuccess) => T): T = {
     // sorry
     null.asInstanceOf[T]
   }

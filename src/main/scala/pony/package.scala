@@ -2,9 +2,9 @@ import java.math.RoundingMode
 import java.text.DecimalFormat
 
 import bwapi.Game
-import org.pmw.tinylog
-import org.pmw.tinylog.writers.FileWriter
-import org.pmw.tinylog.{Configurator, Level}
+import org.tinylog.Level
+import org.tinylog.Logger
+import org.tinylog.configuration.Configuration
 import pony.LogLevels.{LogError, LogWarn}
 
 import scala.annotation.elidable
@@ -40,7 +40,7 @@ package object pony {
   val memoryHog = false
 
   setTinyLogLevel_!(Level.TRACE)
-  implicit val exCon = ExecutionContext.global
+  implicit val exCon: ExecutionContext = ExecutionContext.global
   val tileSize  = 32
   var tickCount = 0
 
@@ -50,8 +50,7 @@ package object pony {
 
   def !!!(msg: String): Nothing = throw new RuntimeException(msg)
 
-  def multiMap[K, V] = new mutable.HashMap[K, mutable.Set[V]] with mutable.MultiMap[K, V] with
-                           MMToImmutable[K, V]
+  def multiMap[K, V] = new mutable.HashMap[K, mutable.Set[V]] with mutable.MultiMap[K, V] with MMToImmutable[K, V]
 
   def setLogLevel_!(logLevel: LogLevel): Unit = {
     setTinyLogLevel_!(logLevel.toTinyLogLevel)
@@ -60,13 +59,13 @@ package object pony {
 
   def setTinyLogLevel_!(newLevel: Level) = {
     new java.io.File("log").mkdirs()
-    val ok = Configurator.defaultConfig()
-             .removeAllWriters()
-             .level(newLevel)
-             .formatPattern("{level}:{message}")
-             .addWriter(new FileWriter("log/match.log", false), newLevel, "{level}:{message}")
-             .activate()
-    assert(ok)
+    val levelName = newLevel.toString.toLowerCase
+    Configuration.replace("level", levelName)
+    Configuration.replace("writer", "file")
+    Configuration.replace("writer.file", "log/match.log")
+    Configuration.replace("writer.append", "false")
+    Configuration.replace("writer.format", "{level}:{message}")
+    Configuration.replace("writer.level", levelName)
   }
 
   def logLevel = tinyLogLevel
@@ -74,13 +73,13 @@ package object pony {
   @elidable(LOGLEVEL)
   def error(a: => Any, doIt: Boolean = true): Unit = {
     if (LogError.includes(tinyLogLevel) && doIt)
-      tinylog.Logger.error(s"[$tick] ${a.toString}")
+      Logger.error(s"[$tick] ${a.toString}")
   }
 
   @elidable(LOGLEVEL)
   def warn(a: => Any, doIt: Boolean = true): Unit = {
     if (LogWarn.includes(tinyLogLevel) && doIt)
-      tinylog.Logger.warn(s"[$tick] ${a.toString}")
+      Logger.warn(s"[$tick] ${a.toString}")
   }
 
   setLogLevel_!(LogLevels.LogInfo)
@@ -90,7 +89,7 @@ package object pony {
   @elidable(LOGLEVEL)
   def info(a: => Any, doIt: Boolean = true): Unit = {
     if (LogInfo.includes(tinyLogLevel) && doIt)
-      tinylog.Logger.info(s"[$tick] ${a.toString}")
+      Logger.info(s"[$tick] ${a.toString}")
   }
 
   def tick = tickCount
@@ -98,13 +97,13 @@ package object pony {
   @elidable(LOGLEVEL)
   def majorInfo(a: => Any, doIt: Boolean = true): Unit = {
     if (LogInfo.includes(tinyLogLevel) && doIt)
-      tinylog.Logger.info(s"<MAJOR> [$tick] ${a.toString}")
+      Logger.info(s"<MAJOR> [$tick] ${a.toString}")
   }
 
   @elidable(LOGLEVEL)
   def debug(a: => Any, doIt: Boolean = true): Unit = {
     if (LogDebug.includes(tinyLogLevel) && doIt)
-      tinylog.Logger.debug(s"[$tick] ${a.toString}")
+      Logger.debug(s"[$tick] ${a.toString}")
   }
 
   private val LOGLEVEL = 500
@@ -112,7 +111,7 @@ package object pony {
   @elidable(LOGLEVEL)
   def trace(a: => Any, doIt: Boolean = true, marker: String = ""): Unit = {
     if (LogTrace.includes(tinyLogLevel) && doIt)
-      tinylog.Logger.trace(s"[$tick] ${if (marker.isEmpty) "" else s"[$marker] "}${a.toString}")
+      Logger.trace(s"[$tick] ${if (marker.isEmpty) "" else s"[$marker] "}${a.toString}")
   }
 
   trait MMToImmutable[A, B] extends mutable.Map[A, mutable.Set[B]] {
@@ -163,7 +162,7 @@ package object pony {
     }
   }
 
-  implicit class RichMutableTraversable[T](val t: mutable.Traversable[T]) extends AnyVal {
+  implicit class RichMutableTraversable[T](val t: mutable.Iterable[T]) extends AnyVal {
     // not correct, but i only use it in ways so that it doesn't matter
     def immutableView = t.toSeq
   }
@@ -398,7 +397,7 @@ package object pony {
     }
 
     case object LogWarn extends LogLevel(4) {
-      override def toTinyLogLevel = Level.WARNING
+      override def toTinyLogLevel = Level.WARN
     }
 
     case object LogError extends LogLevel(5) {

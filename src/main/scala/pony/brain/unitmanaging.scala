@@ -7,6 +7,7 @@ import bwapi.Order
 import pony.Orders.Stop
 import pony.brain.UnitRequest.CherryPickers
 import pony.brain.modules.AlternativeBuildingSpot
+import pony.brain.modules.Strategy
 
 import scala.collection.mutable
 import scala.collection.mutable.{ArrayBuffer, ListBuffer}
@@ -999,9 +1000,7 @@ trait CreatesUnit[T <: WrapsUnit] extends UnitWithJob[T]
 class TrainUnit[F <: UnitFactory, T <: Mobile](factory: F, trainType: Class[_ <: T], employer:
 Employer[F],
                                                funding: ResourceApprovalSuccess)
-  extends UnitWithJob[F](employer, factory, Priority.Default) with JobHasFunding[F] with
-          IssueOrderNTimes[F] with
-          CreatesUnit[F] {
+  extends UnitWithJob[F](employer, factory, Priority.Default) with JobHasFunding[F] with IssueOrderNTimes[F] with CreatesUnit[F] {
 
   private val patience = 20
 
@@ -1047,9 +1046,7 @@ class ConstructAddon[W <: CanBuildAddons, A <: Addon](employer: Employer[W],
                                                       basis: W,
                                                       what: Class[_ <: A],
                                                       funding: ResourceApproval)
-  extends UnitWithJob[W](employer, basis, Priority.Addon) with JobHasFunding[W] with
-          CreatesUnit[W] with
-          IssueOrderNTimes[W] {
+  extends UnitWithJob[W](employer, basis, Priority.Addon) with JobHasFunding[W] with CreatesUnit[W] with IssueOrderNTimes[W] {
   assert(!basis.isBuildingAddon)
   assert(!basis.hasCompleteAddon)
   assert(!basis.hasAddonAttached)
@@ -1101,8 +1098,7 @@ class ResearchUpgrade[U <: Upgrader](employer: Employer[U],
                                      basis: U,
                                      what: Upgrade,
                                      funding: ResourceApproval)
-  extends UnitWithJob[U](employer, basis, Priority.Upgrades) with JobHasFunding[U] with
-          IssueOrderNTimes[U] {
+  extends UnitWithJob[U](employer, basis, Priority.Upgrades) with JobHasFunding[U] with IssueOrderNTimes[U] {
 
   private var startedResearch     = false
   private var stoppedResearch     = false
@@ -1587,8 +1583,7 @@ abstract class SingleUnitBehaviour[+T <: WrapsUnit](val unit: T, meta: SingleUni
 class BusyDoingSomething[T <: WrapsUnit](employer: Employer[T],
                                          behaviour: Seq[SingleUnitBehaviour[T]],
                                          private var objective: Objective)
-  extends UnitWithJob(employer, behaviour.head.unit, Priority.DefaultBehaviour) with
-          Interruptable[T] {
+  extends UnitWithJob(employer, behaviour.head.unit, Priority.DefaultBehaviour) with Interruptable[T] {
 
   assert(behaviour.map(_.unit).distinct.size == 1, s"Wrong grouping: $behaviour")
 
@@ -1654,8 +1649,7 @@ class BusyDoingSomething[T <: WrapsUnit](employer: Employer[T],
 }
 
 class BusyDoingNothing[T <: WrapsUnit](unit: T, employer: Employer[T])
-  extends UnitWithJob(employer, unit, Priority.None) with IssueOrderNTimes[T] with
-          Interruptable[T] {
+  extends UnitWithJob(employer, unit, Priority.None) with IssueOrderNTimes[T] with Interruptable[T] {
   override def isIdle = true
 
   override def getOrder: Seq[UnitOrder] = {

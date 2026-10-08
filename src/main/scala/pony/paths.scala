@@ -4,7 +4,7 @@ import pony.astar.{AStarSearch, GridNode2DInt, Heuristics}
 import pony.brain.modules._
 import pony.brain.{HasUniverse, Universe}
 
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.language.implicitConversions
@@ -248,7 +248,7 @@ class PathFinder(on: Grid2D, isOnGround: Boolean) {
 
   import PathFinder._
 
-  def this(mapLayers: MapLayers, safe: Boolean, ground: Boolean) {
+  def this(mapLayers: MapLayers, safe: Boolean, ground: Boolean) = {
     this({
       (safe, ground) match {
         case (true, true) =>

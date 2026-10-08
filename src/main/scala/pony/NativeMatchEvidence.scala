@@ -2,7 +2,7 @@ package pony
 
 import java.io.{File, PrintWriter}
 import bwapi.Game
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 
 /** BWAPI 4.1 emits a final MatchFrame with synthetic complete-map access before MatchEnd. */
 private[pony] class NativeVisionCoverage {

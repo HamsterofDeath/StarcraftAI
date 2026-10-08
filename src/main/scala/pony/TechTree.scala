@@ -35,12 +35,10 @@ trait TechTree {
     requirementsCache.getOrElseUpdate(what, {
       val all = mutable.Set.empty[Class[_ <: Building]]
       var head = mutable.Set.empty[Class[_ <: Building]] ++= dependsOn.getOrElse(what, Set.empty)
-      var goOn = true
-      do {
+      while (head.nonEmpty) {
         all ++= head
         head = head.flatMap(e => dependsOn.getOrElse(e, Set.empty))
       }
-      while (head.nonEmpty)
       all.toSet
     })
   }

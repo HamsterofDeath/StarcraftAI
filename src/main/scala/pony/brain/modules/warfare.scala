@@ -781,7 +781,7 @@ class ProvideSuggestedAndRequestedAddons(universe: Universe)
       def noUpgrades = !any.isInstanceOf[Upgrader]
       def requiredForUnit = race.techTree
                             .requiredBy.get(any.getClass)
-                            .exists(_.exists(classOf[Mobile] >=))
+                            .exists(_.exists(classOf[Mobile] >= _))
       noUpgrades || requiredForUnit
 
     }

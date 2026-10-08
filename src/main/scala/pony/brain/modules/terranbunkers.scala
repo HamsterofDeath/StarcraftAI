@@ -2,7 +2,7 @@ package pony
 package brain
 package modules
 
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 import scala.collection.mutable
 
 private[pony] object BunkerCoverage {

@@ -4,7 +4,7 @@ package brain
 import pony.brain.modules.Strategy.Strategies
 import pony.brain.modules._
 
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.duration.Duration
