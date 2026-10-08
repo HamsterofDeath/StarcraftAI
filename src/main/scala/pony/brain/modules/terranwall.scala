@@ -297,8 +297,10 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
             val request = UnitJobRequest.idleOfType(repairers, classOf[SCV], 2 - assigned, Priority.Supply)
               .withOnlyAccepting { w =>
                 val job = unitManager.jobOf(w)
-                nativeIds(w.nativeUnitId) && w.currentTile.distanceToIsLess(d.centerTile, 12) &&
-                  w.currentArea.contains(d.areaOnMap) &&
+                val nearby = w.currentTile.distanceToIsLess(d.centerTile, 12) &&
+                  w.currentArea.contains(d.areaOnMap)
+                // An unfinished depot may be far from the base; any miner may resume it.
+                nativeIds(w.nativeUnitId) && (d.isBeingCreated || nearby) &&
                   (job.isIdle || job.isInstanceOf[GatherMineralsAtSinglePatch])
               }.withRequest(_.withCherryPicker_!(UnitRequest.CherryPickers.cherryPickWorkerByDistance[SCV](d.centerTile)()))
             unitManager.request(request, buildIfNoneAvailable = false).units.foreach { w =>
