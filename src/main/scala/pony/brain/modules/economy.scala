@@ -22,10 +22,8 @@ class ProvideNewBuildings(universe: Universe)
           in.jobRequest.proofForFunding.assumeSuccessful,
           in.jobRequest.belongsTo)
 
-      val customPosition = in.jobRequest.customPosition.predefined
-                           .orElse(in.jobRequest.customPosition.evaluateCostly)
-                           .orElse(
-                             helper.findSpotFor(in.mainBuildingwhere, in.buildingType))
+      val customPosition = in.jobRequest.customPosition.resolve(
+        helper.findSpotFor(in.mainBuildingwhere, in.buildingType))
 
       customPosition
       .foreach(e => assert(mapLayers.rawWalkableMap.insideBounds(e), s"$e was not inside map :("))

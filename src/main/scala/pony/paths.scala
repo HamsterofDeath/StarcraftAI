@@ -1168,6 +1168,19 @@ private[pony] object ResourceDepotPlacement {
     !resourceDepot || resourceBuffer.free(area)
 }
 
+private[pony] object BunkerSitePlacement {
+  // This grid contains terrain, resources, buildings, mining paths and reservations, not mobile SCVs.
+  def permitted(area: Area, staticGrid: Grid2D): Boolean = {
+    if (!staticGrid.inBounds(area) || !staticGrid.free(area)) false
+    else if (area.growBy(1).outline.forall(staticGrid.freeAndInBounds)) true
+    else {
+      val blocked = staticGrid.mutableCopy
+      blocked.block_!(area)
+      blocked.areaCountExpensive == staticGrid.areaCount
+    }
+  }
+}
+
 class ConstructionSiteFinder(universe: Universe) {
 
   // initialisation happens in the main thread
@@ -1200,6 +1213,9 @@ class ConstructionSiteFinder(universe: Universe) {
   private val resourceDepotBuffer = universe.mapLayers.blockedForResourceDeposit.mutableCopy.guaranteeImmutability
 
   /** Static construction masks preserve mineral traffic, depots and planned addons. */
+  def bunkerSiteSafe(area: Area): Boolean = {
+    BunkerSitePlacement.permitted(area, freeToBuildOnIgnoreUnits)
+  }
   def bunkerSites(resources: ResourceArea): Vector[Area] = {
     val tiles = resources.allPatchTiles
     if (tiles.isEmpty) Vector.empty
@@ -1207,8 +1223,7 @@ class ConstructionSiteFinder(universe: Universe) {
       x <- (tiles.map(_.x).min - 6) to (tiles.map(_.x).max + 6)
       y <- (tiles.map(_.y).min - 6) to (tiles.map(_.y).max + 6)
       area = Area(MapTilePosition(x, y), Size(3, 2))
-      if freeToBuildOnIgnoreUnits.inBounds(area) && freeToBuildOnIgnoreUnits.free(area)
-      if area.growBy(1).outline.forall(freeToBuildOnIgnoreUnits.freeAndInBounds)
+      if bunkerSiteSafe(area)
     } yield area).toVector
   }
 

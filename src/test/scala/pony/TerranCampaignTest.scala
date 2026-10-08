@@ -42,6 +42,8 @@ class TerranCampaignTest extends Specification {
     Garrison reservations stay unique and replace a killed Marine without inventing native cargo $bunkerGarrison
     Three separated mineral sectors need three bunkers and actual four-cargo coverage before readiness $threeBunkers
     Bunker coverage uses pinned native approximate distance and does not claim favorable collision extents $bunkerNativeDistance
+    An invalid validated bunker preset refuses generic fallback while legacy placements retain it $strictBunkerSite
+    Bunker placement admits temporary traffic but refuses permanent obstacles and severed mining access $bunkerStaticPlacement
   """
   private def building(id: Int, x: Int, base: Boolean = true) =
     ObservedEnemyBuilding(id, MapTilePosition(x, 20), 4, 3, base)
@@ -350,5 +352,31 @@ class TerranCampaignTest extends Specification {
     (BunkerCoverage.approximateDistance(MapPosition(0, 0), MapPosition(160, 0)),
       BunkerCoverage.approximateDistance(MapPosition(0, 0), MapPosition(160, 160)),
       BunkerCoverage.approximateDistance(MapPosition(160, 160), MapPosition(0, 0))) mustEqual (160, 209, 209)
+  }
+  def strictBunkerSite = {
+    val site = MapTilePosition(20, 20)
+    val refused = AlternativeBuildingSpot.fromValidatedPreset(site)(false)
+    val accepted = AlternativeBuildingSpot.fromValidatedPreset(site)(true)
+    val pending = Seq(refused, accepted).flatMap(_.requestedPosition).toSet
+    val unresolved = accepted.predefined
+    refused.init_!(); accepted.init_!()
+    (refused.resolve(Some(MapTilePosition(90, 90))), accepted.resolve(Some(MapTilePosition(90, 90))),
+      AlternativeBuildingSpot.useDefault.resolve(Some(MapTilePosition(90, 90))), pending, unresolved) mustEqual
+      (None, Some(site), Some(MapTilePosition(90, 90)), Set(site), None)
+  }
+  def bunkerStaticPlacement = {
+    val clear = new Grid2D(12, 12, collection.immutable.BitSet.empty)
+    val site = Area(MapTilePosition(5, 3), Size(3, 2))
+    val traffic = clear.mutableCopy
+    traffic.block_!(site)
+    val adjacent = clear.mutableCopy
+    adjacent.block_!(Area(MapTilePosition(4, 2), Size(1, 2)))
+    val corridor = new Grid2D(12, 6, collection.immutable.BitSet.empty).mutableCopy
+    corridor.block_!(Area(MapTilePosition(0, 0), Size(12, 2)))
+    corridor.block_!(Area(MapTilePosition(0, 4), Size(12, 2)))
+    (BunkerSitePlacement.permitted(site, clear), traffic.free(site),
+      BunkerSitePlacement.permitted(site, traffic), BunkerSitePlacement.permitted(site, adjacent),
+      BunkerSitePlacement.permitted(Area(MapTilePosition(5, 2), Size(3, 2)), corridor)) mustEqual
+      (true, false, false, true, false)
   }
 }

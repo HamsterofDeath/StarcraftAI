@@ -82,6 +82,7 @@ class TerranBunkerDefense(universe: Universe)
   private var cargoObserved = Map.empty[Int, Set[Int]]
   private var announcedReady = Set.empty[Int]
   private var uncoveredReported = Set.empty[Int]
+  private var placementReported = Set.empty[MapTilePosition]
   private def active = race.isTerran && strategy.current.isInstanceOf[Strategy.SimpleTerran]
   private def bunkers = ownUnits.allByType[Bunker].filter(_.isInGame).toVector
   private def nativeCargo(b: Bunker): Set[Int] = b.nativeUnit.getLoadedUnits.asScala.filter { u =>
@@ -114,7 +115,7 @@ class TerranBunkerDefense(universe: Universe)
     }
   }
   override def onTick_!(): Unit = {
-    if (!active || currentTick % 31 != 0) return
+    if (!active || currentTick < 31 || currentTick % 31 != 0) return
     boarding.get
     val range = nativeGame.self().weaponMaxRange(bwapi.UnitType.Terran_Marine.groundWeapon()) + 64
     val fields = bases.allBases.filter(b => !b.mainBuilding.isBeingCreated && !b.mainBuilding.isFloating)
@@ -136,13 +137,21 @@ class TerranBunkerDefense(universe: Universe)
         }
       }
       plans.get(field.uniqueId).foreach { case (_, sites) =>
-        val pending = unitManager.requestedConstructions[Bunker].flatMap(_.customPosition.predefined).toSet ++
+        val pending = unitManager.requestedConstructions[Bunker].flatMap(_.customPosition.requestedPosition).toSet ++
           unitManager.constructionsInProgress[Bunker].map(_.buildWhere)
         sites.foreach { site =>
-          if (!bunkers.exists(_.tilePosition == site.upperLeft) && !pending(site.upperLeft) &&
-            nativeGame.canBuildHere(site.upperLeft.asTilePosition, bwapi.UnitType.Terran_Bunker)) {
-            builder.requestBuilding(classOf[Bunker], takeCareOfDependencies = true,
-              customBuildingPosition = AlternativeBuildingSpot.fromPreset(site.upperLeft), belongsTo = Some(field))
+          if (!bunkers.exists(_.tilePosition == site.upperLeft) && !pending(site.upperLeft)) {
+            val safe = new ConstructionSiteFinder(universe).bunkerSiteSafe(site)
+            if (safe) {
+              if (!placementReported(site.upperLeft)) {
+                val now = nativeGame.canBuildHere(site.upperLeft.asTilePosition, bwapi.UnitType.Terran_Bunker)
+                NativeMatchEvidence.trace("bunker-construction-request", s"field=${field.uniqueId} site=${site.upperLeft} nativeSpaceNow=$now error=${nativeGame.getLastError}")
+                placementReported += site.upperLeft
+              }
+              builder.requestBuilding(classOf[Bunker], takeCareOfDependencies = true,
+                customBuildingPosition = AlternativeBuildingSpot.fromValidatedPreset(site.upperLeft)(
+                  new ConstructionSiteFinder(universe).bunkerSiteSafe(site)), belongsTo = Some(field))
+            } else plans.remove(field.uniqueId)
           }
         }
       }

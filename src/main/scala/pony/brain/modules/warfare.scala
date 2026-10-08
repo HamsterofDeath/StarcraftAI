@@ -559,9 +559,22 @@ trait AlternativeBuildingSpot {
   def evaluateCostly: Option[MapTilePosition]
 
   def predefined: Option[MapTilePosition]
+  def requestedPosition: Option[MapTilePosition] = predefined
+  def allowDefaultFallback: Boolean = true
+  def resolve(default: => Option[MapTilePosition]): Option[MapTilePosition] =
+    predefined.orElse(evaluateCostly).orElse(if (allowDefaultFallback) default else None)
 }
 
 object AlternativeBuildingSpot {
+  def fromValidatedPreset(position: MapTilePosition)(valid: => Boolean): AlternativeBuildingSpot = new AlternativeBuildingSpot {
+    private var checked = Option.empty[MapTilePosition]
+    override def init_!(): Unit = { checked = if (valid) Some(position) else None }
+    override def shouldUse = true
+    override def allowDefaultFallback = false
+    override def requestedPosition = Some(position)
+    override def predefined = checked
+    override def evaluateCostly = None
+  }
   val useDefault = new AlternativeBuildingSpot {
     override def evaluateCostly = None
 

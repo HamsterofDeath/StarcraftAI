@@ -173,7 +173,7 @@ object Orders {
 
     override def issueOrderToGame(): Unit = {
       val accepted = myUnit.nativeUnit.build(buildingUnitType, where.asTilePosition)
-      if (buildingUnitType.isResourceDepot && !accepted)
+      if ((buildingUnitType.isResourceDepot || buildingUnitType == bwapi.UnitType.Terran_Bunker) && !accepted)
         NativeMatchEvidence.trace("depot-build-refused",
           s"worker=${myUnit.nativeUnitId} from=${myUnit.currentTile} to=$where error=${game.getLastError}")
     }
