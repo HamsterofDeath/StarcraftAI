@@ -231,8 +231,12 @@ class ProvideSpareSCVs(universe: Universe) extends OrderlessAIModule[CommandCent
       val missing = WorkerProductionQuota.missing(target, workers.count(!_.isBeingCreated),
         workers.count(_.isBeingCreated), reserved,
         ownUnits.allByType[CommandCenter].count(_.nativeUnit.isTraining), requests)
+      if (currentTick < 6000) NativeMatchEvidence.trace("spare-scv-scan",
+        s"target=$target done=${workers.count(!_.isBeingCreated)} incomplete=${workers.count(_.isBeingCreated)} reserved=$reserved nativeTraining=${ownUnits.allByType[CommandCenter].count(_.nativeUnit.isTraining)} requests=$requests missing=$missing")
       if (missing > 0) {
-        unitManager.request(UnitJobRequest.idleOfType(emp, classOf[WorkerUnit], missing))
+        val result = unitManager.request(UnitJobRequest.idleOfType(emp, classOf[WorkerUnit], missing))
+        if (currentTick < 6000) NativeMatchEvidence.trace("spare-scv-request",
+          s"missing=$missing result=${result.getClass.getSimpleName} units=${result.units.size}")
       }
     }
   }

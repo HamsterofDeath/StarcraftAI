@@ -56,20 +56,24 @@ private[pony] object BunkerCoverage {
           .map(j => Vector(ranked(i)._1, ranked(j)._1))
       }.take(1).toVector.headOption
       pair.getOrElse {
-        var left = needed
-        var selected = Vector.empty[Area]
-        while (left.nonEmpty) {
-          // Preserve the same first admissible ranked site; whole-map connectivity is expensive.
-          val options = ranked.filter(e => selected.forall(separate(e._1, _)))
-            .map(e => (e._1, e._2 intersect left)).filter(_._2.nonEmpty)
-            .sortBy(e => (-e._2.size, e._1.upperLeft.y, e._1.upperLeft.x))
-          val next = options.iterator.find(e => safeTogether(selected :+ e._1))
-            .orElse(if (relaxedFallback) options.iterator.nextOption() else None)
-          if (next.isEmpty) return Vector.empty
-          selected :+= next.get._1
-          left --= next.get._2
+        def greedy(requireSafety: Boolean): Vector[Area] = {
+          var left = needed
+          var selected = Vector.empty[Area]
+          while (left.nonEmpty) {
+            // Preserve the same first admissible ranked site; whole-map connectivity is expensive.
+            val options = ranked.filter(e => selected.forall(separate(e._1, _)))
+              .map(e => (e._1, e._2 intersect left)).filter(_._2.nonEmpty)
+              .sortBy(e => (-e._2.size, e._1.upperLeft.y, e._1.upperLeft.x))
+            val next = if (requireSafety) options.iterator.find(e => safeTogether(selected :+ e._1))
+              else options.headOption
+            if (next.isEmpty) return Vector.empty
+            selected :+= next.get._1
+            left --= next.get._2
+          }
+          selected
         }
-        selected
+        val strict = greedy(requireSafety = true)
+        if (strict.nonEmpty || !relaxedFallback) strict else greedy(requireSafety = false)
       }
     }
   }
