@@ -130,6 +130,7 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
                                                                               .empty[Attack]
   private           var planInProgress: BWFuture[Option[IncompleteAttacks]] = BWFuture(None)
   @volatile private var thinking                                            = false
+  private           var thinkingSince                                       = 0
   private val baseDefense = new CampaignDefenseControl
   def baseDefenseActive = baseDefense.pressure
   def setBaseDefensePressure(active: Boolean): Unit = {
@@ -152,7 +153,12 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
   def campaignForceSize = attacks.filter(_.campaign).map(_.force.size).sum
   private var campaignTarget = Option.empty[MapTilePosition]
   def setCampaignTarget(target: Option[MapTilePosition]): Unit = {
-    if (target != campaignTarget) attacks.retain(a => !a.campaign)
+    // Small retargets from fog updates must not cancel a running campaign attack.
+    val meaningfullyChanged = (target, campaignTarget) match {
+      case (Some(next), Some(prev)) => next.distanceToIsMore(prev, 8)
+      case (next, prev) => next != prev
+    }
+    if (meaningfullyChanged) attacks.retain(a => !a.campaign)
     campaignTarget = target
   }
 
@@ -192,12 +198,20 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
 
   override def onTick_!(): Unit = {
     super.onTick_!()
+    // A stuck background plan must never freeze the campaign forever.
+    if (!thinking) thinkingSince = currentTick
+    else if (currentTick - thinkingSince > 24 * 120) {
+      NativeMatchEvidence.trace("attack-plan-timeout", s"stuckSince=$thinkingSince")
+      thinking = false
+      planInProgress = BWFuture.none
+    }
     attacks.foreach(_.onTick_!())
     attacks.retain(_.hasNotEnded)
     if (thinking) {
       planInProgress.result.foreach { plan =>
         attacks ++= plan.parts.filter(p => !p.campaign ||
-          (campaignTarget.contains(p.destination.where) && baseDefense.acceptsCampaign(p.defenseGeneration)))
+          (campaignTarget.exists(c => !c.distanceToIsMore(p.destination.where, 12)) &&
+            baseDefense.acceptsCampaign(p.defenseGeneration)))
           .flatMap(_.complete)
         thinking = false
         planInProgress = BWFuture.none

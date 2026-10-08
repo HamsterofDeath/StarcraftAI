@@ -267,6 +267,11 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
     val ready = reconnaissanceAllowed
     if (ready && !wasReady) NativeMatchEvidence.trace("offense-ready",
       s"establishedSecondBase=true fighters=${troops.size} army=$minerals/$gas bank=${resources.currentResources}")
+    if (!ready && target.isDefined && currentTick % 240 == 0) {
+      val bunkers = universe.pluginByType[TerranBunkerDefense]
+      NativeMatchEvidence.trace("offense-gate",
+        s"operational=${universe.pluginByType[ManageMiningAtBases].secondBaseEstablished} defense=${bunkers.defenseSufficient} coverage=${bunkers.coverageReady} pressure=${worldDominationPlan.baseDefenseActive} launched=$launched planning=${worldDominationPlan.planningInProgress} fighters=${troops.size} army=$minerals/$gas bank=${resources.currentResources} target=$target")
+    }
     wasReady = ready
     target.foreach { where =>
       if (ready && !worldDominationPlan.planningInProgress) {
