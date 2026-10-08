@@ -1462,7 +1462,7 @@ object Terran {
       }.named("Evaluate scouting plans")
 
       def onTick_!(): Unit = {
-        if (race.isTerran && !universe.pluginByType[RunTerranCampaign].reconnaissanceAllowed) return
+        if (race.isTerran && !universe.pluginByType[RunTerranCampaign].scoutingAllowed) return
         val oldSize = scouts.size
         scouts.retain { (_, v) => v.valid }
         if (oldSize != scouts.size) {
@@ -1472,7 +1472,10 @@ object Terran {
         scouts.valuesIterator.foreach(_.onTick_!())
 
         leftToCover.onceIfDone { plans =>
-          plans.foreach { plan =>
+          val minimal = race.isTerran && !universe.pluginByType[RunTerranCampaign].reconnaissanceAllowed
+          val minimalCap = TerranCampaignConfig.load().minScouts
+          val allowed = if (minimal) math.max(0, minimalCap - scouts.size) else Int.MaxValue
+          plans.take(allowed).foreach { plan =>
             ownUnits.byId(plan.sc.id).foreach { stillLiving =>
               val resourceAreas = plan.resourceAreaIdsInOrder.map(strategicMap.resourceAreaById)
               val startHere = strategicMap.resourceAreaById(plan.startHere)
@@ -1492,7 +1495,7 @@ object Terran {
 
       def planFor(am: ArmedMobile) = {
         if (!am.isInstanceOf[WorkerUnit] && !universe.pluginByType[RunTerranCampaign].isReservedDefender(am) && (if (race.isTerran)
-          universe.pluginByType[RunTerranCampaign].reconnaissanceAllowed else time.phase.isSinceAlmostMid)) {
+          universe.pluginByType[RunTerranCampaign].scoutingAllowed else time.phase.isSinceAlmostMid)) {
           scouts.get(am)
         } else {
           None

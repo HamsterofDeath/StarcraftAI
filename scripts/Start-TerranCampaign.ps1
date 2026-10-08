@@ -11,6 +11,10 @@ param(
  [int]$ExpansionReserve = 0,
  [int]$BankMinerals = 1000,
  [int]$BankGas = 300,
+ [int]$RequiredFields = 2,
+ [int]$MinScoutFighters = 6,
+ [int]$MinScouts = 1,
+ [double]$FieldUsefulFraction = 0.15,
  [int]$LocalSpeedMs = 0,
  [int]$AiTickFrames = 24,
  [switch]$Headless,
@@ -26,6 +30,7 @@ if ((& git -C $Repository rev-parse HEAD).Trim() -ne $SourceCommit) { throw 'Pro
 if (& git -C $Repository status --porcelain --untracked-files=no) { throw 'Tracked source must match the producer.' }
 if ($HeapMb -lt 128 -or $HeapMb -gt 384) { throw 'Use a bounded x86 heap with native address headroom.' }
 if ($MinFighters -lt 1 -or $ArmyMinerals -lt 0 -or $ArmyGas -lt 0 -or $ExpansionReserve -lt 0 -or $BankMinerals -lt 0 -or $BankGas -lt 0) { throw 'Campaign thresholds must be nonnegative with at least one fighter.' }
+if ($RequiredFields -lt 1 -or $MinScoutFighters -lt 1 -or $MinScouts -lt 1 -or $FieldUsefulFraction -le 0 -or $FieldUsefulFraction -ge 1) { throw 'Field policy needs at least one field/scout/fighter and a useful fraction between 0 and 1.' }
 if ($LocalSpeedMs -lt 0 -or $LocalSpeedMs -gt 500) { throw 'LocalSpeedMs must be between 0 (fastest) and 500 milliseconds per frame.' }
 if ($AiTickFrames -lt 1 -or $AiTickFrames -gt 240) { throw 'AiTickFrames must be between 1 (every frame) and 240 frames per heavy AI tick.' }
 if (Get-Process -Name StarCraft,injectory_x86 -ErrorAction SilentlyContinue) { throw 'Native runtime is occupied.' }
@@ -72,9 +77,10 @@ $entries = $entries | ForEach-Object { $_.Replace('${BASE}', $Repository).Replac
 foreach ($entry in $entries) { if (-not (Test-Path -LiteralPath $entry)) { throw ('Missing runtime classpath entry: ' + $entry) } }
 $dependencies = ($entries -join ';')
 $classpath = (Join-Path $buildOut 'classes') + ';' + $dependencies
-$options = @("-Xmx${HeapMb}M",'-XX:ParallelGCThreads=2','-Dscala.concurrent.context.numThreads=2','-Dscala.concurrent.context.maxThreads=2',"-Dtwailight.run=$RunName","-Dtwailight.producer=$SourceCommit",('-Dtwailight.resultDirectory="'+$run+'"'),"-Dtwailight.mapInputSha256=$mapHash","-Dtwailight.minFighters=$MinFighters","-Dtwailight.armyMinerals=$ArmyMinerals","-Dtwailight.armyGas=$ArmyGas","-Dtwailight.expansionReserve=$ExpansionReserve","-Dtwailight.localSpeed=$LocalSpeedMs","-Dtwailight.aiTickFrames=$AiTickFrames",'-cp',('"'+$classpath+'"'),'pony.Controller')
+$fieldUsefulText = $FieldUsefulFraction.ToString([System.Globalization.CultureInfo]::InvariantCulture)
+$options = @("-Xmx${HeapMb}M",'-XX:ParallelGCThreads=2','-Dscala.concurrent.context.numThreads=2','-Dscala.concurrent.context.maxThreads=2',"-Dtwailight.run=$RunName","-Dtwailight.producer=$SourceCommit",('-Dtwailight.resultDirectory="'+$run+'"'),"-Dtwailight.mapInputSha256=$mapHash","-Dtwailight.minFighters=$MinFighters","-Dtwailight.armyMinerals=$ArmyMinerals","-Dtwailight.armyGas=$ArmyGas","-Dtwailight.expansionReserve=$ExpansionReserve","-Dtwailight.requiredFields=$RequiredFields","-Dtwailight.minScoutFighters=$MinScoutFighters","-Dtwailight.minScouts=$MinScouts","-Dtwailight.fieldUsefulFraction=$fieldUsefulText","-Dtwailight.localSpeed=$LocalSpeedMs","-Dtwailight.aiTickFrames=$AiTickFrames",'-cp',('"'+$classpath+'"'),'pony.Controller')
 $options = $options[0..($options.Count-4)] + @("-Dtwailight.bankMinerals=$BankMinerals", "-Dtwailight.bankGas=$BankGas", ('-Dtwailight.headless=' + $Headless.IsPresent.ToString().ToLowerInvariant())) + $options[($options.Count-3)..($options.Count-1)]
-$receipt = [ordered]@{ schema=1; run=$RunName; owner='twilight_ai_impl'; producer=$SourceCommit; launchedAt=(Get-Date).ToUniversalTime().ToString('o'); status='unfinished'; game='StarCraft 1.16.1'; bwapiRevision=5016; javaClient='JBWAPI 2.2.0'; bwapiSha256=$dllHash; map=$mapRelative; mapInputSha256=$mapHash; javaSha256=(Get-FileHash -LiteralPath $Java -Algorithm SHA256).Hash; heapMb=$HeapMb; nativeWorkerThreads=2; ordinaryVision=$true; revealCheat=$false; opponent='unmodified native Protoss computer'; configuration=@{minFighters=$MinFighters;armyMinerals=$ArmyMinerals;armyGas=$ArmyGas;expansionReserve=$ExpansionReserve} }
+$receipt = [ordered]@{ schema=1; run=$RunName; owner='twilight_ai_impl'; producer=$SourceCommit; launchedAt=(Get-Date).ToUniversalTime().ToString('o'); status='unfinished'; game='StarCraft 1.16.1'; bwapiRevision=5016; javaClient='JBWAPI 2.2.0'; bwapiSha256=$dllHash; map=$mapRelative; mapInputSha256=$mapHash; javaSha256=(Get-FileHash -LiteralPath $Java -Algorithm SHA256).Hash; heapMb=$HeapMb; nativeWorkerThreads=2; ordinaryVision=$true; revealCheat=$false; opponent='unmodified native Protoss computer'; configuration=@{minFighters=$MinFighters;armyMinerals=$ArmyMinerals;armyGas=$ArmyGas;expansionReserve=$ExpansionReserve;requiredFields=$RequiredFields;minScoutFighters=$MinScoutFighters;minScouts=$MinScouts;fieldUsefulFraction=$FieldUsefulFraction} }
 $receipt.renderingEnabled = !$Headless.IsPresent
 $receipt.configuration.bankMinerals = $BankMinerals
 $receipt.configuration.bankGas = $BankGas

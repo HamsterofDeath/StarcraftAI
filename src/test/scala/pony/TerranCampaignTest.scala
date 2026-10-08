@@ -59,6 +59,7 @@ class TerranCampaignTest extends Specification with MustMatchers {
     Obsolete loaded home crews cannot fill or suppress active expansion seats $obsoleteBunkerCargo
     Cancelled funded construction is disposed once and its in-flight factory never starts $cancelledConstruction
     A real background placement refusal logs immutable data without reading live worker caches $backgroundPlacementRefusal
+    A mineral field at or below fifteen percent is no longer useful $fieldReplenishment
   """
   private def building(id: Int, x: Int, base: Boolean = true) =
     ObservedEnemyBuilding(id, MapTilePosition(x, 20), 4, 3, base)
@@ -185,6 +186,13 @@ class TerranCampaignTest extends Specification with MustMatchers {
     (c.ready(false, 12, 1500, 300, 1000, 300), c.ready(true, 12, 1500, 300, 999, 300),
       c.ready(true, 12, 1500, 300, 1000, 299), c.ready(true, 11, 1500, 300, 1000, 300),
       c.ready(true, 12, 1500, 300, 1000, 300)) === (false, false, false, false, true)
+  }
+  def fieldReplenishment = {
+    val c = TerranCampaignConfig()
+    val custom = TerranCampaignConfig(fieldUsefulFraction = 0.25)
+    (c.fieldUseful(1.0), c.fieldUseful(0.150001), c.fieldUseful(0.15), c.fieldUseful(0.149), c.fieldUseful(0.0),
+      custom.fieldUseful(0.26), custom.fieldUseful(0.24), custom.fieldUseful(0.25)) ===
+      (true, true, false, false, false, true, false, false)
   }
   def saturation = {
     val progress = new TerranEconomicProgress

@@ -27,6 +27,21 @@ class TerranEconomicOpening(universe: Universe)
   extends OrderlessAIModule[WorkerUnit](universe) with BuildingRequestHelper {
   private val depotEmployer = new Employer[CommandCenter](universe)
   private var relocation = Option.empty[RelocateDepot]
+
+  private def fieldUseful(area: ResourceArea): Boolean = {
+    val initial = area.patches.map(_.initialValue).sum.toDouble
+    val left = area.patches.map(_.value).sum.toDouble
+    initial <= 0 || TerranCampaignConfig.load().fieldUseful(left / initial)
+  }
+
+  /** Landed completed bases whose mineral field still has enough left to be worth holding. */
+  private def usefulFields: Vector[ResourceArea] = {
+    bases.allBases
+      .filter(b => b.mainBuilding.isInGame && !b.mainBuilding.isBeingCreated && !b.mainBuilding.isFloating)
+      .flatMap(_.resourceArea).filter(fieldUseful)
+      .groupBy(_.uniqueId).values.map(_.head).toVector
+  }
+
   override def onTick_!(): Unit = {
     if (currentTick % Primes.prime31.i != 0) return
     val mining = universe.pluginByType[ManageMiningAtBases]
@@ -43,10 +58,21 @@ class TerranEconomicOpening(universe: Universe)
           NativeMatchEvidence.trace("home-depot-request", s"unlocked=${funds.minerals}")
         }
       }
-      if (!mining.secondBaseEstablished && mining.startingFieldSaturated && relocation.isEmpty) {
-        val spare = depots.filterNot(_ == home.mainBuilding).find { cc =>
-          !cc.isBeingCreated && bases.allBases.find(_.mainBuilding == cc).exists(_.resourceArea == home.resourceArea)
-        }
+      val secondBasePending = !mining.secondBaseEstablished && mining.startingFieldSaturated
+      val replenishNeeded = mining.secondBaseEstablished &&
+        usefulFields.size < TerranCampaignConfig.load().requiredFields
+      if ((secondBasePending || replenishNeeded) && relocation.isEmpty) {
+        val spare =
+          if (secondBasePending) {
+            depots.filterNot(_ == home.mainBuilding).find { cc =>
+              !cc.isBeingCreated && bases.allBases.find(_.mainBuilding == cc).exists(_.resourceArea == home.resourceArea)
+            }
+          } else {
+            // Never hold a depleted field: move its depot to a fresh one so two useful fields stay open.
+            depots.filterNot(_.isBeingCreated).filterNot(_.isFloating)
+              .filter(cc => bases.allBases.find(_.mainBuilding == cc).flatMap(_.resourceArea).exists(a => !fieldUseful(a)))
+              .sortBy(_.nativeUnitId).headOption
+          }
         spare.foreach { cc =>
           cc.relocating = true // let an already funded SCV finish, but do not start another queue.
           if (!cc.nativeUnit.isTraining && cc.nativeUnit.getRemainingTrainTime == 0 &&
@@ -55,7 +81,7 @@ class TerranEconomicOpening(universe: Universe)
               priority = Priority.Expand).withOnlyAccepting(_.nativeUnitId == cc.nativeUnitId)
             val accepted = unitManager.request(request)
             accepted.units.headOption.foreach { unit =>
-              val job = new RelocateDepot(depotEmployer, unit, home.mainBuilding.tilePosition)
+              val job = new RelocateDepot(depotEmployer, unit, unit.tilePosition)
               depotEmployer.assignJob_!(job)
               relocation = Some(job)
             }
@@ -73,7 +99,7 @@ class TerranEconomicOpening(universe: Universe)
     private var lastProgress = currentTick
     private var landingRetries = 0
     private var returningHome = false
-    private def safe(area: ResourceArea) = !bases.isCovered(area) && area.patches.exists(_.patches.exists(_.remaining > 0)) &&
+    private def safe(area: ResourceArea) = !bases.isCovered(area) && fieldUseful(area) &&
       mapLayers.slightlyDangerousAsBlocked.free(area.nearbyFreeTile) &&
       unitGrid.enemy.allInRange[Mobile](area.nearbyFreeTile, 12).isEmpty &&
       mapLayers.rawWalkableMap.areInSameWalkableArea(home, area.nearbyFreeTile)

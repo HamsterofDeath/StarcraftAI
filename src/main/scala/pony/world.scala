@@ -592,6 +592,8 @@ case class MineralPatchGroup(patchId: Int) {
 
   def value = myValue.get
 
+  def initialValue = myInitialValue.get
+
   def patches = myPatches.toSet
 
   def contains(mp: MineralPatch): Boolean = myPatches(mp)
