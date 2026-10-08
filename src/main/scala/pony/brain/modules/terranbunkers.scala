@@ -237,8 +237,11 @@ class TerranBunkerDefense(universe: Universe)
           pairs.toVector.sortBy(p => p._1.distanceSquaredTo(p._2)).iterator
             .map(p => BunkerWorkerRoutes.between(p._1, p._2, ground)).find(_.isDefined).flatten
         }
+        // Tiles under completed or planned buildings can never host a worker or a bunker covering
+        // them; keeping them as required points would deadlock re-planning after any construction.
         val workTiles = BunkerCoverage.workerTiles(patches, depots, routes.flatten)
           .filter(mapLayers.rawWalkableMap.insideBounds)
+          .filter(mapLayers.blockedByBuildingTiles.free)
         val points = BunkerCoverage.corners(workTiles)
         val existing = bunkers.filter(b => b.tilePosition.distanceToIsLess(field.center, 15)).map(_.area)
         val finder = new ConstructionSiteFinder(universe)

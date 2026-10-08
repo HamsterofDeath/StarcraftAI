@@ -1300,8 +1300,11 @@ object Terran {
       def scouter = scout
 
       def valid = {
+        // While the enemy is unfound, a minimal scout must accept covered ground: the enemy main
+        // is dangerous by definition, and refusing it would make discovery impossible.
+        val seekingEnemy = !universe.pluginByType[RunTerranCampaign].enemyLocated
         scout.isInGame && toCheck.forall { resourceArea =>
-          mapLayers.dangerousAsBlocked.freeAndInBounds(resourceArea.nearbyFreeTile) &&
+          (seekingEnemy || mapLayers.dangerousAsBlocked.freeAndInBounds(resourceArea.nearbyFreeTile)) &&
           !bases.isCovered(resourceArea)
         }
       }
@@ -1311,8 +1314,13 @@ object Terran {
       private val remainingToCheck = mutable.ArrayBuffer.empty ++= toCheck.map(_.nearbyFreeTile)
 
       private val nextPath = {
+        // The plain ground pathfinder is used only until the enemy is found: the safe variant
+        // refuses to route into ground the enemy covers, which is exactly where the enemy main is.
+        val pathfinder =
+          if (universe.pluginByType[RunTerranCampaign].enemyLocated) universe.pathfinders.safeFor(scout)
+          else universe.pathfinders.ground
         FutureIterator
-        .feed((scout.currentTile, remainingToCheck.head, universe.pathfinders.safeFor(scout)))
+        .feed((scout.currentTile, remainingToCheck.head, pathfinder))
         .produceAsync { case (from, to, pathfinder) =>
           pathfinder.findPathNow(from, to).map(_.toMigration(universe))
         }.named("Single scout plan")
@@ -1383,9 +1391,10 @@ object Terran {
 
       class Feed {
         private val resourceAreasUnscouted = {
+          val seekingEnemy = !universe.pluginByType[RunTerranCampaign].enemyLocated
           strategicMap.resources
           .filter { ra =>
-            mapLayers.dangerousAsBlocked.free(ra.nearbyFreeTile)
+            seekingEnemy || mapLayers.dangerousAsBlocked.free(ra.nearbyFreeTile)
           }
           .filterNot(coveredRightNow)
           .filterNot(bases.isCovered)
@@ -1395,6 +1404,9 @@ object Terran {
         }
 
         val tileToResourceAreaId = resourceAreasUnscouted.map(_.swap).toMap
+
+        NativeMatchEvidence.trace("scout-feed",
+          s"areas=${resourceAreasUnscouted.map(_._1).mkString(",")} all=${strategicMap.resources.map(_.uniqueId).mkString(",")}")
 
         val leftToCover        = resourceAreasUnscouted.map(_._2)
         val map                = mapLayers.rawWalkableMap
@@ -1475,6 +1487,8 @@ object Terran {
           val minimal = race.isTerran && !universe.pluginByType[RunTerranCampaign].reconnaissanceAllowed
           val minimalCap = TerranCampaignConfig.load().minScouts
           val allowed = if (minimal) math.max(0, minimalCap - scouts.size) else Int.MaxValue
+          NativeMatchEvidence.trace("scout-plan-options",
+            s"minimal=$minimal allowed=$allowed plans=${plans.map(p => s"${p.sc.id}:${p.resourceAreaIdsInOrder.mkString("/")}").mkString(" ")}")
           plans.take(allowed).foreach { plan =>
             ownUnits.byId(plan.sc.id).foreach { stillLiving =>
               val resourceAreas = plan.resourceAreaIdsInOrder.map(strategicMap.resourceAreaById)
