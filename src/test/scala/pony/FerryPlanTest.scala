@@ -3,9 +3,10 @@ package pony
 import java.lang.reflect.{InvocationHandler, Method, Proxy}
 
 import org.specs2.Specification
+import org.specs2.matcher.MustMatchers
 import pony.brain.modules.FerryPlan
 
-class FerryPlanTest extends Specification {
+class FerryPlanTest extends Specification with MustMatchers {
   def is =
     s2"""
        |A full ferry rejects replacing one slot with four without changing cargo $rejectOverCapacity
@@ -56,7 +57,7 @@ class FerryPlanTest extends Specification {
 
     val replaced = ferryPlan.replaceQueuedUnitIfPossible_!(incoming)
 
-    (replaced, ferryPlan.toTransport.toSet, ferryPlan.takenSpace) mustEqual (false, before, 8)
+    (replaced, ferryPlan.toTransport.toSet, ferryPlan.takenSpace) === (false, before, 8)
   }
 
   def replaceEqualSize = {
@@ -67,7 +68,7 @@ class FerryPlanTest extends Specification {
 
     val replaced = ferryPlan.replaceQueuedUnitIfPossible_!(incoming)
 
-    (replaced, ferryPlan.toTransport.toSet, ferryPlan.takenSpace) mustEqual
+    (replaced, ferryPlan.toTransport.toSet, ferryPlan.takenSpace) ===
       (true, Set(loaded, incoming), 8)
   }
 
@@ -83,7 +84,7 @@ class FerryPlanTest extends Specification {
 
     val replaced = ferryPlan.replaceQueuedUnitIfPossible_!(incoming)
 
-    (replaced, ferryPlan.toTransport.toSet, ferryPlan.takenSpace) mustEqual
+    (replaced, ferryPlan.toTransport.toSet, ferryPlan.takenSpace) ===
       (true, loaded.toSet ++ Set(farthestSmall, incoming), 8)
   }
 }

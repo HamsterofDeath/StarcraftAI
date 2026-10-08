@@ -426,7 +426,7 @@ class FutureIterator[IN, T](feed: => IN, produce: IN => T, startNow: Boolean) {
     val start = System.currentTimeMillis()
     val input = feed
     val fut = BWFuture.produceFrom(produce(input))
-    fut.future.onSuccess {
+    fut.future.foreach {
       case any =>
         lock.writeLock().lock()
         thinking = false
@@ -442,7 +442,7 @@ class FutureIterator[IN, T](feed: => IN, produce: IN => T, startNow: Boolean) {
 }
 
 object FutureIterator {
-  def feed[IN](in: => IN) = new {
+  class Feeder[IN](in: => IN) {
     def produceAsync[T](produce: IN => T) = {
       new FutureIterator(in, produce, true)
     }
@@ -451,6 +451,8 @@ object FutureIterator {
       new FutureIterator(in, produce, false)
     }
   }
+
+  def feed[IN](in: => IN) = new Feeder(in)
 }
 
 object BWFuture {

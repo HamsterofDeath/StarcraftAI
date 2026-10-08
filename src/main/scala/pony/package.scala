@@ -57,15 +57,17 @@ package object pony {
     this.tinyLogLevel = logLevel
   }
 
-  def setTinyLogLevel_!(newLevel: Level) = {
+  def setTinyLogLevel_!(newLevel: Level): Unit = {
     new java.io.File("log").mkdirs()
     val levelName = newLevel.toString.toLowerCase
-    Configuration.replace("level", levelName)
-    Configuration.replace("writer", "file")
-    Configuration.replace("writer.file", "log/match.log")
-    Configuration.replace("writer.append", "false")
-    Configuration.replace("writer.format", "{level}:{message}")
-    Configuration.replace("writer.level", levelName)
+    val properties = new java.util.HashMap[String, String]()
+    properties.put("level", levelName)
+    properties.put("writer", "file")
+    properties.put("writer.file", "log/match.log")
+    properties.put("writer.append", "false")
+    properties.put("writer.format", "{level}:{message}")
+    properties.put("writer.level", levelName)
+    Configuration.replace(properties)
   }
 
   def logLevel = tinyLogLevel
@@ -73,13 +75,13 @@ package object pony {
   @elidable(LOGLEVEL)
   def error(a: => Any, doIt: Boolean = true): Unit = {
     if (LogError.includes(tinyLogLevel) && doIt)
-      Logger.error(s"[$tick] ${a.toString}")
+      Logger.error("{}", s"[$tick] ${a.toString}")
   }
 
   @elidable(LOGLEVEL)
   def warn(a: => Any, doIt: Boolean = true): Unit = {
     if (LogWarn.includes(tinyLogLevel) && doIt)
-      Logger.warn(s"[$tick] ${a.toString}")
+      Logger.warn("{}", s"[$tick] ${a.toString}")
   }
 
   setLogLevel_!(LogLevels.LogInfo)
@@ -89,7 +91,7 @@ package object pony {
   @elidable(LOGLEVEL)
   def info(a: => Any, doIt: Boolean = true): Unit = {
     if (LogInfo.includes(tinyLogLevel) && doIt)
-      Logger.info(s"[$tick] ${a.toString}")
+      Logger.info("{}", s"[$tick] ${a.toString}")
   }
 
   def tick = tickCount
@@ -97,13 +99,13 @@ package object pony {
   @elidable(LOGLEVEL)
   def majorInfo(a: => Any, doIt: Boolean = true): Unit = {
     if (LogInfo.includes(tinyLogLevel) && doIt)
-      Logger.info(s"<MAJOR> [$tick] ${a.toString}")
+      Logger.info("{}", s"<MAJOR> [$tick] ${a.toString}")
   }
 
   @elidable(LOGLEVEL)
   def debug(a: => Any, doIt: Boolean = true): Unit = {
     if (LogDebug.includes(tinyLogLevel) && doIt)
-      Logger.debug(s"[$tick] ${a.toString}")
+      Logger.debug("{}", s"[$tick] ${a.toString}")
   }
 
   private val LOGLEVEL = 500
@@ -111,7 +113,7 @@ package object pony {
   @elidable(LOGLEVEL)
   def trace(a: => Any, doIt: Boolean = true, marker: String = ""): Unit = {
     if (LogTrace.includes(tinyLogLevel) && doIt)
-      Logger.trace(s"[$tick] ${if (marker.isEmpty) "" else s"[$marker] "}${a.toString}")
+      Logger.trace("{}", s"[$tick] ${if (marker.isEmpty) "" else s"[$marker] "}${a.toString}")
   }
 
   trait MMToImmutable[A, B] extends mutable.Map[A, mutable.Set[B]] {
@@ -238,7 +240,7 @@ package object pony {
     }
   }
 
-  implicit class ToOneElemList[T](val t: T) extends AnyVal {
+  class ToOneElemList[T](val t: T) extends AnyVal {
     def toSome: Option[T] = Some(t)
 
     def toSeq = Seq(t)
@@ -253,6 +255,12 @@ package object pony {
 
     def toVector = Vector(t)
   }
+
+  implicit def toOneElemList[T](t: T)(using
+      scala.util.NotGiven[T <:< Array[?]],
+      scala.util.NotGiven[T <:< String],
+      scala.util.NotGiven[T <:< IterableOnce[?]]
+  ): ToOneElemList[T] = new ToOneElemList(t)
 
   implicit class RichClass[T](val c: Class[_ <: T]) extends AnyVal {
     def >=(other: Class[_]) = c.isAssignableFrom(other)

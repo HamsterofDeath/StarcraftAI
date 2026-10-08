@@ -44,7 +44,7 @@ object SecondPriority {
   val EvenMore          = SecondPriority(0.9)
   val Max               = SecondPriority(1.0)
 
-  implicit val ordering = Ordering.by[SecondPriority, Double](_.importance)
+  implicit val ordering: Ordering[SecondPriority] = Ordering.by[SecondPriority, Double](_.importance)
 }
 
 object Priority {
@@ -61,5 +61,5 @@ object Priority {
   val Expand            = Priority(0.72)
   val Max               = Priority(1)
 
-  implicit val ordering = Ordering.by[Priority, Double](_.importance)
+  implicit val ordering: Ordering[Priority] = Ordering.by[Priority, Double](_.importance)
 }

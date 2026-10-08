@@ -33,7 +33,7 @@ trait Universe extends HasLazyVals {
   def plugins: List[AIModule[_ <: WrapsUnit]]
 
   def pluginByType[T: Manifest] = {
-    plugins.find(_.getClass == manifest[T].runtimeClass)
+    plugins.find(_.getClass == implicitly[Manifest[T]].runtimeClass)
     .get
     .asInstanceOf[T]
   }

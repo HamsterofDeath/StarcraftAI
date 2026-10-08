@@ -594,7 +594,7 @@ class UnitGrid(override val universe: Universe) extends HasUniverse {
   def allInRangeOf[T <: Mobile : Manifest](position: MapTilePosition, radius: Int,
                                            friendly: Boolean,
                                            customFilter: T => Boolean = (_: T) => true):
-  Traversable[T] = {
+  Iterable[T] = {
     val onWhat = on(!friendly)
 
     geoHelper
@@ -612,18 +612,18 @@ class UnitGrid(override val universe: Universe) extends HasUniverse {
     }
 
 
-    new Traversable[T] {
-      override def foreach[U](f: (T) => U): Unit = {
-        val filter = manifest[T].runtimeClass
-        for (x <- fromX until toX; y <- fromY until toY
-             if dstSqr(x, y) <= radSqr) {
-          val mobiles = onWhat(x)(y)
-          if (mobiles != null) {
-            val byType = mobiles.iterator
-                         .filter(filter.isInstance)
-                         .filter(e => customFilter(e.asInstanceOf[T]))
-            byType.foreach { e =>
-              f(e.asInstanceOf[T])
+    new Iterable[T] {
+      override def iterator: Iterator[T] = {
+        val filter = implicitly[Manifest[T]].runtimeClass
+        (fromX until toX).iterator.flatMap { x =>
+          (fromY until toY).iterator.filter(y => dstSqr(x, y) <= radSqr).flatMap { y =>
+            val mobiles = onWhat(x)(y)
+            if (mobiles == null) Iterator.empty
+            else {
+              mobiles.iterator
+              .filter(filter.isInstance)
+              .filter(e => customFilter(e.asInstanceOf[T]))
+              .map(e => e.asInstanceOf[T])
             }
           }
         }
@@ -890,7 +890,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   }
 
   private def evalOnlyUnitsAsync(units: => TraversableOnce[StaticallyPositioned], growBy: Int) = {
-    def areas = units.map(_.area)
+    def areas = units.iterator.map(_.area)
     FutureIterator.feed(areas.toVector).produceAsync { unitAreas =>
       val ret = emptyCopy
       unitAreas.foreach { a =>
@@ -1110,7 +1110,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
 
     def base = baseTemplate.mutableCopy
 
-    val enemy = new {
+    class EnemyData {
       val buildings            = universe.enemyUnits.allBuildings.map(_.centerTile)
       val armedBuildingsGround = universe.enemyUnits.allBuildingsWithGroundWeapons.map(_.centerTile)
       val armedBuildingsAir    = universe.enemyUnits.allBuildingsWithAirWeapons.map(_.centerTile)
@@ -1149,13 +1149,16 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
       }
     }
 
-    val own = new {
+    class OwnData {
       val ownUnitsUnderPsi = {
         universe.ownUnits.allMobiles
         .filter(_.wasUnderPsiStormSince(48))
         .flatMap(_.lastKnownStormPosition)
       }
     }
+
+    val enemy = new EnemyData
+    val own = new OwnData
   }
 }
 
@@ -1273,7 +1276,7 @@ class ConstructionSiteFinder(universe: Universe) {
           val closest = possible.minBy { elem =>
             val area = Area(elem, size)
             val distanceToPatches = resources.allPatchTiles.map(e => area.distanceTo(e)).sum
-            val distanceToGeysirs = resources.allGeysirTiles.map(e => area.distanceTo(area)).sum
+            val distanceToGeysirs = resources.allGeysirTiles.map(e => area.distanceTo(e)).sum
             distanceToPatches + distanceToGeysirs
           }
           Some(closest)

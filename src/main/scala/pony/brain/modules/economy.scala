@@ -136,7 +136,7 @@ class ProvideExpansions(universe: Universe)
     ifNth(Primes.prime31) {
       plannedExpansionPoint = plannedExpansionPoint.filter { where =>
         universe.mapLayers.slightlyDangerousAsBlocked.free(where.center) &&
-        universe.unitGrid.enemy.allInRange(where.center, 12).isEmpty &&
+        universe.unitGrid.enemy.allInRange[Mobile](where.center, 12).isEmpty &&
         !bases.isCovered(where)
       }.orElse(strategy.current.suggestNextExpansion)
       info(s"AI wants to expand to ${plannedExpansionPoint.get}", plannedExpansionPoint.isDefined)
@@ -157,7 +157,7 @@ class ProvideExpansions(universe: Universe)
         case None =>
           val cost = ResourceRequests.forUnit(race, race.resourceDepositClass)
           val safe = universe.mapLayers.slightlyDangerousAsBlocked.free(resources.center) &&
-            universe.unitGrid.enemy.allInRange(resources.center, 12).isEmpty &&
+            universe.unitGrid.enemy.allInRange[Mobile](resources.center, 12).isEmpty &&
             !bases.isCovered(resources) && bases.mainBase.exists { base =>
               mapLayers.rawWalkableMap.areInSameWalkableArea(resources.nearbyFreeTile, base.mainBuilding.tilePosition)
             }
@@ -317,7 +317,7 @@ class DefaultBehaviours(universe: Universe) extends OrderlessAIModule[WrapsUnit]
   }
 }
 
-class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule(universe) {
+class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule[WrapsUnit](universe) {
 
   private val gatheringJobs = ArrayBuffer.empty[ManageMiningAtPatchGroup]
   private val opening = new TerranEconomicProgress
@@ -453,7 +453,7 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule(universe
       Micro.MiningOrganization.onTick()
       val missing = idealNumberOfWorkers - teamSize
       if (missing > 0) {
-        val result = universe.unitManager
+        val result = this.universe.unitManager
                      .request(UnitJobRequest.idleOfType(emp, classOf[WorkerUnit], missing))
         val jobs = result.units.flatMap { worker =>
           Micro.MiningOrganization.findBestPatch(worker).map { patch =>
@@ -722,7 +722,7 @@ class ManageMiningAtGeysirs(universe: Universe)
     val idealWorkerCount            = 3 +
                                               (base.mainBuilding.area.distanceTo(geysir.area) / 3)
                                               .toInt
-    private val workerCountBeforeWantingGas = universe.mapLayers
+    private val workerCountBeforeWantingGas = this.universe.mapLayers
                                               .isOnIsland(base.mainBuilding.tilePosition)
                                               .ifElse(8, 14)
     private var refinery                    = Option.empty[Refinery]

@@ -52,7 +52,8 @@ object Controller {
         if (pony.tickCount % 2400 == 0) {
           val game = mirror.getGame
           val own = game.self().getUnits
-          val ownUnits = scala.jdk.CollectionConverters.asScalaBufferConverter(own).asScala
+          import scala.jdk.CollectionConverters._
+          val ownUnits = own.asScala
           NativeMatchEvidence.trace("economy-heartbeat",
             s"nativeFrame=${game.getFrameCount} paused=${game.isPaused} inGame=${game.isInGame} fps=${game.getFPS} minerals=${game.self().minerals()} gas=${game.self().gas()} supply=${game.self().supplyUsed()}/${game.self().supplyTotal()} scvs=${ownUnits.count(_.getType == bwapi.UnitType.Terran_SCV)} depots=${ownUnits.count(_.getType == bwapi.UnitType.Terran_Command_Center)} completeMap=${game.isFlagEnabled(bwapi.Flag.Enum.CompleteMapInformation.getValue)}")
         }

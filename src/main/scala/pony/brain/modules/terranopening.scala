@@ -75,19 +75,19 @@ class TerranEconomicOpening(universe: Universe)
     private var returningHome = false
     private def safe(area: ResourceArea) = !bases.isCovered(area) && area.patches.exists(_.patches.exists(_.remaining > 0)) &&
       mapLayers.slightlyDangerousAsBlocked.free(area.nearbyFreeTile) &&
-      unitGrid.enemy.allInRange(area.nearbyFreeTile, 12).isEmpty &&
+      unitGrid.enemy.allInRange[Mobile](area.nearbyFreeTile, 12).isEmpty &&
       mapLayers.rawWalkableMap.areInSameWalkableArea(home, area.nearbyFreeTile)
     private def chooseDestination(): Unit = {
       returningHome = false
       destination = strategicMap.resources.filter(safe)
         .filter(a => strategicMap.defenseLineOf(a.nearbyFreeTile).isDefined).toVector
         .sortBy(a => (a.nearbyFreeTile.distanceSquaredTo(home), a.uniqueId))
-        .iterator.flatMap { area => new ConstructionSiteFinder(universe).forResourceArea(area).find.map(area -> _) }
+        .iterator.flatMap { area => new ConstructionSiteFinder(this.universe).forResourceArea(area).find.map(area -> _) }
         .take(1).toList.headOption
       if (destination.isEmpty && depot.isFloating) {
         returningHome = true
         destination = bases.mainBase.flatMap(_.resourceArea).flatMap { field =>
-          new ConstructionSiteFinder(universe).findSpotFor(home, classOf[CommandCenter], maxRange = 25)
+          new ConstructionSiteFinder(this.universe).findSpotFor(home, classOf[CommandCenter], maxRange = 25)
             .map(field -> _)
         }
       }

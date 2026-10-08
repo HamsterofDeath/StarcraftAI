@@ -13,7 +13,7 @@ import java.util.List;
  *
  * @author HamsterofDeath Created 22.12.2007 @ 16:12:03
  */
-public abstract class Node<T extends Node<T>> implements Iterable, Serializable {
+public abstract class Node<T extends Node<T>> implements Iterable<T>, Serializable {
     private static final int  MS_MASK_GET_STATE    = 3;
     private static final int  MS_MASK_DELETE_STATE = ~3;
     private static final long serialVersionUID     = 0L;

@@ -74,7 +74,7 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
   }
 
   def plannedToBuildByType[T <: Building : Manifest]: Int = {
-    val typeOfFactory = manifest[T].runtimeClass.asInstanceOf[Class[_ <: T]]
+    val typeOfFactory = implicitly[Manifest[T]].runtimeClass.asInstanceOf[Class[_ <: T]]
     unfulfilledByTargetType(typeOfFactory).size
   }
 
@@ -92,12 +92,12 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
                        unfulfilledRequestsThisTick.toSet
 
   def requestedConstructions[T <: Building : Manifest] = {
-    val typeOfFactory = manifest[T].runtimeClass.asInstanceOf[Class[_ <: T]]
+    val typeOfFactory = implicitly[Manifest[T]].runtimeClass.asInstanceOf[Class[_ <: T]]
     unfulfilledByTargetType(typeOfFactory)
   }
 
   def constructionsInProgress[T <: Building : Manifest]: Seq[ConstructBuilding[WorkerUnit, T]] = {
-    constructionsInProgress(manifest[T].runtimeClass.asInstanceOf[Class[_ <: T]])
+    constructionsInProgress(implicitly[Manifest[T]].runtimeClass.asInstanceOf[Class[_ <: T]])
   }
 
   def constructionsInProgress[T <: Building](typeOfBuilding: Class[_ <: T]):
@@ -131,7 +131,7 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
   }
 
   def allJobsByType[T <: UnitWithJob[_] : Manifest] = {
-    val wanted = manifest[T].runtimeClass
+    val wanted = implicitly[Manifest[T]].runtimeClass
     assignments.valuesIterator.filter { job =>
       wanted >= job.getClass
     }.map {_.asInstanceOf[T]}.toVector
@@ -139,15 +139,15 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
 
   def allJobsByUnitType[T <: WrapsUnit : Manifest] = selectJobs[T, UnitWithJob[T]](_ => true)
 
-  def selectJobs[U <: WrapsUnit : Manifest, T <: UnitWithJob[U] : Manifest](f: T => Boolean) = {
-    val wanted = manifest[U].runtimeClass
+  def selectJobs[U <: WrapsUnit : Manifest, T <: UnitWithJob[U]](f: T => Boolean) = {
+    val wanted = implicitly[Manifest[U]].runtimeClass
     assignments.valuesIterator.filter { job =>
       wanted.isInstance(job.unit) && f(job.asInstanceOf[T])
     }.map {_.asInstanceOf[T]}.toVector
   }
 
   def failedToProvideByType[T <: WrapsUnit : Manifest] = {
-    val c = manifest[T].runtimeClass
+    val c = implicitly[Manifest[T]].runtimeClass
     failedToProvideFlat.collect {
       case req: UnitRequest[_] if c >= req.typeOfRequestedUnit =>
         req.asInstanceOf[UnitRequest[T]]
@@ -1198,7 +1198,7 @@ trait PathfindingSupport[T <: Mobile] extends JobOrSubJob[T] {
     def newPathRequired(where: MapTilePosition): Unit = {
       trace(s"Unit $unit needs paths to $where")
       val pf = pathfinders.safeFor(unit)
-      val task = pf.findPath(unit.currentTile, where).imap(_.toMigration)
+      val task = pf.findPath(unit.currentTile, where).imap(_.toMigration(universe))
       myPath = task
     }
     // must return noop instead of nil to cause a waiting behaviour
@@ -1937,7 +1937,7 @@ case class UnitJobRequest[T <: WrapsUnit : Manifest](request: UnitRequest[T],
 
   def moreSpecificType = request.typeOfRequestedUnit
 
-  def requestedUnitType = manifest[T].runtimeClass.asInstanceOf[Class[_ <: T]]
+  def requestedUnitType = implicitly[Manifest[T]].runtimeClass.asInstanceOf[Class[_ <: T]]
 
   def onClear(): Unit = request.dispose()
 }
@@ -1956,7 +1956,7 @@ object UnitJobRequest {
                                                                                .Default):
   UnitJobRequest[F] = {
 
-    val actualClass = employer.universe.forces.myRace.specialize(manifest[F].runtimeClass
+    val actualClass = employer.universe.forces.myRace.specialize(implicitly[Manifest[F]].runtimeClass
                                                                  .asInstanceOf[Class[F]])
     val req = AnyFactoryRequest[F, T](actualClass, 1, wantedType)
 
@@ -1968,7 +1968,7 @@ object UnitJobRequest {
                                                                    .ConstructBuilding):
   UnitJobRequest[T] = {
 
-    val actualClass = employer.universe.forces.myRace.specialize(manifest[T].runtimeClass)
+    val actualClass = employer.universe.forces.myRace.specialize(implicitly[Manifest[T]].runtimeClass)
                       .asInstanceOf[Class[T]]
     val req = AnyUnitRequest(actualClass, 1)
               .withCherryPicker_!(WorkerUnit.currentPriority)
@@ -2061,7 +2061,7 @@ class JobReAssignments(universe: Universe) extends OrderlessAIModule[Controllabl
               }
           }
         }
-        doTyped(optimizeMe)
+        doTyped(optimizeMe.asInstanceOf[CanAcceptUnitSwitch[WrapsUnit]])
       }
     }
   }

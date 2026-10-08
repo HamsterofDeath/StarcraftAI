@@ -1,8 +1,9 @@
 package pony
 
 import org.specs2._
+import org.specs2.matcher.MustMatchers
 
-class MathTest extends Specification {
+class MathTest extends Specification with MustMatchers {
 
   def is =
     s2"""
@@ -13,21 +14,21 @@ class MathTest extends Specification {
        |Shared points should work as expected $sharedPoints
                                  """.stripMargin
   def spiralResult = {
-    testSpiral.isEmpty mustEqual false
+    testSpiral.isEmpty === false
   }
   def spiralSingle = {
     val first = testSpiral.head
-    first mustEqual(100, 100)
+    first ===(100, 100)
   }
   private def testSpiral = new GeometryHelpers(200, 200).blockSpiralClockWise(MapTilePosition.shared(100, 100), 5)
-                           .map(_.asTuple)
+                           .map(_.asTuple).toList
   def spiral9 = {
     val it = testSpiral
 
     val expected = List((100, 100), (101, 100), (101, 101), (100, 101), (99, 101), (99, 100), (99, 99), (100, 99),
       (101, 99), (102, 99))
 
-    expected mustEqual it.take(expected.size)
+    expected === it.take(expected.size)
   }
   def spiralMany = {
     val it = testSpiral
@@ -35,10 +36,10 @@ class MathTest extends Specification {
     val expected = List((100, 100), (101, 100), (101, 101), (100, 101), (99, 101), (99, 100), (99, 99), (100, 99),
       (101, 99), (102, 99), (102, 100), (102, 101), (102, 102), (101, 102))
 
-    expected mustEqual it.take(expected.size)
+    expected === it.take(expected.size)
   }
 
   def sharedPoints = {
-    MapTilePosition.shared(0, 0) mustEqual MapTilePosition(0, 0)
+    MapTilePosition.shared(0, 0) === MapTilePosition(0, 0)
   }
 }

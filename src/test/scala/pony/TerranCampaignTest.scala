@@ -1,11 +1,12 @@
 package pony
 
 import org.specs2.Specification
+import org.specs2.matcher.MustMatchers
 import java.lang.reflect.{InvocationHandler, Method, Proxy}
 import pony.brain._
 import pony.brain.modules._
 
-class TerranCampaignTest extends Specification {
+class TerranCampaignTest extends Specification with MustMatchers {
   def is = s2"""
     Attack starts at inclusive count and live resource thresholds $thresholds
     Expansion keeps a reserve and rejects duplicate, unsafe or unreachable requests $expansion
@@ -64,13 +65,13 @@ class TerranCampaignTest extends Specification {
   def thresholds = {
     val c = TerranCampaignConfig()
     (c.launch(12, 1500, 300), c.launch(11, 1500, 300), c.launch(12, 1499, 300),
-      c.launch(12, 1500, 299), c.launch(20, 2500, 800)) mustEqual (true, false, false, false, true)
+      c.launch(12, 1500, 299), c.launch(20, 2500, 800)) === (true, false, false, false, true)
   }
   def expansion = {
     val c = TerranCampaignConfig()
     def allowed(minerals: Int, pending: Boolean = false, safe: Boolean = true) =
       c.expand(minerals, 0, 400, 0, pending, safe)
-    (allowed(400), allowed(399), allowed(400, true), allowed(400, safe = false)) mustEqual
+    (allowed(400), allowed(399), allowed(400, true), allowed(400, safe = false)) ===
       (true, false, false, false)
   }
   def fog = {
@@ -79,14 +80,14 @@ class TerranCampaignTest extends Specification {
     m.update(Seq(b), Set.empty, _ => true)
     m.select(MapTilePosition(0, 0))
     m.update(Nil, Set.empty, _ => false)
-    (m.buildings, m.target) mustEqual (Vector(b), Some(b.tile))
+    (m.buildings, m.target) === (Vector(b), Some(b.tile))
   }
   def partialVisibility = {
     val m = new EnemyCampaignMemory
     val b = building(1, 30)
     m.update(Seq(b), Set.empty, _ => true)
     m.update(Nil, Set.empty, p => p.x == 30)
-    m.buildings mustEqual Vector(b)
+    m.buildings === Vector(b)
   }
   def baseProgression = {
     val m = new EnemyCampaignMemory
@@ -99,7 +100,7 @@ class TerranCampaignTest extends Specification {
     val retained = m.target
     val nextBuilding = m.attackPosition
     m.update(Seq(other), Set(1, 2), _ => false)
-    (retained, nextBuilding, m.select(MapTilePosition(0, 0))) mustEqual
+    (retained, nextBuilding, m.select(MapTilePosition(0, 0))) ===
       (Some(nexus.tile), Some(gateway.tile), Some(other.tile))
   }
   def emptyFootprint = {
@@ -108,7 +109,7 @@ class TerranCampaignTest extends Specification {
     m.update(Seq(b), Set.empty, _ => true)
     m.select(MapTilePosition(0, 0))
     m.update(Nil, Set.empty, _ => true)
-    (m.buildings, m.target) mustEqual (Vector.empty, None)
+    (m.buildings, m.target) === (Vector.empty, None)
   }
   def rebuilt = {
     val m = new EnemyCampaignMemory
@@ -116,19 +117,19 @@ class TerranCampaignTest extends Specification {
     m.update(Nil, Set(1), _ => false)
     val rebuilt = building(2, 30)
     m.update(Seq(rebuilt), Set(1), _ => true)
-    m.select(MapTilePosition(0, 0)) mustEqual Some(rebuilt.tile)
+    m.select(MapTilePosition(0, 0)) === Some(rebuilt.tile)
   }
   def freshMatch = {
     val old = new EnemyCampaignMemory
     old.update(Seq(building(1, 30)), Set.empty, _ => true)
     old.select(MapTilePosition(0, 0))
     val fresh = new EnemyCampaignMemory
-    (fresh.buildings, fresh.target) mustEqual (Vector.empty, None)
+    (fresh.buildings, fresh.target) === (Vector.empty, None)
   }
   def stableTargets = {
     val m = new EnemyCampaignMemory
     m.update(Seq(building(3, 1, false), building(2, 40), building(1, 30)), Set.empty, _ => true)
-    m.select(MapTilePosition(0, 0)) mustEqual Some(MapTilePosition(30, 20))
+    m.select(MapTilePosition(0, 0)) === Some(MapTilePosition(30, 20))
   }
   def initializationOrder = {
     val uninitialized = Proxy.newProxyInstance(classOf[Universe].getClassLoader, Array[Class[_]](classOf[Universe]),
@@ -136,12 +137,12 @@ class TerranCampaignTest extends Specification {
         override def invoke(proxy: AnyRef, method: Method, arguments: Array[AnyRef]): AnyRef =
           throw new IllegalStateException("World dependency accessed before initialization: " + method.getName)
       }).asInstanceOf[Universe]
-    new Strategy.Strategies(uninitialized).current.name mustEqual "Idle"
+    new Strategy.Strategies(uninitialized).current.name === "Idle"
   }
   def nativeClock = {
     val c = new NativeFrameClock
     (c.advance(0), c.advance(0), c.advance(0), c.advance(1), c.advance(1), c.advance(0),
-      new NativeFrameClock().advance(0)) mustEqual (true, false, false, true, false, false, true)
+      new NativeFrameClock().advance(0)) === (true, false, false, true, false, false, true)
   }
   def builderTravel = {
     val travel = new ConstructionTravelProgress(0, MapTilePosition(0, 0))
@@ -150,14 +151,14 @@ class TerranCampaignTest extends Specification {
       travel.failed(1921, MapTilePosition(50, 0), false, false, 60),
       travel.failed(1922, MapTilePosition(60, 0), true, false, 60),
       travel.failed(1983, MapTilePosition(60, 0), true, true, 60),
-      travel.failed(1984, MapTilePosition(60, 0), true, false, 60)) mustEqual
+      travel.failed(1984, MapTilePosition(60, 0), true, false, 60)) ===
       (false, false, true, false, false, true)
   }
   def staleGroup = {
     val units = AllUnits(new Units(null, false, null), new Units(null, true, null))
     val group = new Group[WrapsUnit](new Grid2D(10, 10, collection.immutable.BitSet.empty), units)
     (1 to 3).foreach(id => group.add_!(id -> MapTilePosition(id, 0)))
-    (group.size, group.survivingMembers) mustEqual (3, Vector.empty)
+    (group.size, group.survivingMembers) === (3, Vector.empty)
   }
   def partialGroup = {
     val survivor = Proxy.newProxyInstance(classOf[WrapsUnit].getClassLoader, Array[Class[_]](classOf[WrapsUnit]),
@@ -169,21 +170,21 @@ class TerranCampaignTest extends Specification {
     val group = new Group[WrapsUnit](new Grid2D(10, 10, collection.immutable.BitSet.empty),
       AllUnits(own, new Units(null, true, null)))
     (1 to 3).foreach(id => group.add_!(id -> MapTilePosition(id, 0)))
-    group.survivingMembers.map(_.nativeUnitId) mustEqual Vector(2)
+    group.survivingMembers.map(_.nativeUnitId) === Vector(2)
   }
   def singletonScout = {
     val a = MapTilePosition(1, 1)
     val b = MapTilePosition(2, 2)
     def next(points: Vector[MapTilePosition], covered: Set[MapTilePosition]) =
       ScoutPointPairs.next(points, covered)((_, _) => Some(1.0))
-    (next(Vector(a), Set.empty), next(Vector(a), Set(a)), next(Vector(a, b), Set(a))) mustEqual
+    (next(Vector(a), Set.empty), next(Vector(a), Set(a)), next(Vector(a, b), Set(a))) ===
       (List(a), Nil, List(b))
   }
   def economicGate = {
     val c = TerranCampaignConfig()
     (c.ready(false, 12, 1500, 300, 1000, 300), c.ready(true, 12, 1500, 300, 999, 300),
       c.ready(true, 12, 1500, 300, 1000, 299), c.ready(true, 11, 1500, 300, 1000, 300),
-      c.ready(true, 12, 1500, 300, 1000, 300)) mustEqual (false, false, false, false, true)
+      c.ready(true, 12, 1500, 300, 1000, 300)) === (false, false, false, false, true)
   }
   def saturation = {
     val progress = new TerranEconomicProgress
@@ -191,7 +192,7 @@ class TerranCampaignTest extends Specification {
     val early = progress.startingFieldSaturated
     progress.observe(Some(1), Seq(MiningFieldStatus(1, 20, 20, 10, true)))
     progress.observe(Some(1), Seq(MiningFieldStatus(1, 20, 19, 10, true)))
-    (early, progress.startingFieldSaturated, new TerranEconomicProgress().startingFieldSaturated) mustEqual
+    (early, progress.startingFieldSaturated, new TerranEconomicProgress().startingFieldSaturated) ===
       (false, true, false)
   }
   def secondField = {
@@ -202,33 +203,33 @@ class TerranCampaignTest extends Specification {
     val unworked = MiningFieldStatus(2, 20, 10, 0, true)
     def observe(fields: Seq[MiningFieldStatus]) = { p.observe(Some(1), fields); p.secondBaseEstablished }
     (observe(Seq(home, home)), observe(Seq(home, flying)), observe(Seq(home, unworked)),
-      observe(Seq(home, unworked.copy(working = 1)))) mustEqual (false, false, false, true)
+      observe(Seq(home, unworked.copy(working = 1)))) === (false, false, false, true)
   }
   def relocation = {
     import DepotRelocation._
     (next(false, false, false, false, false), next(true, true, false, false, false),
       next(true, false, false, false, false), next(true, false, true, false, false),
       next(true, false, true, true, false), next(true, false, false, true, true),
-      next(false, false, true, false, false)) mustEqual
+      next(false, false, true, false, false)) ===
       (AwaitSaturation, FinishTraining, Lift, Fly, Land, Established, Fly)
   }
   def workerQuota = {
     def missing(incomplete: Int, reserved: Int, native: Int, requests: Seq[Int]) =
       WorkerProductionQuota.missing(24, 20, incomplete, reserved, native, requests)
     (missing(0, 2, 0, Nil), missing(2, 2, 2, Nil), missing(0, 0, 2, Nil),
-      missing(0, 0, 0, Seq(3)), missing(2, 2, 2, Seq(3))) mustEqual (2, 2, 2, 1, 0)
+      missing(0, 0, 0, Seq(3)), missing(2, 2, 2, Seq(3))) === (2, 2, 2, 1, 0)
   }
   def localMining = {
     (LocalMineralMining.observed(false, 11, Some(11), true),
       LocalMineralMining.observed(true, 11, Some(9), true),
       LocalMineralMining.observed(true, 11, None, true),
       LocalMineralMining.observed(true, 11, Some(11), false),
-      LocalMineralMining.observed(true, 11, Some(11), true)) mustEqual (false, false, false, false, true)
+      LocalMineralMining.observed(true, 11, Some(11), true)) === (false, false, false, false, true)
   }
   def stockpile = {
     val c = TerranCampaignConfig()
     (c.holdNewArmy(false, 12, 1500, 300, false), c.holdNewArmy(true, 11, 1500, 300, false),
-      c.holdNewArmy(true, 12, 1500, 300, false), c.holdNewArmy(true, 12, 1500, 300, true)) mustEqual
+      c.holdNewArmy(true, 12, 1500, 300, false), c.holdNewArmy(true, 12, 1500, 300, true)) ===
       (false, false, true, false)
   }
   def exhaustedStart = {
@@ -241,7 +242,7 @@ class TerranCampaignTest extends Specification {
     val c = TerranCampaignConfig()
     (p.startingFieldSaturated, p.secondBaseEstablished,
       c.ready(p.secondBaseEstablished, 30, 3000, 1000, 1000, 300),
-      new TerranEconomicProgress().secondBaseEstablished) mustEqual (true, true, true, false)
+      new TerranEconomicProgress().secondBaseEstablished) === (true, true, true, false)
   }
   def coveredStaffing = {
     // A relocated depot serves field2; the old field and distant field3 must not enqueue workers.
@@ -250,7 +251,7 @@ class TerranCampaignTest extends Specification {
       MineralFieldStaffing.permitted(default, landed, field)
     }.map(_._2).sum
     (demand(true, Some(2)), demand(true, None), demand(false, Some(2)),
-      WorkerProductionQuota.missing(demand(true, Some(2)) + 6, 24, 0, 0, 0, Nil)) mustEqual
+      WorkerProductionQuota.missing(demand(true, Some(2)) + 6, 24, 0, 0, 0, Nil)) ===
       (14, 0, 94, 0)
   }
   def depotPlacement = {
@@ -260,7 +261,7 @@ class TerranCampaignTest extends Specification {
     val clearHomeSite = Area(MapTilePosition(55, 108), Size(4, 3))
     (ResourceDepotPlacement.permitted(refusedNativeSite, true, blocked),
       ResourceDepotPlacement.permitted(clearHomeSite, true, blocked),
-      ResourceDepotPlacement.permitted(refusedNativeSite, false, blocked)) mustEqual (false, true, true)
+      ResourceDepotPlacement.permitted(refusedNativeSite, false, blocked)) === (false, true, true)
   }
   def refusedPlacement = {
     val refused = new ConstructionTravelProgress(8323, MapTilePosition(70, 115))
@@ -269,7 +270,7 @@ class TerranCampaignTest extends Specification {
     (refused.failed(8324, MapTilePosition(70, 115), false, false, 60),
       refused.failed(9044, MapTilePosition(70, 115), false, false, 60),
       building.failed(8324, MapTilePosition(69, 110), true, true, 60),
-      building.failed(12000, MapTilePosition(69, 110), true, true, 60)) mustEqual (false, true, false, false)
+      building.failed(12000, MapTilePosition(69, 110), true, true, 60)) === (false, true, false, false)
   }
   def terminalVision = {
     val fair = new NativeVisionCoverage
@@ -280,7 +281,7 @@ class TerranCampaignTest extends Specification {
     invalid.observe(101, true, true, false)
     (live, terminal, fair.liveSamples, fair.lastLiveFrame, fair.terminalSamples,
       fair.terminalCompleteMap, fair.ordinaryVision, invalid.ordinaryVision,
-      new NativeVisionCoverage().ordinaryVision) mustEqual
+      new NativeVisionCoverage().ordinaryVision) ===
       (true, false, 1, 100, 1, true, true, false, false)
   }
   def defensiveReserve = {
@@ -292,8 +293,8 @@ class TerranCampaignTest extends Specification {
     val first = roster.reserved
     val deployable = troops.map(_.id).filterNot(first)
     roster.update(fields, troops.filterNot(_.id == 1))
-    (first, deployable, roster.reserved, roster.rallyFor(4), roster.rallyFor(6)) mustEqual
-      (Set(1, 2, 4, 5), Seq(3, 6), Set(2, 3, 4, 5), Some(MapTilePosition(80, 80)), None)
+    (first, deployable, roster.reserved, roster.rallyFor(4), roster.rallyFor(6)) ===
+      (Set(1, 2, 4, 5), Vector(3, 6), Set(2, 3, 4, 5), Some(MapTilePosition(80, 80)), None)
   }
   def expeditionThresholds = {
     val c = TerranCampaignConfig()
@@ -303,7 +304,7 @@ class TerranCampaignTest extends Specification {
     (c.ready(true, expedition, 600, 200, 2000, 1000),
       c.holdNewArmy(true, expedition, 600, 200, false),
       c.ready(true, 12, 1500, 300, 1000, 300),
-      c.holdNewArmy(true, 12, 1500, 300, false)) mustEqual (false, false, true, true)
+      c.holdNewArmy(true, 12, 1500, 300, false)) === (false, false, true, true)
   }
   def defensiveRecall = {
     val control = new CampaignDefenseControl
@@ -318,7 +319,7 @@ class TerranCampaignTest extends Specification {
     control.setPressure(false)
     (duringPlanning, recalled, staleRejected, whileRaided,
       control.acceptsCampaign(offensiveVersion), control.acceptsCampaign(control.generation),
-      control.takeReady(false)) mustEqual (None, Some(raid), true, false, false, true, None)
+      control.takeReady(false)) === (None, Some(raid), true, false, false, true, None)
   }
   def reserveCustody = {
     val roster = new TerranDefenseRoster(1)
@@ -328,7 +329,7 @@ class TerranCampaignTest extends Specification {
     val whileAway = roster.reserved
     roster.update(field, Seq(DefenseFighter(2, MapTilePosition(11, 10), campaignAssigned = true),
       DefenseFighter(3, MapTilePosition(12, 10))))
-      (whileAway, roster.reserved) mustEqual (Set.empty[Int], Set(3))
+    (whileAway, roster.reserved) === (Set.empty[Int], Set(3))
   }
   def bunkerCoverage = {
     val left = Area(MapTilePosition(10, 10), Size(3, 2))
@@ -339,7 +340,7 @@ class TerranCampaignTest extends Specification {
     val single = BunkerCoverage.select(BunkerCoverage.corners(Seq(MapTilePosition(10, 12))),
       Vector(left, right), Vector.empty, 160)
     (selected.size, corners.forall(p => selected.exists(BunkerCoverage.covers(_, p, 160))),
-      oneCannotCover, single.size) mustEqual (2, true, Vector.empty, 1)
+      oneCannotCover, single.size) === (2, true, Vector.empty, 1)
   }
   def bunkerGarrison = {
     val g = new BunkerGarrison
@@ -350,7 +351,7 @@ class TerranCampaignTest extends Specification {
     val before = g.reserved
     g.update(homes.map { case (id, p, cargo) => (id, p, cargo - 1) },
       marines.filterNot(_._1 == 1) :+ (9 -> MapTilePosition(11, 10)))
-    (before, g.reserved, g.target(9), g.target(5)) mustEqual
+    (before, g.reserved, g.target(9), g.target(5)) ===
       (Set(1, 2, 3, 4, 5, 6, 7, 8), Set(2, 3, 4, 5, 6, 7, 8, 9), Some(100), Some(200))
   }
   def threeBunkers = {
@@ -360,7 +361,7 @@ class TerranCampaignTest extends Specification {
     val full = selected.map(_.upperLeft -> 4).toMap
     (selected.size, BunkerCoverage.ready(points, selected, Map.empty, 160),
       BunkerCoverage.ready(points, selected, full.updated(selected.head.upperLeft, 3), 160),
-      BunkerCoverage.ready(points, selected, full, 160)) mustEqual (3, false, false, true)
+      BunkerCoverage.ready(points, selected, full, 160)) === (3, false, false, true)
   }
   def bunkerRankedSafety = {
     def site(x: Int, y: Int) = Area(MapTilePosition(x, y), Size(3, 2))
@@ -381,14 +382,14 @@ class TerranCampaignTest extends Specification {
       (selected, checks.size, points.forall(p => selected.exists(BunkerCoverage.covers(_, p, 96))))
     }
     (run(candidates, false), run(candidates.reverse, false),
-      run(candidates, true), run(candidates.reverse, true)) mustEqual
+      run(candidates, true), run(candidates.reverse, true)) ===
       ((Vector(a, b, c), 4, true), (Vector(a, b, c), 4, true),
         (Vector(a, c, alternateB), 6, true), (Vector(a, c, alternateB), 6, true))
   }
   def bunkerNativeDistance = {
     (BunkerCoverage.approximateDistance(MapPosition(0, 0), MapPosition(160, 0)),
       BunkerCoverage.approximateDistance(MapPosition(0, 0), MapPosition(160, 160)),
-      BunkerCoverage.approximateDistance(MapPosition(160, 160), MapPosition(0, 0))) mustEqual (160, 209, 209)
+      BunkerCoverage.approximateDistance(MapPosition(160, 160), MapPosition(0, 0))) === (160, 209, 209)
   }
   def strictBunkerSite = {
     val site = MapTilePosition(20, 20)
@@ -398,7 +399,7 @@ class TerranCampaignTest extends Specification {
     val unresolved = accepted.predefined
     refused.init_!(); accepted.init_!()
     (refused.resolve(Some(MapTilePosition(90, 90))), accepted.resolve(Some(MapTilePosition(90, 90))),
-      AlternativeBuildingSpot.useDefault.resolve(Some(MapTilePosition(90, 90))), pending, unresolved) mustEqual
+      AlternativeBuildingSpot.useDefault.resolve(Some(MapTilePosition(90, 90))), pending, unresolved) ===
       (None, Some(site), Some(MapTilePosition(90, 90)), Set(site), None)
   }
   def bunkerStaticPlacement = {
@@ -413,7 +414,7 @@ class TerranCampaignTest extends Specification {
     corridor.block_!(Area(MapTilePosition(0, 4), Size(12, 2)))
     (BunkerSitePlacement.permitted(site, clear), traffic.free(site),
       BunkerSitePlacement.permitted(site, traffic), BunkerSitePlacement.permitted(site, adjacent),
-      BunkerSitePlacement.permitted(Area(MapTilePosition(5, 2), Size(3, 2)), corridor)) mustEqual
+      BunkerSitePlacement.permitted(Area(MapTilePosition(5, 2), Size(3, 2)), corridor)) ===
       (true, false, false, true, false)
   }
   def bunkerBoardingRetry = {
@@ -425,7 +426,7 @@ class TerranCampaignTest extends Specification {
       retry.issue(24, MapTilePosition(11, 10), false, true, true),
       retry.issue(100, MapTilePosition(12, 10), false, true, true),
       retry.issue(220, MapTilePosition(12, 10), false, true, true),
-      retry.issue(240, MapTilePosition(12, 10), true, false, false)) mustEqual
+      retry.issue(240, MapTilePosition(12, 10), true, false, false)) ===
       (true, false, true, false, false, true, false)
   }
   def bunkerCacheLifecycle = {
@@ -440,7 +441,7 @@ class TerranCampaignTest extends Specification {
       }).asInstanceOf[Universe]
     val module = new TerranBunkerDefense(universe) {
       override def race = pony.Terran
-      override val strategy = new Strategy.Strategies(universe)
+      override val strategy = new Strategy.Strategies(this.universe)
     }
     val garrison = new BunkerGarrison
     var completed = false
@@ -453,7 +454,7 @@ class TerranCampaignTest extends Specification {
     completed = true; frame = 1; module.onTick_!()
     val afterCompletion = snapshot.get
     completed = false; frame = 2; module.onTick_!()
-    (cold, afterCompletion, snapshot.get) mustEqual (Set.empty[Int], Set(1, 2, 3, 4), Set.empty[Int])
+    (cold, afterCompletion, snapshot.get) === (Set.empty[Int], Set(1, 2, 3, 4), Set.empty[Int])
   }
   def bunkerCasualtyQuota = {
     val before = (1 to 8).toSet
@@ -462,14 +463,14 @@ class TerranCampaignTest extends Specification {
       BunkerMarineQuota.missing(8, after, Set.empty, 0, Nil),
       BunkerMarineQuota.missing(8, after, Set(9), 1, Seq(1)),
       BunkerMarineQuota.missing(8, Set.empty, Set.empty, 0, Nil),
-      BunkerMarineQuota.missing(8, before, Set.empty, 0, Nil, campaignHeld = before)) mustEqual (0, 4, 2, 8, 8)
+      BunkerMarineQuota.missing(8, before, Set.empty, 0, Nil, campaignHeld = before)) === (0, 4, 2, 8, 8)
   }
   def bunkerRepair = {
     def admit(damaged: Boolean = true, completed: Boolean = true, alive: Boolean = true,
               local: Boolean = true, mineralOrIdle: Boolean = true) =
       BunkerRepairAdmission.eligible(damaged, completed, alive, local, mineralOrIdle)
     (admit(), admit(damaged = false), admit(completed = false), admit(alive = false),
-      admit(local = false), admit(mineralOrIdle = false)) mustEqual (true, false, false, false, false, false)
+      admit(local = false), admit(mineralOrIdle = false)) === (true, false, false, false, false, false)
   }
   def bunkerMobileReserve = {
     val roster = new TerranDefenseRoster(2)
@@ -478,13 +479,13 @@ class TerranCampaignTest extends Specification {
     roster.update(field, Seq(DefenseFighter(1, MapTilePosition(10, 10), garrisonReserved = true),
       DefenseFighter(2, MapTilePosition(10, 10), garrisonReserved = true),
       DefenseFighter(3, MapTilePosition(11, 10)), DefenseFighter(4, MapTilePosition(12, 10))))
-    (roster.reserved, roster.rallyFor(1)) mustEqual (Set(3, 4), None)
+    (roster.reserved, roster.rallyFor(1)) === (Set(3, 4), None)
   }
   def bunkerRepairLifecycle = {
     import BunkerRepairState._
     (BunkerRepairState(true, true, true, false), BunkerRepairState(true, true, false, false),
       BunkerRepairState(true, false, true, false), BunkerRepairState(false, true, false, false),
-      BunkerRepairState(false, false, true, false), BunkerRepairState(true, true, true, true)) mustEqual
+      BunkerRepairState(false, false, true, false), BunkerRepairState(true, true, true, true)) ===
       (Repairing, Finished, Finished, Failed, Failed, Failed)
   }
   def producerFundingLifecycle = {
@@ -536,7 +537,7 @@ class TerranCampaignTest extends Specification {
       override protected def mobileCost[T <: Mobile](kind: Class[_ <: T], priority: Priority) =
         ResourceRequests(Seq(MineralsRequest(50), SupplyRequest(2)), priority, kind)
       override protected def mobileRequest[T <: Mobile](kind: Class[_ <: T], proof: ResourceApprovalSuccess, priority: Priority) = {
-        val request = BuildUnitRequest[Mobile](universe, kind, 1, proof, priority, AlternativeBuildingSpot.useDefault)
+        val request = BuildUnitRequest[Mobile](this.universe, kind, 1, proof, priority, AlternativeBuildingSpot.useDefault)
         request.persistant_!()
         UnitJobRequest[Mobile](request, owner, priority)
       }
@@ -549,7 +550,7 @@ class TerranCampaignTest extends Specification {
     producer = "completed"
     val admitted = module.requestUnit(classOf[Marine], takeCareOfDependencies = false)
     (jobbed.forall(!_), incomplete.forall(!_), afterJobbed, afterIncomplete,
-      admitted, pending.size, holders.size, locks.values.map(_.minerals).sum, locks.values.map(_.supply).sum) mustEqual
+      admitted, pending.size, holders.size, locks.values.map(_.minerals).sum, locks.values.map(_.supply).sum) ===
       (true, true, (0, 0, 0), (0, 0, 0), true, 1, 1, 50, 2)
   }
   def bunkerWorkerApproaches = {
@@ -560,7 +561,7 @@ class TerranCampaignTest extends Specification {
     val onlyRemoteBunker = Area(MapTilePosition(25, 12), Size(3, 2))
     (tiles.contains(MapTilePosition(17, 10)), depot.outline.forall(tiles.contains),
       points.forall(BunkerCoverage.covers(onlyRemoteBunker, _, 192)),
-      BunkerCoverage.workerTiles(Seq(patch), Nil, Nil).contains(MapTilePosition(17, 10))) mustEqual
+      BunkerCoverage.workerTiles(Seq(patch), Nil, Nil).contains(MapTilePosition(17, 10))) ===
       (true, true, false, false)
   }
   def bunkerSolvedRoutes = {
@@ -571,7 +572,7 @@ class TerranCampaignTest extends Specification {
     val tiles = BunkerCoverage.workerTiles(Nil, Nil, Seq(detour))
     grid.block_!(Area(MapTilePosition(18, 15), Size(1, 9)))
     (detour.head, detour.last, tiles.exists(_.y >= 15),
-      BunkerWorkerRoutes.between(from, to, grid)) mustEqual (from, to, true, None)
+      BunkerWorkerRoutes.between(from, to, grid)) === (from, to, true, None)
   }
   def bunkerJointFootprints = {
     val corridor = new Grid2D(16, 10, collection.immutable.BitSet.empty).mutableCopy
@@ -580,7 +581,7 @@ class TerranCampaignTest extends Specification {
     val a = Area(MapTilePosition(6, 3), Size(3, 2))
     val b = Area(MapTilePosition(6, 5), Size(3, 2))
     (BunkerSitePlacement.permitted(a, corridor), BunkerSitePlacement.permitted(b, corridor),
-      BunkerSitePlacement.permittedTogether(Seq(a, b), corridor)) mustEqual (true, true, false)
+      BunkerSitePlacement.permittedTogether(Seq(a, b), corridor)) === (true, true, false)
   }
   def obsoleteBunkerCargo = {
     val garrison = new BunkerGarrison
@@ -596,7 +597,7 @@ class TerranCampaignTest extends Specification {
     garrison.update(Seq((200, expansion, active), (201, MapTilePosition(34, 30), Set.empty[Int])),
       (active ++ fresh).toVector.map(_ -> expansion))
     (missing, obsolete.exists(garrison.reserved), fresh.forall(id => garrison.target(id).contains(201)),
-      BunkerMarineQuota.missing(8, obsolete ++ active ++ fresh, Set.empty, 0, Nil, obsoleteCargo = obsolete)) mustEqual
+      BunkerMarineQuota.missing(8, obsolete ++ active ++ fresh, Set.empty, 0, Nil, obsoleteCargo = obsolete)) ===
       (4, false, true, 0)
   }
   def cancelledConstruction = {
@@ -628,7 +629,7 @@ class TerranCampaignTest extends Specification {
     computation.afterComputation()
     val noJobs = computation.jobs.isEmpty
     request.dispose()
-    (noJobs, computation.jobs.isEmpty, created, released, locked) mustEqual (true, true, 0, 1, false)
+    (noJobs, computation.jobs.isEmpty, created, released, locked) === (true, true, 0, 1, false)
   }
   def backgroundPlacementRefusal = {
     import scala.concurrent.{Await, Future}
@@ -667,7 +668,7 @@ class TerranCampaignTest extends Specification {
       input.toString -> module.evaluateNextOrders(input)
     }(scala.concurrent.ExecutionContext.Implicits.global), 5.seconds)
     result.afterComputation(); request.dispose()
-    (diagnostic, result.jobs.isEmpty, released) mustEqual
+    (diagnostic, result.jobs.isEmpty, released) ===
       ("ConstructionData(worker=274, building=Bunker, home=(64,118))", true, 1)
   }
 }

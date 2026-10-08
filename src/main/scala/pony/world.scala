@@ -97,8 +97,8 @@ class DefaultWorld(game: Game) extends WorldListener with WorldEventDispatcher {
   }
 
   def tick(): Unit = {
-    myUniverse.ownUnits.dead_!(removeQueueOwn)
-    myUniverse.enemyUnits.dead_!(removeQueueEnemy)
+    myUniverse.ownUnits.dead_!(removeQueueOwn.toSeq)
+    myUniverse.enemyUnits.dead_!(removeQueueEnemy.toSeq)
     removeQueueOwn.clear()
     removeQueueEnemy.clear()
     myUniverse.ownUnits.tick()
@@ -179,14 +179,14 @@ class Debugger(game: Game, world: DefaultWorld) {
 object OnKillListener {
   def on[T <: WrapsUnit, X](unit: T, doThis: () => X) = new OnKillListener[T](unit) {
     override def onKill(t: T): Unit = {
-      assert(t == unit)
+      assert(t == this.unit)
       doThis()
     }
   }
 }
 
 abstract class OnKillListener[T <: WrapsUnit](val unit: T) {
-  def onKill(t: T)
+  def onKill(t: T): Unit
 
   def onKillUnTyped(t: WrapsUnit) = {
     assert(unit == t)
@@ -307,7 +307,7 @@ class Units(game: Game, hostile: Boolean, override val universe: Universe) exten
   def geysirs = allByType[Geysir]
 
   def allByType[T <: WrapsUnit : Manifest] = {
-    val lookFor = manifest[T].runtimeClass.asInstanceOf[Class[T]]
+    val lookFor = implicitly[Manifest[T]].runtimeClass.asInstanceOf[Class[T]]
     allByClass(lookFor)
   }
 

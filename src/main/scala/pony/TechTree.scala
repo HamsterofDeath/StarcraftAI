@@ -130,7 +130,7 @@ sealed trait SCRace {
   def isProtoss = false
   assert(isTerran ^ isZerg ^ isProtoss)
 
-  val techTree: TechTree
+  def techTree: TechTree
   def specialize[T](unitType: Class[_ <: T]) = {
     (if (classOf[WorkerUnit] >= unitType) {
       workerClass

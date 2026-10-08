@@ -813,7 +813,8 @@ trait CanDie extends WrapsUnit with CanBeUnderStorm {
 
   private val myAttackedByCloaked = oncePerTick {
     surroundings.closeEnemyUnits.exists {
-      case cw: Weapon with CanCloak =>
+      case cw0: Weapon if cw0.isInstanceOf[CanCloak] =>
+        val cw = cw0.asInstanceOf[Weapon & CanCloak]
         cw.isCloaked &&
         !cw.isExposed &&
         !cw.isHarmlessNow &&
@@ -880,7 +881,7 @@ trait CanDie extends WrapsUnit with CanBeUnderStorm {
 
 object Price {
   val zero = Price(0, 0)
-  implicit val ord = Ordering.fromLessThan[Price](_ < _)
+  implicit val ord: Ordering[Price] = Ordering.fromLessThan[Price](_ < _)
 }
 
 case class Price(minerals: Int, gas: Int) {
@@ -1494,9 +1495,9 @@ trait UpgradeLimitLifter extends Building
 
 trait SupportUnit extends Mobile {
   private val myNearestAlliesWithWeapons = oncePer(Primes.prime47) {
-    ownUnits.allMobilesWithWeapons.toArray.sortBy { other =>
+    ownUnits.allMobilesWithWeapons.iterator.toVector.sortBy { other =>
       other.centerTile.distanceSquaredTo(centerTile)
-    }.toVector
+    }
   }
 
   def nearestAllies = myNearestAlliesWithWeapons.get
@@ -1759,14 +1760,14 @@ case object OwnUnits extends CastOn
 case object EnemyUnits extends CastOn
 
 abstract class SingleTargetSpell[C <: HasSingleTargetSpells, M <: Mobile : Manifest]
-(val tech: Upgrade with SingleTargetMagicSpell) {
+(val tech: Upgrade & SingleTargetMagicSpell) {
   val castRange       = 300
   val castRangeSquare = castRange * castRange
 
   private val targetClass = tech.canCastOn
 
-  assert(targetClass >= manifest[M].runtimeClass,
-    s"$targetClass vs ${manifest[M].runtimeClass}")
+  assert(targetClass >= implicitly[Manifest[M]].runtimeClass,
+    s"$targetClass vs ${implicitly[Manifest[M]].runtimeClass}")
 
   def castOn: CastOn = EnemyUnits
 
@@ -2233,7 +2234,7 @@ trait Geysir extends Resource with BlockingTiles with CanMorph
 object UnitWrapper {
 
   private def lift[T <: WrapsUnit : Manifest] = {
-    val c = manifest[T].runtimeClass.asInstanceOf[Class[_ <: T]]
+    val c = implicitly[Manifest[T]].runtimeClass.asInstanceOf[Class[_ <: T]]
     val constructor = c.getConstructor(classOf[APIUnit])
 
     ((anyUnit: APIUnit) => constructor.newInstance(anyUnit)) -> c

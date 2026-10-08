@@ -145,12 +145,11 @@ object MapTilePosition {
 case class Size(x: Int, y: Int) extends HasXY {
   def growBy(i: Int) = Size.shared(x + i, y + i)
 
-  def points: Traversable[MapTilePosition] = new Traversable[MapTilePosition] {
-    override def foreach[U](f: (MapTilePosition) => U): Unit = {
-      for (x <- 0 until x; y <- 0 until y) {
-        f(MapTilePosition.shared(x, y))
+  def points: Iterable[MapTilePosition] = new Iterable[MapTilePosition] {
+    override def iterator: Iterator[MapTilePosition] =
+      (0 until x).iterator.flatMap { px =>
+        (0 until y).iterator.map { py => MapTilePosition.shared(px, py) }
       }
-    }
   }
 }
 
@@ -224,17 +223,18 @@ case class Area(upperLeft: MapTilePosition, sizeOfArea: Size) {
 
   }
 
-  def outline: Traversable[MapTilePosition] = {
-    new Traversable[MapTilePosition] {
-      override def foreach[U](f: (MapTilePosition) => U): Unit = {
-        (0 until sizeOfArea.x).foreach { x =>
-          f(MapTilePosition.shared(upperLeft.x + x, upperLeft.y))
-          f(MapTilePosition.shared(upperLeft.x + x, upperLeft.y + sizeOfArea.y))
+  def outline: Iterable[MapTilePosition] = {
+    new Iterable[MapTilePosition] {
+      override def iterator: Iterator[MapTilePosition] = {
+        val topAndBottom = (0 until sizeOfArea.x).iterator.flatMap { x =>
+          Iterator(MapTilePosition.shared(upperLeft.x + x, upperLeft.y),
+            MapTilePosition.shared(upperLeft.x + x, upperLeft.y + sizeOfArea.y))
         }
-        (1 until sizeOfArea.y - 1).foreach { y =>
-          f(MapTilePosition.shared(upperLeft.x, upperLeft.y + y))
-          f(MapTilePosition.shared(upperLeft.x + sizeOfArea.x, upperLeft.y + y))
+        val sides = (1 until sizeOfArea.y - 1).iterator.flatMap { y =>
+          Iterator(MapTilePosition.shared(upperLeft.x, upperLeft.y + y),
+            MapTilePosition.shared(upperLeft.x + sizeOfArea.x, upperLeft.y + y))
         }
+        topAndBottom ++ sides
       }
 
       override def isEmpty = false
@@ -247,10 +247,9 @@ case class Area(upperLeft: MapTilePosition, sizeOfArea: Size) {
   def closestDirectConnection(elem: StaticallyPositioned): Line =
     closestDirectConnection(elem.area)
 
-  def tiles: Traversable[MapTilePosition] = new Traversable[MapTilePosition] {
-    override def foreach[U](f: (MapTilePosition) => U): Unit = {
-      sizeOfArea.points.map { p => f(p.movedBy(upperLeft)) }
-    }
+  def tiles: Iterable[MapTilePosition] = new Iterable[MapTilePosition] {
+    override def iterator: Iterator[MapTilePosition] =
+      sizeOfArea.points.iterator.map(_.movedBy(upperLeft))
   }
 
   def describe = s"$upperLeft/$lowerRight"
@@ -299,12 +298,11 @@ class GeometryHelpers(maxX: Int, maxY: Int) {
   }
 
   def blockSpiralClockWise(origin: MapTilePosition,
-                           blockSize: Int = 45): Traversable[MapTilePosition] = new
-      Traversable[MapTilePosition] {
-    override def foreach[U](f: (MapTilePosition) => U): Unit = {
+                           blockSize: Int = 45): Iterable[MapTilePosition] = new
+      Iterable[MapTilePosition] {
+    override def iterator: Iterator[MapTilePosition] =
       iterateBlockSpiralClockWise(origin, blockSize)
-      .foreach(e => f(MapTilePosition.shared(e.x, e.y)))
-    }
+      .map(e => MapTilePosition.shared(e.x, e.y))
   }
 
   def iterateBlockSpiralClockWise(origin: MapTilePosition, blockSize: Int = 45) = {

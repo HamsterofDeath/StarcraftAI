@@ -53,7 +53,7 @@ trait HasUniverse extends HasLazyVals {
     }
   }
 
-  protected implicit def implicitUniverse = universe
+  protected implicit def implicitUniverse: Universe = universe
 
 }
 
@@ -162,7 +162,7 @@ object BackgroundComputationResult {
 
     override def repeatOrderIssue = checkValidityNow()
 
-    override def afterComputation() = afterComputationDone(jobs)
+    override def afterComputation() = afterComputationDone(executed)
 
     override def orders = jobs.flatMap(_.ordersForThisTick)
   }
@@ -370,7 +370,7 @@ class TwilightSparkle(world: DefaultWorld) {
     new ProvideExpansions(universe),
     new JobReAssignments(universe),
     new SendOrdersToStarcraft(universe),
-    AIModule.noop(universe)
+    AIModule.noop[WrapsUnit](universe)
   )
 
   private val forces = {
@@ -404,7 +404,7 @@ class TwilightSparkle(world: DefaultWorld) {
   def plugins = aiModules
 
   def pluginByType[T <: AIModule[_] : Manifest] = {
-    val c = manifest[T].runtimeClass
+    val c = implicitly[Manifest[T]].runtimeClass
     aiModules.find(e => c >= e.getClass).get.asInstanceOf[T]
   }
 

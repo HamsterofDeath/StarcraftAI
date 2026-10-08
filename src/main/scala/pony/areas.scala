@@ -36,8 +36,8 @@ case class ResourceArea(patches: Option[MineralPatchGroup], geysirs: Set[Geysir]
 
   def mineralsAndGas = resourceUnits.iterator.map(_.remaining).sum
 
-  val allPatchTiles  = patches.map(_.allTiles).getOrElse(Nil).toVector
-  val allGeysirTiles = geysirs.flatMap(_.area.tiles).toVector
+  val allPatchTiles: Vector[MapTilePosition]  = patches.iterator.flatMap(_.allTiles).toVector
+  val allGeysirTiles: Vector[MapTilePosition] = geysirs.flatMap(_.area.tiles).toVector
 
   def isPatchId(id: Int) = patches.fold(false)(_.patchId == id)
 
@@ -83,7 +83,7 @@ class StrategicMap(val resources: Seq[ResourceArea], walkable: Grid2D, game: Gam
     info(s"Calculating narrow passages...")
     val tooMany = {
       val lines = tryCutters(8).map { e => e.split }
-      walkable.allFree.toVector.par.flatMap { freeSpot =>
+      walkable.allFree.toVector.flatMap { freeSpot =>
         lines.map { case (l, r) => l.movedBy(freeSpot) -> r.movedBy(freeSpot) }
         .filter { case (left, right) =>
           walkable.anyBlockedOnLine(left) &&
@@ -128,11 +128,10 @@ class StrategicMap(val resources: Seq[ResourceArea], walkable: Grid2D, game: Gam
         }
         area -> relevantResources
       }
-      .par
       .flatMap { case (area, relevantResources) =>
 
         val freeSpotsToCheck = area.allFree.toVector
-        freeSpotsToCheck.par.flatMap { center =>
+        freeSpotsToCheck.flatMap { center =>
           checked += 1
           if (checked % tilesPerChunk == 0) {
             print(".")

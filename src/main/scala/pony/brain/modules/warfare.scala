@@ -328,7 +328,7 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
       .findPaths(currentCenter, targetOfAttack.where)
     }
 
-    private val migration = pathToFollow.map(_.map(_.toMigration))
+    private val migration = pathToFollow.map(_.map(_.toMigration(universe)))
 
     private val myTargetReachedPercentage = oncePer(Primes.prime11) {
       val reachedTargetPoint = migration.result.map { migration =>
@@ -442,7 +442,7 @@ object GroupingHelper {
 }
 
 class GroupingHelper[T <: WrapsUnit](val map: Grid2D, seq: TraversableOnce[T], source: AllUnits) {
-  private val immutable = seq.map { u => u.nativeUnitId -> u.centerTile }.toVector
+  private val immutable: Vector[(Int, MapTilePosition)] = seq.iterator.map { u => (u.nativeUnitId, u.centerTile) }.toVector
 
   /**
     * can/should be run asynchronously
@@ -1070,8 +1070,7 @@ class EnqueueArmy(universe: Universe)
       existingRatio / idealRatio
     }
     val needsSomething = {
-      val (_, later) = mostMissing.partition
-      { case (c, _) => universe.unitManager.allRequirementsFulfilled(c) }
+    val (_, later) = mostMissing.partition { case (c, _) => universe.unitManager.allRequirementsFulfilled(c) }
       later.toSet
     }
 
@@ -1403,10 +1402,10 @@ object Strategy {
 
     override def name = "Heavy air"
 
-    override def suggestUnits: List[IdealUnitRatio[Nothing]] = {
+    override def suggestUnits: List[IdealUnitRatio[_ <: Mobile]] = {
       IdealUnitRatio(classOf[ScienceVessel], 3)(timingHelpers.phase.isAnyTime) ::
       IdealUnitRatio(classOf[Battlecruiser], 10)(timingHelpers.phase.isAnyTime) ::
-      super.suggestUnits
+      super.suggestUnits.toList
     }
 
     override def determineScore: Int = {
@@ -1419,7 +1418,7 @@ object Strategy {
       UpgradeToResearch(Upgrades.Terran.EMP)(timingHelpers.phase.isAnyTime) ::
       UpgradeToResearch(Upgrades.Terran.ShipWeapons)(timingHelpers.phase.isAnyTime) ::
       UpgradeToResearch(Upgrades.Terran.ShipArmor)(timingHelpers.phase.isAnyTime) ::
-      super.suggestUpgrades
+      super.suggestUpgrades.toList
 
   }
 

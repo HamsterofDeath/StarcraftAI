@@ -182,9 +182,8 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
           } else {
             val ok = requiredToFree.nonEmpty
             if (ok) {
-              trace(s"Unlocking a bunch of resources ${
-                requiredToFree.map(_._2).mkString(", ")
-              } to satisfy $requests of $employer")
+              val unlockedNames = requiredToFree.map(_._2).mkString(", ")
+              trace(s"Unlocking a bunch of resources $unlockedNames to satisfy $requests of $employer")
               requiredToFree.foreach { case (j, unlockable) =>
                 val before = detailedLocks.count(_ == unlockable)
                 j.notifyResourcesDisapproved_!()
@@ -255,7 +254,7 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
 
   def plannedSuppliesToAdd = {
     unitManager
-    .selectJobs((e: ConstructBuilding[WorkerUnit, Building]) => e.typeOfBuilding ==
+    .selectJobs[WorkerUnit, ConstructBuilding[WorkerUnit, Building]]((e: ConstructBuilding[WorkerUnit, Building]) => e.typeOfBuilding ==
                                                                 unitManager.race.supplyClass)
   }
 
@@ -417,7 +416,7 @@ case class MinsGas(mins: Int, gas: Int)
 
 object ResourceRequestSum {
   val empty = ResourceRequestSum(0, 0, 0)
-  implicit val ord = Ordering.by[ResourceRequestSum, Int](_.mineralGasSum)
+  implicit val ord: Ordering[ResourceRequestSum] = Ordering.by[ResourceRequestSum, Int](_.mineralGasSum)
 }
 
 

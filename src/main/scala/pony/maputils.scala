@@ -26,8 +26,7 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
         containsBlocked)
 
   def areasIntersecting(area: Area): Set[Grid2D] = {
-    import scala.collection.breakOut
-    area.tiles.flatMap(areaOf)(breakOut)
+    area.tiles.iterator.flatMap(areaOf).toSet
   }
 
   def areaOf(tile: MapTilePosition) = areas.find(e => e.inBounds(tile) && e.free(tile))
@@ -167,11 +166,11 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
   def mkString: String = mkString('x')
 
   def mkString(blockedDisplay: Char) = {
-    0 until rows map { y =>
-      0 until cols map { x =>
+    (0 until rows).map { y =>
+      (0 until cols).map { x =>
         if (free(x, y)) " " else blockedDisplay
-      } mkString
-    } mkString "\n"
+      }.mkString
+    }.mkString("\n")
 
   }
 
