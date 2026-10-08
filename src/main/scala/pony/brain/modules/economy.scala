@@ -13,6 +13,8 @@ class ProvideNewBuildings(universe: Universe)
   self =>
 
   override type ComputationInput = Data
+  protected def constructionSite(in: Data): Option[MapTilePosition] =
+    in.jobRequest.customPosition.resolve(in.helper.findSpotFor(in.mainBuildingwhere, in.buildingType))
 
   override def evaluateNextOrders(in: ComputationInput) = {
     val helper = in.helper
@@ -22,8 +24,7 @@ class ProvideNewBuildings(universe: Universe)
           in.jobRequest.proofForFunding.assumeSuccessful,
           in.jobRequest.belongsTo)
 
-      val customPosition = in.jobRequest.customPosition.resolve(
-        helper.findSpotFor(in.mainBuildingwhere, in.buildingType))
+      val customPosition = constructionSite(in)
 
       customPosition
       .foreach(e => assert(mapLayers.rawWalkableMap.insideBounds(e), s"$e was not inside map :("))
@@ -93,17 +94,18 @@ class ProvideNewBuildings(universe: Universe)
           req.customPosition.init_!()
           val randomWorker = success.onlyOne
           new Data(randomWorker, req.typeOfRequestedUnit,
-            unitManager.bases.mainBase.getOr("All your base are belong to us"),
+            unitManager.bases.mainBase.getOr("All your base are belong to us").mainBuilding.tilePosition,
             new ConstructionSiteFinder(universe), req).toSome
         case _ => None
       }
     }
   }
 
-  case class Data(worker: WorkerUnit, buildingType: Class[_ <: Building], base: Base,
+  case class Data(worker: WorkerUnit, buildingType: Class[_ <: Building], mainBuildingwhere: MapTilePosition,
                   helper: ConstructionSiteFinder,
                   jobRequest: BuildUnitRequest[Building]) {
-    val mainBuildingwhere = base.mainBuilding.tilePosition
+    private val workerId = worker.nativeUnitId
+    override def toString = s"ConstructionData(worker=$workerId, building=${buildingType.className}, home=$mainBuildingwhere)"
   }
 
 }

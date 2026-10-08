@@ -56,6 +56,7 @@ class TerranCampaignTest extends Specification {
     Individually admissible bunker sites cannot jointly close a worker corridor $bunkerJointFootprints
     Obsolete loaded home crews cannot fill or suppress active expansion seats $obsoleteBunkerCargo
     Cancelled funded construction is disposed once and its in-flight factory never starts $cancelledConstruction
+    A real background placement refusal logs immutable data without reading live worker caches $backgroundPlacementRefusal
   """
   private def building(id: Int, x: Int, base: Boolean = true) =
     ObservedEnemyBuilding(id, MapTilePosition(x, 20), 4, 3, base)
@@ -604,5 +605,45 @@ class TerranCampaignTest extends Specification {
     val noJobs = computation.jobs.isEmpty
     request.dispose()
     (noJobs, computation.jobs.isEmpty, created, released, locked) mustEqual (true, true, 0, 1, false)
+  }
+  def backgroundPlacementRefusal = {
+    import scala.concurrent.{Await, Future}
+    import scala.concurrent.duration._
+    var ledger: ResourceManager = null
+    val universe = Proxy.newProxyInstance(classOf[Universe].getClassLoader, Array[Class[_]](classOf[Universe]),
+      new InvocationHandler {
+        override def invoke(proxy: AnyRef, method: Method, arguments: Array[AnyRef]): AnyRef = method.getName match {
+          case "register_$bang" => null
+          case "resources" => ledger
+          case other => throw new IllegalStateException("Unexpected native dependency: " + other)
+        }
+      }).asInstanceOf[Universe]
+    var released = 0
+    ledger = new ResourceManager(universe) {
+      override def informUsage[T <: WrapsUnit](proof: ResourceApproval, owner: HasFunding): Unit = {}
+      override def unlock_!(proof: ResourceApprovalSuccess): Unit = { released += 1 }
+    }
+    val nativeThread = Thread.currentThread()
+    val worker = Proxy.newProxyInstance(classOf[WorkerUnit].getClassLoader, Array[Class[_]](classOf[WorkerUnit]),
+      new InvocationHandler {
+        override def invoke(proxy: AnyRef, method: Method, arguments: Array[AnyRef]): AnyRef = method.getName match {
+          case "nativeUnitId" => require(Thread.currentThread() == nativeThread); Int.box(274)
+          case "toString" => throw new AssertionError("A worker diagnostic would read thread-bound currentTile")
+          case other => throw new IllegalStateException("Unexpected worker access: " + other)
+        }
+      }).asInstanceOf[WorkerUnit]
+    val module = new ProvideNewBuildings(universe) {
+      override protected def constructionSite(in: Data) = None
+    }
+    val request = BuildUnitRequest[Building](universe, classOf[Bunker], 1,
+      ResourceApprovalSuccess(100, 0, 0, ResourceApprovalId(2)), Priority.Default, AlternativeBuildingSpot.useDefault)
+    request.persistant_!()
+    val input = new module.Data(worker, classOf[Bunker], MapTilePosition(64, 118), null, request)
+    val (diagnostic, result) = Await.result(Future {
+      input.toString -> module.evaluateNextOrders(input)
+    }(scala.concurrent.ExecutionContext.Implicits.global), 5.seconds)
+    result.afterComputation(); request.dispose()
+    (diagnostic, result.jobs.isEmpty, released) mustEqual
+      ("ConstructionData(worker=274, building=Bunker, home=(64,118))", true, 1)
   }
 }
