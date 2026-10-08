@@ -16,7 +16,10 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
   private var probed = false
   private var reportedSealFailure = false
   private var lastWallAttempt = -1
+  private var gateOpened = false
+  private var gateDepotIds = Set.empty[Int]
   private val repairers = new Employer[SCV](universe)
+  private val demolishers = new Employer[MobileRangeWeapon](universe)
 
   private def active = race.isTerran && (strategy.current match {
     case s: Strategy.SimpleTerran => s.usesWallDefense
@@ -33,9 +36,36 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
   /** True once planning concluded that no depot wall can seal the main approach. */
   def refused: Boolean = refusedPlanning
 
+  /** True once the wall was deliberately opened so the army can leave the base. */
+  def gateOpen: Boolean = gateOpened
+
+  /** Knock down the depot (or pair) whose removal actually opens a walkable way out. */
+  def openGate_!(): Unit = {
+    if (!gateOpened) {
+      gateOpened = true
+      gateDepotIds = openDepots
+      NativeMatchEvidence.trace("wall-gate-open",
+        s"depots=${if (gateDepotIds.isEmpty) "-" else gateDepotIds.mkString(",")}")
+    }
+  }
+
+  private def openDepots: Set[Int] = anchors.flatMap { wall =>
+    bases.mainBase.flatMap { home =>
+      def alive(a: MapTilePosition) = ownUnits.allByType[SupplyDepot]
+        .find(d => d.isInGame && !d.isBeingCreated && d.tilePosition == a)
+      val singles = wall.iterator.filter { a =>
+        alive(a).isDefined && breachPath(home, wall.filterNot(_ == a)).isDefined
+      }.take(1).map(a => Set(a)).toList
+      val pairs = if (singles.nonEmpty) Nil else wall.combinations(2).filter { pair =>
+        pair.forall(a => alive(a).isDefined) && breachPath(home, wall.filterNot(pair.contains)).isDefined
+      }.take(1).toList.map(_.toSet)
+      (singles ++ pairs).headOption.map(_.flatMap(a => alive(a).map(_.nativeUnitId)))
+    }
+  }.getOrElse(Set.empty)
+
   /** While the wall is incomplete, the economy's next supply depot should be a wall depot. */
   def nextSupplySpot: Option[MapTilePosition] = {
-    if (refusedPlanning) None
+    if (refusedPlanning || gateOpened) None
     else anchors.flatMap { wall =>
       val existing = ownUnits.allByType[SupplyDepot].filter(_.isInGame).map(_.tilePosition).toSet
       val pending = (unitManager.requestedConstructions[SupplyDepot].flatMap(_.customPosition.requestedPosition) ++
@@ -289,6 +319,7 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
           ownUnits.allByType[SupplyDepot].find(d =>
             d.isInGame && !d.isFloating && d.tilePosition == a)
         }.filter(d => d.nativeUnit.getHitPoints < d.nativeUnit.getType.maxHitPoints)
+         .filterNot(d => gateOpened && gateDepotIds.contains(d.nativeUnitId))
         damagedWall.foreach { d =>
           val assigned = unitManager.allJobsByType[RepairWallDepot].count(j =>
             j.targetId == d.nativeUnitId && !j.failedOrObsolete && !j.isFinished)
@@ -309,8 +340,34 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
             }
           }
         }
+        if (gateOpened && gateDepotIds.nonEmpty) {
+          ownUnits.allByType[SupplyDepot]
+            .filter(d => d.isInGame && !d.isBeingCreated && gateDepotIds.contains(d.nativeUnitId))
+            .foreach { depot =>
+              val assigned = unitManager.allJobsByType[DemolishWallDepot]
+                .count(j => j.targetId == depot.nativeUnitId && !j.failedOrObsolete && !j.isFinished)
+              if (assigned < 3) makeDemolishers(depot, 3 - assigned)
+            }
+        }
       }
     }
+  }
+
+  private def makeDemolishers(depot: SupplyDepot, missing: Int): Unit = {
+    def ask[T <: MobileRangeWeapon : Manifest](cls: Class[T]): Unit = {
+      val request = UnitJobRequest.idleOfType(demolishers, cls, missing, Priority.Supply)
+        .withOnlyAccepting { w =>
+          val job = unitManager.jobOf(w)
+          job.isIdle || job.isInstanceOf[GatherMineralsAtSinglePatch]
+        }
+      unitManager.request(request, buildIfNoneAvailable = false).units.foreach { w =>
+        demolishers.assignJob_!(new DemolishWallDepot(w, depot, demolishers))
+        NativeMatchEvidence.trace("wall-gate-demolish",
+          s"depot=${depot.nativeUnitId} unit=${w.nativeUnitId} hp=${depot.nativeUnit.getHitPoints}")
+      }
+    }
+    if (ownUnits.allByType[Tank].exists(t => t.isInGame && !t.isBeingCreated)) ask(classOf[Tank])
+    else if (ownUnits.allByType[Vulture].exists(v => v.isInGame && !v.isBeingCreated)) ask(classOf[Vulture])
   }
 }
 
@@ -333,5 +390,17 @@ private[pony] class RepairWallDepot(worker: SCV, depot: SupplyDepot, owner: Empl
   override def jobHasFailedWithoutDeath = state == WallRepairState.Failed
   override def everyNth = 23
   override def ordersForTick = Orders.RepairBuilding(worker, depot).toSeq
+  def targetId = depot.nativeUnitId
+}
+
+/** One unit shells the chosen wall depot until the way out is open. */
+private[pony] class DemolishWallDepot(attacker: MobileRangeWeapon, depot: SupplyDepot,
+                                      owner: Employer[MobileRangeWeapon])
+  extends UnitWithJob[MobileRangeWeapon](owner, attacker, Priority.Supply) with Interruptable[MobileRangeWeapon] {
+  override def shortDebugString = s"Open the wall at depot ${depot.nativeUnitId}"
+  override def isFinished = !depot.nativeUnit.exists || depot.isDead
+  override def jobHasFailedWithoutDeath = !attacker.nativeUnit.exists || attacker.isDead
+  override def everyNth = 23
+  override def ordersForTick = Orders.AttackUnit(attacker, depot).toSeq
   def targetId = depot.nativeUnitId
 }

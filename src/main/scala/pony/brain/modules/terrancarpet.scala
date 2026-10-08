@@ -20,6 +20,8 @@ private[pony] object CarpetQuotas {
   /** Only spend on boxes once this many minerals are unlocked. */
   def tankBoxMinMinerals: Int = intProp("twailight.carpetBoxMinMinerals", 600)
   def tankBoxMaxDepots: Int = intProp("twailight.carpetBoxMaxDepots", 8)
+  /** Open the wall once this many fighters exist and the second base stands. */
+  def gateFighters: Int = intProp("twailight.carpetGateFighters", 12)
 }
 
 /** Pure farthest-point ordering so the carpet posts spread evenly over the map. */
@@ -84,6 +86,14 @@ class CarpetSpread(universe: Universe) extends OrderlessAIModule[Mobile](univers
 
   override def onTick_!(): Unit = {
     if (!carpet || currentTick < 31 || currentTick % Primes.prime31.i != 0) return
+    // The wall protects the opening; once a real army stands on a second base it becomes the
+    // defense, and one depot is demolished so the army can reach its map-wide posts.
+    if (wall.complete && !wall.gateOpen) {
+      val operational = universe.pluginByType[ManageMiningAtBases].secondBaseEstablished
+      val army = ownUnits.allMobilesWithWeapons.count(m => m.isInGame && !m.isBeingCreated &&
+        m.isFigher && !m.isInstanceOf[WorkerUnit])
+      if (operational && army >= CarpetQuotas.gateFighters) wall.openGate_!()
+    }
     val posts = plannedPosts.get
     if (posts.nonEmpty && !reportedPosts) {
       NativeMatchEvidence.trace("carpet-posts", s"posts=${posts.size} at=${posts.mkString(",")}")
@@ -184,7 +194,7 @@ class TankBoxes(universe: Universe) extends OrderlessAIModule[WorkerUnit](univer
 
   override def onTick_!(): Unit = {
     if (!CarpetQuotas.tankBoxesEnabled || !carpet || currentTick < 31 || currentTick % Primes.prime31.i != 0) return
-    if (!(wall.complete || wall.refused)) return
+    if (!(wall.complete || wall.refused || wall.gateOpen)) return
     activeBox match {
       case Some((tankId, anchors)) =>
         val missing = anchors.filterNot(coveredAnchors)
@@ -233,7 +243,7 @@ class FlyFactoriesToNatural(universe: Universe) extends OrderlessAIModule[Factor
     if (!carpet || currentTick < 31 || currentTick % Primes.prime31.i != 0) return
     flight = flight.filterNot(j => j.failedOrObsolete || j.isFinished)
     if (flight.isDefined) return
-    val wallSealed = wall.complete || wall.refused
+    val wallSealed = wall.complete || wall.refused || wall.gateOpen
     val tanks = ownUnits.allByType[Tank].count(t => t.isInGame && !t.isBeingCreated)
     if (!wallSealed || tanks < CarpetQuotas.tanksBeforeFlight) return
     val homeAreaId = bases.mainBase.map(_.mainBuilding.tilePosition)
