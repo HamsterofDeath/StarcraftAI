@@ -72,16 +72,52 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
   private def overlaps(a: MapTilePosition, b: MapTilePosition) =
     (a.x - b.x).abs < 2 && (a.y - b.y).abs < 2
 
-  /** Every corridor tile covered by a depot, and no walkable path from outside to inside remains. */
+  /** Direction of the choke's cut line, used to extend the wall to real terrain barriers. */
+  private def cutDirection(home: Base): Option[(Int, Int)] =
+    strategicMap.defenseLineOf(home).flatMap(_.chokePoint.lines.headOption).map { line =>
+      (Integer.signum(line.absoluteTo.x - line.absoluteFrom.x),
+        Integer.signum(line.absoluteTo.y - line.absoluteFrom.y))
+    }.filterNot(_ == (0, 0))
+
+  private def barrierForGround(t: MapTilePosition) =
+    !mapLayers.rawWalkableMap.insideBounds(t) ||
+      !mapLayers.rawWalkableMap.free(t) || mapLayers.blockedByResources.blocked(t)
+
+  /** Walk from the corridor end along the cut direction until a terrain or resource barrier. */
+  private def extendToBarrier(from: MapTilePosition, dx: Int, dy: Int): Option[Vector[MapTilePosition]] = {
+    val out = mutable.ArrayBuffer.empty[MapTilePosition]
+    var t = from.movedBy(dx, dy)
+    while (out.size < 8 && !barrierForGround(t)) {
+      out += t
+      t = t.movedBy(dx, dy)
+    }
+    Option.when(barrierForGround(t))(out.toVector)
+  }
+
+  /** Span the whole choke: corridor tiles plus both extensions, every tile covered by a depot,
+    * and no walkable path from outside to inside remains. */
   private def computeWall(home: Base): Vector[MapTilePosition] = {
     val corridor = corridorTiles(home)
     if (corridor.isEmpty) { probe("corridor=0"); return Vector.empty }
-    val candidates = corridor.flatMap(placementsCovering).distinct
-    if (candidates.isEmpty) { probe(s"corridor=${corridor.size} candidates=0"); return Vector.empty }
+    val direction = cutDirection(home)
+    if (direction.isEmpty) { probe(s"corridor=${corridor.size} no direction"); return Vector.empty }
+    val (dx, dy) = direction.get
+    def projection(t: MapTilePosition) = t.x * dx + t.y * dy
+    val start = corridor.minBy(projection)
+    val end = corridor.maxBy(projection)
+    val before = extendToBarrier(start, -dx, -dy)
+    val after = extendToBarrier(end, dx, dy)
+    if (before.isEmpty || after.isEmpty) {
+      probe(s"corridor=${corridor.size} extendTooLong start=$start end=$end")
+      return Vector.empty
+    }
+    val span = (before.get ++ corridor ++ after.get).distinct
+    val candidates = span.flatMap(placementsCovering).distinct
+    if (candidates.isEmpty) { probe(s"span=${span.size} candidates=0"); return Vector.empty }
     val covered = mutable.Set.empty[MapTilePosition]
     val chosen = mutable.ArrayBuffer.empty[MapTilePosition]
-    def covers(a: MapTilePosition) = footprint(a).filter(corridor.contains)
-    while (!corridor.forall(covered.contains) && chosen.size <= 8) {
+    def covers(a: MapTilePosition) = footprint(a).filter(span.contains)
+    while (!span.forall(covered.contains) && chosen.size <= 12) {
       val best = candidates.filterNot(chosen.contains)
         .filterNot(a => chosen.exists(b => overlaps(a, b)))
         .maxByOpt(a => covers(a).count(t => !covered.contains(t)))
@@ -90,21 +126,21 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
           chosen += a
           covered ++= covers(a)
         case None =>
-          probe(s"corridor=${corridor.size} candidates=${candidates.size} stuck uncovered=${corridor.count(t => !covered.contains(t))}")
+          probe(s"span=${span.size} candidates=${candidates.size} stuck uncovered=${span.count(t => !covered.contains(t))}")
           return Vector.empty
       }
     }
-    if (!corridor.forall(covered.contains)) {
-      probe(s"corridor=${corridor.size} candidates=${candidates.size} tooWide depots=${chosen.size} uncovered=${corridor.count(t => !covered.contains(t))}")
+    if (!span.forall(covered.contains)) {
+      probe(s"span=${span.size} candidates=${candidates.size} tooWide depots=${chosen.size} uncovered=${span.count(t => !covered.contains(t))}")
       return Vector.empty
     }
 
     // Protoss probes, zealots and dragoons must not slip between or around the depots.
-    // A leak is plugged by extending the wall along the breach path, nearest to the wall first.
+    // A leak is plugged along the breach path, nearest to the wall first.
     var anchors = chosen.toVector
     var attempts = 0
     var breach = breachPath(home, anchors)
-    while (breach.isDefined && attempts < 12 && anchors.size <= 16) {
+    while (breach.isDefined && attempts < 6 && anchors.size <= 20) {
       val path = breach.get
       val pathSet = path.toSet
       val fix = path.flatMap(placementsCovering).distinct
@@ -113,10 +149,10 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
         .map { a =>
           val onPath = footprint(a).count(t => pathSet.contains(t))
           val wallDistance = anchors.map(b => (a.x - b.x).abs.max((a.y - b.y).abs)).min
-          val corridorCover = covers(a).count(corridor.contains)
-          (a, onPath, wallDistance, corridorCover)
+          val spanCover = covers(a).count(span.contains)
+          (a, onPath, wallDistance, spanCover)
         }
-        .sortBy { case (a, onPath, wallDistance, corridorCover) => (-onPath, wallDistance, -corridorCover, a.y, a.x) }
+        .sortBy { case (a, onPath, wallDistance, spanCover) => (-onPath, wallDistance, -spanCover, a.y, a.x) }
         .headOption
       fix match {
         case Some((a, onPath, _, _)) =>
@@ -140,7 +176,7 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
       }
       Vector.empty
     } else {
-      probe(s"corridor=${corridor.size} depots=${anchors.size} sealed=true")
+      probe(s"corridor=${corridor.size} span=${span.size} depots=${anchors.size} sealed=true")
       anchors
     }
   }
@@ -152,6 +188,7 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
       def allowed(t: MapTilePosition): Boolean =
         mapLayers.rawWalkableMap.insideBounds(t) && mapLayers.rawWalkableMap.free(t) &&
           mapLayers.blockedByBuildingTiles.free(t) && mapLayers.blockedByPlannedBuildings.free(t) &&
+          mapLayers.blockedByResources.free(t) &&
           !wallTiles(t)
       val seeds = (mapLayers.rawWalkableMap.spiralAround(front.chokePoint.center, 16) ++
         mapLayers.rawWalkableMap.spiralAround(front.chokePoint.center, 24))
