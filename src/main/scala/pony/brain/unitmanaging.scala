@@ -241,6 +241,9 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
 
     myOwn.foreach(assignJob_!)
     assignments ++= myOwn.map(e => e.unit -> e)
+    if (universe.currentTick < 3000 && universe.currentTick % 24 == 0)
+      NativeMatchEvidence.trace("um-tick",
+        s"known=${universe.ownUnits.allKnownUnits.size} new=${myOwn.size} assigned=${assignments.size} nobody=${assignments.count(_._2.employer == Nobody)}")
 
     val registerUs = universe
                      .ownUnits
@@ -355,6 +358,9 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
           val hr = collectCandidates(req)
           hr match {
             case None =>
+              if (universe.currentTick < 3000)
+                NativeMatchEvidence.trace("hire-none",
+                  s"employer=${req.employer} type=${req.requestedUnitType.getSimpleName} assigned=${assignments.size} nobody=${assignments.count(_._2.employer == Nobody)} idle=${assignments.count(_._2.isIdle)}")
               if (buildIfNoneAvailable) unfulfilledRequestsThisTick += req
               new FailedPreHiringResult[T]
             case Some(team) if !team.complete =>
