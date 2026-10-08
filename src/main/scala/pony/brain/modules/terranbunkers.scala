@@ -40,6 +40,7 @@ private[pony] object BunkerCoverage {
     approximateDistance(center, point) <= range
   }
   private def separate(a: Area, b: Area) = !a.growBy(1).tiles.exists(b.tiles.toSet)
+  private def overlaps(a: Area, b: Area) = a.tiles.exists(b.tiles.toSet)
   def select(points: Vector[MapPosition], candidates: Vector[Area], existing: Vector[Area], range: Int,
              safeTogether: Seq[Area] => Boolean = _ => true,
              relaxedFallback: Boolean = false): Vector[Area] = {
@@ -61,7 +62,12 @@ private[pony] object BunkerCoverage {
           var selected = Vector.empty[Area]
           while (left.nonEmpty) {
             // Preserve the same first admissible ranked site; whole-map connectivity is expensive.
-            val options = ranked.filter(e => selected.forall(separate(e._1, _)))
+            // The relaxed pass only forbids direct footprint overlap; tiles between cramped
+            // mining lanes do not allow the full one-tile buffer on every start.
+            def admissible(c: Area) =
+              if (requireSafety) selected.forall(separate(c, _))
+              else selected.forall(!overlaps(c, _))
+            val options = ranked.filter(e => admissible(e._1))
               .map(e => (e._1, e._2 intersect left)).filter(_._2.nonEmpty)
               .sortBy(e => (-e._2.size, e._1.upperLeft.y, e._1.upperLeft.x))
             val next = if (requireSafety) options.iterator.find(e => safeTogether(selected :+ e._1))

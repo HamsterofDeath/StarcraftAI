@@ -1482,6 +1482,8 @@ object Terran {
               val unit = stillLiving.asInstanceOf[ArmedMobile]
               val actualPlan = new ScoutPlan(unit, resourceAreas)
               scouts.put(unit, actualPlan)
+              NativeMatchEvidence.trace("scout-plan",
+                s"unit=${plan.sc.id} minimal=$minimal start=${plan.startHere} order=${plan.resourceAreaIdsInOrder.mkString(",")}")
             }
           }
           if (plans.nonEmpty) {
