@@ -1399,6 +1399,18 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W,
     Orders.ConstructBuilding(worker, buildingType, buildWhere).toSeq
   }
 
+  override def higherPriorityOrder: Seq[UnitOrder] = {
+    val prior = super.higherPriorityOrder
+    if (prior.nonEmpty) {
+      prior
+    } else if (!startedActualConstruction && worker.onGround && buildWhere.distanceToIsMore(worker.currentTile, 4)) {
+      // Far build sites are refused natively; walk there first.
+      Seq(Orders.MoveToTile(worker, buildWhere).lockingFor_!(24))
+    } else {
+      Nil
+    }
+  }
+
   override def shortDebugString: String = s"Build ${buildingType.className}"
 
   override def proofForFunding = funding
