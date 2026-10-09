@@ -23,6 +23,10 @@ case class TerranCampaignConfig(
     fieldHealthyFraction < 1.0 && maxFields >= requiredFields && fieldGuards >= 0)
   def launch(count: Int, minerals: Int, gas: Int) =
     count >= minFighters && minerals >= armyMinerals && gas >= armyGas
+
+  /** Enough fighters worth the launch total in any mix of minerals and gas: a marine army attacks too. */
+  def pressure(count: Int, minerals: Int, gas: Int) =
+    count >= minFighters && minerals + gas >= armyMinerals + armyGas
   def ready(
       secondBaseOperational: Boolean,
       count: Int,

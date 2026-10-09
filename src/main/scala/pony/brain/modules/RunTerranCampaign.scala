@@ -88,7 +88,7 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
     // a banked reserve, and always when supply is nearly maxed, because nothing more can be built anyway.
     val supplyCapped = nativeGame.self().supplyUsed >= 2 * TerranCampaignConfig.SupplyCappedAt
     operational && !worldDominationPlan.baseDefenseActive &&
-    (launched || overwhelming || supplyCapped || config.launch(troops.size, armyValue, armyGas))
+    (launched || overwhelming || supplyCapped || config.pressure(troops.size, armyValue, armyGas))
   }
 
   def enemyLocated = memory.buildings.nonEmpty

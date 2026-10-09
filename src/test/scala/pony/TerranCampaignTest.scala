@@ -26,6 +26,7 @@ class TerranCampaignTest extends Specification with MustMatchers {
     Partially dead queued groups retain only surviving members $partialGroup
     Singleton scouting terminates and the final unpaired site is still scouted $singletonScout
     Scouting and offense wait for a staffed expansion and both bank thresholds $economicGate
+    Pressure counts the army's minerals and gas together, so marines alone attack $pressureGate
     Starting mineral saturation survives builder departure but resets for a new match $saturation
     Two home depots or old-field cargo cannot establish a second resource field $secondField
     Relocation waits for saturation and queued SCVs then follows native lift and landing $relocation
@@ -210,6 +211,11 @@ class TerranCampaignTest extends Specification with MustMatchers {
     (next(Vector(a), Set.empty), next(Vector(a), Set(a)), next(Vector(a, b), Set(a))) ===
       (List(a), Nil, List(b))
   }
+  def pressureGate = {
+    val c = TerranCampaignConfig()
+    (c.pressure(12, 1800, 0), c.pressure(12, 1500, 299), c.pressure(11, 5000, 5000)) === (true, false, false)
+  }
+
   def economicGate = {
     val c = TerranCampaignConfig()
     (
