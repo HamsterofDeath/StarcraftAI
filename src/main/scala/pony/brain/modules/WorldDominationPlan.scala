@@ -105,6 +105,10 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
           .flatMap(_.complete)
         thinking = false
         planInProgress = BWFuture.none
+        NativeMatchEvidence.trace(
+          "attack-plan",
+          s"frames=${currentTick - thinkingSince} parts=${plan.parts.size} campaign=${plan.parts.exists(_.campaign)}"
+        )
         majorInfo(s"Attack plan finished!")
       }
     }
@@ -169,6 +173,8 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
       IncompleteAttacks(newAttacks)
     }
     thinking = true
+    // the timeout counts from here: a plan started right after another one timed out gets its full time
+    thinkingSince = currentTick
   }
 
   trait Action {
