@@ -14,6 +14,40 @@ object NativeMatchEvidence {
 
   private val refusals = scala.collection.mutable.HashMap.empty[String, Int]
 
+  /**
+    * Traces the terrain around our start as text, one map-row per tile row: '.' walkable and buildable, ',' walkable
+    * only, '~' partly walkable, '#' not walkable, 'm' minerals, 'g' a geyser, 'C' our start command center. Lets a
+    * headless run show why workers cannot reach a site.
+    */
+  def traceStartArea(game: Game, radiusX: Int = 22, radiusY: Int = 16): Unit = {
+    val start   = game.self().getStartLocation
+    val (w, h)  = (game.mapWidth, game.mapHeight)
+    val marks   = scala.collection.mutable.HashMap.empty[(Int, Int), Char]
+    def mark(u: bwapi.Unit, c: Char): Unit = {
+      val t = u.getTilePosition
+      for (dx <- 0 until u.getType.tileWidth; dy <- 0 until u.getType.tileHeight) marks((t.x + dx, t.y + dy)) = c
+    }
+    game.getStaticMinerals.asScala.foreach(mark(_, 'm'))
+    game.getStaticGeysers.asScala.foreach(mark(_, 'g'))
+    for (dx <- 0 until 4; dy <- 0 until 3) marks((start.x + dx, start.y + dy)) = 'C'
+    val x0 = (start.x - radiusX).max(0)
+    val x1 = (start.x + radiusX).min(w - 1)
+    for (y <- (start.y - radiusY).max(0) to (start.y + radiusY).min(h - 1)) {
+      val row = (x0 to x1).map { x =>
+        marks.getOrElse(
+          (x, y), {
+            val walkable = (for (wx <- 0 until 4; wy <- 0 until 4) yield game.isWalkable(x * 4 + wx, y * 4 + wy)).count(identity)
+            if (walkable == 0) '#'
+            else if (walkable < 16) '~'
+            else if (game.isBuildable(x, y)) '.'
+            else ','
+          }
+        )
+      }.mkString
+      trace("map-row", f"y=$y%3d x0=$x0%3d $row")
+    }
+  }
+
   /** Counts refusals of one build; true for the 1st, 10th, 100th, ... so repeated refusals stay readable. */
   def firstRefusals(key: String): Boolean = {
     val n = refusals.getOrElse(key, 0) + 1
