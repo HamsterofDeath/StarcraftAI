@@ -16,16 +16,17 @@ import scala.jdk.CollectionConverters._
 class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](universe) {
   import CruiserTactics._
 
-  private val crew      = new Employer[SCV](universe)
-  private val repairing = mutable.HashSet.empty[Int]
-  private var raiders   = Set.empty[Int]
-  private var target    = Option.empty[MapTilePosition]
-  private val swept     = mutable.HashSet.empty[MapTilePosition]
-  private var myBerth   = Option.empty[MapTilePosition]
-  private var gathering = false
-  private var gatherAt  = 0
-  private var bigGroup  = false
-  private var centre    = Option.empty[MapTilePosition]
+  private val crew       = new Employer[SCV](universe)
+  private val repairing  = mutable.HashSet.empty[Int]
+  private var raiders    = Set.empty[Int]
+  private var target     = Option.empty[MapTilePosition]
+  private val swept      = mutable.HashSet.empty[MapTilePosition]
+  private var myBerth    = Option.empty[MapTilePosition]
+  private var gathering  = false
+  private var gatherAt   = 0
+  private var bigGroup   = false
+  private var centre     = Option.empty[MapTilePosition]
+  private var lastStatus = -1
 
   private def active = race.isTerran && strategy.current.raidsWithCruisers
 
@@ -104,6 +105,18 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
     }
     worldDominationPlan.raidingFleet = fleet.filter(c => raiders(c.nativeUnitId)).toSet
     hireCrew(fleet.size)
+    if (fleet.nonEmpty && currentTick / 720 != lastStatus) {
+      lastStatus = currentTick / 720
+      val fitNow = health.count((id, hp) => !repairing(id) && (hp >= FitFrom || !canMend))
+      NativeMatchEvidence.trace(
+        "raid-status",
+        s"fleet=${fleet.size} fit=$fitNow repairing=${repairing.size} raiders=${raiders.size} gathering=$gathering " +
+          s"target=$target canMend=$canMend pressure=${worldDominationPlan.baseDefenseActive} " +
+          s"recall=${worldDominationPlan.recallsArmy} atBerth=${fleet.count(c =>
+              berth.exists(b => !c.currentTile.distanceToIsMore(b, 8))
+            )}"
+      )
+    }
   }
 
   /** Keeps the raid's target while enemy buildings stand there; a start location found empty is swept off the list. */
