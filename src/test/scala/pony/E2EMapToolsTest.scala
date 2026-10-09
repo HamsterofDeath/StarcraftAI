@@ -18,6 +18,7 @@ class E2EMapToolsTest extends Specification with MustMatchers {
        |CHK sections round-trip through bytes $chkRoundTrip
        |A trigger occupies 2400 bytes and runs for its players $triggerLayout
        |The 4:6 vulture micro scenario builds a complete UMS scenario $kiteScenario
+       |Scenario titles must be short and usable in a replay file name $titles
        """.stripMargin
 
   private def bytes(values: Int*) = values.map(_.toByte).toArray
@@ -57,6 +58,13 @@ class E2EMapToolsTest extends Specification with MustMatchers {
       (raw(2375) === 1.toByte) and
       (raw(2373) === 0.toByte) and
       (buffer.getInt(320 + 32) === 0)
+  }
+
+  def titles = {
+    def build(title: String) =
+      scala.util.Try(GenerateE2EMaps.micro(GenerateE2EMaps.Vulture, 8, GenerateE2EMaps.Zealot, 12).copy(name = title))
+    (build("e2e micro: 8 vulture vs 12 zealot").isFailure must beTrue) and
+      (GenerateE2EMaps.All.values.forall(s => s.name.length <= 31 && !s.name.contains(':')) must beTrue)
   }
 
   def kiteScenario = {

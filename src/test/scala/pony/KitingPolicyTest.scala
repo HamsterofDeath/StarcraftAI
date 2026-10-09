@@ -40,7 +40,7 @@ class KitingPolicyTest extends Specification with MustMatchers {
   def closestOutOfRange = decide(shooter(), Seq(zealot(1, 1400, 1024), zealot(2, 1300, 1024)), open) === Shoot(2)
 
   def retreats = {
-    val me = shooter(cooldown = 20)
+    val me     = shooter(cooldown = 20)
     val threat = zealot(1, 1124, 1024)
     decide(me, Seq(threat), open) match {
       case Retreat(to) => to.distanceTo(threat.at) must be_>(me.at.distanceTo(threat.at))
@@ -52,7 +52,7 @@ class KitingPolicyTest extends Specification with MustMatchers {
 
   def avoidsWalls = {
     val wallToTheLeft: Point => Boolean = p => open(p) && p.x > 1000
-    val me = shooter(cooldown = 20, at = Point(1010, 1024))
+    val me                              = shooter(cooldown = 20, at = Point(1010, 1024))
     decide(me, Seq(zealot(1, 1080, 1024)), wallToTheLeft) match {
       case Retreat(to) => (wallToTheLeft(to) must beTrue) and (to.x must be_>(1000.0))
       case other       => other === Retreat(Point(0, 0))

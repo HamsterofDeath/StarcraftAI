@@ -27,7 +27,7 @@ object GenerateE2EMaps {
     * kill everything within `timeoutSeconds` of game time.
     */
   def micro(ours: Side, n: Int, theirs: Side, m: Int, timeoutSeconds: Int = 240): UmsScenario = UmsScenario(
-    name = s"e2e micro: $n ${ours.word} vs $m ${theirs.word}",
+    name = s"e2e $n ${ours.word} vs $m ${theirs.word}",
     description = s"Bot (player 1) must kill all ${theirs.word}s within $timeoutSeconds seconds.",
     widthTiles = 64,
     heightTiles = 64,

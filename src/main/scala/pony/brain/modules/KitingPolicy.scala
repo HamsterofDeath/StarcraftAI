@@ -9,7 +9,7 @@ package modules
 object KitingPolicy {
 
   final case class Point(x: Double, y: Double) {
-    def distanceTo(other: Point): Double = math.hypot(x - other.x, y - other.y)
+    def distanceTo(other: Point): Double                = math.hypot(x - other.x, y - other.y)
     def towards(angle: Double, distance: Double): Point =
       Point(x + math.cos(angle) * distance, y + math.sin(angle) * distance)
   }
@@ -68,6 +68,7 @@ object KitingPolicy {
   private def gap(at: Point, threat: Threat) = at.distanceTo(threat.at) - threat.reach
 
   /** Each blocked probe around the point costs a step: dead ends score worse than open ground. */
-  private def crampedPenalty(p: Point, walkable: Point => Boolean, step: Double) =
-    (0 until 8).count(i => !walkable(p.towards(2 * math.Pi * i / 8, step * 1.5))) * step / 2
+  private def crampedPenalty(p: Point, walkable: Point => Boolean, step: Double) = (0 until 8).count(i =>
+    !walkable(p.towards(2 * math.Pi * i / 8, step * 1.5))
+  ) * step / 2
 }

@@ -19,6 +19,8 @@ param(
  [ValidatePattern('^[a-z0-9-]+$')][string]$Strategy = 'default',
  # Repository-relative e2e map (for example e2e/maps/micro-vulture-4-vs-zealot-6.scm), played with map settings.
  [string]$E2EMap,
+ # Extra bot settings as key=value; each becomes -Dtwailight.<key>=<value> (for example kiteShot=stop).
+ [ValidatePattern('^[A-Za-z0-9]+=[A-Za-z0-9.,-]*$')][string[]]$BotProperties = @(),
  # Milliseconds per frame; by default 14 (3x the 42 ms 'Fastest' speed) when rendered and 0 (unthrottled) headless.
  [int]$LocalSpeedMs = -1,
  # Rendered window size as a multiple of StarCraft's 640x480.
@@ -99,7 +101,7 @@ $dependencies = ($entries -join ';')
 $classpath = (Join-Path $buildOut 'classes') + ';' + $dependencies
 $fieldUsefulText = $FieldUsefulFraction.ToString([System.Globalization.CultureInfo]::InvariantCulture)
 $options = @("-Xmx${HeapMb}M",'-XX:ParallelGCThreads=2','-Dscala.concurrent.context.numThreads=2','-Dscala.concurrent.context.maxThreads=2',"-Dtwailight.run=$RunName","-Dtwailight.producer=$SourceCommit",('-Dtwailight.resultDirectory="'+$run+'"'),"-Dtwailight.mapInputSha256=$mapHash","-Dtwailight.minFighters=$MinFighters","-Dtwailight.armyMinerals=$ArmyMinerals","-Dtwailight.armyGas=$ArmyGas","-Dtwailight.expansionReserve=$ExpansionReserve","-Dtwailight.requiredFields=$RequiredFields","-Dtwailight.minScoutFighters=$MinScoutFighters","-Dtwailight.minScouts=$MinScouts","-Dtwailight.fieldUsefulFraction=$fieldUsefulText","-Dtwailight.strategy=$Strategy","-Dtwailight.localSpeed=$LocalSpeedMs","-Dtwailight.aiTickFrames=$AiTickFrames",'-cp',('"'+$classpath+'"'),'pony.Controller')
-$options = $options[0..($options.Count-4)] + @("-Dtwailight.bankMinerals=$BankMinerals", "-Dtwailight.bankGas=$BankGas", ('-Dtwailight.headless=' + $Headless.IsPresent.ToString().ToLowerInvariant()), ('-Dtwailight.autoCamera=' + (-not $NoAutoCamera.IsPresent).ToString().ToLowerInvariant())) + $options[($options.Count-3)..($options.Count-1)]
+$options = $options[0..($options.Count-4)] + @($BotProperties | ForEach-Object { '-Dtwailight.' + $_ }) + @("-Dtwailight.bankMinerals=$BankMinerals", "-Dtwailight.bankGas=$BankGas", ('-Dtwailight.headless=' + $Headless.IsPresent.ToString().ToLowerInvariant()), ('-Dtwailight.autoCamera=' + (-not $NoAutoCamera.IsPresent).ToString().ToLowerInvariant())) + $options[($options.Count-3)..($options.Count-1)]
 $receipt = [ordered]@{ schema=1; run=$RunName; owner='twilight_ai_impl'; producer=$SourceCommit; launchedAt=(Get-Date).ToUniversalTime().ToString('o'); status='unfinished'; game='StarCraft 1.16.1'; bwapiRevision=5016; javaClient='JBWAPI 2.2.0'; bwapiSha256=$dllHash; map=$mapRelative; mapInputSha256=$mapHash; javaSha256=(Get-FileHash -LiteralPath $Java -Algorithm SHA256).Hash; heapMb=$HeapMb; nativeWorkerThreads=2; ordinaryVision=$true; revealCheat=$false; opponent='unmodified native Protoss computer'; configuration=@{minFighters=$MinFighters;armyMinerals=$ArmyMinerals;armyGas=$ArmyGas;expansionReserve=$ExpansionReserve;requiredFields=$RequiredFields;minScoutFighters=$MinScoutFighters;minScouts=$MinScouts;fieldUsefulFraction=$FieldUsefulFraction} }
 $receipt.renderingEnabled = !$Headless.IsPresent
 $receipt.configuration.bankMinerals = $BankMinerals
@@ -109,6 +111,7 @@ $receipt.configuration.windowScale = if ($Headless) { $null } else { $WindowScal
 $receipt.configuration.aiTickFrames = $AiTickFrames
 $receipt.configuration.strategy = $Strategy
 $receipt.configuration.gameType = $gameType
+$receipt.configuration.botProperties = $BotProperties
 $receipt.configuration.autoCamera = !$Headless.IsPresent -and !$NoAutoCamera.IsPresent
 $bot = Start-Process -FilePath $Java -ArgumentList $options -WorkingDirectory $Runtime -WindowStyle Hidden -RedirectStandardOutput (Join-Path $run 'bot-stdout.log') -RedirectStandardError (Join-Path $run 'bot-stderr.log') -PassThru
 $receipt.botPid=$bot.Id; $receipt.botStart=$bot.StartTime.ToUniversalTime().ToString('o')

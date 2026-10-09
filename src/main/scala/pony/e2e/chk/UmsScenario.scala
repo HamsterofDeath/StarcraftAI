@@ -19,6 +19,11 @@ final case class UmsScenario(
     triggers: Seq[Trigger],
     groundTiles: Seq[Int]
 ) {
+  // BWAPI names saved replays after the map title, and StarCraft keeps only 31 characters of it
+  require(
+    name.length <= 31 && !name.exists("\\/:*?\"<>|".contains(_)),
+    s"Map title '$name' must fit 31 characters and be usable in a file name"
+  )
 
   def build(template: ChkFile): ChkFile = {
     val strings             = Vector(name, description, "Bot", "Opponent", "Anywhere") ++ locations.map(_.name)
