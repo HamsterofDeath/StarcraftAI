@@ -20,6 +20,16 @@ class KitingPolicyTest extends Specification with MustMatchers {
        |A retreat prefers open ground over a corner $avoidsCorners
        |An enemy with equal or longer reach is fought instead of run from $noRetreatFromLongerReach
        |An enemy that cannot hit back is attacked and never run from $harmlessTarget
+       |A shooter does not run from an enemy that is about as fast $noRetreatFromFasterEnemy
+       |Focus fire skips an enemy whose committed damage already kills it $noOverkill
+       |A unit too slow to kite steps back only when a melee enemy is in contact $stepBack
+       |A reloading unit closes in on a target that cannot hit back $approachHarmless
+       |A reloading unit does not close in on a melee enemy that would reach it $noApproachIntoDanger
+       |The unit static defence shoots at leaves its reach after firing $leavesTurretReach
+       |Units static defence ignores keep firing from inside its reach $staysWhenNotAimedAt
+       |With danceAll every reloading unit leaves the reach of static defence $danceAll
+       |A unit outside static defence returns just in time to fire on arrival $returnsInTime
+       |Static defence the unit outranges is fought from outside its reach $outrangedTurret
        """.stripMargin
 
   private val open: Point => Boolean = p => p.x >= 0 && p.y >= 0 && p.x < 2048 && p.y < 2048
@@ -43,7 +53,7 @@ class KitingPolicyTest extends Specification with MustMatchers {
 
   def leadAttack = {
     val near = Seq(zealot(1, 1150, 1024))
-    (decide(shooter(cooldown = 3), Seq(zealot(1, 1600, 1024)), open) === Hold) and
+    (decide(shooter(cooldown = 3), Seq(zealot(1, 1600, 1024)), open) must not(beEqualTo(Shoot(1)))) and
       (decide(shooter(cooldown = 3), near, open) === Shoot(1)) and
       (decide(shooter(cooldown = 3), near, open, lead = 0) must not(beEqualTo(Shoot(1))))
   }
@@ -64,7 +74,7 @@ class KitingPolicyTest extends Specification with MustMatchers {
     }
   }
 
-  def holds = decide(shooter(cooldown = 5), Seq(zealot(1, 1300, 1024)), open) === Hold
+  def holds = decide(shooter(cooldown = 5), Seq(zealot(1, 1170, 1024)), open) === Hold
 
   def avoidsWalls = {
     val wallToTheLeft: Point => Boolean = p => open(p) && p.x > 1000
@@ -84,6 +94,68 @@ class KitingPolicyTest extends Specification with MustMatchers {
     val cannotHitBack = Threat(1, Point(1060, 1024), 160, reach = 0, speed = 4)
     (decide(shooter(), Seq(cannotHitBack), open) === Shoot(1)) and
       (decide(shooter(cooldown = 20), Seq(cannotHitBack), open) === Hold)
+  }
+
+  def noRetreatFromFasterEnemy = {
+    val dragoonFast = Threat(1, Point(1100, 1024), 180, reach = 36, speed = 6.2)
+    decide(shooter(cooldown = 20), Seq(dragoonFast), open) === Hold
+  }
+
+  def noOverkill = {
+    val threats = Seq(zealot(1, 1100, 1024, 40), zealot(2, 1150, 1024, 120))
+    (decide(shooter(), threats, open) === Shoot(1)) and
+      (decide(shooter(), threats, open, committed = Map(1 -> 40.0)) === Shoot(2)) and
+      (decide(shooter(), threats, open, committed = Map(1 -> 20.0)) === Shoot(1))
+  }
+
+  /** A goliath-like shooter: slower relative to zealots than kiting needs. */
+  private def slowShooter(cooldown: Int) = Shooter(Point(1024, 1024), 176, cooldown, firing = false, speed = 4.57)
+
+  def stepBack = {
+    val inContact = zealot(1, 1060, 1024) // gap 0
+    val nearby    = zealot(1, 1100, 1024) // gap 40
+    (decide(slowShooter(15), Seq(inContact), open) match {
+      case Retreat(to) => to.distanceTo(Point(1024, 1024)) must be_<(60.0)
+      case other       => other === Retreat(Point(0, 0))
+    }) and (decide(slowShooter(15), Seq(nearby), open) === Hold)
+  }
+
+  def approachHarmless = {
+    val farAway = Threat(1, Point(1500, 1024), 160, reach = 0, speed = 4)
+    decide(shooter(cooldown = 20), Seq(farAway), open) match {
+      case Approach(to) => (to.x must be_>(1024.0)) and (Point(1500, 1024).distanceTo(to) must be_<(176.0))
+      case other        => other === Approach(Point(0, 0))
+    }
+  }
+
+  def noApproachIntoDanger = decide(slowShooter(25), Seq(zealot(1, 1300, 1024)), open) === Hold
+
+  /** A wraith-like shooter facing a photon cannon 240 pixels to the east. */
+  private val wraith = Shooter(Point(1024, 1024), 190, cooldown = 25, firing = false, speed = 6.67)
+  private def cannon(aimsAtMe: Boolean, x: Double = 1264) =
+    Threat(1, Point(x, 1024), 200, reach = 258, speed = 0, aimsAtMe = aimsAtMe)
+
+  def leavesTurretReach = decide(wraith, Seq(cannon(aimsAtMe = true)), open) match {
+    case Retreat(to) => to.x must be_<(1024.0)
+    case other       => other === Retreat(Point(0, 0))
+  }
+
+  def staysWhenNotAimedAt = decide(wraith, Seq(cannon(aimsAtMe = false)), open) === Hold
+
+  def danceAll = decide(wraith, Seq(cannon(aimsAtMe = false)), open, danceAll = true) must beLike {
+    case Retreat(_) => ok
+  }
+
+  def returnsInTime = {
+    // 300 pixels away the wraith needs (300 - 190) / 6.67 = 16.5 frames to get in range
+    val far = cannon(aimsAtMe = true, x = 1324)
+    (decide(wraith.copy(cooldown = 20), Seq(far), open) === Shoot(1)) and
+      (decide(wraith.copy(cooldown = 25), Seq(far), open) === Hold)
+  }
+
+  def outrangedTurret = {
+    val siegedTank = Shooter(Point(1024, 1024), 400, cooldown = 20, firing = false, speed = 4)
+    decide(siegedTank, Seq(cannon(aimsAtMe = false)), open) must beLike { case Retreat(to) => to.x must be_<(1024.0) }
   }
 
   def avoidsCorners = {

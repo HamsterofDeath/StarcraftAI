@@ -35,6 +35,8 @@ object MapUnit {
   val Archon        = 68
   val Scout         = 70
   val Reaver        = 83
+  val Pylon         = 156
+  val PhotonCannon  = 162
   val StartLocation = 214
 
   def atTile(unitId: Int, owner: Int, tileX: Int, tileY: Int) = MapUnit(unitId, owner, tileX * 32 + 16, tileY * 32 + 16)

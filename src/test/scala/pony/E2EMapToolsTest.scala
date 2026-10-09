@@ -3,7 +3,7 @@ package pony
 import org.specs2._
 import org.specs2.matcher.MustMatchers
 import pony.e2e.GenerateE2EMaps
-import pony.e2e.chk.{ChkFile, Trigger, UmsScenario}
+import pony.e2e.chk.{ChkFile, MapUnit, Trigger, UmsScenario}
 import pony.e2e.mpq.{Explode, MpqArchive, MpqCrypto, MpqWriter}
 
 import java.nio.{ByteBuffer, ByteOrder}
@@ -20,6 +20,7 @@ class E2EMapToolsTest extends Specification with MustMatchers {
        |The 4:6 vulture micro scenario builds a complete UMS scenario $kiteScenario
        |Scenario titles must be short and usable in a replay file name $titles
        |Map file names fit StarCraft's 31 characters even with a session prefix $fileNames
+       |Cannon scenarios place powered, non-overlapping cannons with BWAPI's unit ids $cannonScenario
        """.stripMargin
 
   private def bytes(values: Int*) = values.map(_.toByte).toArray
@@ -70,6 +71,21 @@ class E2EMapToolsTest extends Specification with MustMatchers {
 
   def fileNames = (GenerateE2EMaps.All.keys.forall(n => ("001-" + n + ".scx").length <= 31) must beTrue) and
     (GenerateE2EMaps.fileName(GenerateE2EMaps.Vulture, 8, GenerateE2EMaps.Zealot, 12) === "vulture8-zealot12")
+
+  def cannonScenario = {
+    val units   = GenerateE2EMaps.cannons(GenerateE2EMaps.Wraith, 4, 3).units
+    val pylon   = units.filter(_.unitId == MapUnit.Pylon)
+    val cannons = units.filter(_.unitId == MapUnit.PhotonCannon)
+    // a pylon powers 8 tiles to each side and 5 tiles up and down
+    def powered(c: MapUnit) = pylon.exists(p => math.abs(c.x - p.x) < 8 * 32 && math.abs(c.y - p.y) < 5 * 32)
+    (MapUnit.Pylon === bwapi.UnitType.Protoss_Pylon.id) and
+      (MapUnit.PhotonCannon === bwapi.UnitType.Protoss_Photon_Cannon.id) and
+      (cannons.size === 3) and
+      (cannons.forall(powered) must beTrue) and
+      (cannons.combinations(2).forall { case Seq(a, b) => math.abs(a.y - b.y) >= 64 || math.abs(a.x - b.x) >= 64 }
+        must beTrue) and
+      (cannons.forall(c => c.x % 32 == 0 && c.y % 32 == 0) must beTrue)
+  }
 
   def kiteScenario = {
     val template = ChkFile(Vector(

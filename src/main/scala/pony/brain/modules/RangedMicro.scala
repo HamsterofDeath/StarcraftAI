@@ -5,14 +5,17 @@ package modules
 import bwapi.{UnitType, WeaponType}
 import pony.brain.modules.KitingPolicy._
 
+import scala.collection.mutable
+
 /**
-  * Micro for units with a ranged weapon: focus fire on the weakest enemy in range, and against enemies they outrange
-  * "hit, gain distance, repeat". Decides every frame from live native data, because a reload lasts about a game
-  * second.
+  * Micro for units with a ranged weapon: focus fire on the weakest enemy in range, against enemies they outrange "hit,
+  * gain distance, repeat", and against static defence "fire, go back" for the unit it shoots at. Decides every frame
+  * from live native data, because a reload lasts about a game second.
   *
   * `-Dtwailight.kiteShot=stop` fires by stopping and letting the unit acquire a target itself instead of an explicit
   * attack on the focus target; `-Dtwailight.kiteLead=<frames>` sets how early the next attack is ordered;
-  * `-Dtwailight.traceKite=true` traces every decision change. Each shot traces the frames between deciding to shoot
+  * `-Dtwailight.turretDance=all` sends every reloading unit out of the reach of static defence, not only the unit it
+  * shoots at; `-Dtwailight.traceKite=true` traces every decision change. Each shot traces the frames between deciding to shoot
   * and the weapon firing.
   */
 class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon](universe) {
@@ -26,6 +29,21 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
   private val shootByStopping = sys.props.get("twailight.kiteShot").contains("stop")
   private val traceDecisions  = sys.props.get("twailight.traceKite").contains("true")
   private val leadFrames      = sys.props.get("twailight.kiteLead").flatMap(_.toIntOption).filter(_ >= 0).getOrElse(4)
+  private val speedRatio      =
+    sys.props.get("twailight.kiteSpeedRatio").flatMap(_.toDoubleOption).filter(_ > 0).getOrElse(1.25)
+  private val danceAll = sys.props.get("twailight.turretDance").contains("all")
+
+  /** Damage every shooter has committed to each enemy id in the current frame, shared so they do not overkill. */
+  private val committedDamage = mutable.HashMap.empty[Int, Double]
+  private var commitmentFrame = -1
+
+  private def commitments(frame: Int) = {
+    if (commitmentFrame != frame) {
+      committedDamage.clear()
+      commitmentFrame = frame
+    }
+    committedDamage
+  }
 
   override def priority = SecondPriority.EvenMore
 
@@ -47,10 +65,28 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
         attached = true
         NativeMatchEvidence.trace("kite-attached", s"unit=${me.nativeUnitId} type=${me.nativeUnit.getType}")
       }
-      val targets  = targetsAround(me)
-      val shooter  = shooterOf(me, targets.map(_._1))
-      val passable = if (me.nativeUnit.isFlying) insideMap else walkable
-      val decision = decide(shooter, targets.map(_._2), passable, lead = leadFrames)
+      val targets   = targetsAround(me)
+      val shooter   = shooterOf(me, targets.map(_._1))
+      val passable  = if (me.nativeUnit.isFlying) insideMap else walkable
+      val committed = commitments(frame)
+      val decision  =
+        decide(
+          shooter,
+          targets.map(_._2),
+          passable,
+          lead = leadFrames,
+          committed = committed.toMap,
+          speedRatio = speedRatio,
+          danceAll = danceAll
+        )
+      decision match {
+        case Shoot(id) =>
+          targets.find(_._2.id == id).foreach { case (enemy, _) =>
+            val weapon = weaponAgainst(me.nativeUnit.getType, enemy.nativeUnit.isFlying)
+            committed(id) = committed.getOrElse(id, 0.0) + weapon.damageAmount * weapon.damageFactor
+          }
+        case _ =>
+      }
 
       shootDecidedAt.foreach { decidedAt =>
         if (shooter.cooldown > 0) {
@@ -73,7 +109,8 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
           NativeMatchEvidence.trace(
             "kite-decision",
             s"unit=${me.nativeUnitId} decision=$decision cooldown=${shooter.cooldown} firing=${shooter.firing} " +
-              s"gap=${gap.map(_.toInt).getOrElse(-1)} order=${me.nativeUnit.getOrder}"
+              s"gap=${gap.map(_.toInt).getOrElse(-1)} aimedAt=${targets.exists(_._2.aimsAtMe)} " +
+              s"order=${me.nativeUnit.getOrder}"
           )
           lastDecision = kind
         }
@@ -84,6 +121,8 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
         case Shoot(_) if shootByStopping => Orders.Stop(me).toList
         case Shoot(id)                   => targets.find(_._2.id == id).map(t => Orders.AttackUnit(me, t._1)).toList
         case Retreat(to)                 =>
+          Orders.MoveToTile(me, MapTilePosition.shared(to.x.toInt / 32, to.y.toInt / 32)).toList
+        case Approach(to) =>
           Orders.MoveToTile(me, MapTilePosition.shared(to.x.toInt / 32, to.y.toInt / 32)).toList
       }
     }
@@ -97,7 +136,7 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
     if (targetFlies) attacker.airWeapon else attacker.groundWeapon
 
   /** The weapon range fits the enemies at hand: ground range when any ground enemy is near, otherwise air range. */
-  private def shooterOf(me: MobileRangeWeapon, enemies: Seq[Mobile]) = {
+  private def shooterOf(me: MobileRangeWeapon, enemies: Seq[WrapsUnit]) = {
     val native   = me.nativeUnit
     val kind     = native.getType
     val player   = native.getPlayer
@@ -112,13 +151,17 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
     )
   }
 
-  /** Visible, detected enemies within the considered radius that this unit can shoot, with how far they reach it. */
-  private def targetsAround(me: MobileRangeWeapon): Vector[(Mobile, Threat)] = {
+  /**
+    * Visible, detected enemy units and static defence within the considered radius that this unit can shoot, with how
+    * far they reach it. Unfinished or unpowered static defence cannot fight back.
+    */
+  private def targetsAround(me: MobileRangeWeapon): Vector[(CanDie, Threat)] = {
     val at       = position(me)
     val myKind   = me.nativeUnit.getType
     val myRadius = radius(myKind)
     val iFly     = me.nativeUnit.isFlying
-    enemies.allByType[Mobile].iterator.filter { e =>
+    val myId     = me.nativeUnitId
+    (enemies.allByType[Mobile].iterator ++ enemies.allByType[ArmedBuilding].iterator: Iterator[CanDie]).filter { e =>
       val native = e.nativeUnit
       e.isInGame && native.isVisible && native.isDetected && position(e).distanceTo(at) <= ConsiderRadius &&
       weaponAgainst(myKind, native.isFlying) != WeaponType.None
@@ -127,14 +170,16 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
       val kind   = native.getType
       val weapon = weaponAgainst(kind, iFly)
       val reach  =
-        if (weapon == WeaponType.None) 0.0
+        if (weapon == WeaponType.None || !native.isCompleted || !native.isPowered) 0.0
         else native.getPlayer.weaponMaxRange(weapon) + radius(kind) + myRadius
+      def aims(u: bwapi.Unit) = u != null && u.getID == myId
       e -> Threat(
         native.getID,
         position(e),
         native.getHitPoints + native.getShields,
         reach,
-        native.getPlayer.topSpeed(kind)
+        if (kind.isBuilding) 0.0 else native.getPlayer.topSpeed(kind),
+        aims(native.getTarget) || aims(native.getOrderTarget)
       )
     }.toVector
   }

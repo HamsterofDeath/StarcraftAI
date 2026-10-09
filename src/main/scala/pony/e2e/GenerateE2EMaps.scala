@@ -14,7 +14,8 @@ object GenerateE2EMaps {
   /** Plain Badlands dirt, the most common ground of (2)Destination.scx. */
   val BadlandsDirt = Seq(0x0021, 0x0031, 0x0023, 0x0033, 0x0034, 0x0024, 0x0020, 0x0030)
 
-  private val BotArea = 1
+  private val BotArea    = 1
+  private val TurretArea = 2
 
   /** A unit type of a micro scenario: its UNIT id, its file-name word, its race and its production cost. */
   final case class Side(unitId: Int, word: String, race: Int, minerals: Int, gas: Int) {
@@ -92,10 +93,63 @@ object GenerateE2EMaps {
   } yield {
     val n = unitsFor(ours, MatchupBudget)
     val m = unitsFor(theirs, MatchupBudget)
-    fileName(ours, n, theirs, m) -> micro(ours, n, theirs, m)
+    // slow killers such as wraiths against zealots need more than the default four minutes
+    fileName(ours, n, theirs, m) -> micro(ours, n, theirs, m, timeoutSeconds = 600)
   }).toMap
 
-  val All: Map[String, UmsScenario] = VultureScaling ++ TerranVsProtoss
+  /**
+    * `n` bot units attack `cannons` photon cannons, stacked in a column on one pylon 36 tiles away. The opponent
+    * shares its vision, so a unit that steps out of the cannons' reach still sees them; the bot must destroy every
+    * cannon within `timeoutSeconds` of game time.
+    */
+  def cannons(ours: Side, n: Int, cannons: Int, timeoutSeconds: Int = 240): UmsScenario = UmsScenario(
+    name = s"e2e $n ${ours.word} vs $cannons cannon",
+    description = s"Bot (player 1) must destroy all photon cannons within $timeoutSeconds seconds.",
+    widthTiles = 64,
+    heightTiles = 64,
+    botRace = ours.race,
+    opponentRace = UmsScenario.Protoss,
+    units = Seq(MapUnit.atTile(MapUnit.StartLocation, 0, 8, 32), MapUnit.atTile(MapUnit.StartLocation, 1, 56, 32)) ++
+      block(ours.unitId, 0, n, 12) ++ cannonColumn(cannons),
+    locations = Seq(
+      Location.aroundTile(BotArea, "Bot area", 12, 32, 4),
+      Location.aroundTile(TurretArea, "Cannons", TurretColumn, 32, 2)
+    ),
+    triggers = Seq(
+      // "Turn ON Shared Vision for Player 1", run by the opponent
+      Trigger(Seq(1), Seq(Trigger.always), Seq(Trigger.runAiScript("+Vi0"))),
+      Trigger(Seq(0), Seq(Trigger.always), Seq(Trigger.order(0, Trigger.Men, Trigger.Anywhere, TurretArea, 2))),
+      Trigger(Seq(0), Seq(Trigger.commandsAtMost(1, MapUnit.PhotonCannon, 0)), Seq(Trigger.victory)),
+      Trigger(Seq(0), Seq(Trigger.commandsAtMost(0, Trigger.Men, 0)), Seq(Trigger.defeat)),
+      Trigger(Seq(0), Seq(Trigger.elapsedSeconds(timeoutSeconds)), Seq(Trigger.defeat))
+    ),
+    groundTiles = BadlandsDirt
+  )
+
+  /** The tile column the cannons' centres sit on; their pylon stands right behind them. */
+  private val TurretColumn = 48
+
+  /** 2x2 buildings have their centre on a tile corner; the cannons stand edge to edge, the pylon powers them all. */
+  private def cannonColumn(count: Int) = {
+    require(count >= 1 && count <= 4, "one pylon powers up to four stacked cannons")
+    MapUnit(MapUnit.Pylon, 1, (TurretColumn + 2) * 32, 32 * 32) +: (0 until count).map { i =>
+      MapUnit(MapUnit.PhotonCannon, 1, TurretColumn * 32, 32 * 32 + (2 * i - (count - 1)) * 32)
+    }
+  }
+
+  def cannonFileName(ours: Side, n: Int, cannons: Int): String = {
+    val name = s"${ours.word}$n-cannon$cannons"
+    require(name.length <= MaxFileNameLength, s"Map file name '$name' is longer than $MaxFileNameLength characters")
+    name
+  }
+
+  /** Ranged Terran ground and air units, about 600 resources' worth, against one and two cannons. */
+  val TerranVsCannons: Map[String, UmsScenario] = (for {
+    (ours, n) <- Seq(Marine -> 8, Vulture -> 6, Goliath -> 4, Tank -> 3, Wraith -> 4)
+    count     <- Seq(1, 2)
+  } yield cannonFileName(ours, n, count) -> cannons(ours, n, count)).toMap
+
+  val All: Map[String, UmsScenario] = VultureScaling ++ TerranVsProtoss ++ TerranVsCannons
 
   private def opponentAttacks = Seq(
     Trigger(
