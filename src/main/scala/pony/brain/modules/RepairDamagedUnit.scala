@@ -30,12 +30,18 @@ class RepairDamagedUnit(universe: Universe) extends DefaultBehaviour[SCV](univer
       helper.unlock_!(this.unit)
     }
 
+    private var tracedTarget = Option.empty[Int]
+
     override def describeShort: String = "Repair unit"
 
     override def toOrder(what: Objective): Seq[UnitOrder] = {
-      helper.suggestTarget(this.unit).map { what =>
-        Orders.RepairUnit(this.unit, what)
-      }.toList
+      val target = helper.suggestTarget(this.unit)
+      val id     = target.map(_.nativeUnitId)
+      if (id != tracedTarget) {
+        id.foreach(t => NativeMatchEvidence.trace("repair", s"scv=${this.unit.nativeUnitId} target=$t"))
+        tracedTarget = id
+      }
+      target.map(Orders.RepairUnit(this.unit, _)).toList
     }
   }
 }

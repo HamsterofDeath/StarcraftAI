@@ -14,8 +14,8 @@ import scala.collection.mutable
   *
   * `-Dtwailight.kiteShot=stop` fires by stopping and letting the unit acquire a target itself instead of an explicit
   * attack on the focus target; `-Dtwailight.kiteLead=<frames>` sets how early the next attack is ordered;
-  * `-Dtwailight.turretDance=all` sends every reloading unit out of the reach of static defence, not only the unit it
-  * shoots at; `-Dtwailight.traceKite=true` traces every decision change. Each shot traces the frames between deciding to shoot
+  * `-Dtwailight.turretDance=all|off` sends every reloading unit or none out of the reach of static defence instead of
+  * the unit it shoots at; `-Dtwailight.traceKite=true` traces every decision change. Each shot traces the frames between deciding to shoot
   * and the weapon firing.
   */
 class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon](universe) {
@@ -31,7 +31,11 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
   private val leadFrames      = sys.props.get("twailight.kiteLead").flatMap(_.toIntOption).filter(_ >= 0).getOrElse(4)
   private val speedRatio      =
     sys.props.get("twailight.kiteSpeedRatio").flatMap(_.toDoubleOption).filter(_ > 0).getOrElse(1.25)
-  private val danceAll = sys.props.get("twailight.turretDance").contains("all")
+  private val dance = sys.props.get("twailight.turretDance") match {
+    case Some("all") => Dance.All
+    case Some("off") => Dance.Off
+    case _           => Dance.Aimed
+  }
 
   /** Damage every shooter has committed to each enemy id in the current frame, shared so they do not overkill. */
   private val committedDamage = mutable.HashMap.empty[Int, Double]
@@ -56,6 +60,7 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
     private var attached       = false
     private var lastDecision   = ""
     private var shootDecidedAt = Option.empty[Int]
+    private var lastCooldown   = 0
     override def describeShort = "Ranged micro"
 
     override def toOrder(what: Objective) = {
@@ -77,7 +82,7 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
           lead = leadFrames,
           committed = committed.toMap,
           speedRatio = speedRatio,
-          danceAll = danceAll
+          dance = dance
         )
       decision match {
         case Shoot(id) =>
@@ -88,8 +93,11 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
         case _ =>
       }
 
+      // a shot resets the cooldown to the weapon's full reload
+      val fired = shooter.cooldown > lastCooldown
+      lastCooldown = shooter.cooldown
       shootDecidedAt.foreach { decidedAt =>
-        if (shooter.cooldown > 0) {
+        if (fired) {
           NativeMatchEvidence.trace(
             "kite-shot",
             s"unit=${me.nativeUnitId} latency=${frame - decidedAt} by=${if (shootByStopping) "stop" else "attack"}"

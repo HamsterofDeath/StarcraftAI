@@ -70,7 +70,7 @@ class E2EMapToolsTest extends Specification with MustMatchers {
   }
 
   def fileNames = (GenerateE2EMaps.All.keys.forall(n => ("001-" + n + ".scx").length <= 31) must beTrue) and
-    (GenerateE2EMaps.fileName(GenerateE2EMaps.Vulture, 8, GenerateE2EMaps.Zealot, 12) === "vulture8-zealot12")
+    (GenerateE2EMaps.fileName(GenerateE2EMaps.Vulture, 8, GenerateE2EMaps.Zealot, 12) === "vul8-zea12")
 
   def cannonScenario = {
     val units   = GenerateE2EMaps.cannons(GenerateE2EMaps.Wraith, 4, 3).units
@@ -79,6 +79,10 @@ class E2EMapToolsTest extends Specification with MustMatchers {
     // a pylon powers 8 tiles to each side and 5 tiles up and down
     def powered(c: MapUnit) = pylon.exists(p => math.abs(c.x - p.x) < 8 * 32 && math.abs(c.y - p.y) < 5 * 32)
     (MapUnit.Pylon === bwapi.UnitType.Protoss_Pylon.id) and
+      (MapUnit.Scv === bwapi.UnitType.Terran_SCV.id) and
+      (MapUnit.Medic === bwapi.UnitType.Terran_Medic.id) and
+      (Seq("gol4-scv2-can2", "mar8-med2-can2").forall(GenerateE2EMaps.TerranVsCannons.contains)
+        must beTrue) and
       (MapUnit.PhotonCannon === bwapi.UnitType.Protoss_Photon_Cannon.id) and
       (cannons.size === 3) and
       (cannons.forall(powered) must beTrue) and

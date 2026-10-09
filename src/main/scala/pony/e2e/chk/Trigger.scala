@@ -75,6 +75,13 @@ object Trigger {
   def runAiScript(script: String) =
     Action(15, second = ByteBuffer.wrap(script.getBytes("ASCII")).order(ByteOrder.LITTLE_ENDIAN).getInt(0))
 
+  /** Sets `player`'s minerals and gas to `amount`. */
+  def setResources(player: Int, amount: Int) =
+    Action(26, player = player, second = amount, unit = OreAndGas, modifier = SetTo)
+
+  private val OreAndGas = 2
+  private val SetTo     = 7
+
   /** Orders `unit` of `player` inside `from` to `orderType` (0 move, 1 patrol, 2 attack) towards `to`. */
   def order(player: Int, unit: Int, from: Int, to: Int, orderType: Int) =
     Action(46, player = player, second = to, unit = unit, modifier = orderType, location = from)

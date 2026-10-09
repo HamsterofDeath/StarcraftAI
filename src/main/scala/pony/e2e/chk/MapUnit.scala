@@ -26,9 +26,11 @@ object MapUnit {
   val Vulture       = 2
   val Goliath       = 3
   val SiegeTank     = 5
+  val Scv           = 7
   val Wraith        = 8
   val Battlecruiser = 12
   val Firebat       = 32
+  val Medic         = 34
   val Zergling      = 37
   val Zealot        = 65
   val Dragoon       = 66

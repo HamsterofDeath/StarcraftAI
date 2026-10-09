@@ -27,7 +27,7 @@ class KitingPolicyTest extends Specification with MustMatchers {
        |A reloading unit does not close in on a melee enemy that would reach it $noApproachIntoDanger
        |The unit static defence shoots at leaves its reach after firing $leavesTurretReach
        |Units static defence ignores keep firing from inside its reach $staysWhenNotAimedAt
-       |With danceAll every reloading unit leaves the reach of static defence $danceAll
+       |With Dance.All every reloading unit leaves the reach of static defence, with Dance.Off none $danceModes
        |A unit outside static defence returns just in time to fire on arrival $returnsInTime
        |Static defence the unit outranges is fought from outside its reach $outrangedTurret
        """.stripMargin
@@ -142,9 +142,9 @@ class KitingPolicyTest extends Specification with MustMatchers {
 
   def staysWhenNotAimedAt = decide(wraith, Seq(cannon(aimsAtMe = false)), open) === Hold
 
-  def danceAll = decide(wraith, Seq(cannon(aimsAtMe = false)), open, danceAll = true) must beLike {
-    case Retreat(_) => ok
-  }
+  def danceModes =
+    (decide(wraith, Seq(cannon(aimsAtMe = false)), open, dance = Dance.All) must beLike { case Retreat(_) => ok }) and
+      (decide(wraith, Seq(cannon(aimsAtMe = true)), open, dance = Dance.Off) === Hold)
 
   def returnsInTime = {
     // 300 pixels away the wraith needs (300 - 190) / 6.67 = 16.5 frames to get in range

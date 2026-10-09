@@ -14,24 +14,30 @@ object GenerateE2EMaps {
   /** Plain Badlands dirt, the most common ground of (2)Destination.scx. */
   val BadlandsDirt = Seq(0x0021, 0x0031, 0x0023, 0x0033, 0x0034, 0x0024, 0x0020, 0x0030)
 
-  private val BotArea    = 1
-  private val TurretArea = 2
+  private val BotArea     = 1
+  private val TurretArea  = 2
+  private val StagingArea = 3
 
-  /** A unit type of a micro scenario: its UNIT id, its file-name word, its race and its production cost. */
-  final case class Side(unitId: Int, word: String, race: Int, minerals: Int, gas: Int) {
+  /**
+    * A unit type of a micro scenario: its UNIT id, its name, the three-letter code that map names use, its race and its
+    * production cost.
+    */
+  final case class Side(unitId: Int, word: String, code: String, race: Int, minerals: Int, gas: Int) {
 
     /** Gas is scarcer than minerals; 1.5 is the usual exchange rate when comparing armies. */
     def value: Double = minerals + 1.5 * gas
   }
 
-  val Marine  = Side(MapUnit.Marine, "marine", UmsScenario.Terran, 50, 0)
-  val Firebat = Side(MapUnit.Firebat, "firebat", UmsScenario.Terran, 50, 25)
-  val Vulture = Side(MapUnit.Vulture, "vulture", UmsScenario.Terran, 75, 0)
-  val Goliath = Side(MapUnit.Goliath, "goliath", UmsScenario.Terran, 100, 50)
-  val Tank    = Side(MapUnit.SiegeTank, "tank", UmsScenario.Terran, 150, 100)
-  val Wraith  = Side(MapUnit.Wraith, "wraith", UmsScenario.Terran, 150, 100)
-  val Zealot  = Side(MapUnit.Zealot, "zealot", UmsScenario.Protoss, 100, 0)
-  val Dragoon = Side(MapUnit.Dragoon, "dragoon", UmsScenario.Protoss, 125, 50)
+  val Marine  = Side(MapUnit.Marine, "marine", "mar", UmsScenario.Terran, 50, 0)
+  val Firebat = Side(MapUnit.Firebat, "firebat", "bat", UmsScenario.Terran, 50, 25)
+  val Vulture = Side(MapUnit.Vulture, "vulture", "vul", UmsScenario.Terran, 75, 0)
+  val Goliath = Side(MapUnit.Goliath, "goliath", "gol", UmsScenario.Terran, 100, 50)
+  val Tank    = Side(MapUnit.SiegeTank, "tank", "tnk", UmsScenario.Terran, 150, 100)
+  val Wraith  = Side(MapUnit.Wraith, "wraith", "wra", UmsScenario.Terran, 150, 100)
+  val Zealot  = Side(MapUnit.Zealot, "zealot", "zea", UmsScenario.Protoss, 100, 0)
+  val Dragoon = Side(MapUnit.Dragoon, "dragoon", "drg", UmsScenario.Protoss, 125, 50)
+  val Scv     = Side(MapUnit.Scv, "scv", "scv", UmsScenario.Terran, 50, 0)
+  val Medic   = Side(MapUnit.Medic, "medic", "med", UmsScenario.Terran, 50, 25)
 
   /** Resources each side fields in a pure-versus-pure matchup. */
   val MatchupBudget = 1200
@@ -43,7 +49,7 @@ object GenerateE2EMaps {
     * kill everything within `timeoutSeconds` of game time.
     */
   def micro(ours: Side, n: Int, theirs: Side, m: Int, timeoutSeconds: Int = 240): UmsScenario = UmsScenario(
-    name = s"e2e $n ${ours.word} vs $m ${theirs.word}",
+    name = s"e2e ${fileName(ours, n, theirs, m)}",
     description = s"Bot (player 1) must kill all ${theirs.word}s within $timeoutSeconds seconds.",
     widthTiles = 64,
     heightTiles = 64,
@@ -76,7 +82,7 @@ object GenerateE2EMaps {
   val MaxFileNameLength = 23
 
   def fileName(ours: Side, n: Int, theirs: Side, m: Int): String = {
-    val name = s"${ours.word}$n-${theirs.word}$m"
+    val name = s"${ours.code}$n-${theirs.code}$m"
     require(name.length <= MaxFileNameLength, s"Map file name '$name' is longer than $MaxFileNameLength characters")
     name
   }
@@ -100,31 +106,53 @@ object GenerateE2EMaps {
   /**
     * `n` bot units attack `cannons` photon cannons, stacked in a column on one pylon 36 tiles away. The opponent
     * shares its vision, so a unit that steps out of the cannons' reach still sees them; the bot must destroy every
-    * cannon within `timeoutSeconds` of game time.
+    * cannon within `timeoutSeconds` of game time, and loses when its `ours` units are dead. `support` units come
+    * along: medics attack-move with the group and heal, SCVs wait at a staging point outside the cannons' reach and
+    * repair with the 1000 minerals and gas the bot gets.
     */
-  def cannons(ours: Side, n: Int, cannons: Int, timeoutSeconds: Int = 240): UmsScenario = UmsScenario(
-    name = s"e2e $n ${ours.word} vs $cannons cannon",
+  def cannons(
+      ours: Side,
+      n: Int,
+      cannons: Int,
+      support: Option[(Side, Int)] = None,
+      timeoutSeconds: Int = 240
+  ): UmsScenario = UmsScenario(
+    name = s"e2e ${cannonFileName(ours, n, cannons, support)}",
     description = s"Bot (player 1) must destroy all photon cannons within $timeoutSeconds seconds.",
     widthTiles = 64,
     heightTiles = 64,
     botRace = ours.race,
     opponentRace = UmsScenario.Protoss,
     units = Seq(MapUnit.atTile(MapUnit.StartLocation, 0, 8, 32), MapUnit.atTile(MapUnit.StartLocation, 1, 56, 32)) ++
-      block(ours.unitId, 0, n, 12) ++ cannonColumn(cannons),
+      block(ours.unitId, 0, n, 12) ++ support.toSeq.flatMap((s, k) => block(s.unitId, 0, k, 6)) ++
+      cannonColumn(cannons),
     locations = Seq(
       Location.aroundTile(BotArea, "Bot area", 12, 32, 4),
-      Location.aroundTile(TurretArea, "Cannons", TurretColumn, 32, 2)
+      Location.aroundTile(TurretArea, "Cannons", TurretColumn, 32, 2),
+      Location.aroundTile(StagingArea, "Staging", TurretColumn - 12, 32, 2)
     ),
     triggers = Seq(
       // "Turn ON Shared Vision for Player 1", run by the opponent
       Trigger(Seq(1), Seq(Trigger.always), Seq(Trigger.runAiScript("+Vi0"))),
-      Trigger(Seq(0), Seq(Trigger.always), Seq(Trigger.order(0, Trigger.Men, Trigger.Anywhere, TurretArea, 2))),
+      Trigger(
+        Seq(0),
+        Seq(Trigger.always),
+        Seq(
+          Trigger.setResources(0, 1000),
+          Trigger.order(0, Trigger.Men, Trigger.Anywhere, TurretArea, 2),
+          // workers would attack-move into the cannons; they repair from behind
+          Trigger.order(0, MapUnit.Scv, Trigger.Anywhere, StagingArea, 0)
+        )
+      ),
       Trigger(Seq(0), Seq(Trigger.commandsAtMost(1, MapUnit.PhotonCannon, 0)), Seq(Trigger.victory)),
-      Trigger(Seq(0), Seq(Trigger.commandsAtMost(0, Trigger.Men, 0)), Seq(Trigger.defeat)),
+      Trigger(Seq(0), Seq(Trigger.commandsAtMost(0, ours.unitId, 0)), Seq(Trigger.defeat)),
       Trigger(Seq(0), Seq(Trigger.elapsedSeconds(timeoutSeconds)), Seq(Trigger.defeat))
     ),
     groundTiles = BadlandsDirt
   )
+
+  /** The photon cannon's code in map names. */
+  val CannonCode = "can"
 
   /** The tile column the cannons' centres sit on; their pylon stands right behind them. */
   private val TurretColumn = 48
@@ -137,17 +165,23 @@ object GenerateE2EMaps {
     }
   }
 
-  def cannonFileName(ours: Side, n: Int, cannons: Int): String = {
-    val name = s"${ours.word}$n-cannon$cannons"
+  def cannonFileName(ours: Side, n: Int, cannons: Int, support: Option[(Side, Int)] = None): String = {
+    val name = s"${ours.code}$n${support.fold("")((s, k) => s"-${s.code}$k")}-$CannonCode$cannons"
     require(name.length <= MaxFileNameLength, s"Map file name '$name' is longer than $MaxFileNameLength characters")
     name
   }
 
   /** Ranged Terran ground and air units, about 600 resources' worth, against one and two cannons. */
-  val TerranVsCannons: Map[String, UmsScenario] = (for {
-    (ours, n) <- Seq(Marine -> 8, Vulture -> 6, Goliath -> 4, Tank -> 3, Wraith -> 4)
-    count     <- Seq(1, 2)
-  } yield cannonFileName(ours, n, count) -> cannons(ours, n, count)).toMap
+  val TerranVsCannons: Map[String, UmsScenario] =
+    (for {
+      (ours, n) <- Seq(Marine -> 8, Vulture -> 6, Goliath -> 4, Tank -> 3, Wraith -> 4)
+      count     <- Seq(1, 2)
+    } yield cannonFileName(ours, n, count) -> cannons(ours, n, count)).toMap ++
+      // the same groups against two cannons with two repairing SCVs or healing medics
+      Seq(Marine -> 8, Vulture -> 6, Goliath -> 4, Tank -> 3, Wraith -> 4).map { (ours, n) =>
+        val support = Some((if (ours == Marine) Medic else Scv) -> 2)
+        cannonFileName(ours, n, 2, support) -> cannons(ours, n, 2, support)
+      }
 
   val All: Map[String, UmsScenario] = VultureScaling ++ TerranVsProtoss ++ TerranVsCannons
 

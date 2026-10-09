@@ -40,6 +40,11 @@ object KitingPolicy {
   /** Move closer to the focus target while reloading, because nothing can hit the shooter before its next shot. */
   final case class Approach(to: Point) extends Decision
 
+  /** Who leaves the reach of static defence while reloading: nobody, the unit it aims at, or every unit. */
+  enum Dance {
+    case Off, Aimed, All
+  }
+
   /** Frames of extra distance kept so a threat that turns towards the shooter cannot land a hit. */
   val SafetyFrames = 6
 
@@ -50,7 +55,7 @@ object KitingPolicy {
     *                   has turned and braked by the time the weapon is ready
     * @param committed  damage other shooters have already committed to each enemy id this frame
     * @param speedRatio how much faster than an enemy the shooter must be before running from it pays off
-    * @param danceAll   every reloading unit leaves the reach of static defence, not only the one it shoots at
+    * @param dance      which reloading units leave the reach of static defence
     */
   def decide(
       me: Shooter,
@@ -60,7 +65,7 @@ object KitingPolicy {
       lead: Int = 4,
       committed: Map[Int, Double] = Map.empty,
       speedRatio: Double = 1.25,
-      danceAll: Boolean = false
+      dance: Dance = Dance.Aimed
   ): Decision = {
     val runFrom = outranged(me, threats, speedRatio)
     val melee   = threats.filter(t => t.reach > 0 && t.reach <= MeleeReach && !runFrom.contains(t))
@@ -78,7 +83,7 @@ object KitingPolicy {
     // static defence: come back from outside its reach just in time to fire on arrival
     else if (focus.speed == 0 && focus.reach >= me.range && me.cooldown <= lead + arrival) Shoot(focus.id)
     // fire, go back: the unit it shoots at leaves its reach, so it has to switch to another unit
-    else if (insideTurrets && (danceAll || turrets.exists(_.aimsAtMe)))
+    else if (insideTurrets && (dance == Dance.All || dance == Dance.Aimed && turrets.exists(_.aimsAtMe)))
       retreatPoint(me, turrets, walkable, step).map(Retreat(_)).getOrElse(Hold)
     // kite: clearly faster and longer-ranged, so stepping out of reach costs nothing
     else if (runFrom.exists(t => gap(me.at, t) <= t.speed * (me.cooldown + SafetyFrames))) {
