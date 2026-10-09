@@ -53,8 +53,9 @@ class BusyDoingSomething[T <: WrapsUnit](
 
   private def highestPriorityOrdersForTick = {
     val options = active.map { rule =>
-      rule -> rule.orderForTick(objective)
-        .map(_.lockingFor_!(rule.blocksForTicks).forceRepeat_!(rule.forceRepeats))
+      rule -> CpuProfile.time("rule:" + BusyDoingSomething.ruleName(rule)) {
+        rule.orderForTick(objective).map(_.lockingFor_!(rule.blocksForTicks).forceRepeat_!(rule.forceRepeats))
+      }
     }.filter(_._2.nonEmpty)
     if (options.isEmpty) {
       None -> Nil
@@ -64,8 +65,16 @@ class BusyDoingSomething[T <: WrapsUnit](
     }
   }
 
-  private def active = behaviour.filter(_.preconditionOk)
+  private def active = behaviour.filter(rule =>
+    CpuProfile.time("precondition:" + BusyDoingSomething.ruleName(rule))(rule.preconditionOk)
+  )
 
   override protected def omitRepeatedOrders = true
 
+}
+
+object BusyDoingSomething {
+
+  /** The behaviour a rule belongs to, without the anonymous class suffix. */
+  def ruleName(rule: AnyRef): String = rule.getClass.getName.split('.').last.replaceAll("[$][$]anon[$][0-9]+", "")
 }
