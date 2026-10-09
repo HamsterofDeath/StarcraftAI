@@ -146,8 +146,9 @@ class TwilightSparkle(world: DefaultWorld) {
       // Expensive planning runs once per heavy tick (a game second by default).
       CpuProfile.time("maps")(maps.tick())
       CpuProfile.time("resources")(resources.tick())
-      CpuProfile.time("strategy")(strategy.tick())
+      // bases first: the strategy choice looks at the main base, and its first look decides the opening
       CpuProfile.time("bases")(bases.tick())
+      CpuProfile.time("strategy")(strategy.tick())
       CpuProfile.time("worldDomination")(worldDomination.onTick_!())
       CpuProfile.time("unitGrid")(unitGrid.onTick_!())
       CpuProfile.time("ferryManager")(ferryManager.onTick_!())

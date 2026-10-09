@@ -17,10 +17,15 @@ class TerranRampWall(universe: Universe) extends DefaultTerranCampaign(universe)
     */
   override def determineScore =
     if (!race.isTerran) -1
-    else bases.mainBase.map { main =>
-      val tile = main.mainBuilding.tilePosition
-      if (strategicMap.defenseLineOf(main).isDefined && !mapLayers.isOnIsland(tile)) 1100 else -1
-    }.getOrElse(-1)
+    else {
+      // terrain does not change: decided once, as soon as the main base is known
+      if (oneRampMain.isEmpty) oneRampMain = bases.mainBase.map { main =>
+        strategicMap.defenseLineOf(main).isDefined && !mapLayers.isOnIsland(main.mainBuilding.tilePosition)
+      }
+      if (oneRampMain.contains(true)) 1100 else -1
+    }
+
+  private var oneRampMain = Option.empty[Boolean]
 
   override def usesWallDefense = true
 }
