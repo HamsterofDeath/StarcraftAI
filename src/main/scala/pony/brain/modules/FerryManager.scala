@@ -110,30 +110,49 @@ class FerryManager(override val universe: Universe) extends HasUniverse {
   }
 
   /**
-    * While the strategy seals the main and its wall stands, the main's terrain area is cut in two: the defended inside
-    * and the rest. Both halves are one walkable area to the terrain, so the ferry checks ask this as well.
+    * While the strategy seals the main and its wall stands, the main's terrain area is cut in two: what a worker can
+    * walk to from the main command center with our buildings in the way, and the rest. Both halves are one walkable
+    * area to the terrain, so the ferry checks ask this as well. Recomputed every tick: a breached wall seals nothing.
     */
-  private var sealedSplit = Option.empty[(Grid2D, Grid2D)]
+  private case class SealedSplit(mainArea: Grid2D, walkable: Grid2D, inside: Grid2D) {
+
+    /** A tile under a building counts on the side of the free tiles next to it. */
+    def isInside(tile: MapTilePosition) =
+      if (walkable.inBounds(tile) && walkable.free(tile)) inside.free(tile)
+      else walkable.spiralAround(tile, 4).find(t => walkable.inBounds(t) && walkable.free(t)).exists(inside.free)
+  }
+
+  private var sealedSplit = Option.empty[SealedSplit]
 
   def sealing = sealedSplit.isDefined
 
-  /** Whether the sealed wall stands between two walkable tiles of the main's terrain area. */
-  def sealedApart(a: MapTilePosition, b: MapTilePosition) = sealedSplit.exists { case (mainArea, inside) =>
-    mainArea.free(a) && mainArea.free(b) && inside.free(a) != inside.free(b)
+  /** Whether the sealed wall stands between two tiles of the main's terrain area. */
+  def sealedApart(a: MapTilePosition, b: MapTilePosition) = sealedSplit.exists { split =>
+    split.mainArea.inBounds(a) && split.mainArea.inBounds(b) && split.mainArea.free(a) && split.mainArea.free(b) &&
+    split.isInside(a) != split.isInside(b)
   }
 
   private def updateSealedSplit(): Unit = {
-    val wanted = strategy.current.sealsMain && universe.pluginByType[WallWithDepots].complete
-    if (!wanted) sealedSplit = None
-    else if (sealedSplit.isEmpty) sealedSplit = for {
-      main     <- bases.mainBase
-      line     <- strategicMap.defenseLineOf(main)
-      tile     <- line.defended.allFree.iterator.take(1).toSeq.headOption
-      mainArea <- mapLayers.rawWalkableMap.areaOf(tile)
-    } yield {
-      NativeMatchEvidence.trace("main-sealed", s"inside=${line.defended.freeCount} area=${mainArea.freeCount}")
-      (mainArea, line.defended)
-    }
+    val before = sealedSplit.map(_.inside.freeCount)
+    sealedSplit =
+      if (!strategy.current.sealsMain) None
+      else {
+        val walkable = mapLayers.freeWalkableIgnoringMobiles
+        for {
+          main     <- bases.mainBase
+          anchor   <- walkable.nearestFree(main.mainBuilding.centerTile)
+          inside   <- walkable.areaOf(anchor)
+          mainArea <- mapLayers.rawWalkableMap.areaOf(anchor)
+          // the wall must actually cut the main off: otherwise the inside reaches the rest of the terrain area
+          if inside.freeCount * 2 < mainArea.freeCount
+        } yield SealedSplit(mainArea, walkable, inside)
+      }
+    val after = sealedSplit.map(_.inside.freeCount)
+    if (before.isDefined != after.isDefined)
+      NativeMatchEvidence.trace(
+        if (after.isDefined) "main-sealed" else "main-unsealed",
+        s"inside=${after.getOrElse(0)} area=${sealedSplit.map(_.mainArea.freeCount).getOrElse(0)}"
+      )
   }
 
   def canDropHere(where: MapTilePosition) = {
