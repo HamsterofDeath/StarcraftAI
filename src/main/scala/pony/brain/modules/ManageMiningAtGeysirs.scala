@@ -64,6 +64,10 @@ class ManageMiningAtGeysirs(universe: Universe)
             if (!requestExists && !jobExists && findAndRememberRefinery().isEmpty) {
               val where = AlternativeBuildingSpot.fromPreset(geysir.tilePosition)
               requestBuilding(classOf[Refinery], customBuildingPosition = where)
+              NativeMatchEvidence.trace(
+                "refinery-request",
+                s"geysir=${geysir.tilePosition} base=${base.mainBuilding.tilePosition} workers=${ownUnits.allByType[WorkerUnit].size}"
+              )
             }
           }
         case Some(ref) =>
@@ -79,6 +83,11 @@ class ManageMiningAtGeysirs(universe: Universe)
               .idleOfType(self, classOf[WorkerUnit], missing, Priority.CollectGas)
               .withOnlyAccepting(_.isCarryingNothing)
             val result = unitManager.request(ofType)
+            if (result.units.isEmpty && currentTick % (24 * 60) < 24)
+              NativeMatchEvidence.trace(
+                "gas-hire-none",
+                s"geysir=${geysir.tilePosition} missing=$missing team=$teamSize result=${result.getClass.getSimpleName}"
+              )
             result.units.foreach { freeWorker =>
               assignJob_!(new MineGasAtGeysir(freeWorker, geysir))
             }

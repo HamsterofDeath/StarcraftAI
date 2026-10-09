@@ -496,7 +496,11 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
           refusedPlanning = chosen.isEmpty && gate.isEmpty
           if (chosen.nonEmpty || gate.isDefined) {
             anchors = Some(chosen)
-            NativeMatchEvidence.trace("wall-planned", s"depots=${chosen.size} at=${chosen.mkString(",")}")
+            NativeMatchEvidence.trace(
+              "wall-planned",
+              s"depots=${chosen.size} at=${chosen.mkString(",")} gate=$gate home=${home.mainBuilding.tilePosition} " +
+                s"geysirs=${home.myGeysirs.map(_.tilePosition).mkString(",")}"
+            )
           }
           chosen
         }
