@@ -170,7 +170,13 @@ class FerryManager(override val universe: Universe) extends HasUniverse {
       NativeMatchEvidence.trace(
         "sealed-workers",
         s"inside=${in.size} idleInside=${idle(in)} outside=${out.size} idleOutside=${idle(out)} " +
-          s"loaded=${ownUnits.allByType[WorkerUnit].count(_.loaded)} ferries=${ferryPlans.size}"
+          s"loaded=${ownUnits.allByType[WorkerUnit].count(_.loaded)} ferries=${ferryPlans.size} plans=" +
+          ferryPlans.valuesIterator.map { p =>
+            val to = scala.util.Try(p.toWhere).toOption
+            s"${p.ferry.nativeUnitId}@${p.ferry.currentTile}->${to.getOrElse("?")}:reach=${p.needsToReachTarget}" +
+              s":drop=${p.dropUnitsNow}:pick=${p.pickupTargetsLeft}:instant=${p.instantDropRequested}" +
+              s":aboard=${p.ferry.loaded.size}:canDrop=${p.ferry.canDropHere}"
+          }.mkString("|")
       )
     }
     val after = sealedSplit.map(_.inside.freeCount)
