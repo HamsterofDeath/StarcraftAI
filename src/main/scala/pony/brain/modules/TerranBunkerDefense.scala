@@ -25,11 +25,14 @@ class TerranBunkerDefense(universe: Universe)
     * When each site's bunker was requested, and which workers were sent to build it. A site still without its bunker
     * after three different workers or three game minutes cannot be built (the workers never get there) and is blocked.
     */
-  private val requestedAt                      = mutable.Map.empty[MapTilePosition, Int]
-  private val triedBy                          = mutable.Map.empty[MapTilePosition, Set[Int]]
-  private var blockedSites                     = Set.empty[MapTilePosition]
-  private val SiteTimeout                      = 24 * 180
-  private val GiveUpAfterWorkers               = 3
+  private val requestedAt        = mutable.Map.empty[MapTilePosition, Int]
+  private val triedBy            = mutable.Map.empty[MapTilePosition, Set[Int]]
+  private var blockedSites       = Set.empty[MapTilePosition]
+  private val SiteTimeout        = 24 * 180
+  private val GiveUpAfterWorkers = 3
+
+  /** The depots and patches of each field at which its last planning attempt found no plan. */
+  private val unplannable                      = mutable.Map.empty[Int, Vector[Area]]
   private def active                           = race.isTerran && strategy.current.usesBunkerDefense
   private def bunkers                          = ownUnits.allByType[Bunker].filter(_.isInGame).toVector
   private def plannedSites                     = plans.values.flatMap(_._2.map(_.upperLeft)).toSet -- blockedSites
@@ -97,100 +100,108 @@ class TerranBunkerDefense(universe: Universe)
     val fieldIds = fields.map(_.uniqueId).toSet
     plans.keys.filterNot(fieldIds).toVector.foreach { id => plans.remove(id); geometry.remove(id) }
     var requestedThisTick = false
+    var plannedThisTick   = false
     fields.foreach { field =>
       val depots  = universe.pluginByType[ManageMiningAtBases].servingMineralDepots(field.uniqueId).map(_.area)
       val patches = field.patches.toList.flatMap(_.patches.map(_.area))
       val binding = (depots ++ patches).sortBy(a => (a.upperLeft.y, a.upperLeft.x))
-      if (!plans.contains(field.uniqueId) || !geometry.get(field.uniqueId).contains(binding)) {
-        plans.remove(field.uniqueId)
-        val ground = mapLayers.freeWalkableIgnoringMobiles.guaranteeImmutability
-        val routes = for (depot <- depots; patch <- patches) yield {
-          val pairs = for (
-            from <- depot.growBy(1).outline.filter(ground.freeAndInBounds);
-            to   <- patch.growBy(1).outline.filter(ground.freeAndInBounds)
-          ) yield (from, to)
-          pairs.toVector.sortBy(p => p._1.distanceSquaredTo(p._2)).iterator
-            .map(p => BunkerWorkerRoutes.between(p._1, p._2, ground)).find(_.isDefined).flatten
-        }
-        // Tiles under completed or planned buildings can never host a worker or a bunker covering
-        // them; keeping them as required points would deadlock re-planning after any construction.
-        val workTiles = BunkerCoverage.workerTiles(patches, depots, routes.flatten)
-          .filter(mapLayers.rawWalkableMap.insideBounds)
-          .filter(mapLayers.blockedByBuildingTiles.free)
-        val allPoints = BunkerCoverage.corners(workTiles)
-        // Already completed and in-flight bunkers count as existing coverage so re-planning keeps
-        // them instead of retiring construction the moment the binding changes.
-        val existing = {
-          val completed = bunkers.filter(b => b.tilePosition.distanceToIsLess(field.center, 15)).map(_.area)
-          val inFlight  =
-            (unitManager.requestedConstructions[Bunker].flatMap(_.customPosition.requestedPosition) ++
-              unitManager.constructionsInProgress[Bunker].map(_.buildWhere))
-              .filter(_.distanceToIsLess(field.center, 15)).map(p => Area(p, Size(3, 2)))
-          (completed ++ inFlight).distinct
-        }
-        val finder     = new ConstructionSiteFinder(universe)
-        val routeTiles = BunkerCoverage.workerTiles(Nil, Nil, routes.flatten).toSet
-        // A bunker must never claim the footprint reserved for a (re)built or relocating CommandCenter.
-        val depotFootprints =
-          (unitManager.requestedConstructions[CommandCenter].flatMap(_.customPosition.requestedPosition) ++
-            unitManager.constructionsInProgress[CommandCenter].map(_.buildWhere)).map(p => Area(p, Size(4, 3)))
-        // A worker must be able to walk up to the site: BWAPI's path check ignores minerals, so a pocket behind the
-        // mineral line passes canBuildHere and still never gets its bunker.
-        val depotSides = depots.flatMap(_.growBy(1).outline.filter(ground.freeAndInBounds))
-        // BWAPI's own path check works at walk-tile resolution and sees cliff edges the tile grid joins.
-        def reachable(site: Area): Boolean = site.growBy(1).outline.filter(ground.freeAndInBounds).exists(t =>
-          depotSides.exists(ground.areInSameWalkableArea(_, t))
-        ) && depots.forall(d =>
-          nativeGame.hasPath(d.center.toNative, site.center.toNative)
-        )
-        val candidates = finder.bunkerSites(field, workTiles)
-          .filterNot(a => blockedSites(a.upperLeft))
-          .filter(reachable)
-          .filterNot(a => a.tiles.exists(routeTiles))
-          .filterNot(a => depotFootprints.exists(cc => a.growBy(1).tiles.exists(cc.tiles.toSet)))
-        // Points no candidate footprint can reach (map edge lanes, ground occupied by other
-        // buildings) must not demand coverage, or the field could never be planned at all.
-        val points = allPoints.filter(p => (existing ++ candidates).exists(BunkerCoverage.covers(_, p, range)))
-        // Cramped terrain (map corners) may admit no jointly split-free set; then keep individual
-        // coverage with separated sites instead of refusing to plan any bunkers at all.
-        val sites = BunkerCoverage.select(
-          points,
-          candidates,
-          existing,
-          range,
-          finder.bunkerSitesSafeTogether,
-          relaxedFallback = true
-        )
-        if (
-          routes.nonEmpty && routes.forall(_.isDefined) && points.nonEmpty &&
-          (sites.nonEmpty || points.forall(p => existing.exists(BunkerCoverage.covers(_, p, range))))
-        ) {
-          val allSites = existing ++ sites
-          // Points a finished building already occupies can never be covered again; store only
-          // what the final site set covers, or readiness would stay false forever.
-          val covered = points.filter(p => allSites.exists(BunkerCoverage.covers(_, p, range)))
-          plans(field.uniqueId) = covered -> allSites
-          geometry(field.uniqueId) = binding
-          announcedReady -= field.uniqueId
-          NativeMatchEvidence.trace(
-            "bunker-coverage-plan",
-            s"field=${field.uniqueId} range=$range model=conservativeNativeApprox points=${covered.size}/${points.size} solvedRoutes=${routes.size} jointFootprintsSafe=true sites=${allSites.map(_.upperLeft)}"
+      // Planning a field costs up to seconds: plan at most one field per tick, and retry a field that could not be
+      // planned only once its depots or patches change.
+      val stale = !plans.contains(field.uniqueId) || !geometry.get(field.uniqueId).contains(binding)
+      if (stale && !plannedThisTick && !unplannable.get(field.uniqueId).contains(binding))
+        CpuProfile.time("bunker-plan") {
+          plannedThisTick = true
+          plans.remove(field.uniqueId)
+          val ground = mapLayers.freeWalkableIgnoringMobiles.guaranteeImmutability
+          val routes = for (depot <- depots; patch <- patches) yield {
+            val pairs = for (
+              from <- depot.growBy(1).outline.filter(ground.freeAndInBounds);
+              to   <- patch.growBy(1).outline.filter(ground.freeAndInBounds)
+            ) yield (from, to)
+            pairs.toVector.sortBy(p => p._1.distanceSquaredTo(p._2)).iterator
+              .map(p => BunkerWorkerRoutes.between(p._1, p._2, ground)).find(_.isDefined).flatten
+          }
+          // Tiles under completed or planned buildings can never host a worker or a bunker covering
+          // them; keeping them as required points would deadlock re-planning after any construction.
+          val workTiles = BunkerCoverage.workerTiles(patches, depots, routes.flatten)
+            .filter(mapLayers.rawWalkableMap.insideBounds)
+            .filter(mapLayers.blockedByBuildingTiles.free)
+          val allPoints = BunkerCoverage.corners(workTiles)
+          // Already completed and in-flight bunkers count as existing coverage so re-planning keeps
+          // them instead of retiring construction the moment the binding changes.
+          val existing = {
+            val completed = bunkers.filter(b => b.tilePosition.distanceToIsLess(field.center, 15)).map(_.area)
+            val inFlight  =
+              (unitManager.requestedConstructions[Bunker].flatMap(_.customPosition.requestedPosition) ++
+                unitManager.constructionsInProgress[Bunker].map(_.buildWhere))
+                .filter(_.distanceToIsLess(field.center, 15)).map(p => Area(p, Size(3, 2)))
+            (completed ++ inFlight).distinct
+          }
+          val finder     = new ConstructionSiteFinder(universe)
+          val routeTiles = BunkerCoverage.workerTiles(Nil, Nil, routes.flatten).toSet
+          // A bunker must never claim the footprint reserved for a (re)built or relocating CommandCenter.
+          val depotFootprints =
+            (unitManager.requestedConstructions[CommandCenter].flatMap(_.customPosition.requestedPosition) ++
+              unitManager.constructionsInProgress[CommandCenter].map(_.buildWhere)).map(p => Area(p, Size(4, 3)))
+          // A worker must be able to walk up to the site: BWAPI's path check ignores minerals, so a pocket behind the
+          // mineral line passes canBuildHere and still never gets its bunker.
+          val depotSides = depots.flatMap(_.growBy(1).outline.filter(ground.freeAndInBounds))
+          // BWAPI's own path check works at walk-tile resolution and sees cliff edges the tile grid joins.
+          def reachable(site: Area): Boolean = site.growBy(1).outline.filter(ground.freeAndInBounds).exists(t =>
+            depotSides.exists(ground.areInSameWalkableArea(_, t))
+          ) && depots.forall(d =>
+            nativeGame.hasPath(d.center.toNative, site.center.toNative)
           )
-          uncoveredReported -= field.uniqueId
-        } else if (!uncoveredReported(field.uniqueId)) {
-          NativeMatchEvidence.trace(
-            "bunker-coverage-unavailable",
-            s"field=${field.uniqueId} points=${points.size} safeCandidates=${candidates.size} noGenericFallback=true"
+          val candidates = finder.bunkerSites(field, workTiles)
+            .filterNot(a => blockedSites(a.upperLeft))
+            .filter(reachable)
+            .filterNot(a => a.tiles.exists(routeTiles))
+            .filterNot(a => depotFootprints.exists(cc => a.growBy(1).tiles.exists(cc.tiles.toSet)))
+          // Points no candidate footprint can reach (map edge lanes, ground occupied by other
+          // buildings) must not demand coverage, or the field could never be planned at all.
+          val points = allPoints.filter(p => (existing ++ candidates).exists(BunkerCoverage.covers(_, p, range)))
+          // Cramped terrain (map corners) may admit no jointly split-free set; then keep individual
+          // coverage with separated sites instead of refusing to plan any bunkers at all.
+          val sites = BunkerCoverage.select(
+            points,
+            candidates,
+            existing,
+            range,
+            finder.bunkerSitesSafeTogether,
+            relaxedFallback = true
           )
-          val individuallyUncovered =
-            points.filterNot(p => (existing ++ candidates).exists(BunkerCoverage.covers(_, p, range)))
-          NativeMatchEvidence.trace(
-            "bunker-coverage-geometry",
-            s"field=${field.uniqueId} range=$range requiredPoints=$points individuallyUncovered=$individuallyUncovered unsolvedRoutes=${routes.zipWithIndex.filter(_._1.isEmpty).map(_._2)} existing=${existing.map(_.upperLeft)} candidates=${candidates.map(_.upperLeft)}"
-          )
-          uncoveredReported += field.uniqueId
+          if (
+            routes.nonEmpty && routes.forall(_.isDefined) && points.nonEmpty &&
+            (sites.nonEmpty || points.forall(p => existing.exists(BunkerCoverage.covers(_, p, range))))
+          ) {
+            val allSites = existing ++ sites
+            // Points a finished building already occupies can never be covered again; store only
+            // what the final site set covers, or readiness would stay false forever.
+            val covered = points.filter(p => allSites.exists(BunkerCoverage.covers(_, p, range)))
+            plans(field.uniqueId) = covered -> allSites
+            geometry(field.uniqueId) = binding
+            unplannable.remove(field.uniqueId)
+            announcedReady -= field.uniqueId
+            NativeMatchEvidence.trace(
+              "bunker-coverage-plan",
+              s"field=${field.uniqueId} range=$range model=conservativeNativeApprox points=${covered.size}/${points.size} solvedRoutes=${routes.size} jointFootprintsSafe=true sites=${allSites.map(_.upperLeft)}"
+            )
+            uncoveredReported -= field.uniqueId
+          } else if (!uncoveredReported(field.uniqueId)) {
+            NativeMatchEvidence.trace(
+              "bunker-coverage-unavailable",
+              s"field=${field.uniqueId} points=${points.size} safeCandidates=${candidates.size} noGenericFallback=true"
+            )
+            val individuallyUncovered =
+              points.filterNot(p => (existing ++ candidates).exists(BunkerCoverage.covers(_, p, range)))
+            NativeMatchEvidence.trace(
+              "bunker-coverage-geometry",
+              s"field=${field.uniqueId} range=$range requiredPoints=$points individuallyUncovered=$individuallyUncovered unsolvedRoutes=${routes.zipWithIndex.filter(_._1.isEmpty).map(_._2)} existing=${existing.map(_.upperLeft)} candidates=${candidates.map(_.upperLeft)}"
+            )
+            uncoveredReported += field.uniqueId
+          }
+          if (!plans.contains(field.uniqueId)) unplannable(field.uniqueId) = binding
         }
-      }
       plans.get(field.uniqueId).foreach { case (_, sites) =>
         // One bunker at a time: several requested at once lock their price long before a worker gets to them and
         // starve the expansion.
