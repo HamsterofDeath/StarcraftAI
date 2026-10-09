@@ -111,7 +111,7 @@ class FerryManager(override val universe: Universe) extends HasUniverse {
 
   /**
     * While the strategy seals the main and its wall stands, the main's terrain area is cut in two: what a worker can
-    * walk to from the main command center with our buildings in the way, and the rest. Both halves are one walkable
+    * walk to from the main command center with the standing buildings in the way (planned ones aside), and the rest. Both halves are one walkable
     * area to the terrain, so the ferry checks ask this as well. Recomputed every tick: a breached wall seals nothing.
     */
   private case class SealedSplit(mainArea: Grid2D, walkable: Grid2D, inside: Grid2D) {
@@ -135,9 +135,13 @@ class FerryManager(override val universe: Universe) extends HasUniverse {
   private def updateSealedSplit(): Unit = {
     val before = sealedSplit.map(_.inside.freeCount)
     sealedSplit =
-      if (!strategy.current.sealsMain) None
+      if (!strategy.current.sealsMain || !universe.pluginByType[WallWithDepots].complete) None
       else {
-        val walkable = mapLayers.freeWalkableIgnoringMobiles
+        // built like the map layers' own walkable grids: the blocked sets first, then the terrain merged in
+        val walkable = mapLayers.blockedByBuildingTiles.mutableCopy
+          .or_!(mapLayers.blockedByResources.mutableCopy)
+          .or_!(mapLayers.rawWalkableMap.mutableCopy)
+          .guaranteeImmutability
         for {
           main     <- bases.mainBase
           anchor   <- walkable.nearestFree(main.mainBuilding.centerTile)
@@ -181,8 +185,12 @@ class FerryManager(override val universe: Universe) extends HasUniverse {
         fixed
       }
 
+      // a drop point moved to a free spot may lie on the unit's own side: then there is nothing to ferry
       def newPlan = {
-        fixedDropTarget.flatMap { dropHere =>
+        fixedDropTarget.filter { dropHere =>
+          forWhat.currentArea != mapLayers.rawWalkableMap.areaOf(dropHere) ||
+          sealedApart(forWhat.currentTile, dropHere)
+        }.flatMap { dropHere =>
           newPlanFor(forWhat, dropHere, buildNewIfRequired).headOption
         }
       }
