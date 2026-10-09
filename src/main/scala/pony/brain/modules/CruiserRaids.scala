@@ -48,8 +48,11 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
     }
     val fleet  = cruisers
     val health = fleet.map(c => c.nativeUnitId -> c.percentageHPOk).toMap
+    // without a crew nobody mends the cruisers: waiting for repairs would keep the fleet home for good
+    val canMend = unitManager.allJobsByType[RepairCrewDuty].exists(j => !j.failedOrObsolete && !j.isFinished)
     repairing.filterInPlace(health.contains)
-    health.foreach { (id, hp) =>
+    if (!canMend) repairing.clear()
+    else health.foreach { (id, hp) =>
       val hurt = needsRepair(hp, repairing(id))
       if (hurt && !repairing(id)) {
         repairing += id
@@ -59,7 +62,7 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
     raiders = raiders.filter(id => health.contains(id) && !repairing(id))
     updateTarget(fleet)
     if (raiders.nonEmpty) {
-      val worn = endsRaid(raiders.toSeq.map(health))
+      val worn = if (canMend) endsRaid(raiders.toSeq.map(health)) else raiders.size < 2
       if (worn || target.isEmpty || worldDominationPlan.recallsArmy) {
         NativeMatchEvidence.trace(
           "raid-end",
@@ -69,7 +72,7 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
         raiders = Set.empty
       }
     } else if (!worldDominationPlan.recallsArmy) {
-      val fit = health.collect { case (id, hp) if !repairing(id) && hp >= FitFrom => id }.toSet
+      val fit = health.collect { case (id, hp) if !repairing(id) && (hp >= FitFrom || !canMend) => id }.toSet
       if (startsRaid(fit.size, health.size) && target.isDefined) {
         raiders = fit
         NativeMatchEvidence.trace("raid-start", s"raiders=${fit.size} target=${target.get} fleet=${fleet.size}")
@@ -88,23 +91,31 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
       if (!standing && seen) swept += t
       if (!standing && (seen || known.nonEmpty)) target = None
     }
-    if (target.isEmpty) bases.mainBase.foreach { main =>
-      val own    = nativeGame.self().getStartLocation
-      val starts = nativeGame.getStartLocations.asScala.toVector.filterNot(_ == own)
-        .map(t => MapTilePosition(t.x, t.y)).filterNot(swept)
-      val ours = MapTilePosition(own.x, own.y)
+    if (target.isEmpty) {
+      val own       = nativeGame.self().getStartLocation
+      val ours      = MapTilePosition(own.x, own.y)
+      val home      = bases.mainBase.map(_.mainBuilding.tilePosition).getOrElse(ours)
+      val allStarts =
+        nativeGame.getStartLocations.asScala.toVector.filterNot(_ == own).map(t => MapTilePosition(t.x, t.y))
+      val starts = allStarts.filterNot(swept)
+      // every resource area without a base of ours: the hunt's last resort when the enemy hides
+      val fields = strategicMap.resources.toVector.map(_.center)
+        .filterNot(c => bases.allBases.exists(_.mainBuilding.tilePosition.distanceToIsLess(c, 10)))
       // resource areas nearer to an enemy start than to ours, the start itself aside: where expansions are likely
-      val likely = strategicMap.resources.toVector.map(_.center).filter { c =>
-        starts.exists(s => c.distanceSquaredTo(s) < c.distanceSquaredTo(ours)) &&
-        !starts.exists(_.distanceToIsLess(c, 8))
+      val likely = fields.filter { c =>
+        allStarts.exists(s => c.distanceSquaredTo(s) < c.distanceSquaredTo(ours)) &&
+        !allStarts.exists(_.distanceToIsLess(c, 8))
       }.filterNot(swept)
-      target = choose(
-        known.filter(_.base).map(_.tile),
-        likely,
-        known.map(_.tile),
-        starts,
-        main.mainBuilding.tilePosition
-      )
+      def pick = choose(known.filter(_.base).map(_.tile), likely, known.map(_.tile), starts, home)
+        .orElse(fields.filterNot(swept).minByOpt(_.distanceSquaredTo(home)))
+      // all swept and still no enemy found: sweep again, the enemy may have built somewhere since
+      target = pick.orElse {
+        if (swept.isEmpty) None
+        else {
+          swept.clear()
+          pick
+        }
+      }
     }
   }
 
