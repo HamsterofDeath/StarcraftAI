@@ -160,5 +160,12 @@ while ($game.Count -eq 0 -and (Get-Date) -lt $deadline) {
 }
 if ($game.Count -ne 1) { $receipt | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $run 'manifest.json'); throw 'Exact owned game child not identified; preserve receipt and do not launch again.' }
 $receipt.gamePid=$game[0].ProcessId; $receipt.gameStart=$game[0].CreationDate.ToUniversalTime().ToString('o')
+if ($Headless) {
+  # BWAPI clamps the ini position to the screen; keep the running game's window off-screen until StarCraft exits.
+  $hider = Join-Path $PSScriptRoot 'Hide-GameWindow.ps1'
+  $receipt.windowHiderPid = (Start-Process -FilePath 'powershell.exe' -WindowStyle Hidden -PassThru -ArgumentList @(
+    '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"' + $hider + '"'), '-GamePid', $receipt.gamePid,
+    '-BotLog', ('"' + (Join-Path $run 'bot-stdout.log') + '"'))).Id
+}
 $receipt | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $run 'manifest.json')
 Write-Output ($receipt | ConvertTo-Json -Depth 6)
