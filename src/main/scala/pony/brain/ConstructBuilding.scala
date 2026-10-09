@@ -171,6 +171,9 @@ class ConstructBuilding[W <: WorkerUnit: ClassTag, B <: Building](
       val fail    = byState || blocked
       if (fail && !failureTraced) {
         failureTraced = true
+        // stalled short of the site: the next spot for this kind of building must lie elsewhere
+        if (byState && !unit.currentTile.distanceToIsLess(buildWhere, 4))
+          unitManager.unreachableSites = unitManager.unreachableSites :+ area
         NativeMatchEvidence.trace(
           "construction-failed",
           s"type=${typeOfBuilding.className} where=$buildWhere worker=${worker.nativeUnitId} at=${unit.currentTile} " +

@@ -8,6 +8,12 @@ import scala.collection.mutable.{ArrayBuffer, ListBuffer}
 import scala.reflect.ClassTag
 
 class UnitManager(override val universe: Universe) extends HasUniverse {
+
+  /**
+    * Construction sites a worker could not get to this game; the site finder (which runs in the background) avoids
+    * them.
+    */
+  @volatile var unreachableSites          = Vector.empty[Area]
   private val reorganizeJobQueue          = ListBuffer.empty[CanAcceptUnitSwitch[? <: WrapsUnit]]
   private val unfulfilledRequestsThisTick = ArrayBuffer.empty[UnitJobRequest[? <: WrapsUnit]]
   private val assignments                 = mutable.HashMap

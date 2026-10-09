@@ -2,6 +2,8 @@ package pony
 package brain
 package modules
 
+import scala.jdk.CollectionConverters._
+
 class ProvideNewBuildings(universe: Universe)
     extends AIModule[WorkerUnit](universe) with BackgroundComputation[WorkerUnit] {
   self =>
@@ -78,7 +80,15 @@ class ProvideNewBuildings(universe: Universe)
       }
     }
 
-    val anyOfThese = constructionRequests.find { candidate =>
+    // A building whose required buildings are not completed yet is refused by BWAPI at its site: a worker would walk
+    // there and wait until the job times out. Such requests wait without a worker until the requirements stand.
+    def requirementsStand(candidate: BuildUnitRequest[Building]) = {
+      val self = nativeGame.self()
+      candidate.typeOfRequestedUnit.toUnitType.requiredUnits().asScala.forall { case (required, _) =>
+        required.isWorker || self.completedUnitCount(required) > 0
+      }
+    }
+    val anyOfThese = constructionRequests.filter(requirementsStand).find { candidate =>
       val passThrough            = !candidate.isUpgrader
       def isUpgradeEnablerOrRich = {
         val count   = ownUnits.allByClass(candidate.typeOfRequestedUnit).size

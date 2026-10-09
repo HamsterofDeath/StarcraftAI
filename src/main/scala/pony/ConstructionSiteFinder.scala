@@ -141,8 +141,13 @@ class ConstructionSiteFinder(universe: Universe) {
       }
       // Native depots cannot be placed inside the mineral/geyser exclusion zone, even at home.
       // A preferred anchor also has to stay reachable on foot from the base's own area.
-      val reachable = preferNear.isEmpty ||
-        universe.mapLayers.rawWalkableMap.areInSameWalkableArea(near, upperLeft)
+      val reachable =
+        (preferNear.isEmpty ||
+          universe.mapLayers.rawWalkableMap.areInSameWalkableArea(near, upperLeft)) &&
+          !universe.unitManager.unreachableSites.exists(failed =>
+            failed.upperLeft.x <= area.lowerRight.x && area.upperLeft.x <= failed.lowerRight.x &&
+              failed.upperLeft.y <= area.lowerRight.y && area.upperLeft.y <= failed.lowerRight.y
+          )
       if (
         containsArea && reachable && acceptableArea(area) &&
         ResourceDepotPlacement.permitted(area, unitType.isResourceDepot, resourceDepotBuffer) && free
