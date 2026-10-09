@@ -13,9 +13,10 @@ trait PathfindingSupport[T <: Mobile] extends JobOrSubJob[T] {
         val far = unit.currentTile.distanceToIsMore(where, 15)
         far &&
         (unit match {
+          // across a sealed wall the way leads by ferry, not on foot
           case g: GroundUnit
               if g.onGround && areaOfTarget == areaOfUnit &&
-                areaOfTarget.isDefined =>
+                areaOfTarget.isDefined && !ferryManager.sealedApart(unit.currentTile, where) =>
             !mapLayers.rawWalkableMap.connectedByLine(unit.currentTile, where)
           case a: AirUnit => true
           case _          => false
@@ -51,8 +52,13 @@ trait PathfindingSupport[T <: Mobile] extends JobOrSubJob[T] {
         Nil
       }
     }
+    // the answer above is cached: a unit that boarded a ferry since has no path of its own to follow
+    val aboard = unit match {
+      case g: GroundUnit => !g.onGround
+      case _             => false
+    }
     val myOrder = {
-      if (needsPath) {
+      if (needsPath && !aboard) {
         pathTargetPosition.map { where =>
           if (myPath.isDone && myPath.assumeDoneAndGet.isEmpty) {
             newPathRequired(where)
