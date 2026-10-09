@@ -16,8 +16,8 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
   private var huntIndex         = 0
   private var huntTarget        = Option.empty[MapTilePosition]
   private var huntInitiated     = false
-  // Bunker crews hold the mineral lines; a few guards per field are enough, the rest keeps up the pressure.
-  private val defenseRoster = new TerranDefenseRoster(4)
+  // Bunker crews hold the mineral lines; every other fighter keeps up the pressure unless field guards are configured.
+  private val defenseRoster = new TerranDefenseRoster(config.fieldGuards)
   private val defenses      = oncePerTick {
     if (strategy.current.runsTerranCampaign) {
       val fields = bases.allBases.filter(b =>
