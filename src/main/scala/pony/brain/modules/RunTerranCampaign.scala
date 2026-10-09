@@ -16,8 +16,9 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
   private var huntIndex         = 0
   private var huntTarget        = Option.empty[MapTilePosition]
   private var huntInitiated     = false
-  private val defenseRoster     = new TerranDefenseRoster(6)
-  private val defenses          = oncePerTick {
+  // Bunker crews hold the mineral lines; a few guards per field are enough, the rest keeps up the pressure.
+  private val defenseRoster = new TerranDefenseRoster(4)
+  private val defenses      = oncePerTick {
     if (strategy.current.runsTerranCampaign) {
       val fields = bases.allBases.filter(b =>
         b.mainBuilding.isInGame &&
@@ -32,9 +33,12 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
           DefenseField(area.uniqueId, rally)
         }
       }.groupBy(_.id).values.map(_.head).toVector
+      // at nearly maxed supply nothing more can be built: every field guard joins the attack
+      val supplyCapped = nativeGame.self().supplyUsed >= 2 * TerranCampaignConfig.SupplyCappedAt
       defenseRoster.update(
         fields,
-        fighters.map(m =>
+        if (supplyCapped) Nil
+        else fighters.map(m =>
           DefenseFighter(
             m.nativeUnitId,
             m.currentTile,
