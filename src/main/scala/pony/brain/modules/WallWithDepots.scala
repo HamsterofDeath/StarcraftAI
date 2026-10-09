@@ -246,15 +246,20 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
 
     // Prefer a barracks as the gate, on the choke line or a parallel line up to two tiles in or out: a ramp's width
     // varies, and a barracks (three tiles) and depots (two) must fill the pass exactly.
-    gatePlan(home, f.chokePoint) match {
-      case (Some((depots, barracks)), _) =>
+    val (linePlan, lineChecks) = gatePlan(home, f.chokePoint)
+    val (anyPlan, freeCheck)   = linePlan.fold(freeGatePlan(home, f.chokePoint))(p => (Some(p), "free:skipped"))
+    anyPlan match {
+      case Some((depots, barracks)) =>
         gate = Some(barracks)
-        NativeMatchEvidence.trace("wall-gate-planned", s"barracks=$barracks depots=${depots.mkString(",")}")
+        NativeMatchEvidence.trace(
+          "wall-gate-planned",
+          s"barracks=$barracks depots=${depots.mkString(",")} line=${linePlan.isDefined}"
+        )
         return depots
-      case (None, checks) =>
+      case None =>
         NativeMatchEvidence.trace(
           "wall-gate-none",
-          s"checks=${checks.mkString(" ")}; depots only, opened by demolition"
+          s"checks=${lineChecks.mkString(" ")} $freeCheck; depots only, opened by demolition"
         )
     }
     budget = 20000
@@ -394,7 +399,7 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
 
   /**
     * Whether `unit` gets from outside the main's choke to the defended side past the planned depots and the gate
-    * barracks (when landed), judged on pixels against building boxes and walk-tile terrain within ten tiles of the
+    * barracks (when landed), judged on pixels against building boxes and walk-tile terrain within nine tiles of the
     * choke; None without a known outside start.
     */
   private def pixelPass(
@@ -402,12 +407,20 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
       unit: WallGeometry.Dims,
       depots: Vector[MapTilePosition],
       barracks: Option[MapTilePosition]
-  ): Option[Boolean] = strategicMap.defenseLineOf(home).flatMap { front =>
+  ): Option[Boolean] = pixelWay(home, unit, depots, barracks).map(_.isDefined)
+
+  /** The way `pixelPass` finds (Some(None) when there is none); None without a known outside start. */
+  private def pixelWay(
+      home: Base,
+      unit: WallGeometry.Dims,
+      depots: Vector[MapTilePosition],
+      barracks: Option[MapTilePosition]
+  ): Option[Option[Vector[(Int, Int)]]] = strategicMap.defenseLineOf(home).flatMap { front =>
     import WallGeometry._
     val grid     = mapLayers.rawWalkableMap
     val c        = front.chokePoint.center
-    val (x0, y0) = ((c.x - 10).max(0), (c.y - 10).max(0))
-    val (x1, y1) = ((c.x + 10).min(grid.cols - 1), (c.y + 10).min(grid.rows - 1))
+    val (x0, y0) = ((c.x - 9).max(0), (c.y - 9).max(0))
+    val (x1, y1) = ((c.x + 9).min(grid.cols - 1), (c.y + 9).min(grid.rows - 1))
     val region   = Box(x0 * 32, y0 * 32, (x1 + 1) * 32 - 1, (y1 + 1) * 32 - 1)
     val planned  = depots.map(a => buildingBox(a.x, a.y, Dims.SupplyDepot)) ++
       barracks.map(b => buildingBox(b.x, b.y, Dims.Barracks))
@@ -424,7 +437,7 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
       .filter(t => t.x >= x0 && t.x <= x1 && t.y >= y0 && t.y <= y1).distinct.take(6)
       .map(t => (t.x * 32 + 16, t.y * 32 + 16)).toVector
     Option.when(starts.nonEmpty)(
-      passable(
+      path(
         unit,
         planned ++ standing,
         blocked,
@@ -433,6 +446,45 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
         (x, y) => front.defended.free(MapTilePosition(x / 32, y / 32))
       )
     )
+  }
+
+  /**
+    * A gate wall built on pixels rather than along one line: for barracks spots near the choke, depots are added where
+    * a zealot's way through runs, nearest to the choke first, until no way is left (at most four depots); the plan is
+    * kept if a siege tank gets through once the barracks lifts.
+    */
+  private def freeGatePlan(
+      home: Base,
+      choke: ChokePoint
+  ): (Option[(Vector[MapTilePosition], MapTilePosition)], String) = {
+    import WallGeometry.Dims
+    val c     = choke.center
+    val spots = (for (dx <- -7 to 4; dy <- -6 to 4) yield c.movedBy(dx, dy)).filter(barracksFree)
+      .sortBy(b => (b.movedBy(2, 1).distanceSquaredTo(c), b.y, b.x)).take(10)
+    var tried = 0
+    val plan  = spots.iterator.flatMap { b =>
+      tried += 1
+      val taken  = barracksTiles(b).toSet
+      var depots = Vector.empty[MapTilePosition]
+      var way    = pixelWay(home, Dims.Zealot, depots, Some(b))
+      var stuck  = way.isEmpty
+      while (way.exists(_.isDefined) && depots.size < 4 && !stuck) {
+        val tiles = way.get.get.map((x, y) => MapTilePosition(x / 32, y / 32)).distinct
+        val onWay = tiles.toSet
+        tiles.flatMap(placementsCovering).distinct
+          .filterNot(a => footprint(a).exists(taken) || depots.exists(d => overlaps(a, d)))
+          .sortBy(a => (a.movedBy(1, 0).distanceSquaredTo(c), -footprint(a).count(onWay), a.y, a.x))
+          .headOption match {
+          case Some(a) =>
+            depots :+= a
+            way = pixelWay(home, Dims.Zealot, depots, Some(b))
+          case None => stuck = true
+        }
+      }
+      val closed = way.contains(None) && !stuck
+      Option.when(closed && pixelPass(home, Dims.SiegeTank, depots, None).contains(true))(depots -> b)
+    }.nextOption()
+    (plan, s"free:spots=${spots.size}:tried=$tried:ok=${plan.isDefined}")
   }
 
   /** A free path from a known outside tile to the defended side means the wall leaks. */
