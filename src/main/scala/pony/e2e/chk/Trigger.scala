@@ -37,11 +37,26 @@ object Trigger {
   val AtLeast = 0
   val AtMost  = 1
 
-  final case class Condition(kind: Int, player: Int = 0, unit: Int = 0, comparison: Int = 0, amount: Int = 0,
-                             location: Int = 0, resource: Int = 0)
+  final case class Condition(
+      kind: Int,
+      player: Int = 0,
+      unit: Int = 0,
+      comparison: Int = 0,
+      amount: Int = 0,
+      location: Int = 0,
+      resource: Int = 0
+  )
 
-  final case class Action(kind: Int, player: Int = 0, second: Int = 0, unit: Int = 0, modifier: Int = 0,
-                          location: Int = 0, text: Int = 0, millis: Int = 0)
+  final case class Action(
+      kind: Int,
+      player: Int = 0,
+      second: Int = 0,
+      unit: Int = 0,
+      modifier: Int = 0,
+      location: Int = 0,
+      text: Int = 0,
+      millis: Int = 0
+  )
 
   def always = Condition(22)
 

@@ -37,15 +37,20 @@ object GenerateE2EMaps {
       block(ours.unitId, 0, n, 12) ++ block(theirs.unitId, 1, m, 52),
     locations = Seq(Location.aroundTile(BotArea, "Bot area", 12, 32, 4)),
     triggers = opponentAttacks ++ botResult(timeoutSeconds),
-    groundTiles = BadlandsDirt)
+    groundTiles = BadlandsDirt
+  )
 
   /** Columns of up to six units, a tile and a half apart, centred on row 32 around column `x`. */
   private def block(unitId: Int, owner: Int, count: Int, x: Int) = (0 until count).map { i =>
     val column = i / 6
-    val row = i % 6
-    val rows = math.min(6, count - column * 6)
-    MapUnit(unitId, owner, x * 32 + 16 + (if (owner == 0) -column else column) * 48,
-      32 * 32 + 16 + (row * 48) - (rows - 1) * 24)
+    val row    = i % 6
+    val rows   = math.min(6, count - column * 6)
+    MapUnit(
+      unitId,
+      owner,
+      x * 32 + 16 + (if (owner == 0) -column else column) * 48,
+      32 * 32 + 16 + (row * 48) - (rows - 1) * 24
+    )
   }
 
   val All: Map[String, UmsScenario] = Seq((1, 1), (2, 3), (4, 6), (8, 12)).map { case (n, m) =>
@@ -53,13 +58,21 @@ object GenerateE2EMaps {
   }.toMap
 
   private def opponentAttacks = Seq(
-    Trigger(Seq(1), Seq(Trigger.always), Seq(Trigger.runAiScript("Suic"),
-      Trigger.order(1, Trigger.AnyUnit, Trigger.Anywhere, BotArea, orderType = 2))))
+    Trigger(
+      Seq(1),
+      Seq(Trigger.always),
+      Seq(
+        Trigger.runAiScript("Suic"),
+        Trigger.order(1, Trigger.AnyUnit, Trigger.Anywhere, BotArea, orderType = 2)
+      )
+    )
+  )
 
   private def botResult(timeoutSeconds: Int) = Seq(
     Trigger(Seq(0), Seq(Trigger.commandsAtMost(1, Trigger.Men, 0)), Seq(Trigger.victory)),
     Trigger(Seq(0), Seq(Trigger.commandsAtMost(0, Trigger.Men, 0)), Seq(Trigger.defeat)),
-    Trigger(Seq(0), Seq(Trigger.elapsedSeconds(timeoutSeconds)), Seq(Trigger.defeat)))
+    Trigger(Seq(0), Seq(Trigger.elapsedSeconds(timeoutSeconds)), Seq(Trigger.defeat))
+  )
 
   def write(scenario: UmsScenario, template: ChkFile, target: Path): Unit = {
     Files.createDirectories(target.getParent)

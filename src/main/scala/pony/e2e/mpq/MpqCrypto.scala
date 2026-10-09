@@ -11,7 +11,7 @@ object MpqCrypto {
 
   private val cryptTable: Array[Int] = {
     val table = new Array[Int](0x500)
-    var seed = 0x00100001L
+    var seed  = 0x00100001L
     (0 until 0x100).foreach { index1 =>
       var index2 = index1
       (0 until 5).foreach { _ =>
@@ -47,14 +47,14 @@ object MpqCrypto {
   /** Works on whole little-endian words; trailing bytes stay as they are, like Storm. */
   private def transform(data: Array[Byte], startKey: Int, encrypting: Boolean): Array[Byte] = {
     val result = data.clone()
-    val words = ByteBuffer.wrap(result).order(ByteOrder.LITTLE_ENDIAN)
-    var key = startKey
-    var seed = 0xeeeeeeee
+    val words  = ByteBuffer.wrap(result).order(ByteOrder.LITTLE_ENDIAN)
+    var key    = startKey
+    var seed   = 0xeeeeeeee
     (0 until data.length / 4).foreach { i =>
       seed += cryptTable(0x400 + (key & 0xff))
-      val input = words.getInt(i * 4)
+      val input  = words.getInt(i * 4)
       val output = input ^ (key + seed)
-      val plain = if (encrypting) input else output
+      val plain  = if (encrypting) input else output
       key = ((~key << 0x15) + 0x11111111) | (key >>> 0x0b)
       seed = plain + seed + (seed << 5) + 3
       words.putInt(i * 4, output)

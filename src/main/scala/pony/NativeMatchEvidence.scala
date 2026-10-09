@@ -28,6 +28,14 @@ object NativeMatchEvidence {
   }
   def trace(event: String, detail: String): Unit =
     println("TWAILIGHT_CAMPAIGN frame=" + TickCounter.tickCount + " event=" + event + " detail=" + detail)
+
+  /** Surviving units other than buildings and their summed hit points and shields, for micro scenarios. */
+  private def forces(units: Iterable[bwapi.Unit]) = {
+    val alive =
+      units.filter(u => u.exists && !u.getType.isBuilding && u.getType != bwapi.UnitType.Special_Start_Location)
+    "{\"units\":" + alive.size + ",\"durability\":" + alive.iterator.map(u => u.getHitPoints + u.getShields).sum + "}"
+  }
+
   private def quoted(s: String) = "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
   private def write(game: Game, status: String, winner: Option[Boolean]): Unit = {
     val directory = new File(sys.props.getOrElse("twailight.resultDirectory", "log"))
@@ -57,6 +65,8 @@ object NativeMatchEvidence {
           ",\"mapInputSha256\":" + quoted(sys.props.getOrElse("twailight.mapInputSha256", "unrecorded")) +
           ",\"renderingEnabled\":" + !sys.props.getOrElse("twailight.headless", "false").toBoolean +
           ",\"initialState\":" + initialState +
+          ",\"selfForces\":" + forces(game.self().getUnits.asScala) +
+          ",\"enemyForces\":" + forces(game.enemies().asScala.flatMap(_.getUnits.asScala)) +
           ",\"configuration\":{\"minFighters\":" + config.minFighters + ",\"armyMinerals\":" + config.armyMinerals +
           ",\"armyGas\":" + config.armyGas + ",\"expansionReserve\":" + config.expansionReserve +
           ",\"bankMinerals\":" + config.bankMinerals + ",\"bankGas\":" + config.bankGas + "}}"

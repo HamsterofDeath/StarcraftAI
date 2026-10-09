@@ -7,6 +7,12 @@ final case class Location(number: Int, name: String, left: Int, top: Int, right:
 
 object Location {
   def aroundTile(number: Int, name: String, tileX: Int, tileY: Int, radiusTiles: Int) =
-    Location(number, name, (tileX - radiusTiles) * 32, (tileY - radiusTiles) * 32, (tileX + radiusTiles + 1) * 32,
-      (tileY + radiusTiles + 1) * 32)
+    Location(
+      number,
+      name,
+      (tileX - radiusTiles) * 32,
+      (tileY - radiusTiles) * 32,
+      (tileX + radiusTiles + 1) * 32,
+      (tileY + radiusTiles + 1) * 32
+    )
 }

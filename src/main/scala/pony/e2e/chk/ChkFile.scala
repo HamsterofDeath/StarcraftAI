@@ -24,7 +24,7 @@ final case class ChkFile(sections: Vector[(String, Array[Byte])]) {
 
 object ChkFile {
   def parse(data: Array[Byte]): ChkFile = {
-    val buffer = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN)
+    val buffer   = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN)
     val sections = Vector.newBuilder[(String, Array[Byte])]
     var position = 0
     while (position + 8 <= data.length) {

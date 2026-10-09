@@ -8,10 +8,10 @@ object MpqWriter {
 
   def write(files: Seq[(String, Array[Byte])]): Array[Byte] = {
     val hashEntries = Iterator.iterate(16)(_ * 2).find(_ >= files.size * 2).get
-    val dataSize = files.map(_._2.length).sum
-    val hashOffset = HeaderSize + dataSize
+    val dataSize    = files.map(_._2.length).sum
+    val hashOffset  = HeaderSize + dataSize
     val blockOffset = hashOffset + hashEntries * 16
-    val total = blockOffset + files.size * 16
+    val total       = blockOffset + files.size * 16
 
     val out = ByteBuffer.allocate(total).order(ByteOrder.LITTLE_ENDIAN)
     out.put("MPQ".getBytes("ASCII")).put(0x1a.toByte)

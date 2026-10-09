@@ -7,21 +7,46 @@ import java.nio.{ByteBuffer, ByteOrder}
   * the computer. Verification data and unit/upgrade/tech defaults are copied from a template map; the terrain repeats
   * `groundTiles`, which must be walkable tiles of the template's tileset.
   */
-final case class UmsScenario(name: String, description: String, widthTiles: Int, heightTiles: Int,
-                             botRace: Int, opponentRace: Int, units: Seq[MapUnit], locations: Seq[Location],
-                             triggers: Seq[Trigger], groundTiles: Seq[Int]) {
+final case class UmsScenario(
+    name: String,
+    description: String,
+    widthTiles: Int,
+    heightTiles: Int,
+    botRace: Int,
+    opponentRace: Int,
+    units: Seq[MapUnit],
+    locations: Seq[Location],
+    triggers: Seq[Trigger],
+    groundTiles: Seq[Int]
+) {
 
   def build(template: ChkFile): ChkFile = {
-    val strings = Vector(name, description, "Bot", "Opponent", "Anywhere") ++ locations.map(_.name)
+    val strings             = Vector(name, description, "Bot", "Opponent", "Anywhere") ++ locations.map(_.name)
     def stringId(s: String) = strings.indexOf(s) + 1
-    val copied = Vector("TYPE", "VER ", "IVE2", "VCOD", "PUNI", "UPGR", "PTEC", "UNIS", "UPGS", "TECS", "COLR", "PUPx",
-      "PTEx", "UNIx", "UPGx", "TECx").map(n => n -> template(n))
+    val copied              = Vector(
+      "TYPE",
+      "VER ",
+      "IVE2",
+      "VCOD",
+      "PUNI",
+      "UPGR",
+      "PTEC",
+      "UNIS",
+      "UPGS",
+      "TECS",
+      "COLR",
+      "PUPx",
+      "PTEx",
+      "UNIx",
+      "UPGx",
+      "TECx"
+    ).map(n => n -> template(n))
     val tiles = mtxm
     ChkFile(copied ++ Vector(
       "OWNR" -> owners,
       "IOWN" -> owners,
       "ERA " -> le(2)(_.putShort((ByteBuffer.wrap(template("ERA ")).order(ByteOrder.LITTLE_ENDIAN).getShort(0) & 7)
-                                 .toShort)),
+        .toShort)),
       "DIM " -> le(4)(_.putShort(widthTiles.toShort).putShort(heightTiles.toShort)),
       "SIDE" -> sides,
       "MTXM" -> tiles,
@@ -39,7 +64,9 @@ final case class UmsScenario(name: String, description: String, widthTiles: Int,
       "SPRP" -> le(4)(_.putShort(stringId(name).toShort).putShort(stringId(description).toShort)),
       "FORC" -> le(20) { b =>
         b.put(0.toByte).put(1.toByte).put(Array.fill(6)(0.toByte))
-        b.putShort(stringId("Bot").toShort).putShort(stringId("Opponent").toShort).putShort(0.toShort).putShort(0.toShort)
+        b.putShort(
+          stringId("Bot").toShort
+        ).putShort(stringId("Opponent").toShort).putShort(0.toShort).putShort(0.toShort)
         b.put(Array.fill(4)(0.toByte))
       },
       "WAV " -> new Array[Byte](512 * 4),
@@ -64,8 +91,10 @@ final case class UmsScenario(name: String, description: String, widthTiles: Int,
 
   /** Mixes the ground tiles in a fixed pattern so the map looks natural and stays deterministic. */
   private def mtxm = le(widthTiles * heightTiles * 2) { b =>
-    (0 until widthTiles * heightTiles).foreach(i => b.putShort(groundTiles((i * 7 + i / widthTiles) % groundTiles.size)
-                                                               .toShort))
+    (0 until widthTiles * heightTiles).foreach(i =>
+      b.putShort(groundTiles((i * 7 + i / widthTiles) % groundTiles.size)
+        .toShort)
+    )
   }
 
   private def regions(anywhereName: Int, stringId: String => Int) = le(255 * 20) { b =>
@@ -78,7 +107,7 @@ final case class UmsScenario(name: String, description: String, widthTiles: Int,
   }
 
   private def stringTable(strings: Vector[String]) = {
-    val encoded = strings.map(_.getBytes("ISO-8859-1") :+ 0.toByte)
+    val encoded    = strings.map(_.getBytes("ISO-8859-1") :+ 0.toByte)
     val headerSize = 2 + strings.size * 2
     le(headerSize + encoded.map(_.length).sum) { b =>
       b.putShort(strings.size.toShort)

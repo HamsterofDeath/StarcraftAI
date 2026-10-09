@@ -5,7 +5,8 @@ package modules
 object TerranBehaviours {
   def allBehaviours(universe: Universe): Seq[DefaultBehaviour[WrapsUnit]] = {
     val allOfThem =
-      (new StimSelf(universe) ::
+      (new KiteMeleeEnemies(universe) ::
+        new StimSelf(universe) ::
         new EnterDefensiveBunker(universe) ::
         new StopMechanic(universe) ::
         new SetupMineField(universe) ::
