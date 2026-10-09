@@ -1571,9 +1571,7 @@ object Terran {
   }
 
   class OneTimeUnitSpellCast[C <: HasSingleTargetSpells : ClassTag, T <: Mobile : ClassTag]
-  (universe: Universe,
-   spell:
-   SingleTargetSpell[C, T])
+  (universe: Universe, spell: SingleTargetSpell[C, T])
     extends DefaultBehaviour[C](universe) {
     private val helper = NonConflictingSpellTargets.forSpell(spell, universe)
 

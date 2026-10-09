@@ -16,3 +16,6 @@ scalacOptions ++= Seq("-deprecation", "-feature", "-Werror", "-release", "17")
 javacOptions ++= Seq("--release", "17", "-Xlint:all", "-Werror")
 
 Compile / mainClass := Some("pony.Controller")
+
+// Formatting check plus the full, non-incremental test run; use before every push.
+addCommandAlias("validate", ";scalafmtCheckAll;scalafmtSbtCheck;testFull")
