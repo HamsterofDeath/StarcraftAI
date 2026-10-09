@@ -475,7 +475,10 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule[WrapsUni
         // the base would never ask for or receive local miners. Leaving the request unfulfilled
         // instead makes ProvideNewUnits train the missing worker here.
         val walkable = mapLayers.freeWalkableIgnoringMobiles
-        val fieldAnchor = base.resourceArea.map(_.nearbyFreeTile)
+        // Resolve the anchor fresh every tick: nearbyFreeTile is cached once and a wall depot or
+        // its blueprint can later cover it, which would silently reject every candidate. A clear
+        // five-tile block also keeps the anchor out of pockets enclosed by the mineral line.
+        val fieldAnchor = base.resourceArea.flatMap(a => walkable.nearestFreeBlock(a.center, 2))
         if (currentTick < 600) NativeMatchEvidence.trace("mining-locality",
           s"anchor=$fieldAnchor anchorArea=${fieldAnchor.map(t => walkable.areaOf(t).isDefined)} " +
             ownUnits.allByType[WorkerUnit].take(5).map(w =>
