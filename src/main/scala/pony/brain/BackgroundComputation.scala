@@ -12,6 +12,8 @@ trait BackgroundComputation[T <: WrapsUnit] extends AIModule[T] {
     .successful(BackgroundComputationResult.nothing[T](() => {}))
   private var currentResult          = Option.empty[BackgroundComputationResult[T]]
   private var waitingForBackgroundOp = false
+  private var startedAt              = 0
+  private var reportedSlow           = false
 
   override def ordersForTick: Iterable[UnitOrder] = {
     currentResult.filter(_.repeatOrderIssue) match {
@@ -21,7 +23,14 @@ trait BackgroundComputation[T <: WrapsUnit] extends AIModule[T] {
         // kick old result
         currentResult = None
         if (waitingForBackgroundOp && !backgroundOp.isCompleted) {
-          // waiting, but no result yet: noop
+          // waiting, but no result yet: noop; a computation pending for half a minute starves this module
+          if (!reportedSlow && universe.currentTick - startedAt > 24 * 30) {
+            reportedSlow = true
+            NativeMatchEvidence.trace(
+              "background-slow",
+              s"module=${getClass.getName.split('.').last} pendingFrames=${universe.currentTick - startedAt}"
+            )
+          }
           Nil
         } else if (waitingForBackgroundOp && backgroundOp.isCompleted) {
           // we were waiting for a computation to finish
@@ -85,6 +94,8 @@ trait BackgroundComputation[T <: WrapsUnit] extends AIModule[T] {
               info(s"Background computation starting, input is $in")
               backgroundOp = Future { evaluateNextOrders(in) }
               waitingForBackgroundOp = true
+              startedAt = universe.currentTick
+              reportedSlow = false
               Nil
           }
         }

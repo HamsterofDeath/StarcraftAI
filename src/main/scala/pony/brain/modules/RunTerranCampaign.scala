@@ -152,9 +152,10 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
     if (known.isDefined) {
       huntTarget = None
       huntInitiated = false
-    } else if (!worldDominationPlan.baseDefenseActive) {
+    } else if ((campaignCommitted || reconnaissanceAllowed) && !worldDominationPlan.baseDefenseActive) {
       // No enemy building seen yet: an army ready to attack must not wait for a scout. The hunt goes to the possible
-      // enemy starts first (on a two-player map, the enemy main), then sweeps the fields.
+      // enemy starts first (on a two-player map, the enemy main), then sweeps the fields. Not earlier: a target makes
+      // the attack planning run in the background, and its pool is shared with construction planning.
       if (huntTarget.isEmpty || (huntInitiated && sweepDone)) {
         if (huntPoints.isEmpty) {
           val own         = nativeGame.self().getStartLocation
