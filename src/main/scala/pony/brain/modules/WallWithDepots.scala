@@ -49,6 +49,9 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
   /** True once planning concluded that no depot wall can seal the main approach. */
   def refused: Boolean = refusedPlanning
 
+  /** True for a wall depot the army is knocking down to open the gate: nobody repairs it. */
+  def demolishing(id: Int): Boolean = gateOpened && gateDepotIds.contains(id)
+
   /** True once the wall was deliberately opened, or while its barracks gate is lifted. */
   def gateOpen: Boolean = gateOpened || gateBarracks.exists(_.isFloating)
 
@@ -670,7 +673,8 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
       val request = UnitJobRequest.idleOfType(demolishers, cls, missing, Priority.Supply)
         .withOnlyAccepting { w =>
           val job = unitManager.jobOf(w)
-          job.isIdle || job.isInstanceOf[GatherMineralsAtSinglePatch]
+          // fighters are never idle: their default behaviours employ them, and those may be taken
+          job.isIdle || job.isInstanceOf[BusyDoingSomething[?]] || job.isInstanceOf[GatherMineralsAtSinglePatch]
         }
       unitManager.request(request, buildIfNoneAvailable = false).units.foreach { w =>
         demolishers.assignJob_!(new DemolishWallDepot(w, depot, demolishers))

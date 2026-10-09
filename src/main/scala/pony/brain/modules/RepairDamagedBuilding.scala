@@ -10,7 +10,9 @@ class RepairDamagedBuilding(universe: Universe) extends DefaultBehaviour[SCV](un
     universe = universe,
     rateTarget = m => PriorityChain(m.percentageHPOk),
     // a building BWAPI cannot place (an addon of a lifted factory reports an unknown position) has no ground to reach
-    validTargetTest = t => t.isInGame && t.tilePosition.isInsideOfGame && t.isDamaged && !t.isFloating,
+    validTargetTest = t =>
+      t.isInGame && t.tilePosition.isInsideOfGame && t.isDamaged && !t.isFloating &&
+        !universe.pluginByType[WallWithDepots].demolishing(t.nativeUnitId),
     subAccept = (m, t) => !t.isFloating && m.currentArea.contains(t.areaOnMap),
     subRate = (m, t) => PriorityChain(-m.currentTile.distanceSquaredTo(t.centerTile)),
     own = true,
