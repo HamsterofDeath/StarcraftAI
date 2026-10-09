@@ -9,6 +9,10 @@ class ProvideNewBuildings(universe: Universe)
   self =>
 
   override type ComputationInput = Data
+
+  // Construction planning takes milliseconds but waited seconds in the shared pool behind path and attack planning,
+  // so a single building every half minute was started; it gets a thread of its own.
+  override protected def computationContext                         = ProvideNewBuildings.planner
   protected def constructionSite(in: Data): Option[MapTilePosition] =
     in.jobRequest.customPosition.resolve(in.helper.findSpotFor(in.mainBuildingwhere, in.buildingType))
 
@@ -128,4 +132,16 @@ class ProvideNewBuildings(universe: Universe)
       s"ConstructionData(worker=$workerId, building=${buildingType.className}, home=$mainBuildingwhere)"
   }
 
+}
+
+object ProvideNewBuildings {
+
+  /** One daemon thread for every game of this process: construction planning never waits for other planning. */
+  val planner: scala.concurrent.ExecutionContext = scala.concurrent.ExecutionContext.fromExecutor(
+    java.util.concurrent.Executors.newSingleThreadExecutor { (r: Runnable) =>
+      val thread = new Thread(r, "construction-planning")
+      thread.setDaemon(true)
+      thread
+    }
+  )
 }

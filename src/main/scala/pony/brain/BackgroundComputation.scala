@@ -2,11 +2,14 @@ package pony
 package brain
 
 import scala.concurrent.duration.Duration
-import scala.concurrent.{Await, Future}
+import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.reflect.ClassTag
 
 trait BackgroundComputation[T <: WrapsUnit] extends AIModule[T] {
   type ComputationInput
+
+  /** Where the computation runs: the shared pool unless a module needs a thread of its own. */
+  protected def computationContext: ExecutionContext = exCon
 
   private var backgroundOp = Future
     .successful(BackgroundComputationResult.nothing[T](() => {}))
@@ -105,7 +108,7 @@ trait BackgroundComputation[T <: WrapsUnit] extends AIModule[T] {
                 runStarted = System.nanoTime()
                 try evaluateNextOrders(in)
                 finally runEnded = System.nanoTime()
-              }
+              }(using computationContext)
               waitingForBackgroundOp = true
               startedAt = universe.currentTick
               reportedSlow = false
