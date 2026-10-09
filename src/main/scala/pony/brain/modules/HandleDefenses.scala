@@ -11,8 +11,22 @@ class HandleDefenses(universe: Universe) extends OrderlessAIModule[Mobile](unive
   override def onTick_!(): Unit = {
     if (race.isTerran && strategy.current.runsTerranCampaign) {
       val localThreats = mapLayers.defendedTiles.allBlocked.flatMap(tile => unitGrid.enemy.onTile(tile))
-        .filterNot(_.isHarmlessNow).toVector
-      worldDominationPlan.setBaseDefensePressure(localThreats.nonEmpty)
+        .filterNot(_.isHarmlessNow).toVector.distinctBy(_.nativeUnitId)
+      if (localThreats.isEmpty) worldDominationPlan.setBaseDefensePressure(false)
+      else {
+        def value(u: WrapsUnit) = u.nativeUnitType.mineralPrice + u.nativeUnitType.gasPrice
+        val out                 = worldDominationPlan.campaignForce
+        val home                = ownUnits.allMobilesWithWeapons.iterator.filter { m =>
+          m.isInGame && !m.isBeingCreated && m.isFigher && !m.isInstanceOf[WorkerUnit] && !out(m)
+        }.map(value).sum
+        val threat   = localThreats.iterator.map(value).sum
+        val campaign = out.iterator.map(value).sum
+        worldDominationPlan.setBaseDefensePressure(
+          true,
+          RaidResponse.recallsCampaign(threat, home, campaign),
+          s"threat=$threat home=$home campaign=$campaign"
+        )
+      }
       localThreats.headOption.foreach(threat => worldDominationPlan.requestBaseDefense(threat.currentTile))
       return
     }

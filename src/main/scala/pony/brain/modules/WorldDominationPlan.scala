@@ -15,12 +15,14 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
   private var thinkingSince                                       = 0
   private val baseDefense                                         = new CampaignDefenseControl
   def baseDefenseActive                                           = baseDefense.pressure
-  def setBaseDefensePressure(active: Boolean): Unit               = {
-    val changed = active != baseDefense.pressure
+  def setBaseDefensePressure(active: Boolean, recallCampaign: Boolean = true, detail: => String = ""): Unit = {
+    val changed = active != baseDefense.pressure || active && recallCampaign != baseDefense.recallsCampaign
     baseDefense.setPressure(active)
-    if (active) attacks.retain(a => !a.campaign)
-    if (changed) NativeMatchEvidence.trace("base-defense-pressure", s"active=$active")
+    baseDefense.recallsCampaign = recallCampaign
+    if (active && recallCampaign) attacks.retain(a => !a.campaign)
+    if (changed) NativeMatchEvidence.trace("base-defense-pressure", s"active=$active recall=$recallCampaign $detail")
   }
+  def campaignForce: Set[Mobile]                       = attacks.iterator.filter(_.campaign).flatMap(_.force).toSet
   def requestBaseDefense(where: MapTilePosition): Unit = {
     if (
       baseDefense.pressure &&
@@ -30,6 +32,8 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
   }
   def immediateBaseDefenseOrder(unit: Mobile): Option[UnitOrder] = {
     if (!baseDefense.pressure || attackOf(unit).exists(_.migrationPlan.isDefined)) None
+    // a raid home can hold leaves the campaign army on its way
+    else if (!baseDefense.recallsCampaign && attackOf(unit).exists(_.campaign)) None
     // Carpet pairs hold their spread posts; the wall guard covers the main.
     else if (universe.pluginByType[CarpetSpread].postOf(unit.nativeUnitId).isDefined) None
     else baseDefense.target.map(where => Orders.AttackMove(unit, where))
@@ -114,8 +118,9 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
       }
     }
     baseDefense.takeReady(thinking).foreach { where =>
-      NativeMatchEvidence.trace("base-defense-recall", where.toString)
-      initiateAttack(where, Highest)
+      NativeMatchEvidence.trace("base-defense-recall", s"$where campaign=${baseDefense.recallsCampaign}")
+      // the highest priority clears every attack; a raid home can hold is met by the units not out on campaign
+      initiateAttack(where, if (baseDefense.recallsCampaign) Highest else Lowest)
     }
   }
 
