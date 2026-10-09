@@ -8,7 +8,7 @@ class FlyFactoriesToNatural(universe: Universe) extends OrderlessAIModule[Factor
   private var flight        = Option.empty[RelocateFactory]
   private val claimedFields = collection.mutable.Set.empty[Int]
 
-  private def carpet = strategy.current.isInstanceOf[Strategy.TerranCarpet]
+  private def carpet = strategy.current.usesCarpet
   private def wall   = universe.pluginByType[WallWithDepots]
 
   override def onTick_!(): Unit = {

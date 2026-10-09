@@ -10,7 +10,7 @@ class TankBoxes(universe: Universe) extends OrderlessAIModule[WorkerUnit](univer
   private val done      = mutable.Set.empty[Int]
   private var activeBox = Option.empty[(Int, Vector[MapTilePosition])]
 
-  private def carpet = strategy.current.isInstanceOf[Strategy.TerranCarpet]
+  private def carpet = strategy.current.usesCarpet
   private def wall   = universe.pluginByType[WallWithDepots]
   private def spread = universe.pluginByType[CarpetSpread]
 

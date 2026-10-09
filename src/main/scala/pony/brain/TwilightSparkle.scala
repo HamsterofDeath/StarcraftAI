@@ -1,7 +1,7 @@
 package pony
 package brain
 
-import pony.brain.modules.Strategy.Strategies
+import pony.brain.modules.strategy.StrategySelector
 import pony.brain.modules._
 
 import scala.jdk.CollectionConverters._
@@ -60,7 +60,7 @@ class TwilightSparkle(world: DefaultWorld) {
   private val enemyUnits      = new Units(world.nativeGame, true, universe)
   private val bases           = new Bases(world, universe)
   private val resources       = new ResourceManager(universe)
-  private val strategy        = new Strategies(universe)
+  private val strategy        = new StrategySelector(universe)
   private val worldDomination = new WorldDominationPlan(universe)
   private val sendOrders      = new SendOrdersToStarcraft(universe)
   // Failed hiring requests live two frames; satisfying them must not wait for a heavy tick.

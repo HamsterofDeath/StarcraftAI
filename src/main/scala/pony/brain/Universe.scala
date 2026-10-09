@@ -1,7 +1,7 @@
 package pony
 package brain
 
-import pony.brain.modules.Strategy.Strategies
+import pony.brain.modules.strategy.StrategySelector
 import pony.brain.modules.{FerryManager, WorldDominationPlan}
 
 import scala.collection.mutable.ArrayBuffer
@@ -54,7 +54,7 @@ trait Universe extends HasLazyVals {
 
   def strategicMap: StrategicMap
 
-  def strategy: Strategies
+  def strategy: StrategySelector
 
   def unitGrid: UnitGrid
 

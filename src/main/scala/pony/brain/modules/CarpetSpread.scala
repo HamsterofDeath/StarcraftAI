@@ -11,7 +11,7 @@ class CarpetSpread(universe: Universe) extends OrderlessAIModule[Mobile](univers
 
   def postOf(unitId: Int): Option[MapTilePosition] = assignments.get(unitId)
 
-  private def carpet = strategy.current.isInstanceOf[Strategy.TerranCarpet]
+  private def carpet = strategy.current.usesCarpet
   private def wall   = universe.pluginByType[WallWithDepots]
 
   private val pocket = oncePerTick {

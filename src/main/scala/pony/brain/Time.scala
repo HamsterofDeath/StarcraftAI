@@ -19,7 +19,7 @@ class Time(universe: Universe) {
 
   def minutes = seconds / 60.0
 
-  def phase = universe.strategy.current.timingHelpers.phase
+  def phase = universe.strategy.current.phase
 
   def categoryName = {
     if (phase.isEarly) {

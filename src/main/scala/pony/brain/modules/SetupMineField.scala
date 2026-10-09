@@ -34,7 +34,7 @@ class SetupMineField(universe: Universe) extends DefaultBehaviour[Vulture](unive
       universe.bases.isCovered(field)
     }.map { _.nearbyFreeTile }
     // The carpet spreads vulture mines over every neutral field instead of only the front line.
-    if (universe.strategy.current.isInstanceOf[Strategy.TerranCarpet]) defense ++ neutralResourceFields
+    if (universe.strategy.current.usesCarpet) defense ++ neutralResourceFields
     else defense
   }
 

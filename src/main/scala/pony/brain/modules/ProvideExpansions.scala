@@ -23,7 +23,7 @@ class ProvideExpansions(universe: Universe)
   }
 
   override def onTick_!(): Unit = {
-    if (race.isTerran && strategy.current.isInstanceOf[Strategy.SimpleTerran]) {
+    if (race.isTerran && strategy.current.runsTerranCampaign) {
       terranOpening.onTick_!()
       return
     }

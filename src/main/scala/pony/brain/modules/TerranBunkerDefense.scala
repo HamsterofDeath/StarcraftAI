@@ -12,19 +12,15 @@ class TerranBunkerDefense(universe: Universe)
     override protected def onBuildingRequested(request: BuildUnitRequest[? <: Building]): Unit =
       if (request.typeOfRequestedUnit == classOf[Bunker]) ownedRequests += request
   }
-  private val plans             = mutable.Map.empty[Int, (Vector[MapPosition], Vector[Area])]
-  private val geometry          = mutable.Map.empty[Int, Vector[Area]]
-  private val garrison          = new BunkerGarrison
-  private val repairers         = new Employer[SCV](universe)
-  private var cargoObserved     = Map.empty[Int, Set[Int]]
-  private var announcedReady    = Set.empty[Int]
-  private var uncoveredReported = Set.empty[Int]
-  private var placementReported = Set.empty[MapTilePosition]
-  private def active            = race.isTerran &&
-    (strategy.current match {
-      case s: Strategy.SimpleTerran => s.usesBunkerDefense
-      case _                        => false
-    })
+  private val plans                            = mutable.Map.empty[Int, (Vector[MapPosition], Vector[Area])]
+  private val geometry                         = mutable.Map.empty[Int, Vector[Area]]
+  private val garrison                         = new BunkerGarrison
+  private val repairers                        = new Employer[SCV](universe)
+  private var cargoObserved                    = Map.empty[Int, Set[Int]]
+  private var announcedReady                   = Set.empty[Int]
+  private var uncoveredReported                = Set.empty[Int]
+  private var placementReported                = Set.empty[MapTilePosition]
+  private def active                           = race.isTerran && strategy.current.usesBunkerDefense
   private def bunkers                          = ownUnits.allByType[Bunker].filter(_.isInGame).toVector
   private def plannedSites                     = plans.values.flatMap(_._2.map(_.upperLeft)).toSet
   private def activeBunkers                    = bunkers.filter(b => plannedSites(b.tilePosition))

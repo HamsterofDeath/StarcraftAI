@@ -22,11 +22,7 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
   private val repairers           = new Employer[SCV](universe)
   private val demolishers         = new Employer[MobileRangeWeapon](universe)
 
-  private def active = race.isTerran &&
-    (strategy.current match {
-      case s: Strategy.SimpleTerran => s.usesWallDefense
-      case _                        => false
-    })
+  private def active = race.isTerran && strategy.current.usesWallDefense
 
   /** True once every planned wall depot stands completed. */
   def complete: Boolean = anchors.exists { wall =>

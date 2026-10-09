@@ -1,0 +1,12 @@
+pony.brain.modules.strategy.DefaultTerranCampaignPlugin
+pony.brain.modules.strategy.IdleAroundPlugin
+pony.brain.modules.strategy.TerranCarpetPlugin
+pony.brain.modules.strategy.TerranFactoryOnlyPlugin
+pony.brain.modules.strategy.TerranHeavyMetalPlugin
+pony.brain.modules.strategy.TerranInfantryPushPlugin
+pony.brain.modules.strategy.TerranIslandPlugin
+pony.brain.modules.strategy.TerranIslandRichPlugin
+pony.brain.modules.strategy.TerranSkyWallPlugin
+pony.brain.modules.strategy.TerranVsProtossPlugin
+pony.brain.modules.strategy.TerranVsTerranPlugin
+pony.brain.modules.strategy.TerranVsZergPlugin

@@ -150,7 +150,7 @@ class TerranCampaignTest extends Specification with MustMatchers {
           throw new IllegalStateException("World dependency accessed before initialization: " + method.getName)
       }
     ).asInstanceOf[Universe]
-    new Strategy.Strategies(uninitialized).current.name === "Idle"
+    new strategy.StrategySelector(uninitialized).current.name === "Idle"
   }
   def nativeClock = {
     val c = new NativeFrameClock
@@ -619,7 +619,7 @@ class TerranCampaignTest extends Specification with MustMatchers {
     ).asInstanceOf[Universe]
     val module = new TerranBunkerDefense(universe) {
       override def race     = pony.Terran
-      override val strategy = new Strategy.Strategies(this.universe)
+      override val strategy = new modules.strategy.StrategySelector(this.universe)
     }
     val garrison  = new BunkerGarrison
     var completed = false

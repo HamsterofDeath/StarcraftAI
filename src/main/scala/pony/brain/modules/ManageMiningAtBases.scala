@@ -104,7 +104,7 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule[WrapsUni
             }
           }
       }
-      val unnaturals = if (strategy.current.isInstanceOf[Strategy.SimpleTerran]) Nil
+      val unnaturals = if (strategy.current.runsTerranCampaign) Nil
       else {
         val poor = gatheringJobs.groupBy(_.forBase)
           .filter(_._2.forall(_.poor))
@@ -139,7 +139,7 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule[WrapsUni
     def attachedToBase     = base.mainBuilding.isInGame && !base.mainBuilding.isFloating &&
       base.resourceArea.map(_.uniqueId) == boundField
     def permittedStaffing = MineralFieldStaffing.permitted(
-      strategy.current.isInstanceOf[Strategy.SimpleTerran],
+      strategy.current.runsTerranCampaign,
       base.myMineralGroup.map(_.patchId),
       minerals.patchId
     )

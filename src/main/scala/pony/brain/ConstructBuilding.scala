@@ -2,7 +2,6 @@ package pony
 package brain
 
 import pony.brain.UnitRequest.CherryPickers
-import pony.brain.modules.Strategy
 
 import scala.collection.mutable
 import scala.reflect.ClassTag
@@ -28,7 +27,7 @@ class ConstructBuilding[W <: WorkerUnit: ClassTag, B <: Building](
   private lazy val travelProgress = sharedTravelProgress.getOrElse {
     val target =
       if (
-        strategy.current.isInstanceOf[Strategy.SimpleTerran] &&
+        strategy.current.runsTerranCampaign &&
         (isMainBuilding || buildingType == classOf[Bunker])
       ) Some(buildWhere)
       else None

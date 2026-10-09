@@ -9,7 +9,7 @@ class HandleDefenses(universe: Universe) extends OrderlessAIModule[Mobile](unive
   private var backgroundOp = BWFuture.none[Seq[Group[Mobile]]]
 
   override def onTick_!(): Unit = {
-    if (race.isTerran && strategy.current.isInstanceOf[Strategy.SimpleTerran]) {
+    if (race.isTerran && strategy.current.runsTerranCampaign) {
       val localThreats = mapLayers.defendedTiles.allBlocked.flatMap(tile => unitGrid.enemy.onTile(tile))
         .filterNot(_.isHarmlessNow).toVector
       worldDominationPlan.setBaseDefensePressure(localThreats.nonEmpty)

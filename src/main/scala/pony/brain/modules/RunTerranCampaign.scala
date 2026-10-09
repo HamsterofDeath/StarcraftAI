@@ -18,7 +18,7 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
   private var huntInitiated     = false
   private val defenseRoster     = new TerranDefenseRoster(6)
   private val defenses          = oncePerTick {
-    if (strategy.current.isInstanceOf[Strategy.SimpleTerran]) {
+    if (strategy.current.runsTerranCampaign) {
       val fields = bases.allBases.filter(b =>
         b.mainBuilding.isInGame &&
           !b.mainBuilding.isBeingCreated && !b.mainBuilding.isFloating
@@ -95,10 +95,7 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
 
   def scoutingAllowed = reconnaissanceAllowed || minimalScoutingActive
 
-  def campaignLaunchEnabled = strategy.current match {
-    case s: Strategy.SimpleTerran => s.usesCampaignLaunch
-    case _                        => true
-  }
+  def campaignLaunchEnabled = !strategy.current.runsTerranCampaign || strategy.current.usesCampaignLaunch
 
   // Keep spending toward the launch reserve instead of freezing a rich bank.
   def holdingNewArmy = campaignLaunchEnabled && {
