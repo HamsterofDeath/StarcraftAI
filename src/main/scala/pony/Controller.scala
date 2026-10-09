@@ -117,12 +117,10 @@ object Controller {
           frameClock = new NativeFrameClock
           repeatedCallbacks = 0
           NativeMatchEvidence.started(clientRef.getGame)
-          MapPlan.after(NativeMatchEvidence.currentGame).foreach { next =>
-            // BWAPI loads this map when it restarts the game after this one ends
-            val accepted = clientRef.getGame.setMap(next)
+          if (MapPlan.isSession) {
             NativeMatchEvidence.trace(
-              "next-map",
-              s"game=${NativeMatchEvidence.currentGame + 1} map=$next set=$accepted"
+              "session-game",
+              s"game=${NativeMatchEvidence.currentGame} of ${MapPlan.maps.size} map=${clientRef.getGame.mapName()}"
             )
           }
           val headless   = sys.props.getOrElse("twailight.headless", "false").toBoolean

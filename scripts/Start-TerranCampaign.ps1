@@ -55,21 +55,27 @@ if ($dllHash -ne 'F2E0F937E9592157656118FA7E5FF30C2327694ED56C1D8F55687972AD97D3
 if ($E2EMap) { $E2EMaps = @($E2EMap) + $E2EMaps }
 $mapPlan = @()
 if ($E2EMaps.Count -gt 0) {
-  New-Item -ItemType Directory -Path (Join-Path $Runtime 'maps/e2e') -Force | Out-Null
+  # A session gets its own folder of numbered copies; BWAPI plays a wildcard map path in sequence after each restart.
+  $mapFolder = if ($E2EMaps.Count -gt 1) { 'maps/e2e/' + $RunName } else { 'maps/e2e' }
+  New-Item -ItemType Directory -Path (Join-Path $Runtime $mapFolder) -Force | Out-Null
+  $number = 0
   foreach ($e2eMap in $E2EMaps) {
     $e2eSource = Join-Path $Repository $e2eMap
     if (-not (Test-Path -LiteralPath $e2eSource)) { throw ('E2E map not found in the repository: ' + $e2eMap) }
-    $runtimeMap = 'maps/e2e/' + (Split-Path $e2eSource -Leaf)
+    $number++
+    $leaf = Split-Path $e2eSource -Leaf
+    if ($E2EMaps.Count -gt 1) { $leaf = $number.ToString('000') + '-' + $leaf }
+    $runtimeMap = $mapFolder + '/' + $leaf
     Copy-Item -LiteralPath $e2eSource -Destination (Join-Path $Runtime $runtimeMap) -Force
     $mapPlan += $runtimeMap
   }
-  $mapRelative = $mapPlan[0]
+  $mapRelative = if ($mapPlan.Count -gt 1) { $mapFolder + '/*.scm' } else { $mapPlan[0] }
   $gameType = 'USE_MAP_SETTINGS'
 } else {
   $mapRelative = 'maps/BroodWar/aiide/(2)Destination.scx'
   $gameType = 'MELEE'
 }
-$mapHash = (Get-FileHash -LiteralPath (Join-Path $Runtime $mapRelative) -Algorithm SHA256).Hash
+$mapHash = (Get-FileHash -LiteralPath (Join-Path $Runtime $(if ($mapPlan.Count -gt 1) { $mapPlan[0] } else { $mapRelative })) -Algorithm SHA256).Hash
 $buildOut = Join-Path $Repository 'target/out/jvm/scala-3.10.0/starcrafter'
 $classpathFile = Join-Path $buildOut 'streams/compile/dependencyClasspath/_global/streams/export'
 if (-not (Test-Path -LiteralPath $classpathFile)) { throw 'Build the exact producer locally first.' }
@@ -92,7 +98,7 @@ New-Item -ItemType Directory -Path $run | Out-Null
 $iniPath = Join-Path $Runtime 'bwapi-data/bwapi.ini'
 $ini = Get-Content -LiteralPath $iniPath -Raw
 Copy-Item -LiteralPath $iniPath -Destination (Join-Path $run 'bwapi-before.ini')
-$pins = [ordered]@{ ai='NULL'; ai_dbg='NULL'; auto_menu='SINGLE_PLAYER'; auto_restart=$(if ($mapPlan.Count -gt 1) { 'ON' } else { 'OFF' }); map=$mapRelative; race='Terran'; enemy_race='Protoss'; enemy_count='1'; game_type=$gameType; shared_memory='ON'; windowed='ON'; sound='OFF' }
+$pins = [ordered]@{ ai='NULL'; ai_dbg='NULL'; auto_menu='SINGLE_PLAYER'; auto_restart=$(if ($mapPlan.Count -gt 1) { 'ON' } else { 'OFF' }); mapiteration='SEQUENCE'; map=$mapRelative; race='Terran'; enemy_race='Protoss'; enemy_count='1'; game_type=$gameType; shared_memory='ON'; windowed='ON'; sound='OFF' }
 1..7 | ForEach-Object { $pins['enemy_race_' + $_] = 'Protoss' }
 if ($Headless) {
   # Headless games draw nothing; their window sits far outside every monitor so it never shows up on the desktop.
