@@ -55,9 +55,13 @@ if ($dllHash -ne 'F2E0F937E9592157656118FA7E5FF30C2327694ED56C1D8F55687972AD97D3
 if ($E2EMap) { $E2EMaps = @($E2EMap) + $E2EMaps }
 $mapPlan = @()
 if ($E2EMaps.Count -gt 0) {
-  # A session gets its own folder of numbered copies; BWAPI plays a wildcard map path in sequence after each restart.
-  $mapFolder = if ($E2EMaps.Count -gt 1) { 'maps/e2e/' + $RunName } else { 'maps/e2e' }
+  # A session plays numbered copies from maps/e2e-session through a wildcard map path, which BWAPI iterates in sequence
+  # after each restart. The auto menu stalls on maps two folders below maps/, so this one folder is emptied and reused.
+  $mapFolder = if ($E2EMaps.Count -gt 1) { 'maps/e2e-session' } else { 'maps/e2e' }
   New-Item -ItemType Directory -Path (Join-Path $Runtime $mapFolder) -Force | Out-Null
+  if ($E2EMaps.Count -gt 1) {
+    Get-ChildItem -LiteralPath (Join-Path $Runtime $mapFolder) -Filter '*.scm' | ForEach-Object { $_.Delete() }
+  }
   $number = 0
   foreach ($e2eMap in $E2EMaps) {
     $e2eSource = Join-Path $Repository $e2eMap
