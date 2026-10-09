@@ -6,7 +6,10 @@ import scala.collection.mutable
 import scala.jdk.CollectionConverters._
 import scala.reflect.ClassTag
 
-/** The wall opening seals the main base's land approach with Supply Depots. */
+/**
+  * The wall opening seals the main base's land approach with Supply Depots and, where the geometry allows, a Barracks
+  * as its gate: the barracks lifts to let the army or a scout through and lands again to close the wall.
+  */
 class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](universe)
     with BuildingRequestHelper {
 
@@ -20,26 +23,36 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
   private var gateOpened          = false
   private var gateDepotIds        = Set.empty[Int]
   private val repairers           = new Employer[SCV](universe)
+  private var gate                = Option.empty[MapTilePosition]
+  private var gateBarracksId      = Option.empty[Int]
+  private var gateWasOpen         = false
   private val demolishers         = new Employer[MobileRangeWeapon](universe)
 
   private def active = race.isTerran && strategy.current.usesWallDefense
 
-  /** True once every planned wall depot stands completed. */
+  /** True once every planned wall depot and the gate barracks stand completed. */
   def complete: Boolean = anchors.exists { wall =>
-    wall.nonEmpty && wall.forall { a =>
+    (wall.nonEmpty || gate.isDefined) && wall.forall { a =>
       ownUnits.allByType[SupplyDepot].exists(d => d.isInGame && !d.isBeingCreated && d.tilePosition == a)
     }
-  }
+  } && gate.forall(_ => gateBarracks.exists(!_.isBeingCreated))
+
+  /** The barracks planned as the wall's gate, landed in its slot or lifted out of it. */
+  private def gateBarracks: Option[Barracks] =
+    gateBarracksId.flatMap(id => ownUnits.allByType[Barracks].find(b => b.nativeUnitId == id && b.isInGame)).orElse {
+      gate.flatMap(g => ownUnits.allByType[Barracks].find(b => b.isInGame && !b.isFloating && b.tilePosition == g))
+        .map { b => gateBarracksId = Some(b.nativeUnitId); b }
+    }
 
   /** True once planning concluded that no depot wall can seal the main approach. */
   def refused: Boolean = refusedPlanning
 
-  /** True once the wall was deliberately opened so the army can leave the base. */
-  def gateOpen: Boolean = gateOpened
+  /** True once the wall was deliberately opened, or while its barracks gate is lifted. */
+  def gateOpen: Boolean = gateOpened || gateBarracks.exists(_.isFloating)
 
-  /** Knock down the depot (or pair) whose removal actually opens a walkable way out. */
+  /** Knock down the depot (or pair) whose removal actually opens a walkable way out; a barracks gate lifts instead. */
   def openGate_!(): Unit = {
-    if (!gateOpened) {
+    if (!gateOpened && gate.isEmpty) {
       gateOpened = true
       gateDepotIds = openDepots
       NativeMatchEvidence.trace(
@@ -121,9 +134,13 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
     NativeMatchEvidence.trace("wall-probe", reason)
   }
 
-  private def depotFree(anchor: MapTilePosition): Boolean = {
-    val area = Area(anchor, Size(2, 2))
-    mapLayers.rawWalkableMap.insideBounds(anchor) && area.tiles.forall { t =>
+  private def depotFree(anchor: MapTilePosition): Boolean = footprintFree(Area(anchor, Size(3, 2)))
+
+  private def barracksFree(anchor: MapTilePosition): Boolean = footprintFree(Area(anchor, Size(4, 3)))
+
+  private def footprintFree(area: Area): Boolean = {
+    mapLayers.rawWalkableMap.insideBounds(area.upperLeft) && mapLayers.rawWalkableMap.insideBounds(area.lowerRight) &&
+    area.tiles.forall { t =>
       mapLayers.rawWalkableMap.free(t) &&
       mapLayers.freeTilesForConstruction.free(t) &&
       mapLayers.blockedByBuildingTiles.free(t) &&
@@ -131,13 +148,18 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
     }
   }
 
+  // A supply depot covers 3x2 tiles.
   private def placementsCovering(t: MapTilePosition): Vector[MapTilePosition] =
-    Vector(t, MapTilePosition(t.x - 1, t.y), MapTilePosition(t.x, t.y - 1), MapTilePosition(t.x - 1, t.y - 1))
-      .filter(depotFree)
+    (for (dx <- 0 to 2; dy <- 0 to 1) yield MapTilePosition(t.x - dx, t.y - dy)).toVector.filter(depotFree)
 
-  private def footprint(a: MapTilePosition) = Area(a, Size(2, 2)).tiles
+  private def footprint(a: MapTilePosition) = Area(a, Size(3, 2)).tiles
 
-  private def overlaps(a: MapTilePosition, b: MapTilePosition) = (a.x - b.x).abs < 2 && (a.y - b.y).abs < 2
+  private def overlaps(a: MapTilePosition, b: MapTilePosition) = (a.x - b.x).abs < 3 && (a.y - b.y).abs < 2
+
+  private def barracksTiles(b: MapTilePosition) = Area(b, Size(4, 3)).tiles
+
+  private def barracksCovering(t: MapTilePosition): Vector[MapTilePosition] =
+    (for (dx <- 0 to 3; dy <- 0 to 2) yield MapTilePosition(t.x - dx, t.y - dy)).toVector.filter(barracksFree)
 
   private def barrierForGround(t: MapTilePosition) =
     !mapLayers.rawWalkableMap.insideBounds(t) ||
@@ -201,22 +223,55 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
     val coveredByCandidate = allCandidates.map(a => a -> footprint(a).filter(span.contains).toSet).toMap
     val tileToCandidates   = span.map(t => t -> allCandidates.filter(a => footprint(a).exists(_ == t))).toMap
     var budget             = 20000
-    def solve(uncovered: Set[MapTilePosition], chosen: Vector[MapTilePosition]): Option[Vector[MapTilePosition]] = {
+    // `taken` tiles belong to the gate barracks; no depot may overlap them
+    def solve(
+        uncovered: Set[MapTilePosition],
+        chosen: Vector[MapTilePosition],
+        taken: Set[MapTilePosition] = Set.empty
+    ): Option[Vector[MapTilePosition]] = {
       if (uncovered.isEmpty) Some(chosen)
       else if (chosen.size > 12 || budget <= 0) None
       else {
         budget -= 1
         val target = uncovered.minBy(t => (t.y, t.x))
         tileToCandidates.getOrElse(target, Vector.empty)
-          .filterNot(a => chosen.exists(b => overlaps(a, b)))
+          .filterNot(a => chosen.exists(b => overlaps(a, b)) || footprint(a).exists(taken))
           .sortBy(a => (-coveredByCandidate(a).count(uncovered.contains), a.y, a.x))
-          .iterator.flatMap(a => solve(uncovered -- coveredByCandidate(a), chosen :+ a).iterator)
+          .iterator.flatMap(a => solve(uncovered -- coveredByCandidate(a), chosen :+ a, taken).iterator)
           .nextOption()
       }
     }
     val unbuildable = span.filter(t => tileToCandidates.getOrElse(t, Vector.empty).isEmpty)
     val required    = span.filterNot(unbuildable.contains)
-    val solved      = solve(required.toSet, Vector.empty)
+
+    // Prefer a barracks as the gate: depots cover the rest of the pass, a zealot must not get through with the
+    // barracks landed, and a siege tank must get through with it lifted.
+    val gateSpots = span.flatMap(barracksCovering).distinct
+      .sortBy(b =>
+        (-barracksTiles(b).count(span.contains), b.movedBy(2, 1).distanceSquaredTo(f.chokePoint.center), b.y, b.x)
+      )
+      .take(16)
+    val gatePlan = gateSpots.iterator.flatMap { b =>
+      val taken = barracksTiles(b).toSet
+      budget = 20000
+      solve(required.filterNot(taken).toSet, Vector.empty, taken).filter { depots =>
+        pixelPass(home, WallGeometry.Dims.Zealot, depots, Some(b)).contains(false) &&
+        pixelPass(home, WallGeometry.Dims.SiegeTank, depots, None).contains(true)
+      }.map(_ -> b).iterator
+    }.nextOption()
+    gatePlan match {
+      case Some((depots, barracks)) =>
+        gate = Some(barracks)
+        NativeMatchEvidence.trace("wall-gate-planned", s"barracks=$barracks depots=${depots.mkString(",")}")
+        return depots
+      case None =>
+        NativeMatchEvidence.trace(
+          "wall-gate-none",
+          s"barracksSpots=${gateSpots.size}; depots only, opened by demolition"
+        )
+    }
+    budget = 20000
+    val solved = solve(required.toSet, Vector.empty)
     if (solved.isEmpty) {
       probe(s"span=${span.size} candidates=${allCandidates.size} noCover missing=${unbuildable.mkString(",")}")
       return Vector.empty
@@ -280,6 +335,49 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
     }
   }
 
+  /**
+    * Whether `unit` gets from outside the main's choke to the defended side past the planned depots and the gate
+    * barracks (when landed), judged on pixels against building boxes and walk-tile terrain within ten tiles of the
+    * choke; None without a known outside start.
+    */
+  private def pixelPass(
+      home: Base,
+      unit: WallGeometry.Dims,
+      depots: Vector[MapTilePosition],
+      barracks: Option[MapTilePosition]
+  ): Option[Boolean] = strategicMap.defenseLineOf(home).flatMap { front =>
+    import WallGeometry._
+    val grid     = mapLayers.rawWalkableMap
+    val c        = front.chokePoint.center
+    val (x0, y0) = ((c.x - 10).max(0), (c.y - 10).max(0))
+    val (x1, y1) = ((c.x + 10).min(grid.cols - 1), (c.y + 10).min(grid.rows - 1))
+    val region   = Box(x0 * 32, y0 * 32, (x1 + 1) * 32 - 1, (y1 + 1) * 32 - 1)
+    val planned  = depots.map(a => buildingBox(a.x, a.y, Dims.SupplyDepot)) ++
+      barracks.map(b => buildingBox(b.x, b.y, Dims.Barracks))
+    val standing = (nativeGame.getAllUnits.asScala ++ nativeGame.getStaticNeutralUnits.asScala).iterator
+      .filter(u =>
+        (u.getType.isBuilding || u.getType.isMineralField || u.getType.isRefinery ||
+          u.getType == bwapi.UnitType.Resource_Vespene_Geyser) && !u.isFlying
+      )
+      .map(u => Box(u.getLeft, u.getTop, u.getRight, u.getBottom)).filter(_.intersects(region)).toVector
+    def blocked(wx: Int, wy: Int) =
+      wx < 0 || wy < 0 || wx >= grid.cols * 4 || wy >= grid.rows * 4 || !nativeGame.isWalkable(wx, wy)
+    val starts = (grid.spiralAround(c, 16) ++ grid.spiralAround(c, 24))
+      .filter(t => grid.free(t) && front.outerTerritory.free(t) && !front.defended.free(t))
+      .filter(t => t.x >= x0 && t.x <= x1 && t.y >= y0 && t.y <= y1).distinct.take(6)
+      .map(t => (t.x * 32 + 16, t.y * 32 + 16)).toVector
+    Option.when(starts.nonEmpty)(
+      passable(
+        unit,
+        planned ++ standing,
+        blocked,
+        region,
+        starts,
+        (x, y) => front.defended.free(MapTilePosition(x / 32, y / 32))
+      )
+    )
+  }
+
   /** A free path from a known outside tile to the defended side means the wall leaks. */
   private def breachPath(home: Base, anchors: Vector[MapTilePosition]): Option[Vector[MapTilePosition]] = {
     strategicMap.defenseLineOf(home).flatMap { front =>
@@ -327,7 +425,10 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
   }
 
   override def onTick_!(): Unit = {
-    if (!active || currentTick < 31 || currentTick % Primes.prime31.i != 0) return
+    if (!active) return
+    // every module tick: the gate must close quickly when enemies come
+    controlGate()
+    if (currentTick < 31 || currentTick % Primes.prime31.i != 0) return
     bases.mainBase.foreach { home =>
       val wall = anchors.getOrElse {
         // A refused plan is retried rarely; terrain and the corridor do not change quickly.
@@ -335,12 +436,21 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
         else {
           lastWallAttempt = currentTick
           val chosen = computeWall(home)
-          refusedPlanning = chosen.isEmpty
-          if (chosen.nonEmpty) {
+          refusedPlanning = chosen.isEmpty && gate.isEmpty
+          if (chosen.nonEmpty || gate.isDefined) {
             anchors = Some(chosen)
             NativeMatchEvidence.trace("wall-planned", s"depots=${chosen.size} at=${chosen.mkString(",")}")
           }
           chosen
+        }
+      }
+      gate.foreach { g =>
+        val pending =
+          unitManager.requestedConstructions[Barracks].exists(_.customPosition.requestedPosition.contains(g)) ||
+            unitManager.constructionsInProgress[Barracks].exists(_.buildWhere == g)
+        if (gateBarracks.isEmpty && !pending && barracksFree(g)) {
+          requestBuilding(classOf[Barracks], customBuildingPosition = AlternativeBuildingSpot.fromPreset(g))
+          NativeMatchEvidence.trace("wall-gate-request", s"barracks=$g")
         }
       }
       if (wall.isEmpty) {
@@ -402,6 +512,31 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
             }
         }
       }
+    }
+  }
+
+  /**
+    * The barracks gate opens (lifts) while the army is out, attacking or reinforcing, or scouting is allowed, and closes
+    * (lands in its slot) whenever enemy ground fighters come within ten tiles of it. A barracks still training cancels
+    * its queue before it lifts.
+    */
+  private def controlGate(): Unit = for (g <- gate; b <- gateBarracks if !b.isBeingCreated) {
+    val campaign = universe.pluginByType[RunTerranCampaign]
+    val armyOut  = worldDominationPlan.campaignForceSize > 0
+    val wantOpen = armyOut || campaign.reconnaissanceAllowed || campaign.minimalScoutingActive
+    val danger   = unitGrid.enemy.allInRange[Mobile](g.movedBy(2, 1), 10)
+      .exists(e => !e.nativeUnit.isFlying && !e.isInstanceOf[WorkerUnit])
+    val open   = wantOpen && !danger
+    val native = b.nativeUnit
+    if (open && !b.isFloating) {
+      if (native.isTraining) native.cancelTrain() else native.lift()
+    } else if (!open && b.isFloating && native.getOrder != bwapi.Order.BuildingLand) native.land(g.asTilePosition)
+    if (open != gateWasOpen) {
+      gateWasOpen = open
+      NativeMatchEvidence.trace(
+        "wall-gate",
+        s"${if (open) "open" else "close"} army=$armyOut danger=$danger barracks=${b.nativeUnitId}"
+      )
     }
   }
 
