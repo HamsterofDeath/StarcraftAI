@@ -9,8 +9,12 @@ param(
  [string]$Strategy = 'idle',
  # Upper bound per game; the whole session may take this times the number of games.
  [ValidateRange(10, 1800)][int]$TimeoutSeconds = 120,
- # A run whose bot output and results stay unchanged this long is stuck and gets stopped.
+ # A game whose bot output and results stay unchanged this long is stuck and gets stopped.
  [ValidateRange(1, 300)][int]$StallSeconds = 5,
+ # StarCraft's cold start until the first game begins (about 17 s on this machine).
+ [ValidateRange(1, 300)][int]$StartupSeconds = 25,
+ # StarCraft's return to its menus between the games of a session (about 3-4 s).
+ [ValidateRange(1, 300)][int]$RestartSeconds = 10,
  # Watch the games rendered (2x window, 3x speed) instead of running them headless at full speed.
  [switch]$Headed,
  # Passed on as -BotProperties, for example kiteShot=stop or traceKite=true.
@@ -37,25 +41,35 @@ function Read-Result([string]$file) {
   try { Get-Content -LiteralPath $file -Raw -ErrorAction Stop | ConvertFrom-Json } catch { $null }
 }
 # A result is final once its status is anything but the 'unfinished' written at the start of each game.
-# Progress is any growth of the bot's output or any change of a result file; a run without progress for
-# $StallSeconds is stuck and gets stopped instead of waited for.
+# Each phase has its own limit, so a stuck StarCraft is stopped quickly instead of waited for:
+#   startup  - until the first game begins (StarCraft's cold start)          $StartupSeconds
+#   playing  - a game has begun; bot output or a result must keep changing    $StallSeconds
+#   restart  - between session games, while StarCraft returns to its menus   $RestartSeconds
 $deadline = $started.AddSeconds($TimeoutSeconds * $plan.Count)
 $botLog = Join-Path $run 'bot-stdout.log'
 function Get-Progress {
   $files = @($botLog) + $resultFiles | Where-Object { Test-Path -LiteralPath $_ }
   ($files | ForEach-Object { $i = Get-Item -LiteralPath $_; "$($i.Length)@$($i.LastWriteTimeUtc.Ticks)" }) -join ';'
 }
+function Get-Phase {
+  $results = @($resultFiles | ForEach-Object { Read-Result $_ })
+  if (-not ($results | Where-Object { $_ })) { 'startup' }
+  elseif ($results | Where-Object { $_ -and $_.status -eq 'unfinished' }) { 'playing' }
+  else { 'restart' }
+}
 $lastProgress = Get-Progress
 $lastProgressAt = Get-Date
-$stalled = $false
+$stalledIn = $null
 while ((Get-Process -Id $receipt.botPid -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline -and
        ($resultFiles | Where-Object { $r = Read-Result $_; -not $r -or $r.status -eq 'unfinished' })) {
   Start-Sleep -Milliseconds 250
   $progress = Get-Progress
-  if ($progress -ne $lastProgress) { $lastProgress = $progress; $lastProgressAt = Get-Date }
-  elseif (((Get-Date) - $lastProgressAt).TotalSeconds -ge $StallSeconds) { $stalled = $true; break }
+  if ($progress -ne $lastProgress) { $lastProgress = $progress; $lastProgressAt = Get-Date; continue }
+  $phase = Get-Phase
+  $limit = switch ($phase) { 'startup' { $StartupSeconds } 'playing' { $StallSeconds } default { $RestartSeconds } }
+  if (((Get-Date) - $lastProgressAt).TotalSeconds -ge $limit) { $stalledIn = $phase; break }
 }
-if ($stalled) { "Stopped: no progress for $StallSeconds s (see $botLog)" }
+if ($stalledIn) { "Stopped: no progress during $stalledIn (see $botLog)" }
 Start-Sleep -Milliseconds 500
 foreach ($ownedPid in @($receipt.botPid, $receipt.gamePid)) {
   Get-Process -Id $ownedPid -ErrorAction SilentlyContinue | Stop-Process -Force
