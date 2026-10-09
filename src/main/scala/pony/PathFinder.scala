@@ -2,13 +2,12 @@ package pony
 
 import pony.astar.{AStarSearch, GridNode2DInt, Heuristics}
 
-import scala.jdk.CollectionConverters._
 import scala.language.implicitConversions
 
 object PathFinder {
 
   implicit def convBack(gn: GridNode2DInt): MapTilePosition = MapTilePosition
-                                                              .shared(gn.getX, gn.getY)
+                                                              .shared(gn.x, gn.y)
 
   def on(map: Grid2D, isOnGround: Boolean) = {
     new PathFinder(map, isOnGround)
@@ -23,13 +22,13 @@ object PathFinder {
     // fill the grid
     grid.allFree.foreach { e =>
       asGrid(e.x)(e.y) = new GridNode2DInt(e.x, e.y) {
-        override def suggestHeuristics(): Heuristics[GridNode2DInt] = {
+        override def suggestHeuristics: Heuristics[GridNode2DInt] = {
           (from: GridNode2DInt, to: GridNode2DInt) => from.distanceTo(to).toInt
         }
 
-        override def supportsShortcuts(): Boolean = true
+        override def supportsShortcuts: Boolean = true
 
-        override def canReachDirectly(node: GridNode2DInt) = {
+        override def canReachDirectly(node: GridNode2DInt): Boolean = {
           grid.connectedByLine(e, node)
         }
       }
@@ -42,32 +41,32 @@ object PathFinder {
       val upFree = grid.containsAndFree(up)
       val downFree = grid.containsAndFree(down)
       val here = asGrid(mtp.x)(mtp.y)
-      if (leftFree) here.addNode(left)
-      if (rightFree) here.addNode(right)
-      if (upFree) here.addNode(up)
-      if (downFree) here.addNode(down)
+      if (leftFree) here.addNeighbour(left)
+      if (rightFree) here.addNeighbour(right)
+      if (upFree) here.addNeighbour(up)
+      if (downFree) here.addNeighbour(down)
       if (leftFree && upFree) {
         val moved = mtp.movedBy(-1, -1)
         if (grid.free(moved)) {
-          here.addNode(moved)
+          here.addNeighbour(moved)
         }
       }
       if (leftFree && downFree) {
         val moved = mtp.movedBy(-1, 1)
         if (grid.free(moved)) {
-          here.addNode(moved)
+          here.addNeighbour(moved)
         }
       }
       if (rightFree && upFree) {
         val moved = mtp.movedBy(1, -1)
         if (grid.free(moved)) {
-          here.addNode(moved)
+          here.addNeighbour(moved)
         }
       }
       if (rightFree && downFree) {
         val moved = mtp.movedBy(1, 1)
         if (grid.free(moved)) {
-          here.addNode(moved)
+          here.addNeighbour(moved)
         }
       }
     }
@@ -150,21 +149,20 @@ class PathFinder(on: Grid2D, isOnGround: Boolean) {
       val finder = new AStarSearch[GridNode2DInt](from, to)
       var first = Option.empty[Path]
       def pathFrom(seq: Seq[MapTilePosition]) = {
-        Path(seq, finder.isSolved, !finder.isUnsolvable, finder.getTargetOrNearestReachable, to,
+        Path(seq, finder.isSolved, !finder.isUnsolvable, finder.targetOrNearestReachable, to,
           unsafeTarget)(on)
       }
       val paths = (0 until width).iterator.map { _ =>
         finder.performSearch()
-        val waypoints = finder.getFullSolution
-                        .asScala
+        val waypoints = finder.fullSolution
                         .map(e => e: MapTilePosition)
                         .sliding(1, 4)
                         .flatten
                         .toVector
         //block the path, then search again to get streets
-        finder.getFullSolution.asScala.drop(15).dropRight(10).foreach(_.remove())
+        finder.fullSolution.drop(15).dropRight(10).foreach(_.detach())
         if (first.isEmpty) first = Some(
-          pathFrom(waypoints :+ (finder.getTargetOrNearestReachable: MapTilePosition)))
+          pathFrom(waypoints :+ (finder.targetOrNearestReachable: MapTilePosition)))
         waypoints
       }.takeWhile { candidate =>
         candidate.forall { pointOnLine =>
