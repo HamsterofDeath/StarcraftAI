@@ -9,6 +9,8 @@ param(
  [string]$Strategy = 'idle',
  # Upper bound per game; the whole session may take this times the number of games.
  [ValidateRange(10, 1800)][int]$TimeoutSeconds = 120,
+ # A run whose bot output and results stay unchanged this long is stuck and gets stopped.
+ [ValidateRange(1, 300)][int]$StallSeconds = 5,
  # Watch the games rendered (2x window, 3x speed) instead of running them headless at full speed.
  [switch]$Headed,
  # Passed on as -BotProperties, for example kiteShot=stop or traceKite=true.
@@ -35,11 +37,25 @@ function Read-Result([string]$file) {
   try { Get-Content -LiteralPath $file -Raw -ErrorAction Stop | ConvertFrom-Json } catch { $null }
 }
 # A result is final once its status is anything but the 'unfinished' written at the start of each game.
+# Progress is any growth of the bot's output or any change of a result file; a run without progress for
+# $StallSeconds is stuck and gets stopped instead of waited for.
 $deadline = $started.AddSeconds($TimeoutSeconds * $plan.Count)
+$botLog = Join-Path $run 'bot-stdout.log'
+function Get-Progress {
+  $files = @($botLog) + $resultFiles | Where-Object { Test-Path -LiteralPath $_ }
+  ($files | ForEach-Object { $i = Get-Item -LiteralPath $_; "$($i.Length)@$($i.LastWriteTimeUtc.Ticks)" }) -join ';'
+}
+$lastProgress = Get-Progress
+$lastProgressAt = Get-Date
+$stalled = $false
 while ((Get-Process -Id $receipt.botPid -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline -and
        ($resultFiles | Where-Object { $r = Read-Result $_; -not $r -or $r.status -eq 'unfinished' })) {
   Start-Sleep -Milliseconds 250
+  $progress = Get-Progress
+  if ($progress -ne $lastProgress) { $lastProgress = $progress; $lastProgressAt = Get-Date }
+  elseif (((Get-Date) - $lastProgressAt).TotalSeconds -ge $StallSeconds) { $stalled = $true; break }
 }
+if ($stalled) { "Stopped: no progress for $StallSeconds s (see $botLog)" }
 Start-Sleep -Milliseconds 500
 foreach ($ownedPid in @($receipt.botPid, $receipt.gamePid)) {
   Get-Process -Id $ownedPid -ErrorAction SilentlyContinue | Stop-Process -Force
