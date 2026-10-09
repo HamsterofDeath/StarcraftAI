@@ -152,13 +152,19 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
     if (known.isDefined) {
       huntTarget = None
       huntInitiated = false
-    } else if (campaignCommitted && !worldDominationPlan.baseDefenseActive) {
+    } else if (!worldDominationPlan.baseDefenseActive) {
+      // No enemy building seen yet: an army ready to attack must not wait for a scout. The hunt goes to the possible
+      // enemy starts first (on a two-player map, the enemy main), then sweeps the fields.
       if (huntTarget.isEmpty || (huntInitiated && sweepDone)) {
         if (huntPoints.isEmpty) {
-          huntPoints = HuntSweep.order(
-            strategicMap.resources.map(_.nearbyFreeTile).toSeq,
-            bases.mainBase.map(_.mainBuilding.tilePosition)
-          )
+          val own         = nativeGame.self().getStartLocation
+          val enemyStarts = nativeGame.getStartLocations.asScala.toVector.filterNot(_ == own)
+            .map(t => MapTilePosition(t.x, t.y))
+          huntPoints =
+            (enemyStarts ++ HuntSweep.order(
+              strategicMap.resources.map(_.nearbyFreeTile).toSeq,
+              bases.mainBase.map(_.mainBuilding.tilePosition)
+            )).distinct
         }
         huntTarget = if (huntPoints.isEmpty) None else Some(huntPoints(huntIndex % huntPoints.size))
         if (huntTarget.isDefined) huntIndex = HuntSweep.next(huntPoints.size, huntIndex)

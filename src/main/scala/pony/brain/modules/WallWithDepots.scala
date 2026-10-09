@@ -680,7 +680,13 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
         )
       }
     }
-    if (ownUnits.allByType[Tank].exists(t => t.isInGame && !t.isBeingCreated)) ask(classOf[Tank])
-    else if (ownUnits.allByType[Vulture].exists(v => v.isInGame && !v.isBeingCreated)) ask(classOf[Vulture])
+    // tanks and vultures knock a depot down fastest; without them any ranged ground fighter does, or the gate never
+    // opens and the base stays sealed
+    def present[T <: WrapsUnit: ClassTag] =
+      ownUnits.allByType[T].exists(u => u.isInGame && !u.nativeUnit.isFlying && !u.isInstanceOf[WorkerUnit])
+    if (present[Tank]) ask(classOf[Tank])
+    else if (present[Vulture]) ask(classOf[Vulture])
+    else if (present[Goliath]) ask(classOf[Goliath])
+    else if (present[Marine]) ask(classOf[Marine])
   }
 }
