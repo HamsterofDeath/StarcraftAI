@@ -33,6 +33,28 @@ object NativeMatchEvidence {
   def trace(event: String, detail: String): Unit =
     println("TWAILIGHT_CAMPAIGN frame=" + TickCounter.tickCount + " event=" + event + " detail=" + detail)
 
+  /**
+    * Bank, income so far, supply (in whole units), what the SCVs are doing, bases and fighters: one line for economy
+    * analysis.
+    */
+  def economy(game: Game): String = {
+    val self                               = game.self()
+    val units                              = self.getUnits.asScala.filter(_.exists).toVector
+    val scvs                               = units.filter(_.getType == bwapi.UnitType.Terran_SCV)
+    def scvsThat(p: bwapi.Unit => Boolean) = scvs.count(p)
+    def built(t: bwapi.UnitType)           = {
+      val all = units.filter(_.getType == t)
+      s"${all.count(_.isCompleted)}/${all.size}"
+    }
+    val fighters = units.count(u => !u.getType.isBuilding && !u.getType.isWorker && u.isCompleted)
+    s"minerals=${self.minerals} gas=${self.gas} gathered=${self.gatheredMinerals}/${self.gatheredGas} " +
+      s"supply=${self.supplyUsed / 2}/${self.supplyTotal / 2} scvs=${scvs.size} " +
+      s"onMinerals=${scvsThat(_.isGatheringMinerals)} onGas=${scvsThat(_.isGatheringGas)} " +
+      s"constructing=${scvsThat(_.isConstructing)} repairing=${scvsThat(_.isRepairing)} idle=${scvsThat(_.isIdle)} " +
+      s"ccs=${built(bwapi.UnitType.Terran_Command_Center)} refineries=${built(bwapi.UnitType.Terran_Refinery)} " +
+      s"fighters=$fighters"
+  }
+
   /** Surviving units other than buildings and their summed hit points and shields, for micro scenarios. */
   private def forces(units: Iterable[bwapi.Unit]) = {
     val alive =

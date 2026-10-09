@@ -51,15 +51,13 @@ object Controller {
         repeatedCallbacks = 0
         TickCounter.tickCount += 1
         ai.foreach(_.onTickOnApi())
-        if (TickCounter.tickCount % 2400 == 0) {
+        // every 30 game seconds
+        if (TickCounter.tickCount % 720 == 0) {
           val game = clientRef.getGame
-          val own  = game.self().getUnits
-          import scala.jdk.CollectionConverters._
-          val ownUnits = own.asScala
           NativeMatchEvidence.trace(
             "economy-heartbeat",
-            s"nativeFrame=${game.getFrameCount} paused=${game.isPaused} inGame=${game.isInGame} fps=${game.getFPS} minerals=${game.self().minerals()} gas=${game.self().gas()} supply=${game.self().supplyUsed()}/${game.self().supplyTotal()} scvs=${ownUnits.count(_.getType ==
-                bwapi.UnitType.Terran_SCV)} depots=${ownUnits.count(_.getType == bwapi.UnitType.Terran_Command_Center)} completeMap=${game.isFlagEnabled(bwapi.Flag.CompleteMapInformation)}"
+            s"nativeFrame=${game.getFrameCount} paused=${game.isPaused} fps=${game.getFPS} " +
+              NativeMatchEvidence.economy(game)
           )
         }
       }
