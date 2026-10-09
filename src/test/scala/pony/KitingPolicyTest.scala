@@ -30,6 +30,9 @@ class KitingPolicyTest extends Specification with MustMatchers {
        |With Dance.All every reloading unit leaves the reach of static defence, with Dance.Off none $danceModes
        |A unit outside static defence returns just in time to fire on arrival $returnsInTime
        |Static defence the unit outranges is fought from outside its reach $outrangedTurret
+       |A reloading flyer backs off over a cliff from ground enemies that would catch it $flyerOverCliff
+       |Without unwalkable ground nearby a reloading flyer holds against faster ground enemies $flyerHoldsInTheOpen
+       |A ground shooter never retreats onto unwalkable ground $groundShooterIgnoresCliffs
        """.stripMargin
 
   private val open: Point => Boolean = p => p.x >= 0 && p.y >= 0 && p.x < 2048 && p.y < 2048
@@ -41,6 +44,22 @@ class KitingPolicyTest extends Specification with MustMatchers {
   /** A zealot-like threat. */
   private def zealot(id: Int, x: Double, y: Double, durability: Int = 160) =
     Threat(id, Point(x, y), durability, reach = 36, speed = 4)
+
+  /** A cruiser-like flyer and a dragoon-like ground enemy closing in; west of x = 1000 nobody can walk. */
+  private def cruiser(cooldown: Int) =
+    Shooter(Point(1040, 1024), range = 230, cooldown = cooldown, firing = false, speed = 2.5, flying = true)
+  private val dragoon                     = Threat(7, Point(1180, 1024), 200, reach = 170, speed = 5, ground = true)
+  private val cliffWest: Point => Boolean = p => p.x >= 1000
+
+  def flyerOverCliff = decide(cruiser(20), Seq(dragoon), open, groundWalkable = cliffWest) match {
+    case Retreat(to) => to.x must beLessThan(1000.0)
+    case other       => other must beAnInstanceOf[Retreat]
+  }
+
+  def flyerHoldsInTheOpen = decide(cruiser(20), Seq(dragoon), open) === Hold
+
+  def groundShooterIgnoresCliffs =
+    decide(cruiser(20).copy(flying = false), Seq(dragoon), open, groundWalkable = cliffWest) === Hold
 
   def free = decide(shooter(), Nil, open) === Free
 

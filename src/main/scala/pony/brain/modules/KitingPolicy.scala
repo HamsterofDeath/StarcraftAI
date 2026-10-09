@@ -20,10 +20,25 @@ object KitingPolicy {
     * cannot attack the shooter at all); only enemies the shooter outranges are worth stepping away from. A threat with
     * speed 0 is static defence; `aimsAtMe` means it is attacking this shooter.
     */
-  final case class Threat(id: Int, at: Point, durability: Int, reach: Double, speed: Double, aimsAtMe: Boolean = false)
+  final case class Threat(
+      id: Int,
+      at: Point,
+      durability: Int,
+      reach: Double,
+      speed: Double,
+      aimsAtMe: Boolean = false,
+      ground: Boolean = false
+  )
 
   /** `range` is the centre distance at which the shooter's shot lands; `firing` means its attack is under way. */
-  final case class Shooter(at: Point, range: Double, cooldown: Int, firing: Boolean, speed: Double)
+  final case class Shooter(
+      at: Point,
+      range: Double,
+      cooldown: Int,
+      firing: Boolean,
+      speed: Double,
+      flying: Boolean = false
+  )
 
   sealed trait Decision
 
@@ -56,6 +71,7 @@ object KitingPolicy {
     * @param committed  damage other shooters have already committed to each enemy id this frame
     * @param speedRatio how much faster than an enemy the shooter must be before running from it pays off
     * @param dance      which reloading units leave the reach of static defence
+    * @param groundWalkable where ground units can stand: a flyer reloads above the rest, where they cannot follow
     */
   def decide(
       me: Shooter,
@@ -65,7 +81,8 @@ object KitingPolicy {
       lead: Int = 4,
       committed: Map[Int, Double] = Map.empty,
       speedRatio: Double = 1.25,
-      dance: Dance = Dance.Aimed
+      dance: Dance = Dance.Aimed,
+      groundWalkable: Point => Boolean = _ => true
   ): Decision = {
     val runFrom = outranged(me, threats, speedRatio)
     val melee   = threats.filter(t => t.reach > 0 && t.reach <= MeleeReach && !runFrom.contains(t))
@@ -74,6 +91,13 @@ object KitingPolicy {
     lazy val focus    = target(me, threats, committed)
     def arrival       = math.max(0.0, me.at.distanceTo(focus.at) - me.range) / math.max(me.speed, 0.1)
     def insideTurrets = turrets.exists(t => gap(me.at, t) < StandOff)
+    // ground units that can hit a flyer and would reach it before its reload ends
+    def chasers = threats.filter(t =>
+      t.ground && t.reach > 0 && t.speed > 0 &&
+        gap(me.at, t) <= t.speed * (me.cooldown + SafetyFrames)
+    )
+    lazy val overCliff =
+      if (me.flying) cliffRetreat(me, chasers, walkable, groundWalkable, step) else None
     if (threats.isEmpty) Free
     // the attack animation runs until the shot is released; once the reload has started the unit may move again
     else if (me.firing && me.cooldown == 0) Hold
@@ -85,6 +109,8 @@ object KitingPolicy {
     // fire, go back: the unit it shoots at leaves its reach, so it has to switch to another unit
     else if (insideTurrets && (dance == Dance.All || dance == Dance.Aimed && turrets.exists(_.aimsAtMe)))
       retreatPoint(me, turrets, walkable, step).map(Retreat(_)).getOrElse(Hold)
+    // fire, go back over a cliff: ground enemies have to go around while the flyer reloads above unwalkable ground
+    else if (overCliff.isDefined) Retreat(overCliff.get)
     // kite: clearly faster and longer-ranged, so stepping out of reach costs nothing
     else if (runFrom.exists(t => gap(me.at, t) <= t.speed * (me.cooldown + SafetyFrames))) {
       retreatPoint(me, runFrom, walkable, step).map(Retreat(_)).getOrElse(Shoot(target(me, threats, committed).id))
@@ -145,6 +171,28 @@ object KitingPolicy {
       .maxByOption(_._2)
       .map(_._1)
   }
+
+  /**
+    * For a flyer: the point one `step` away above ground nobody walks on that gains the most distance from the ground
+    * chasers, if any gains distance at all.
+    */
+  def cliffRetreat(
+      me: Shooter,
+      chasers: Seq[Threat],
+      passable: Point => Boolean,
+      groundWalkable: Point => Boolean,
+      step: Double
+  ): Option[Point] =
+    if (chasers.isEmpty) None
+    else {
+      val now = chasers.map(t => gap(me.at, t)).min
+      (0 until Directions).iterator.map(i => me.at.towards(2 * math.Pi * i / Directions, step))
+        .filter(p => passable(p) && !groundWalkable(p))
+        .map(p => p -> chasers.map(t => gap(p, t)).min)
+        .filter(_._2 > now)
+        .maxByOption(_._2)
+        .map(_._1)
+    }
 
   private def gap(at: Point, threat: Threat) = at.distanceTo(threat.at) - threat.reach
 

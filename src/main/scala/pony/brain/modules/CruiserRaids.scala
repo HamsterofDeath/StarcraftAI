@@ -6,10 +6,12 @@ import scala.collection.mutable
 import scala.jdk.CollectionConverters._
 
 /**
-  * Hit and run with Battlecruisers. They gather at a berth in the main until enough are fit, fly together to the
-  * nearest known enemy base (expansions before the main), turn home one by one when hurt and all together when the
-  * raid is worn down, and are mended at the berth by a crew of SCVs. A raid on our own bases big enough to recall the
-  * army calls them home too.
+  * Hit and run with Battlecruisers. They wait at a berth in the main until enough are fit, gather, fly together to the
+  * nearest known enemy base (expansions before the main) with the ones ahead waiting for the rest, and leave again as
+  * soon as the enemy's anti-air near them outweighs them: hit, run, come back. A hurt cruiser turns home alone, the
+  * whole raid when it is worn down, and a crew of SCVs mends them at the berth. Once the fleet is big it attacks as one
+  * group that only turns back from a clearly stronger defence. A raid on our own bases big enough to recall the army
+  * calls them home too.
   */
 class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](universe) {
   import CruiserTactics._
@@ -20,6 +22,10 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
   private var target    = Option.empty[MapTilePosition]
   private val swept     = mutable.HashSet.empty[MapTilePosition]
   private var myBerth   = Option.empty[MapTilePosition]
+  private var gathering = false
+  private var gatherAt  = 0
+  private var bigGroup  = false
+  private var centre    = Option.empty[MapTilePosition]
 
   private def active = race.isTerran && strategy.current.raidsWithCruisers
 
@@ -61,12 +67,24 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
     }
     raiders = raiders.filter(id => health.contains(id) && !repairing(id))
     updateTarget(fleet)
+    val members = fleet.filter(c => raiders(c.nativeUnitId)).toVector
+    centre = MapTilePosition.averageOpt(members.iterator.map(_.currentTile))
+    if (
+      gathering && centre.forall(c => gathered(members.map(_.currentTile), c) || currentTick - gatherAt > GatherFrames)
+    ) {
+      gathering = false
+      NativeMatchEvidence.trace("raid-gathered", s"raiders=${members.size} at=$centre frames=${currentTick - gatherAt}")
+    }
     if (raiders.nonEmpty) {
-      val worn = if (canMend) endsRaid(raiders.toSeq.map(health)) else raiders.size < 2
-      if (worn || target.isEmpty || worldDominationPlan.recallsArmy) {
+      val worn       = if (canMend) endsRaid(raiders.toSeq.map(health)) else raiders.size < 2
+      val antiAir    = centre.map(antiAirAround).getOrElse(0)
+      val strength   = members.map(m => CruiserValue * health(m.nativeUnitId)).sum
+      val overpowerd = !gathering && outnumbered(antiAir, strength, bigGroup)
+      if (worn || overpowerd || target.isEmpty || worldDominationPlan.recallsArmy) {
         NativeMatchEvidence.trace(
           "raid-end",
-          s"raiders=${raiders.size} worn=$worn target=$target recall=${worldDominationPlan.recallsArmy}"
+          s"raiders=${raiders.size} worn=$worn outnumbered=$overpowerd antiAir=$antiAir strength=${strength.round} " +
+            s"group=$bigGroup target=$target recall=${worldDominationPlan.recallsArmy}"
         )
         raiders.filter(id => health(id) < FitFrom).foreach(repairing += _)
         raiders = Set.empty
@@ -75,7 +93,13 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
       val fit = health.collect { case (id, hp) if !repairing(id) && (hp >= FitFrom || !canMend) => id }.toSet
       if (startsRaid(fit.size, health.size) && target.isDefined) {
         raiders = fit
-        NativeMatchEvidence.trace("raid-start", s"raiders=${fit.size} target=${target.get} fleet=${fleet.size}")
+        bigGroup = health.size >= BigFleet
+        gathering = true
+        gatherAt = currentTick
+        NativeMatchEvidence.trace(
+          "raid-start",
+          s"raiders=${fit.size} target=${target.get} fleet=${fleet.size} group=$bigGroup"
+        )
       }
     }
     worldDominationPlan.raidingFleet = fleet.filter(c => raiders(c.nativeUnitId)).toSet
@@ -119,6 +143,16 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
     }
   }
 
+  /** Minerals and gas of the visible enemies within sight of the raid that can shoot at air units. */
+  private def antiAirAround(at: MapTilePosition) = {
+    val near = (enemies.allByType[Mobile].iterator ++ enemies.allByType[ArmedBuilding].iterator: Iterator[WrapsUnit])
+      .filter(e => e.isInGame && e.nativeUnit.isVisible && e.currentTile.distanceToIsLess(at, RaidSight))
+    near.map(_.nativeUnit.getType).filter(t =>
+      t.airWeapon != bwapi.WeaponType.None || t == bwapi.UnitType.Protoss_Carrier
+    )
+      .map(t => t.mineralPrice + t.gasPrice).sum
+  }
+
   private def hireCrew(cruiserCount: Int): Unit = berth.foreach { home =>
     val wanted   = crewSize(cruiserCount)
     val employed = unitManager.allJobsByType[RepairCrewDuty].count(j => !j.failedOrObsolete && !j.isFinished)
@@ -147,8 +181,11 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
       val id = me.nativeUnitId
       if (!active || me.isBeingCreated) Nil
       else if (repairing(id)) berth.filter(me.currentTile.distanceToIsMore(_, 2)).map(Orders.MoveToTile(me, _)).toList
-      else if (raiders(id)) target.map(Orders.AttackMove(me, _)).toList
-      else if (worldDominationPlan.baseDefenseActive) Nil
+      else if (raiders(id)) {
+        // gathering, or ahead of the others: meet them first, so the raid arrives as one
+        val meet = centre.filter(c => gathering || target.exists(t => waitsForGroup(me.currentTile, c, t)))
+        meet.orElse(target).map(Orders.AttackMove(me, _)).toList
+      } else if (worldDominationPlan.baseDefenseActive) Nil
       else berth.filter(me.currentTile.distanceToIsMore(_, 8)).map(Orders.AttackMove(me, _)).toList
     }
   }
@@ -175,8 +212,41 @@ private[pony] object CruiserTactics {
 
   def needsRepair(health: Double, repairing: Boolean) = health < (if (repairing) FitFrom else RetreatBelow)
 
-  /** At least RaidSize fit cruisers and two thirds of the fleet: the hurt are mended before the fleet sets out. */
-  def startsRaid(fit: Int, fleet: Int) = fit >= RaidSize && fit * 3 >= fleet * 2
+  /**
+    * At least RaidSize fit cruisers and two thirds of the fleet: the hurt are mended before the fleet sets out. A big
+    * fleet attacks as one group, so it waits for four fifths.
+    */
+  def startsRaid(fit: Int, fleet: Int) =
+    fit >= RaidSize && (if (fleet >= BigFleet) fit * 5 >= fleet * 4 else fit * 3 >= fleet * 2)
+
+  /** From this many cruisers on the fleet attacks as one group. */
+  val BigFleet = 10
+
+  /** Minerals and gas of one cruiser, the measure of a raid's strength (times its health). */
+  val CruiserValue = 700
+
+  /** Tiles around the raid's centre in which enemy anti-air counts against it. */
+  val RaidSight = 12
+
+  /** A raid hits and runs: it leaves once the anti-air near it outweighs it by this much; a big group stays longer. */
+  val RunRatio      = 0.8
+  val GroupRunRatio = 1.5
+
+  def outnumbered(antiAir: Int, strength: Double, bigGroup: Boolean) =
+    antiAir > strength * (if (bigGroup) GroupRunRatio else RunRatio)
+
+  /** Gathered once every raider is this close to the centre, or after GatherFrames at the latest. */
+  val GatherRadius = 6
+  val GatherFrames = 24 * 30
+
+  def gathered(raiders: Seq[MapTilePosition], centre: MapTilePosition) =
+    raiders.forall(r => !r.distanceToIsMore(centre, GatherRadius))
+
+  /** A raider more than StrayRadius tiles from the centre, on the target's side of it, waits for the others. */
+  val StrayRadius = 8
+
+  def waitsForGroup(me: MapTilePosition, centre: MapTilePosition, target: MapTilePosition) =
+    me.distanceToIsMore(centre, StrayRadius) && me.distanceSquaredTo(target) < centre.distanceSquaredTo(target)
 
   def endsRaid(health: Seq[Double]) = health.size < 2 || health.sum / health.size < WornBelow
 

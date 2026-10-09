@@ -82,7 +82,8 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
           lead = leadFrames,
           committed = committed.toMap,
           speedRatio = speedRatio,
-          dance = dance
+          dance = dance,
+          groundWalkable = terrainWalkable
         )
       decision match {
         case Shoot(id) =>
@@ -155,7 +156,8 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
       player.weaponMaxRange(weaponAgainst(kind, targetFlies = !vsGround)) + radius(kind) + 12,
       if (vsGround) native.getGroundWeaponCooldown else native.getAirWeaponCooldown,
       native.isAttackFrame,
-      player.topSpeed(kind)
+      player.topSpeed(kind),
+      native.isFlying
     )
   }
 
@@ -187,7 +189,8 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
         native.getHitPoints + native.getShields,
         reach,
         if (kind.isBuilding) 0.0 else native.getPlayer.topSpeed(kind),
-        aims(native.getTarget) || aims(native.getOrderTarget)
+        aims(native.getTarget) || aims(native.getOrderTarget),
+        !native.isFlying && !kind.isBuilding
       )
     }.toVector
   }
@@ -196,6 +199,11 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
     val grid = mapLayers.rawWalkableMap
     p.x >= 0 && p.y >= 0 && p.x < grid.cols * 32 && p.y < grid.rows * 32
   }
+
+  /** Terrain a ground unit could stand on, whatever stands there now. */
+  private def terrainWalkable(p: Point) =
+    p.x >= 0 && p.y >= 0 &&
+      mapLayers.rawWalkableMap.containsAndFree(MapTilePosition.shared(p.x.toInt / 32, p.y.toInt / 32))
 
   private def walkable(p: Point) = {
     p.x >= 0 && p.y >= 0 && mapLayers.freeWalkableTiles.containsAndFree(MapTilePosition.shared(

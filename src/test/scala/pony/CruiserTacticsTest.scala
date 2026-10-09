@@ -11,6 +11,10 @@ class CruiserTacticsTest extends Specification with MustMatchers {
        |A cruiser leaves below 40 percent and returns only when mended to 90 $repairHysteresis
        |A raid needs three fit cruisers and two thirds of the fleet, and ends worn down or below two $raidStartAndEnd
        |The crew grows with the fleet from two to six SCVs $crew
+       |A big fleet attacks as one group of four fifths $bigFleet
+       |A raid runs from anti-air outweighing it, a big group only from a clearly stronger one $hitAndRun
+       |A raid is gathered once every cruiser is near the centre $gathering
+       |Only a cruiser ahead of the group waits for it $stragglers
        |Known expansions come first, then likely expansion sites, the main, a lone building, a start $targets
        """.stripMargin
 
@@ -29,6 +33,27 @@ class CruiserTacticsTest extends Specification with MustMatchers {
       (endsRaid(Seq(0.6, 0.7)) must beFalse)
 
   def crew = (crewSize(0), crewSize(1), crewSize(3), crewSize(30)) === (0, 2, 3, 6)
+
+  def bigFleet = (startsRaid(7, 12) must beFalse) and (startsRaid(10, 12) must beTrue)
+
+  def hitAndRun = (outnumbered(1000, 2100, bigGroup = false) must beFalse) and
+    (outnumbered(1800, 2100, bigGroup = false) must beTrue) and
+    (outnumbered(1800, 2100, bigGroup = true) must beFalse) and
+    (outnumbered(3200, 2100, bigGroup = true) must beTrue)
+
+  def gathering = {
+    val centre = MapTilePosition(50, 50)
+    (gathered(Seq(MapTilePosition(48, 50), MapTilePosition(53, 52)), centre) must beTrue) and
+      (gathered(Seq(MapTilePosition(48, 50), MapTilePosition(60, 50)), centre) must beFalse)
+  }
+
+  def stragglers = {
+    val centre = MapTilePosition(50, 50)
+    val target = MapTilePosition(90, 50)
+    (waitsForGroup(MapTilePosition(62, 50), centre, target) must beTrue) and
+      (waitsForGroup(MapTilePosition(38, 50), centre, target) must beFalse) and
+      (waitsForGroup(MapTilePosition(54, 50), centre, target) must beFalse)
+  }
 
   def targets = {
     val home      = MapTilePosition(30, 7)
