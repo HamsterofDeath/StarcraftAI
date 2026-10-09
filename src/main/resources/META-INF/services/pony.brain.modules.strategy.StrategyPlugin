@@ -7,6 +7,7 @@ pony.brain.modules.strategy.TerranInfantryPushPlugin
 pony.brain.modules.strategy.TerranIslandPlugin
 pony.brain.modules.strategy.TerranIslandRichPlugin
 pony.brain.modules.strategy.TerranRampWallPlugin
+pony.brain.modules.strategy.TerranSealedCruisersPlugin
 pony.brain.modules.strategy.TerranSkyWallPlugin
 pony.brain.modules.strategy.TerranVsProtossPlugin
 pony.brain.modules.strategy.TerranVsTerranPlugin

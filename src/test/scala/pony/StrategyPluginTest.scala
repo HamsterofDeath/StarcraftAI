@@ -25,6 +25,7 @@ class StrategyPluginTest extends Specification with MustMatchers {
     "air-control",
     "campaign",
     "carpet",
+    "cruisers",
     "factory",
     "heavy-air",
     "heavy-metal",
@@ -70,6 +71,7 @@ class StrategyPluginTest extends Specification with MustMatchers {
     val carpet                = strategy("carpet")
     val skywall               = strategy("skywall")
     val rampwall              = strategy("rampwall")
+    val cruisers              = strategy("cruisers")
     val heavyMetal            = strategy("heavy-metal")
     val idle                  = strategy("idle")
     (campaign.runsTerranCampaign && campaign.usesBunkerDefense && campaign.usesCampaignLaunch must beTrue) and
@@ -78,6 +80,9 @@ class StrategyPluginTest extends Specification with MustMatchers {
       (rampwall.runsTerranCampaign && rampwall.usesWallDefense && rampwall.usesBunkerDefense &&
         rampwall.usesCampaignLaunch must beTrue) and
       (heavyMetal.runsTerranCampaign && heavyMetal.usesBunkerDefense must beTrue) and
+      (cruisers.runsTerranCampaign && cruisers.usesWallDefense && cruisers.sealsMain && cruisers.raidsWithCruisers &&
+        !cruisers.usesBunkerDefense && !cruisers.usesCampaignLaunch must beTrue) and
+      (rampwall.sealsMain || rampwall.raidsWithCruisers must beFalse) and
       (idle.runsTerranCampaign || idle.usesBunkerDefense || idle.usesCarpet must beFalse)
   }
 }

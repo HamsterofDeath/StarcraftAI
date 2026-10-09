@@ -13,6 +13,7 @@ object TerranBehaviours {
         new ShieldUnit(universe) ::
         new IrradiateUnit(universe) ::
         new BlindEnemies(universe) ::
+        new CruiserRaids(universe) ::
         new CloakSelfGhost(universe) ::
         new GoToInitialPosition(universe) ::
         new CloakSelfWraith(universe) ::

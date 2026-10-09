@@ -39,8 +39,9 @@ class MigrateTowardsPosition(universe: Universe) extends DefaultBehaviour[Mobile
     val behaviour = unit match {
       case g: GroundUnit =>
         new DefaultMigrationBehaviour[GroundUnit](g) with FerrySupport[GroundUnit] {
+          // behind a sealed wall the ground army holds the ramp; only workers are ferried
           override protected def ferryDropTarget = {
-            finalDestination
+            if (strategy.current.sealsMain) None else finalDestination
           }
         }
 

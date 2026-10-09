@@ -8,7 +8,8 @@ trait FerrySupport[T <: GroundUnit] extends JobOrSubJob[T] {
     val target = ferryDropTarget
 
     val myOrder = target.map { to =>
-      val needsFerry = !unit.currentArea.exists(_.free(to))
+      val needsFerry = !unit.currentArea.exists(_.free(to)) || ferryManager.sealedApart(where, to)
+      ferryWait = needsFerry
       if (needsFerry) {
         ferryManager.requestFerry_!(unit, to) match {
           case Some(plan) if unit.onGround =>
@@ -25,8 +26,14 @@ trait FerrySupport[T <: GroundUnit] extends JobOrSubJob[T] {
         }
       } else Nil
     }.getOrElse(Nil)
+    if (target.isEmpty) ferryWait = false
     if (myOrder.isEmpty) super.higherPriorityOrder else myOrder
   }
+
+  private var ferryWait = false
+
+  /** Whether the unit's way to its target needs a ferry, as of its last order. */
+  def waitsForFerry = ferryWait
 
   protected def ferryDropTarget: Option[MapTilePosition]
 }

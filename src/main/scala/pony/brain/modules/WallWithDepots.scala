@@ -57,7 +57,7 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
 
   /** Knock down the depot (or pair) whose removal actually opens a walkable way out; a barracks gate lifts instead. */
   def openGate_!(): Unit = {
-    if (!gateOpened && gate.isEmpty) {
+    if (!gateOpened && gate.isEmpty && !strategy.current.sealsMain) {
       gateOpened = true
       gateDepotIds = openDepots
       NativeMatchEvidence.trace(
@@ -646,7 +646,7 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
     val armyOut  = worldDominationPlan.campaignForceSize > 0
     // never for the minimal scouts: a handful of fighters at five minutes lifted the gate just before the enemy's
     // first attack, which then broke into the main and killed the gate barracks
-    val wantOpen = armyOut || campaign.reconnaissanceAllowed
+    val wantOpen = !strategy.current.sealsMain && (armyOut || campaign.reconnaissanceAllowed)
     // landing takes a moment and fails while an enemy stands in the slot: close well before enemies arrive
     val danger = unitGrid.enemy.allInRange[Mobile](g.movedBy(2, 1), 16)
       .exists(e => !e.nativeUnit.isFlying && !e.isInstanceOf[WorkerUnit])

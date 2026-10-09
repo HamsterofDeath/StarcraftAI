@@ -6,8 +6,11 @@ import scala.jdk.CollectionConverters._
 
 /** One campaign owns the persistent offensive target; existing arbitration and micro own commands. */
 class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](universe) {
-  private val config            = TerranCampaignConfig.load()
-  private val memory            = new EnemyCampaignMemory
+  private val config = TerranCampaignConfig.load()
+  private val memory = new EnemyCampaignMemory
+
+  /** The enemy buildings seen and not known to be gone. */
+  def enemyBuildings            = memory.buildings
   private var previousTarget    = Option.empty[MapTilePosition]
   private var launched          = false
   private var wasReady          = false

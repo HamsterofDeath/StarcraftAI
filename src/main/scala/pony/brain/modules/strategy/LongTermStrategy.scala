@@ -38,4 +38,10 @@ trait LongTermStrategy extends HasUniverse {
 
   /** Flying factories, tank posts with depot boxes and mine screens spread over the map. */
   def usesCarpet: Boolean = false
+
+  /** The wall never opens: dropships carry workers across it, and only air units leave the main. */
+  def sealsMain: Boolean = false
+
+  /** Battlecruisers raid the enemy and fly home to a repair crew (CruiserRaids). */
+  def raidsWithCruisers: Boolean = false
 }

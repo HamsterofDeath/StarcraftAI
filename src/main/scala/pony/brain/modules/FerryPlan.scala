@@ -108,10 +108,18 @@ class FerryPlan(
   }
 
   def dropUnitsNow = {
-    ferry.hasUnitsLoaded && ferry.currentArea == targetArea
+    ferry.hasUnitsLoaded && arrived(ferry)
   }
 
-  def needsToReachTarget = ferry.currentArea != targetArea
+  def needsToReachTarget = !arrived(ferry)
+
+  /**
+    * In the target's walkable area and, behind a sealed wall, on its side. Over the main's cliffs a flying ferry stands
+    * on no walkable tile, so it must also be near the drop point before it unloads.
+    */
+  private def arrived(u: Mobile) =
+    u.currentArea == targetArea && !ferryManager.sealedApart(u.currentTile, initiallyPlannedToDropHere) &&
+      (!ferryManager.sealing || !u.nativeUnit.isFlying || u.currentTile.distanceToIsLess(toWhere, 6))
 
   def pickupTargetsLeft = queuedForPickUp.nonEmpty
 
@@ -123,7 +131,7 @@ class FerryPlan(
 
   private def needsToPickThatUp(gu: GroundUnit) = {
     assert(toTransport(gu))
-    gu.onGround && gu.currentArea != targetArea
+    gu.onGround && !arrived(gu)
   }
 
   def toTransport = currentPlannedCargo.keySet

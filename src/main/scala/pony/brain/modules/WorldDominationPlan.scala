@@ -22,7 +22,13 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
     if (active && recallCampaign) attacks.retain(a => !a.campaign)
     if (changed) NativeMatchEvidence.trace("base-defense-pressure", s"active=$active recall=$recallCampaign $detail")
   }
-  def campaignForce: Set[Mobile]                       = attacks.iterator.filter(_.campaign).flatMap(_.force).toSet
+  def campaignForce: Set[Mobile] = attacks.iterator.filter(_.campaign).flatMap(_.force).toSet
+
+  /** The cruisers out on a raid (CruiserRaids); a raid weighs like the campaign army when home is attacked. */
+  var raidingFleet = Set.empty[Mobile]
+
+  /** Whether the raid on our bases is big enough to call the army, and the cruisers, home. */
+  def recallsArmy                                      = baseDefense.pressure && baseDefense.recallsCampaign
   def requestBaseDefense(where: MapTilePosition): Unit = {
     if (
       baseDefense.pressure &&

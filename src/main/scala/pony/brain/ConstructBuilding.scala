@@ -148,7 +148,8 @@ class ConstructBuilding[W <: WorkerUnit: ClassTag, B <: Building](
   private var failureTraced = false
 
   override def jobHasFailedWithoutDeath: Boolean = {
-    if (unit.onGround) {
+    // a builder waiting for its ferry makes no progress, and its site is no less reachable for that
+    if (unit.onGround && !waitsForFerry) {
       val byState = {
         travelProgress.failed(
           currentTick,

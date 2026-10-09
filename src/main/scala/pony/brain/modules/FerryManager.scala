@@ -109,6 +109,33 @@ class FerryManager(override val universe: Universe) extends HasUniverse {
       }.named("Best drop alternatives")
   }
 
+  /**
+    * While the strategy seals the main and its wall stands, the main's terrain area is cut in two: the defended inside
+    * and the rest. Both halves are one walkable area to the terrain, so the ferry checks ask this as well.
+    */
+  private var sealedSplit = Option.empty[(Grid2D, Grid2D)]
+
+  def sealing = sealedSplit.isDefined
+
+  /** Whether the sealed wall stands between two walkable tiles of the main's terrain area. */
+  def sealedApart(a: MapTilePosition, b: MapTilePosition) = sealedSplit.exists { case (mainArea, inside) =>
+    mainArea.free(a) && mainArea.free(b) && inside.free(a) != inside.free(b)
+  }
+
+  private def updateSealedSplit(): Unit = {
+    val wanted = strategy.current.sealsMain && universe.pluginByType[WallWithDepots].complete
+    if (!wanted) sealedSplit = None
+    else if (sealedSplit.isEmpty) sealedSplit = for {
+      main     <- bases.mainBase
+      line     <- strategicMap.defenseLineOf(main)
+      tile     <- line.defended.allFree.iterator.take(1).toSeq.headOption
+      mainArea <- mapLayers.rawWalkableMap.areaOf(tile)
+    } yield {
+      NativeMatchEvidence.trace("main-sealed", s"inside=${line.defended.freeCount} area=${mainArea.freeCount}")
+      (mainArea, line.defended)
+    }
+  }
+
   def canDropHere(where: MapTilePosition) = {
     nearestDropPointTo(where).contains(where)
   }
@@ -143,7 +170,8 @@ class FerryManager(override val universe: Universe) extends HasUniverse {
       ferryPlans.valuesIterator.find { plan =>
         lazy val sameTargetArea = {
           val area = fixedDropTarget.flatMap(mapLayers.rawWalkableMap.areaOf)
-          plan.targetArea == area && plan.toWhere.distanceToIsLess(dropTarget, 15)
+          plan.targetArea == area && plan.toWhere.distanceToIsLess(dropTarget, 15) &&
+          !sealedApart(plan.toWhere, dropTarget)
         }
         def canAdd = {
           sameTargetArea && plan.hasSpaceFor(forWhat)
@@ -171,7 +199,8 @@ class FerryManager(override val universe: Universe) extends HasUniverse {
       buildNewIfRequired: Boolean = false
   ) = {
     assert(
-      forWhat.currentArea != mapLayers.rawWalkableMap.areaOf(dropTarget),
+      forWhat.currentArea != mapLayers.rawWalkableMap.areaOf(dropTarget) ||
+        sealedApart(forWhat.currentTile, dropTarget),
       s"One of the units is already in the target area"
     )
 
@@ -201,11 +230,18 @@ class FerryManager(override val universe: Universe) extends HasUniverse {
 
     ferryPlans ++= newPlans.map(e => e.ferry -> e)
     trace(s"New plans: ${newPlans.mkString(", ")}")
+    newPlans.foreach(p =>
+      NativeMatchEvidence.trace(
+        "ferry-plan",
+        s"ferry=${p.ferry.nativeUnitId} cargo=${forWhat.nativeUnitId} from=${forWhat.currentTile} to=$dropTarget"
+      )
+    )
     newPlans
   }
 
   override def onTick_!(): Unit = {
     super.onTick_!()
+    updateSealedSplit()
     val done = ferryPlans.valuesIterator.filterNot(_.unfinished)
     trace(s"Ferry plans done: $done")
     ferryPlans --= done.map(_.ferry)

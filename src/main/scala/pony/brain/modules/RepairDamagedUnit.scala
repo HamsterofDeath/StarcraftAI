@@ -10,7 +10,10 @@ class RepairDamagedUnit(universe: Universe) extends DefaultBehaviour[SCV](univer
     universe = universe,
     rateTarget = m => PriorityChain(m.percentageHPOk),
     validTargetTest = _.isDamaged,
-    subAccept = (m, t) => m.currentArea == t.currentArea,
+    // a repairer walks only to nearby units it can reach; the damaged come home to be mended
+    subAccept = (m, t) =>
+      m.currentArea == t.currentArea && m.currentTile.distanceToIsLess(t.currentTile, 20) &&
+        !ferryManager.sealedApart(m.currentTile, t.currentTile),
     subRate = (m, t) => PriorityChain(-m.currentTile.distanceSquaredTo(t.currentTile)),
     own = true,
     allowReplacements = true

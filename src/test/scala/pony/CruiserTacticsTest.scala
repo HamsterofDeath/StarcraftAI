@@ -1,0 +1,41 @@
+package pony
+
+import org.specs2._
+import org.specs2.matcher.MustMatchers
+import pony.brain.modules.CruiserTactics._
+
+class CruiserTacticsTest extends Specification with MustMatchers {
+
+  def is =
+    s2"""
+       |A cruiser leaves below 40 percent and returns only when mended to 90 $repairHysteresis
+       |A raid needs three fit cruisers and ends worn down or with fewer than two $raidStartAndEnd
+       |The crew grows with the fleet from two to six SCVs $crew
+       |Expansions are raided before the main, the main before a lone building, a start last $targets
+       """.stripMargin
+
+  def repairHysteresis = (needsRepair(0.39, repairing = false) must beTrue) and
+    (needsRepair(0.5, repairing = false) must beFalse) and
+    (needsRepair(0.8, repairing = true) must beTrue) and
+    (needsRepair(0.9, repairing = true) must beFalse)
+
+  def raidStartAndEnd = (startsRaid(2) must beFalse) and (startsRaid(3) must beTrue) and
+    (endsRaid(Seq(1.0)) must beTrue) and
+    (endsRaid(Seq(0.5, 0.55)) must beTrue) and
+    (endsRaid(Seq(0.6, 0.7)) must beFalse)
+
+  def crew = (crewSize(0), crewSize(1), crewSize(3), crewSize(30)) === (0, 2, 3, 6)
+
+  def targets = {
+    val home      = MapTilePosition(30, 7)
+    val enemyMain = MapTilePosition(64, 118)
+    val natural   = MapTilePosition(76, 116)
+    val pylon     = MapTilePosition(50, 60)
+    (
+      choose(Seq(enemyMain, natural), Seq(enemyMain, natural, pylon), Seq(enemyMain), home),
+      choose(Seq(enemyMain), Seq(enemyMain, pylon), Seq(enemyMain), home),
+      choose(Nil, Seq(pylon), Seq(enemyMain), home),
+      choose(Nil, Nil, Seq(enemyMain), home)
+    ) === (Some(natural), Some(enemyMain), Some(pylon), Some(enemyMain))
+  }
+}

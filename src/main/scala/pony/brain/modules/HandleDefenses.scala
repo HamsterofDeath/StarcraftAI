@@ -15,7 +15,7 @@ class HandleDefenses(universe: Universe) extends OrderlessAIModule[Mobile](unive
       if (localThreats.isEmpty) worldDominationPlan.setBaseDefensePressure(false)
       else {
         def value(u: WrapsUnit) = u.nativeUnitType.mineralPrice + u.nativeUnitType.gasPrice
-        val out                 = worldDominationPlan.campaignForce
+        val out                 = worldDominationPlan.campaignForce ++ worldDominationPlan.raidingFleet
         val home                = ownUnits.allMobilesWithWeapons.iterator.filter { m =>
           m.isInGame && !m.isBeingCreated && m.isFigher && !m.isInstanceOf[WorkerUnit] && !out(m)
         }.map(value).sum

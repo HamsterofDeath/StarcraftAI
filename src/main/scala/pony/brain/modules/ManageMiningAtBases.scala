@@ -280,7 +280,8 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule[WrapsUni
 
         private val nearestReachableBase = oncePer(Primes.prime71) {
           bases.allBases.filter { b =>
-            !b.mainBuilding.isFloating && worker.currentArea.contains(b.mainBuilding.areaOnMap)
+            !b.mainBuilding.isFloating && worker.currentArea.contains(b.mainBuilding.areaOnMap) &&
+            !ferryManager.sealedApart(worker.currentTile, b.mainBuilding.tilePosition)
           }.minByOpt { base =>
             base.mainBuilding.area.distanceTo(worker.currentTile)
           }
