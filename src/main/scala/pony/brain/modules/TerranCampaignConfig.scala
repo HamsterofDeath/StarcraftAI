@@ -12,11 +12,13 @@ case class TerranCampaignConfig(
     requiredFields: Int = 2,
     minScoutFighters: Int = 6,
     minScouts: Int = 1,
-    fieldUsefulFraction: Double = 0.15
+    fieldUsefulFraction: Double = 0.05,
+    fieldHealthyFraction: Double = 0.4
 ) {
   require(minFighters > 0 && armyMinerals >= 0 && armyGas >= 0 && expansionReserve >= 0 &&
     bankMinerals >= 0 && bankGas >= 0 && requiredFields >= 1 && minScoutFighters >= 1 &&
-    minScouts >= 1 && fieldUsefulFraction > 0.0 && fieldUsefulFraction < 1.0)
+    minScouts >= 1 && fieldUsefulFraction > 0.0 && fieldUsefulFraction < fieldHealthyFraction &&
+    fieldHealthyFraction < 1.0)
   def launch(count: Int, minerals: Int, gas: Int) =
     count >= minFighters && minerals >= armyMinerals && gas >= armyGas
   def ready(
@@ -46,8 +48,14 @@ case class TerranCampaignConfig(
   ) =
     !pending && safeReachableSite && unlockedMinerals >= costMinerals + expansionReserve && unlockedGas >= costGas
 
-  /** A mineral field at or below the configured fraction remaining is no longer worth holding. */
+  /** A mineral field at or below the configured fraction remaining is mined out. */
   def fieldUseful(remainingFraction: Double) = remainingFraction > fieldUsefulFraction
+
+  /**
+    * A field above this fraction counts as held; below it the next command center is requested while the field is
+    * still mined.
+    */
+  def fieldHealthy(remainingFraction: Double) = remainingFraction > fieldHealthyFraction
 }
 
 object TerranCampaignConfig {
@@ -64,7 +72,8 @@ object TerranCampaignConfig {
       number("requiredFields", 2),
       number("minScoutFighters", 6),
       number("minScouts", 1),
-      fraction("fieldUsefulFraction", 0.15)
+      fraction("fieldUsefulFraction", 0.05),
+      fraction("fieldHealthyFraction", 0.4)
     )
   }
 }

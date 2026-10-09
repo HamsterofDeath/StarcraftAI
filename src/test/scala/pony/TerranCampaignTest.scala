@@ -61,7 +61,8 @@ class TerranCampaignTest extends Specification with MustMatchers {
     Obsolete loaded home crews cannot fill or suppress active expansion seats $obsoleteBunkerCargo
     Cancelled funded construction is disposed once and its in-flight factory never starts $cancelledConstruction
     A real background placement refusal logs immutable data without reading live worker caches $backgroundPlacementRefusal
-    A mineral field at or below fifteen percent is no longer useful $fieldReplenishment
+    A mineral field at or below five percent is mined out, at or below forty percent no longer held $fieldReplenishment
+    A new command center is preferred over moving one that still mines $preferNewDepot
     An endgame hunt sweeps every resource area farthest from home first and wraps around $huntSweep
     A farthest-point carpet spread picks far-apart posts in a deterministic order $carpetPosts
   """
@@ -217,20 +218,33 @@ class TerranCampaignTest extends Specification with MustMatchers {
       c.ready(true, 12, 1500, 300, 1000, 300)
     ) === (false, false, false, false, true)
   }
+  def preferNewDepot = {
+    import pony.brain.modules.ExpansionChoice._
+    (
+      decide(0, Nil, Seq(5), newUnderWay = false, affordable = true),
+      decide(1, Seq(9), Seq(5), newUnderWay = false, affordable = true),
+      decide(1, Nil, Seq(5), newUnderWay = true, affordable = false),
+      decide(1, Nil, Seq(5), newUnderWay = false, affordable = true),
+      decide(1, Nil, Seq(5), newUnderWay = false, affordable = false),
+      decide(1, Nil, Nil, newUnderWay = false, affordable = false)
+    ) === (Hold, Move(9), Hold, BuildNew, Move(5), WaitForMinerals)
+  }
+
   def fieldReplenishment = {
     val c      = TerranCampaignConfig()
     val custom = TerranCampaignConfig(fieldUsefulFraction = 0.25)
     (
       c.fieldUseful(1.0),
-      c.fieldUseful(0.150001),
-      c.fieldUseful(0.15),
-      c.fieldUseful(0.149),
+      c.fieldUseful(0.050001),
+      c.fieldUseful(0.05),
+      c.fieldUseful(0.049),
       c.fieldUseful(0.0),
       custom.fieldUseful(0.26),
       custom.fieldUseful(0.24),
       custom.fieldUseful(0.25)
     ) ===
-      (true, true, false, false, false, true, false, false)
+      (true, true, false, false, false, true, false, false) and
+      ((c.fieldHealthy(0.41), c.fieldHealthy(0.4), c.fieldUseful(0.3)) === (true, false, true))
   }
   def saturation = {
     val progress = new TerranEconomicProgress

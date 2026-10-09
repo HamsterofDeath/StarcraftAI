@@ -156,7 +156,8 @@ object Orders {
       if ((buildingUnitType.isResourceDepot || buildingUnitType == bwapi.UnitType.Terran_Bunker) && !accepted)
         NativeMatchEvidence.trace(
           "depot-build-refused",
-          s"worker=${myUnit.nativeUnitId} from=${myUnit.currentTile} to=$where error=n/a"
+          s"worker=${myUnit.nativeUnitId} from=${myUnit.currentTile} to=$where " +
+            NativeMatchEvidence.buildDiagnosis(myUnit.nativeUnit, where.asTilePosition, buildingUnitType)
         )
     }
 
@@ -204,7 +205,7 @@ object Orders {
       if (!previous.exists(p => p._1 == accepted && p._2 == bunker.nativeUnitId && now - p._3 < 120)) {
         NativeMatchEvidence.trace(
           "bunker-boarding-order",
-          s"marine=${myUnit.nativeUnitId} target=${bunker.nativeUnitId} accepted=$accepted error=n/a order=${myUnit.nativeUnit.getOrder} loaded=${myUnit.nativeUnit.isLoaded}"
+          s"marine=${myUnit.nativeUnitId} target=${bunker.nativeUnitId} accepted=$accepted order=${myUnit.nativeUnit.getOrder} loaded=${myUnit.nativeUnit.isLoaded}"
         )
         bunkerBoardingReported(myUnit.nativeUnitId) = (accepted, bunker.nativeUnitId, now)
       }
@@ -328,7 +329,7 @@ object Orders {
       if (fixWhat.isInstanceOf[Bunker] && myUnit.universe.currentTick % 120 < 24)
         NativeMatchEvidence.trace(
           "bunker-native-repair",
-          s"scv=${myUnit.nativeUnitId} bunker=${fixWhat.nativeUnitId} accepted=$accepted hp=${fixWhat.nativeUnit.getHitPoints} order=${myUnit.nativeUnit.getOrder} error=n/a"
+          s"scv=${myUnit.nativeUnitId} bunker=${fixWhat.nativeUnitId} accepted=$accepted hp=${fixWhat.nativeUnit.getHitPoints} order=${myUnit.nativeUnit.getOrder}"
         )
     }
 

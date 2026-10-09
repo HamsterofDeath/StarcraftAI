@@ -67,7 +67,13 @@ class ManageMiningAtGeysirs(universe: Universe)
             }
           }
         case Some(ref) =>
-          val missing = idealWorkerCount - teamSize
+          val player = nativeGame.self()
+          // a flooded gas bank needs minerals, not more gas: keep one worker and send the rest to the minerals
+          val flooded = player.gas >= 800 && player.gas > 2 * player.minerals
+          val wanted  = if (flooded) 1 else idealWorkerCount
+          val missing = wanted - teamSize
+          if (missing < 0)
+            unitManager.allJobsByUnitType[WorkerUnit].filter(_.employer == this).take(-missing).foreach(_.fail_!())
           if (missing > 0) {
             val ofType = UnitJobRequest
               .idleOfType(self, classOf[WorkerUnit], missing, Priority.CollectGas)

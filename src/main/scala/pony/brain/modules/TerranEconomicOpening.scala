@@ -2,24 +2,32 @@ package pony
 package brain
 package modules
 
-/** Build at home, use both production queues, then move the spare depot after mineral saturation. */
+/**
+  * Build at home, use both production queues, and keep enough healthy mineral fields: a new command center, built at home
+  * and flown to its field, is preferred over moving one that still mines.
+  */
 class TerranEconomicOpening(universe: Universe)
     extends OrderlessAIModule[WorkerUnit](universe) with BuildingRequestHelper {
   private val depotEmployer = new Employer[CommandCenter](universe)
   private var relocation    = Option.empty[RelocateDepot]
 
-  private def fieldUseful(area: ResourceArea): Boolean = {
+  private def remaining(area: ResourceArea): Double = {
     val initial = area.patches.map(_.initialValue).sum.toDouble
-    val left    = area.patches.map(_.value).sum.toDouble
-    initial <= 0 || TerranCampaignConfig.load().fieldUseful(left / initial)
+    if (initial <= 0) 1.0 else area.patches.map(_.value).sum / initial
   }
+
+  /** Not yet mined out. */
+  private def fieldUseful(area: ResourceArea): Boolean = TerranCampaignConfig.load().fieldUseful(remaining(area))
+
+  /** Rich enough to hold and to move to. */
+  private def fieldHealthy(area: ResourceArea): Boolean = TerranCampaignConfig.load().fieldHealthy(remaining(area))
 
   /** The field the saturated opener would fly to: the nearest safe, useful one. */
   private def likelySecondField(home: Base): Option[ResourceArea] = {
     val homeTile = home.mainBuilding.tilePosition
     strategicMap.resources
       .filter { a =>
-        !bases.isCovered(a) && fieldUseful(a) &&
+        !bases.isCovered(a) && fieldHealthy(a) &&
         mapLayers.slightlyDangerousAsBlocked.free(a.nearbyFreeTile) &&
         unitGrid.enemy.allInRange[Mobile](a.nearbyFreeTile, 12).isEmpty &&
         mapLayers.freeWalkableIgnoringMobiles.areInSameWalkableArea(homeTile, a.nearbyFreeTile) &&
@@ -35,24 +43,40 @@ class TerranEconomicOpening(universe: Universe)
     relocation = relocation.filterNot(j => j.failedOrObsolete || j.isFinished)
     val depots = ownUnits.allByType[CommandCenter].filter(_.isInGame).toVector
     bases.mainBase.foreach { home =>
-      // The expander is the only place that knows the base limit. It compares the rich fields we
-      // hold against the configured target and resolves a deficit with one decision: move the most
-      // expendable depot for free, otherwise request a replacement when nothing can be spared.
+      // The expander is the only place that knows the base limit. It compares the healthy fields we
+      // hold against the configured target and resolves a deficit with one ExpansionChoice: fly a
+      // freshly built depot to its field, otherwise build a new one, and move a depot off an
+      // exhausted field only when no new one is coming.
       def fieldOf(cc: CommandCenter) =
         bases.allBases.find(_.mainBuilding == cc).flatMap(_.resourceArea)
-      val landed         = depots.filterNot(cc => cc.isBeingCreated || cc.isFloating)
-      val heldRichFields = landed.flatMap(fieldOf).filter(fieldUseful).map(_.uniqueId).distinct
-      val deficit        = TerranCampaignConfig.load().requiredFields - heldRichFields.size
-      val economyMoving  = mining.startingFieldSaturated || mining.secondBaseEstablished
-      val expendable     = landed.filter { cc =>
-        val deadField   = fieldOf(cc).forall(a => !fieldUseful(a))
-        val sharedField = fieldOf(cc).exists(a => landed.count(o => o != cc && fieldOf(o).contains(a)) > 0)
-        // The home depot anchors defense: it may only move off its own dead field.
-        if (cc == home.mainBuilding) deadField else deadField || sharedField
-      }.sortBy(cc => (if (fieldOf(cc).exists(fieldUseful)) 1 else 0, cc.nativeUnitId))
-      if (deficit > 0 && economyMoving && relocation.isEmpty) {
-        expendable.headOption match {
-          case Some(cc) =>
+      val cfg    = TerranCampaignConfig.load()
+      val landed = depots.filterNot(cc => cc.isBeingCreated || cc.isFloating)
+      // Fields count as held while healthy, so the next command center is under way before one runs dry.
+      val heldRichFields                 = landed.flatMap(fieldOf).filter(fieldHealthy).map(_.uniqueId).distinct
+      val deficit                        = cfg.requiredFields - heldRichFields.size
+      val economyMoving                  = mining.startingFieldSaturated || mining.secondBaseEstablished
+      def sharedField(cc: CommandCenter) =
+        fieldOf(cc).exists(a => landed.count(o => o != cc && fieldOf(o).contains(a)) > 0)
+      // A depot built at home shares the home field until it flies to its own; the home depot anchors defense and
+      // only moves off its own exhausted field.
+      val fresh       = landed.filter(cc => cc != home.mainBuilding && sharedField(cc))
+      val exhausted   = landed.filter(cc => fieldOf(cc).forall(a => !fieldUseful(a)))
+      val cost        = ResourceRequests.forUnit(race, classOf[CommandCenter])
+      val funds       = resources.unlockedResources
+      val newUnderWay = unitManager.requestedToBuild(classOf[CommandCenter]) ||
+        unitManager.constructionsInProgress[CommandCenter].nonEmpty
+      val affordable =
+        cfg.expand(funds.minerals, funds.gas, cost.minerals, cost.gas, pending = false, safeReachableSite = true)
+      val choice = ExpansionChoice.decide(
+        deficit,
+        fresh.map(_.nativeUnitId),
+        exhausted.map(_.nativeUnitId),
+        newUnderWay,
+        affordable
+      )
+      if (economyMoving && relocation.isEmpty) choice match {
+        case ExpansionChoice.Move(id) =>
+          depots.find(_.nativeUnitId == id).foreach { cc =>
             cc.relocating = true // let an already funded SCV finish, but do not start another queue.
             if (
               !cc.nativeUnit.isTraining && cc.nativeUnit.getRemainingTrainTime == 0 &&
@@ -70,88 +94,57 @@ class TerranEconomicOpening(universe: Universe)
                 relocation = Some(job)
               }
             }
-          case None =>
-            val cost  = ResourceRequests.forUnit(race, classOf[CommandCenter])
-            val funds = resources.unlockedResources
-            if (
-              !unitManager.requestedToBuild(classOf[CommandCenter]) &&
-              unitManager.constructionsInProgress[CommandCenter].isEmpty &&
-              TerranCampaignConfig.load().expand(
-                funds.minerals,
-                funds.gas,
-                cost.minerals,
-                cost.gas,
-                pending = false,
-                safeReachableSite = true
-              )
-            ) {
-              // Build the future flier as close as possible to the field it will later fly to, while
-              // staying on the home side of the pairing rule so the depot still rebinds to the home
-              // field and the relocation can trigger. Everything lazy or native is read here, on the
-              // main thread; the background closure only reads captured values.
-              val field      = likelySecondField(home)
-              val homeTile   = home.mainBuilding.tilePosition
-              val homeCenter = home.resourceArea.map(_.center)
-              val custom     = field.map { target =>
-                val targetTile   = target.nearbyFreeTile
-                val targetCenter = target.center
-                AlternativeBuildingSpot.fromExpensive(new ConstructionSiteFinder(universe)) { finder =>
-                  val staysHomeField: Area => Boolean = homeCenter match {
-                    case Some(hc) => area => area.distanceTo(hc) + 4.0 <= area.distanceTo(targetCenter)
-                    case None     => _ => true
-                  }
-                  finder.findSpotFor(
-                    homeTile,
-                    classOf[CommandCenter],
-                    preferNear = Some(targetTile),
-                    acceptableArea = staysHomeField
-                  )
-                }
-              }.getOrElse(AlternativeBuildingSpot.useDefault)
-              requestBuilding(
+          }
+        case ExpansionChoice.BuildNew =>
+          // Build the future flier as close as possible to the field it will later fly to, while
+          // staying on the home side of the pairing rule so the depot still rebinds to the home
+          // field and the relocation can trigger. Everything lazy or native is read here, on the
+          // main thread; the background closure only reads captured values.
+          val field      = likelySecondField(home)
+          val homeTile   = home.mainBuilding.tilePosition
+          val homeCenter = home.resourceArea.map(_.center)
+          val custom     = field.map { target =>
+            val targetTile   = target.nearbyFreeTile
+            val targetCenter = target.center
+            AlternativeBuildingSpot.fromExpensive(new ConstructionSiteFinder(universe)) { finder =>
+              val staysHomeField: Area => Boolean = homeCenter match {
+                case Some(hc) => area => area.distanceTo(hc) + 4.0 <= area.distanceTo(targetCenter)
+                case None     => _ => true
+              }
+              finder.findSpotFor(
+                homeTile,
                 classOf[CommandCenter],
-                customBuildingPosition = custom,
-                belongsTo = home.resourceArea,
-                priority = Priority.Expand
-              )
-              NativeMatchEvidence.trace(
-                "home-depot-request",
-                s"unlocked=${funds.minerals} toward=${field.map(_.uniqueId)}"
+                preferNear = Some(targetTile),
+                acceptableArea = staysHomeField
               )
             }
-        }
+          }.getOrElse(AlternativeBuildingSpot.useDefault)
+          requestBuilding(
+            classOf[CommandCenter],
+            customBuildingPosition = custom,
+            belongsTo = home.resourceArea,
+            priority = Priority.Expand
+          )
+          NativeMatchEvidence.trace(
+            "home-depot-request",
+            s"unlocked=${funds.minerals} toward=${field.map(_.uniqueId)}"
+          )
+        case _ =>
       }
       if (currentTick % (Primes.prime31.i * 16) == 0) {
-        val cfg     = TerranCampaignConfig.load()
-        val cost    = ResourceRequests.forUnit(race, classOf[CommandCenter])
-        val funds   = resources.unlockedResources
-        val pending = unitManager.requestedToBuild(classOf[CommandCenter]) ||
-          unitManager.constructionsInProgress[CommandCenter].nonEmpty
-        val expandState =
-          if (deficit <= 0) "held"
-          else if (relocation.isDefined) "recycling"
-          else if (pending) "building"
-          else if (expendable.nonEmpty) "ready-to-move"
-          else if (
-            cfg.expand(
-              funds.minerals,
-              funds.gas,
-              cost.minerals,
-              cost.gas,
-              pending = false,
-              safeReachableSite = true
-            )
-          ) "requesting"
-          else "waiting-for-minerals"
-        val relocateState =
-          if (relocation.isDefined) "recycling-depot"
-          else if (deficit > 0 && expendable.nonEmpty) "pending-fresh-field"
-          else if (deficit > 0) "awaiting-replacement"
-          else "idle"
+        val expandState = choice match {
+          case _ if relocation.isDefined       => "moving"
+          case ExpansionChoice.Hold            => if (deficit <= 0) "held" else "building"
+          case ExpansionChoice.Move(_)         => "ready-to-move"
+          case ExpansionChoice.BuildNew        => "requesting"
+          case ExpansionChoice.WaitForMinerals => "waiting-for-minerals"
+        }
         NativeMatchEvidence.trace(
           "strategy-expansion",
-          s"fields=${heldRichFields.size}/${cfg.requiredFields} ccs=${depots.size}/${cfg.requiredFields} deficit=$deficit expendable=${expendable.size} unlockedMinerals=${funds.minerals}/${cost.minerals +
-              cfg.expansionReserve} pending=$pending saturated=${mining.startingFieldSaturated} secondBase=${mining.secondBaseEstablished} expand=$expandState relocate=$relocateState"
+          s"fields=${heldRichFields.size}/${cfg.requiredFields} ccs=${depots.size} deficit=$deficit " +
+            s"fresh=${fresh.size} exhausted=${exhausted.size} unlockedMinerals=${funds.minerals}/" +
+            s"${cost.minerals + cfg.expansionReserve} newUnderWay=$newUnderWay " +
+            s"saturated=${mining.startingFieldSaturated} secondBase=${mining.secondBaseEstablished} expand=$expandState"
         )
       }
     }
@@ -166,7 +159,7 @@ class TerranEconomicOpening(universe: Universe)
     private var landingRetries           = 0
     private var returningHome            = false
     private var chooseAttempts           = 0
-    private def safe(area: ResourceArea) = !bases.isCovered(area) && fieldUseful(area) &&
+    private def safe(area: ResourceArea) = !bases.isCovered(area) && fieldHealthy(area) &&
       mapLayers.slightlyDangerousAsBlocked.free(area.nearbyFreeTile) &&
       unitGrid.enemy.allInRange[Mobile](area.nearbyFreeTile, 12).isEmpty
     private def chooseDestination(): Unit = {

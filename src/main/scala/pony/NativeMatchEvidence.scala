@@ -10,11 +10,23 @@ object NativeMatchEvidence {
   private var startupFailed = false
   private var initialState  = "{}"
   private var gameNumber    = 0
+  private var liveGame      = Option.empty[Game]
+
+  /**
+    * Why BWAPI may refuse `builder` building `kind` at `tile`: JBWAPI does not expose BWAPI's last error, so this reports
+    * the checks behind it.
+    */
+  def buildDiagnosis(builder: bwapi.Unit, tile: bwapi.TilePosition, kind: bwapi.UnitType): String =
+    liveGame.fold("game=unknown") { g =>
+      s"canMake=${g.canMake(kind, builder)} canBuildHere=${g.canBuildHere(tile, kind, builder)} " +
+        s"minerals=${g.self().minerals}"
+    }
 
   /** 1-based number of the current game in this bot process; warm sessions play several. */
   def currentGame: Int                       = gameNumber
   def observeLiveVision(game: Game): Boolean = {
     if (!game.isInGame) return false
+    liveGame = Some(game)
     val player = game.self()
     // These exact native victory/defeat fields are exported with the final synthetic flag batch.
     val terminal   = player != null && (player.isDefeated || player.isVictorious)

@@ -86,6 +86,7 @@ class TerranBunkerDefense(universe: Universe)
       .flatMap(_.resourceArea).groupBy(_.uniqueId).values.map(_.head).toVector
     val fieldIds = fields.map(_.uniqueId).toSet
     plans.keys.filterNot(fieldIds).toVector.foreach { id => plans.remove(id); geometry.remove(id) }
+    var requestedThisTick = false
     fields.foreach { field =>
       val depots  = universe.pluginByType[ManageMiningAtBases].servingMineralDepots(field.uniqueId).map(_.area)
       val patches = field.patches.toList.flatMap(_.patches.map(_.area))
@@ -170,17 +171,21 @@ class TerranBunkerDefense(universe: Universe)
         }
       }
       plans.get(field.uniqueId).foreach { case (_, sites) =>
+        // One bunker at a time: several requested at once lock their price long before a worker gets to them and
+        // starve the expansion.
+        def bunkerUnderWay = requestedThisTick || unitManager.requestedConstructions[Bunker].nonEmpty ||
+          unitManager.constructionsInProgress[Bunker].nonEmpty || bunkers.exists(_.isBeingCreated)
         val pending = unitManager.requestedConstructions[Bunker].flatMap(_.customPosition.requestedPosition).toSet ++
           unitManager.constructionsInProgress[Bunker].map(_.buildWhere)
         sites.foreach { site =>
-          if (!bunkers.exists(_.tilePosition == site.upperLeft) && !pending(site.upperLeft)) {
+          if (!bunkers.exists(_.tilePosition == site.upperLeft) && !pending(site.upperLeft) && !bunkerUnderWay) {
             val safe = new ConstructionSiteFinder(universe).bunkerSiteSafe(site)
             if (safe) {
               if (!placementReported(site.upperLeft)) {
                 val now = nativeGame.canBuildHere(site.upperLeft.asTilePosition, bwapi.UnitType.Terran_Bunker)
                 NativeMatchEvidence.trace(
                   "bunker-construction-request",
-                  s"field=${field.uniqueId} site=${site.upperLeft} nativeSpaceNow=$now error=n/a"
+                  s"field=${field.uniqueId} site=${site.upperLeft} nativeSpaceNow=$now"
                 )
                 placementReported += site.upperLeft
               }
@@ -192,6 +197,7 @@ class TerranBunkerDefense(universe: Universe)
                 ),
                 belongsTo = Some(field)
               )
+              requestedThisTick = true
             } else plans.remove(field.uniqueId)
           }
         }
