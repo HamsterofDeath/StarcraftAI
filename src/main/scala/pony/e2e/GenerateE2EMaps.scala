@@ -16,11 +16,26 @@ object GenerateE2EMaps {
 
   private val BotArea = 1
 
-  /** A unit type of a micro scenario: its UNIT id, its file-name word and its race. */
-  final case class Side(unitId: Int, word: String, race: Int)
+  /** A unit type of a micro scenario: its UNIT id, its file-name word, its race and its production cost. */
+  final case class Side(unitId: Int, word: String, race: Int, minerals: Int, gas: Int) {
 
-  val Vulture = Side(MapUnit.Vulture, "vulture", UmsScenario.Terran)
-  val Zealot  = Side(MapUnit.Zealot, "zealot", UmsScenario.Protoss)
+    /** Gas is scarcer than minerals; 1.5 is the usual exchange rate when comparing armies. */
+    def value: Double = minerals + 1.5 * gas
+  }
+
+  val Marine  = Side(MapUnit.Marine, "marine", UmsScenario.Terran, 50, 0)
+  val Firebat = Side(MapUnit.Firebat, "firebat", UmsScenario.Terran, 50, 25)
+  val Vulture = Side(MapUnit.Vulture, "vulture", UmsScenario.Terran, 75, 0)
+  val Goliath = Side(MapUnit.Goliath, "goliath", UmsScenario.Terran, 100, 50)
+  val Tank    = Side(MapUnit.SiegeTank, "tank", UmsScenario.Terran, 150, 100)
+  val Wraith  = Side(MapUnit.Wraith, "wraith", UmsScenario.Terran, 150, 100)
+  val Zealot  = Side(MapUnit.Zealot, "zealot", UmsScenario.Protoss, 100, 0)
+  val Dragoon = Side(MapUnit.Dragoon, "dragoon", UmsScenario.Protoss, 125, 50)
+
+  /** Resources each side fields in a pure-versus-pure matchup. */
+  val MatchupBudget = 1200
+
+  def unitsFor(side: Side, budget: Int): Int = math.max(1, math.round(budget / side.value).toInt)
 
   /**
     * `n` bot units against `m` computer units on an empty 64x64 map, 40 tiles apart. The computer attacks; the bot must
@@ -65,9 +80,22 @@ object GenerateE2EMaps {
     name
   }
 
-  val All: Map[String, UmsScenario] = Seq((1, 1), (2, 3), (4, 6), (8, 12)).map { case (n, m) =>
+  /** Vultures against Zealots at growing sizes, the first kiting benchmark. */
+  val VultureScaling: Map[String, UmsScenario] = Seq((1, 1), (2, 3), (4, 6), (8, 12)).map { case (n, m) =>
     fileName(Vulture, n, Zealot, m) -> micro(Vulture, n, Zealot, m)
   }.toMap
+
+  /** Every Terran unit against every Protoss unit, both sides worth about `MatchupBudget` resources. */
+  val TerranVsProtoss: Map[String, UmsScenario] = (for {
+    ours   <- Seq(Marine, Firebat, Vulture, Goliath, Tank, Wraith)
+    theirs <- Seq(Zealot, Dragoon)
+  } yield {
+    val n = unitsFor(ours, MatchupBudget)
+    val m = unitsFor(theirs, MatchupBudget)
+    fileName(ours, n, theirs, m) -> micro(ours, n, theirs, m)
+  }).toMap
+
+  val All: Map[String, UmsScenario] = VultureScaling ++ TerranVsProtoss
 
   private def opponentAttacks = Seq(
     Trigger(

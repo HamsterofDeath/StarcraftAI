@@ -14,7 +14,10 @@ object KitingPolicy {
       Point(x + math.cos(angle) * distance, y + math.sin(angle) * distance)
   }
 
-  /** `reach` is the centre distance at which this enemy can hit the shooter. */
+  /**
+    * An enemy the shooter can attack. `reach` is the centre distance at which it can hit the shooter (0 when it
+    * cannot attack the shooter at all); only enemies the shooter outranges are worth stepping away from.
+    */
   final case class Threat(id: Int, at: Point, durability: Int, reach: Double, speed: Double)
 
   /** `range` is the centre distance at which the shooter's shot lands; `firing` means its attack is under way. */
@@ -54,8 +57,9 @@ object KitingPolicy {
     else if (me.cooldown == 0) Shoot(target(me, threats).id)
     else if (me.cooldown <= lead && threats.exists(t => me.at.distanceTo(t.at) <= me.range))
       Shoot(target(me, threats).id)
-    else if (threats.exists(t => gap(me.at, t) <= t.speed * (me.cooldown + SafetyFrames))) {
-      retreatPoint(me, threats, walkable, step).map(Retreat(_)).getOrElse(Shoot(target(me, threats).id))
+    else if (outranged(me, threats).exists(t => gap(me.at, t) <= t.speed * (me.cooldown + SafetyFrames))) {
+      retreatPoint(me, outranged(me, threats), walkable, step).map(Retreat(_))
+        .getOrElse(Shoot(target(me, threats).id))
     } else Hold
   }
 
@@ -79,6 +83,9 @@ object KitingPolicy {
   }
 
   private def gap(at: Point, threat: Threat) = at.distanceTo(threat.at) - threat.reach
+
+  /** Enemies that can hit the shooter but have less reach: running from them gains free shots. */
+  private def outranged(me: Shooter, threats: Seq[Threat]) = threats.filter(t => t.reach > 0 && t.reach < me.range)
 
   /** Each blocked probe around the point costs a step: dead ends score worse than open ground. */
   private def crampedPenalty(p: Point, walkable: Point => Boolean, step: Double) = (0 until 8).count(i =>

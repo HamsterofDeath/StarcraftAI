@@ -18,6 +18,8 @@ class KitingPolicyTest extends Specification with MustMatchers {
        |A reloading unit holds when every threat is far enough away $holds
        |A retreat never goes into unwalkable ground $avoidsWalls
        |A retreat prefers open ground over a corner $avoidsCorners
+       |An enemy with equal or longer reach is fought instead of run from $noRetreatFromLongerReach
+       |An enemy that cannot hit back is attacked and never run from $harmlessTarget
        """.stripMargin
 
   private val open: Point => Boolean = p => p.x >= 0 && p.y >= 0 && p.x < 2048 && p.y < 2048
@@ -71,6 +73,17 @@ class KitingPolicyTest extends Specification with MustMatchers {
       case Retreat(to) => (wallToTheLeft(to) must beTrue) and (to.x must be_>(1000.0))
       case other       => other === Retreat(Point(0, 0))
     }
+  }
+
+  def noRetreatFromLongerReach = {
+    val dragoonLike = Threat(1, Point(1100, 1024), 180, reach = 200, speed = 5)
+    decide(shooter(cooldown = 20), Seq(dragoonLike), open) === Hold
+  }
+
+  def harmlessTarget = {
+    val cannotHitBack = Threat(1, Point(1060, 1024), 160, reach = 0, speed = 4)
+    (decide(shooter(), Seq(cannotHitBack), open) === Shoot(1)) and
+      (decide(shooter(cooldown = 20), Seq(cannotHitBack), open) === Hold)
   }
 
   def avoidsCorners = {

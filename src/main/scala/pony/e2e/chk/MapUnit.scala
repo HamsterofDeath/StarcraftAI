@@ -22,10 +22,19 @@ object MapUnit {
   private val ValidProperties = 0x0f
 
   val Marine        = 0
+  val Ghost         = 1
   val Vulture       = 2
+  val Goliath       = 3
+  val SiegeTank     = 5
+  val Wraith        = 8
+  val Battlecruiser = 12
+  val Firebat       = 32
   val Zergling      = 37
   val Zealot        = 65
   val Dragoon       = 66
+  val Archon        = 68
+  val Scout         = 70
+  val Reaver        = 83
   val StartLocation = 214
 
   def atTile(unitId: Int, owner: Int, tileX: Int, tileY: Int) = MapUnit(unitId, owner, tileX * 32 + 16, tileY * 32 + 16)
