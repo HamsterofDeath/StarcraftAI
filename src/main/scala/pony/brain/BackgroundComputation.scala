@@ -14,6 +14,10 @@ trait BackgroundComputation[T <: WrapsUnit] extends AIModule[T] {
   private var waitingForBackgroundOp = false
   private var startedAt              = 0
   private var reportedSlow           = false
+  // nanoTime stamps set by the background thread: when the computation began running and when it ended
+  @volatile private var runStarted = 0L
+  @volatile private var runEnded   = 0L
+  private var submitted            = 0L
 
   override def ordersForTick: Iterable[UnitOrder] = {
     currentResult.filter(_.repeatOrderIssue) match {
@@ -26,9 +30,12 @@ trait BackgroundComputation[T <: WrapsUnit] extends AIModule[T] {
           // waiting, but no result yet: noop; a computation pending for half a minute starves this module
           if (!reportedSlow && universe.currentTick - startedAt > 24 * 30) {
             reportedSlow = true
+            val now = System.nanoTime()
             NativeMatchEvidence.trace(
               "background-slow",
-              s"module=${getClass.getName.split('.').last} pendingFrames=${universe.currentTick - startedAt}"
+              s"module=${getClass.getName.split('.').last} pendingFrames=${universe.currentTick - startedAt} " +
+                (if (runStarted == 0L) s"queuedMs=${(now - submitted) / 1000000}"
+                 else s"queuedMs=${(runStarted - submitted) / 1000000} runningMs=${(now - runStarted) / 1000000}")
             )
           }
           Nil
@@ -92,7 +99,13 @@ trait BackgroundComputation[T <: WrapsUnit] extends AIModule[T] {
             case None     => Nil
             case Some(in) =>
               info(s"Background computation starting, input is $in")
-              backgroundOp = Future { evaluateNextOrders(in) }
+              submitted = System.nanoTime()
+              runStarted = 0L
+              backgroundOp = Future {
+                runStarted = System.nanoTime()
+                try evaluateNextOrders(in)
+                finally runEnded = System.nanoTime()
+              }
               waitingForBackgroundOp = true
               startedAt = universe.currentTick
               reportedSlow = false
