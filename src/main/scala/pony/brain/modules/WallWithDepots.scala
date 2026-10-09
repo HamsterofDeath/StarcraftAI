@@ -638,14 +638,15 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
 
   /**
     * The barracks gate opens (lifts) while the army is out, attacking or reinforcing, or scouting is allowed, and closes
-    * (lands in its slot) whenever enemy ground fighters come within ten tiles of it. A barracks still training cancels
+    * (lands in its slot) whenever enemy ground fighters come within sixteen tiles of it. A barracks still training cancels
     * its queue before it lifts.
     */
   private def controlGate(): Unit = for (g <- gate; b <- gateBarracks if !b.isBeingCreated) {
     val campaign = universe.pluginByType[RunTerranCampaign]
     val armyOut  = worldDominationPlan.campaignForceSize > 0
     val wantOpen = armyOut || campaign.reconnaissanceAllowed || campaign.minimalScoutingActive
-    val danger   = unitGrid.enemy.allInRange[Mobile](g.movedBy(2, 1), 10)
+    // landing takes a moment and fails while an enemy stands in the slot: close well before enemies arrive
+    val danger = unitGrid.enemy.allInRange[Mobile](g.movedBy(2, 1), 16)
       .exists(e => !e.nativeUnit.isFlying && !e.isInstanceOf[WorkerUnit])
     // hysteresis: the barracks takes seconds to lift or land, so an open gate stays open 20 seconds unless enemies
     // come, and a closed one stays closed 5 seconds
