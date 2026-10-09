@@ -30,7 +30,9 @@ class StrategySelector(override val universe: Universe, registry: StrategyRegist
 
   def tick(): Unit = {
     if (candidates.nonEmpty) ifNth(Primes.prime251) {
-      best = candidates.maxBy(_.determineScore)
+      val next = candidates.maxBy(_.determineScore)
+      if (next ne best) NativeMatchEvidence.trace("strategy-chosen", s"name=${next.name} score=${next.determineScore}")
+      best = next
     }
   }
 }
