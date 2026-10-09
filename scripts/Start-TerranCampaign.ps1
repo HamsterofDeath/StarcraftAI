@@ -16,7 +16,10 @@ param(
  [int]$MinScouts = 1,
  [double]$FieldUsefulFraction = 0.15,
  [ValidateSet('default','infantry','factory','skywall','carpet')][string]$Strategy = 'default',
- [int]$LocalSpeedMs = 0,
+ # Milliseconds per frame; by default 14 (3x the 42 ms 'Fastest' speed) when rendered and 0 (unthrottled) headless.
+ [int]$LocalSpeedMs = -1,
+ # Rendered window size as a multiple of StarCraft's 640x480.
+ [ValidateRange(1, 4)][int]$WindowScale = 2,
  [int]$AiTickFrames = 24,
  [switch]$Headless,
  [switch]$NoAutoCamera,
@@ -33,6 +36,7 @@ if (& git -C $Repository status --porcelain --untracked-files=no) { throw 'Track
 if ($HeapMb -lt 128 -or $HeapMb -gt 384) { throw 'Use a bounded x86 heap with native address headroom.' }
 if ($MinFighters -lt 1 -or $ArmyMinerals -lt 0 -or $ArmyGas -lt 0 -or $ExpansionReserve -lt 0 -or $BankMinerals -lt 0 -or $BankGas -lt 0) { throw 'Campaign thresholds must be nonnegative with at least one fighter.' }
 if ($RequiredFields -lt 1 -or $MinScoutFighters -lt 1 -or $MinScouts -lt 1 -or $FieldUsefulFraction -le 0 -or $FieldUsefulFraction -ge 1) { throw 'Field policy needs at least one field/scout/fighter and a useful fraction between 0 and 1.' }
+if (-not $PSBoundParameters.ContainsKey('LocalSpeedMs')) { $LocalSpeedMs = if ($Headless) { 0 } else { 14 } }
 if ($LocalSpeedMs -lt 0 -or $LocalSpeedMs -gt 500) { throw 'LocalSpeedMs must be between 0 (fastest) and 500 milliseconds per frame.' }
 if ($AiTickFrames -lt 1 -or $AiTickFrames -gt 240) { throw 'AiTickFrames must be between 1 (every frame) and 240 frames per heavy AI tick.' }
 if (Get-Process -Name StarCraft,injectory_x86 -ErrorAction SilentlyContinue) { throw 'Native runtime is occupied.' }
@@ -64,6 +68,7 @@ $ini = Get-Content -LiteralPath $iniPath -Raw
 Copy-Item -LiteralPath $iniPath -Destination (Join-Path $run 'bwapi-before.ini')
 $pins = [ordered]@{ ai='NULL'; ai_dbg='NULL'; auto_menu='SINGLE_PLAYER'; auto_restart='OFF'; map=$mapRelative; race='Terran'; enemy_race='Protoss'; enemy_count='1'; game_type='MELEE'; shared_memory='ON'; windowed='ON'; sound='OFF' }
 1..7 | ForEach-Object { $pins['enemy_race_' + $_] = 'Protoss' }
+if (-not $Headless) { $pins['width'] = [string](640 * $WindowScale); $pins['height'] = [string](480 * $WindowScale) }
 foreach ($entry in $pins.GetEnumerator()) {
   $pattern = '(?m)^\s*' + [regex]::Escape($entry.Key) + '\s*=.*$'
   if (-not [regex]::IsMatch($ini,$pattern)) { throw ('Missing documented INI key: ' + $entry.Key) }
@@ -87,6 +92,7 @@ $receipt.renderingEnabled = !$Headless.IsPresent
 $receipt.configuration.bankMinerals = $BankMinerals
 $receipt.configuration.bankGas = $BankGas
 $receipt.configuration.localSpeed = $LocalSpeedMs
+$receipt.configuration.windowScale = if ($Headless) { $null } else { $WindowScale }
 $receipt.configuration.aiTickFrames = $AiTickFrames
 $receipt.configuration.strategy = $Strategy
 $receipt.configuration.autoCamera = !$Headless.IsPresent -and !$NoAutoCamera.IsPresent
