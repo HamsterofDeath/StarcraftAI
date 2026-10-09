@@ -22,20 +22,32 @@ class TerranEconomicOpening(universe: Universe)
   /** Rich enough to hold and to move to. */
   private def fieldHealthy(area: ResourceArea): Boolean = TerranCampaignConfig.load().fieldHealthy(remaining(area))
 
-  /** The field the saturated opener would fly to: the nearest safe, useful one. */
-  private def likelySecondField(home: Base): Option[ResourceArea] = {
-    val homeTile = home.mainBuilding.tilePosition
-    strategicMap.resources
-      .filter { a =>
-        !bases.isCovered(a) && fieldHealthy(a) &&
-        mapLayers.slightlyDangerousAsBlocked.free(a.nearbyFreeTile) &&
-        unitGrid.enemy.allInRange[Mobile](a.nearbyFreeTile, 12).isEmpty &&
-        mapLayers.freeWalkableIgnoringMobiles.areInSameWalkableArea(homeTile, a.nearbyFreeTile) &&
-        strategicMap.defenseLineOf(a.nearbyFreeTile).isDefined
-      }
-      .toVector.sortBy(a => (a.nearbyFreeTile.distanceSquaredTo(homeTile), a.uniqueId))
-      .headOption
+  /** Free, healthy fields ordered by ExpansionSite: our half of the map first, then the closest to our main base. */
+  private def rankedFields(fields: Seq[ResourceArea]): Seq[ResourceArea] = {
+    import scala.jdk.CollectionConverters._
+    val own         = nativeGame.self().getStartLocation
+    val ourStart    = (own.x, own.y)
+    val enemyStarts = nativeGame.getStartLocations.asScala.toVector.filterNot(_ == own).map(t => (t.x, t.y))
+    val main        = bases.mainBase.map(_.mainBuilding.tilePosition).fold(ourStart)(t => (t.x, t.y))
+    val byId        = fields.map(a => a.uniqueId -> a).toMap
+    ExpansionSite.rank(
+      fields.map { a =>
+        val tile = a.nearbyFreeTile
+        ExpansionSite.Candidate(a.uniqueId, tile.x, tile.y, strategicMap.defenseLineOf(tile).isDefined)
+      },
+      main,
+      ourStart,
+      enemyStarts
+    ).map(c => byId(c.id))
   }
+
+  /** The field the next depot will fly to: the best ranked safe, healthy one. */
+  private def likelySecondField(home: Base): Option[ResourceArea] =
+    rankedFields(strategicMap.resources.filter { a =>
+      !bases.isCovered(a) && fieldHealthy(a) &&
+      mapLayers.slightlyDangerousAsBlocked.free(a.nearbyFreeTile) &&
+      unitGrid.enemy.allInRange[Mobile](a.nearbyFreeTile, 12).isEmpty
+    }.toVector).headOption
 
   override def onTick_!(): Unit = {
     if (currentTick % Primes.prime31.i != 0) return
@@ -59,12 +71,14 @@ class TerranEconomicOpening(universe: Universe)
         fieldOf(cc).exists(a => landed.count(o => o != cc && fieldOf(o).contains(a)) > 0)
       // A depot built at home shares the home field until it flies to its own; the home depot anchors defense and
       // only moves off its own exhausted field.
-      val fresh       = landed.filter(cc => cc != home.mainBuilding && sharedField(cc))
-      val exhausted   = landed.filter(cc => fieldOf(cc).forall(a => !fieldUseful(a)))
-      val cost        = ResourceRequests.forUnit(race, classOf[CommandCenter])
-      val funds       = resources.unlockedResources
+      val fresh     = landed.filter(cc => cc != home.mainBuilding && sharedField(cc))
+      val exhausted = landed.filter(cc => fieldOf(cc).forall(a => !fieldUseful(a)))
+      val cost      = ResourceRequests.forUnit(race, classOf[CommandCenter])
+      val funds     = resources.unlockedResources
+      // a depot still being built or flying to its field is under way as well
       val newUnderWay = unitManager.requestedToBuild(classOf[CommandCenter]) ||
-        unitManager.constructionsInProgress[CommandCenter].nonEmpty
+        unitManager.constructionsInProgress[CommandCenter].nonEmpty ||
+        depots.exists(cc => cc.isBeingCreated || cc.isFloating)
       val affordable =
         cfg.expand(funds.minerals, funds.gas, cost.minerals, cost.gas, pending = false, safeReachableSite = true)
       val choice = ExpansionChoice.decide(
@@ -164,22 +178,23 @@ class TerranEconomicOpening(universe: Universe)
       unitGrid.enemy.allInRange[Mobile](area.nearbyFreeTile, 12).isEmpty
     private def chooseDestination(): Unit = {
       returningHome = false
-      // Prefer a field the current workers can still walk to, so the existing workforce keeps
-      // mining. Terrain-only walkability ignores our own wall, so use the buildings-aware view:
-      // after the wall stands, home workers cannot leave the base on foot at all. If nothing is
-      // walkable, any safe field still works, because the relocated depot trains local miners.
+      // The relocated depot trains local miners, so the field need not be walkable from home (after the
+      // wall stands nothing is); walkability is only traced. ExpansionSite keeps the depot on our half.
       val walkable                             = mapLayers.freeWalkableIgnoringMobiles
       def walkableFromHere(area: ResourceArea) =
         walkable.areInSameWalkableArea(home, area.nearbyFreeTile)
-      destination = strategicMap.resources.filter(safe)
-        .filter(a => strategicMap.defenseLineOf(a.nearbyFreeTile).isDefined).toVector
-        .sortBy(a =>
-          (
-            if (walkableFromHere(a)) 0 else 1,
-            a.nearbyFreeTile.distanceSquaredTo(home),
-            a.uniqueId
-          )
-        )
+      NativeMatchEvidence.trace(
+        "depot-destination-candidates",
+        s"depot=${depot.nativeUnitId} from=$home " + strategicMap.resources.toVector.map { a =>
+          val tile = a.nearbyFreeTile
+          s"${a.uniqueId}@$tile:d=${math.sqrt(tile.distanceSquaredTo(home).toDouble).toInt}" +
+            s":covered=${bases.isCovered(a)}:healthy=${fieldHealthy(a)}" +
+            s":danger=${!mapLayers.slightlyDangerousAsBlocked.free(tile)}" +
+            s":enemies=${unitGrid.enemy.allInRange[Mobile](tile, 12).size}" +
+            s":line=${strategicMap.defenseLineOf(tile).isDefined}:walk=${walkableFromHere(a)}"
+        }.mkString(" ")
+      )
+      destination = rankedFields(strategicMap.resources.filter(safe).toVector)
         .iterator.flatMap { area =>
           new ConstructionSiteFinder(this.universe).forResourceArea(area).find.map(area -> _)
         }

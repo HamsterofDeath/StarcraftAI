@@ -63,6 +63,7 @@ class TerranCampaignTest extends Specification with MustMatchers {
     A real background placement refusal logs immutable data without reading live worker caches $backgroundPlacementRefusal
     A mineral field at or below five percent is mined out, at or below forty percent no longer held $fieldReplenishment
     A new command center is preferred over moving one that still mines $preferNewDepot
+    New bases go to our half of the map first, then close to the main base $expansionSites
     An endgame hunt sweeps every resource area farthest from home first and wraps around $huntSweep
     A farthest-point carpet spread picks far-apart posts in a deterministic order $carpetPosts
   """
@@ -218,6 +219,17 @@ class TerranCampaignTest extends Specification with MustMatchers {
       c.ready(true, 12, 1500, 300, 1000, 300)
     ) === (false, false, false, false, true)
   }
+  def expansionSites = {
+    import pony.brain.modules.ExpansionSite._
+    // our start at the bottom, the enemy at the top; field 3 is closest to the main but on the enemy's half
+    val far    = Candidate(1, 10, 100, defenseLine = false)
+    val near   = Candidate(2, 80, 96, defenseLine = false)
+    val theirs = Candidate(3, 50, 40, defenseLine = true)
+    val lined  = Candidate(4, 80, 96, defenseLine = true)
+    rank(Seq(far, near, theirs, lined), main = (64, 70), ourStart = (64, 118), enemyStarts = Seq((31, 7)))
+      .map(_.id) === Seq(4, 2, 1, 3)
+  }
+
   def preferNewDepot = {
     import pony.brain.modules.ExpansionChoice._
     (
