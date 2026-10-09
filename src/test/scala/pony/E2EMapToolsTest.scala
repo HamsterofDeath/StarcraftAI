@@ -19,6 +19,7 @@ class E2EMapToolsTest extends Specification with MustMatchers {
        |A trigger occupies 2400 bytes and runs for its players $triggerLayout
        |The 4:6 vulture micro scenario builds a complete UMS scenario $kiteScenario
        |Scenario titles must be short and usable in a replay file name $titles
+       |Map file names fit StarCraft's 31 characters even with a session prefix $fileNames
        """.stripMargin
 
   private def bytes(values: Int*) = values.map(_.toByte).toArray
@@ -66,6 +67,9 @@ class E2EMapToolsTest extends Specification with MustMatchers {
     (build("e2e micro: 8 vulture vs 12 zealot").isFailure must beTrue) and
       (GenerateE2EMaps.All.values.forall(s => s.name.length <= 31 && !s.name.contains(':')) must beTrue)
   }
+
+  def fileNames = (GenerateE2EMaps.All.keys.forall(n => ("001-" + n + ".scx").length <= 31) must beTrue) and
+    (GenerateE2EMaps.fileName(GenerateE2EMaps.Vulture, 8, GenerateE2EMaps.Zealot, 12) === "vulture8-zealot12")
 
   def kiteScenario = {
     val template = ChkFile(Vector(

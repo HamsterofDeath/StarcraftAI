@@ -53,8 +53,20 @@ object GenerateE2EMaps {
     )
   }
 
+  /**
+    * StarCraft keeps 31 characters of a map file name; longer names show no map info and cannot be started. Warm
+    * sessions add a four-character "NNN-" prefix, so names stay within 23 characters before the ".scx".
+    */
+  val MaxFileNameLength = 23
+
+  def fileName(ours: Side, n: Int, theirs: Side, m: Int): String = {
+    val name = s"${ours.word}$n-${theirs.word}$m"
+    require(name.length <= MaxFileNameLength, s"Map file name '$name' is longer than $MaxFileNameLength characters")
+    name
+  }
+
   val All: Map[String, UmsScenario] = Seq((1, 1), (2, 3), (4, 6), (8, 12)).map { case (n, m) =>
-    s"micro-${Vulture.word}-$n-vs-${Zealot.word}-$m" -> micro(Vulture, n, Zealot, m)
+    fileName(Vulture, n, Zealot, m) -> micro(Vulture, n, Zealot, m)
   }.toMap
 
   private def opponentAttacks = Seq(

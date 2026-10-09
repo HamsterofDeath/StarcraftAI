@@ -17,7 +17,7 @@ param(
  [double]$FieldUsefulFraction = 0.15,
  # A strategy key the bot knows, or 'default' to let it choose; the bot rejects unknown keys at start.
  [ValidatePattern('^[a-z0-9-]+$')][string]$Strategy = 'default',
- # Repository-relative e2e map (for example e2e/maps/micro-vulture-4-vs-zealot-6.scx), played with map settings.
+ # Repository-relative e2e map (for example e2e/maps/vulture4-zealot6.scx), played with map settings.
  [string]$E2EMap,
  # Several repository-relative e2e maps played in order in one warm StarCraft process (auto restart).
  [string[]]$E2EMaps = @(),
