@@ -31,7 +31,9 @@ class ProvideSpareSCVs(universe: Universe) extends OrderlessAIModule[CommandCent
         s"target=$target done=${workers.count(!_.isBeingCreated)} incomplete=${workers.count(_.isBeingCreated)} reserved=$reserved nativeTraining=${ownUnits.allByType[CommandCenter].count(_.nativeUnit.isTraining)} requests=$requests missing=$missing"
       )
       if (missing > 0) {
-        val result = unitManager.request(UnitJobRequest.idleOfType(emp, classOf[WorkerUnit], missing))
+        // trained where a crew lacks workers: behind a sealed wall a spare from the main never reaches an outer field
+        val result = unitManager.request(UnitJobRequest.idleOfType(emp, classOf[WorkerUnit], missing)
+          .withRequest(r => mining.neediestBase.fold(r)(b => r.trainNear_!(b.mainBuilding.tilePosition))))
         if (currentTick < 6000) NativeMatchEvidence.trace(
           "spare-scv-request",
           s"missing=$missing result=${result.getClass.getSimpleName} units=${result.units.size}"

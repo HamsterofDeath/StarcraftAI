@@ -9,7 +9,7 @@ class CruiserTacticsTest extends Specification with MustMatchers {
   def is =
     s2"""
        |A cruiser leaves below 40 percent and returns only when mended to 90 $repairHysteresis
-       |A raid needs three fit cruisers and ends worn down or with fewer than two $raidStartAndEnd
+       |A raid needs three fit cruisers and two thirds of the fleet, and ends worn down or below two $raidStartAndEnd
        |The crew grows with the fleet from two to six SCVs $crew
        |Known expansions come first, then likely expansion sites, the main, a lone building, a start $targets
        """.stripMargin
@@ -19,10 +19,14 @@ class CruiserTacticsTest extends Specification with MustMatchers {
     (needsRepair(0.8, repairing = true) must beTrue) and
     (needsRepair(0.9, repairing = true) must beFalse)
 
-  def raidStartAndEnd = (startsRaid(2) must beFalse) and (startsRaid(3) must beTrue) and
-    (endsRaid(Seq(1.0)) must beTrue) and
-    (endsRaid(Seq(0.5, 0.55)) must beTrue) and
-    (endsRaid(Seq(0.6, 0.7)) must beFalse)
+  def raidStartAndEnd =
+    (startsRaid(2, 2) must beFalse) and
+      (startsRaid(3, 3) must beTrue) and
+      (startsRaid(3, 8) must beFalse) and
+      (startsRaid(6, 8) must beTrue) and
+      (endsRaid(Seq(1.0)) must beTrue) and
+      (endsRaid(Seq(0.5, 0.55)) must beTrue) and
+      (endsRaid(Seq(0.6, 0.7)) must beFalse)
 
   def crew = (crewSize(0), crewSize(1), crewSize(3), crewSize(30)) === (0, 2, 3, 6)
 

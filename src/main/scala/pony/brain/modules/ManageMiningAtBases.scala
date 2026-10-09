@@ -25,6 +25,11 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule[WrapsUni
   def startingFieldSaturated = opening.startingFieldSaturated
   def secondBaseEstablished  = opening.secondBaseEstablished
   def workerCapacity = gatheringJobs.filter(g => g.natural && !g.forBase.mainBuilding.isFloating).map(_.capacity).sum
+
+  /** The base whose mineral crew lacks the most workers. */
+  def neediestBase: Option[Base] = gatheringJobs.iterator
+    .filter(g => g.natural && !g.forBase.mainBuilding.isFloating && g.capacity > g.teamSize)
+    .maxByOpt(g => g.capacity - g.teamSize).map(_.forBase)
   def servingMineralDepots(field: Int): Vector[MainBuilding] = {
     val employers = gatheringJobs.filter(g =>
       g.natural && g.attachedToBase &&

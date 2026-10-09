@@ -70,7 +70,7 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
       }
     } else if (!worldDominationPlan.recallsArmy) {
       val fit = health.collect { case (id, hp) if !repairing(id) && hp >= FitFrom => id }.toSet
-      if (startsRaid(fit.size) && target.isDefined) {
+      if (startsRaid(fit.size, health.size) && target.isDefined) {
         raiders = fit
         NativeMatchEvidence.trace("raid-start", s"raiders=${fit.size} target=${target.get} fleet=${fleet.size}")
       }
@@ -164,7 +164,8 @@ private[pony] object CruiserTactics {
 
   def needsRepair(health: Double, repairing: Boolean) = health < (if (repairing) FitFrom else RetreatBelow)
 
-  def startsRaid(fit: Int) = fit >= RaidSize
+  /** At least RaidSize fit cruisers and two thirds of the fleet: the hurt are mended before the fleet sets out. */
+  def startsRaid(fit: Int, fleet: Int) = fit >= RaidSize && fit * 3 >= fleet * 2
 
   def endsRaid(health: Seq[Double]) = health.size < 2 || health.sum / health.size < WornBelow
 
