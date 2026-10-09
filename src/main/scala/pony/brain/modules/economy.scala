@@ -476,6 +476,11 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule[WrapsUni
         // instead makes ProvideNewUnits train the missing worker here.
         val walkable = mapLayers.freeWalkableIgnoringMobiles
         val fieldAnchor = base.resourceArea.map(_.nearbyFreeTile)
+        if (currentTick < 600) NativeMatchEvidence.trace("mining-locality",
+          s"anchor=$fieldAnchor anchorArea=${fieldAnchor.map(t => walkable.areaOf(t).isDefined)} " +
+            ownUnits.allByType[WorkerUnit].take(5).map(w =>
+              s"#${w.nativeUnitId}@${w.currentTile} area=${walkable.areaOf(w.currentTile).isDefined} " +
+                s"same=${fieldAnchor.exists(t => walkable.areInSameWalkableArea(w.currentTile, t))}").mkString("|"))
         val result = this.universe.unitManager
                      .request(UnitJobRequest.idleOfType(emp, classOf[WorkerUnit], missing)
                               .withOnlyAccepting { worker =>
