@@ -179,6 +179,13 @@ class TerranBunkerDefense(universe: Universe)
           )
           val candidates = finder.bunkerSites(field, workTiles)
             .filterNot(a => blockedSites(a.upperLeft))
+            // a site a worker already failed to reach (or one overlapping it) is no candidate either
+            .filterNot(a =>
+              unitManager.unreachableSites.exists(u =>
+                u.upperLeft.x <= a.lowerRight.x && a.upperLeft.x <= u.lowerRight.x &&
+                  u.upperLeft.y <= a.lowerRight.y && a.upperLeft.y <= u.lowerRight.y
+              )
+            )
             .filter(reachable)
             .filterNot(a => a.tiles.exists(routeTiles))
             .filterNot(a => depotFootprints.exists(cc => a.growBy(1).tiles.exists(cc.tiles.toSet)))
