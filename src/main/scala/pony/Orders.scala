@@ -286,6 +286,15 @@ object Orders {
     }
   }
 
+  /** Stay put, still firing at whatever comes in range. */
+  case class HoldPosition(myUnit: Mobile) extends UnitOrder {
+    override def issueOrderToGame(): Unit = {
+      myUnit.nativeUnit.holdPosition()
+    }
+
+    override def renderDebug(renderer: Renderer): Unit = {}
+  }
+
   case class Stop(myUnit: Mobile) extends UnitOrder {
     override def issueOrderToGame(): Unit = {
       myUnit.nativeUnit.stop()

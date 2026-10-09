@@ -193,7 +193,10 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
       val me = this.unit
       val id = me.nativeUnitId
       if (!active || me.isBeingCreated) Nil
-      else if (repairing(id)) berth.filter(me.currentTile.distanceToIsMore(_, 2)).map(Orders.MoveToTile(me, _)).toList
+      // at the berth a hurt cruiser holds still for the crew: one that drifts off after other orders is never mended
+      else if (repairing(id)) berth.map { b =>
+        if (me.currentTile.distanceToIsMore(b, 2)) Orders.MoveToTile(me, b) else Orders.HoldPosition(me)
+      }.toList
       else if (raiders(id)) {
         // gathering, or ahead of the others: meet them first, so the raid arrives as one
         val meet = centre.filter(c => gathering || target.exists(t => waitsForGroup(me.currentTile, c, t)))
@@ -263,8 +266,8 @@ private[pony] object CruiserTactics {
 
   def endsRaid(health: Seq[Double]) = health.size < 2 || health.sum / health.size < WornBelow
 
-  /** Two to six SCVs, one more for every three cruisers. */
-  def crewSize(cruisers: Int) = if (cruisers == 0) 0 else (2 + cruisers / 3) min 6
+  /** Two to ten SCVs, one more for every two cruisers. */
+  def crewSize(cruisers: Int) = if (cruisers == 0) 0 else (2 + cruisers / 2) min 10
 
   /**
     * The nearest known enemy base that is no start location (an expansion is defended least), else the nearest

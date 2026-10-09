@@ -10,7 +10,7 @@ class CruiserTacticsTest extends Specification with MustMatchers {
     s2"""
        |A cruiser leaves below 40 percent and returns only when mended to 90 $repairHysteresis
        |A raid needs three fit cruisers and two thirds of the fleet, and ends worn down or below two $raidStartAndEnd
-       |The crew grows with the fleet from two to six SCVs $crew
+       |The crew grows with the fleet from two to ten SCVs $crew
        |A big fleet attacks as one group of four fifths $bigFleet
        |A raid runs from anti-air outweighing it, a big group only from a clearly stronger one $hitAndRun
        |A raid is gathered once every cruiser is near the centre $gathering
@@ -32,7 +32,7 @@ class CruiserTacticsTest extends Specification with MustMatchers {
       (endsRaid(Seq(0.5, 0.55)) must beTrue) and
       (endsRaid(Seq(0.6, 0.7)) must beFalse)
 
-  def crew = (crewSize(0), crewSize(1), crewSize(3), crewSize(30)) === (0, 2, 3, 6)
+  def crew = (crewSize(0), crewSize(1), crewSize(4), crewSize(30)) === (0, 2, 4, 10)
 
   def bigFleet = (startsRaid(7, 12) must beFalse) and (startsRaid(10, 12) must beTrue)
 
