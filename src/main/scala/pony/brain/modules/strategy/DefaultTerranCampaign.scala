@@ -45,14 +45,18 @@ class DefaultTerranCampaign(override val universe: Universe) extends LongTermStr
     IdealUnitRatio(classOf[Marine], 4 + scale * 2)(true) ::
       IdealUnitRatio(classOf[Vulture], 4 + scale * 2)(true) ::
       IdealUnitRatio(classOf[Tank], 6 + scale * 3)(true) ::
-      IdealUnitRatio(classOf[Goliath], 2 + scale)(true) :: Nil
+      IdealUnitRatio(classOf[Goliath], 2 + scale)(true) ::
+      // medics blind the enemy army with Optical Flare (BlindEnemies) once the second base pays for them
+      IdealUnitRatio(classOf[Medic], 2 + scale)(bases.finishedBases.size >= 2) :: Nil
   }
 
   override def suggestUpgrades =
     UpgradeToResearch(Upgrades.Terran.TankSiegeMode)(unitManager.existsAndDone(classOf[MachineShop])) ::
       UpgradeToResearch(Upgrades.Terran.VehicleWeapons)(bases.finishedBases.size >= 2) ::
       UpgradeToResearch(Upgrades.Terran.VehicleArmor)(bases.finishedBases.size >= 2) ::
-      UpgradeToResearch(Upgrades.Terran.GoliathRange)(bases.finishedBases.size >= 2) :: Nil
+      UpgradeToResearch(Upgrades.Terran.GoliathRange)(bases.finishedBases.size >= 2) ::
+      UpgradeToResearch(Upgrades.Terran.MedicFlare)(bases.finishedBases.size >= 2) ::
+      UpgradeToResearch(Upgrades.Terran.MedicEnergy)(bases.finishedBases.size >= 3) :: Nil
 }
 
 final class DefaultTerranCampaignPlugin

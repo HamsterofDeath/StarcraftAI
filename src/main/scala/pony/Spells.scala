@@ -45,8 +45,13 @@ object Spells {
     }
   }
 
-  case object Blind extends SingleTargetSpell[Medic, Organic](Upgrades.Terran.MedicFlare) {
-    override def isAffected(m: Organic) = m.isBlinded
+  /** Optical Flare on every enemy BlindChoice rates worth it, best first; any unit but a building can be blinded. */
+  case object Blind extends SingleTargetSpell[Medic, Mobile](Upgrades.Terran.MedicFlare) {
+    override def isAffected(m: Mobile) = m.nativeUnit.isBlind
+
+    override def shouldActivateOn(m: Mobile) = BlindChoice.worth(BlindChoice.of(m))
+
+    override def priorityRule = Some((m: Mobile) => BlindChoice.score(BlindChoice.of(m)))
   }
 
 }

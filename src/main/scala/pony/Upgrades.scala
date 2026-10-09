@@ -130,7 +130,7 @@ object Upgrades {
     case object MedicEnergy extends Upgrade(UpgradeType.Caduceus_Reactor)
 
     case object MedicFlare
-        extends Upgrade(TechType.Optical_Flare) with SingleTargetMagicSpell with CastOnOrganic with DetectorsFirst
+        extends Upgrade(TechType.Optical_Flare) with SingleTargetMagicSpell with CastOnAll with DetectorsFirst
 
     case object MedicHeal
         extends Upgrade(TechType.Restoration) with SingleTargetMagicSpell with CastOnAll

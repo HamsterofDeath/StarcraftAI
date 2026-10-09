@@ -22,16 +22,21 @@ object NonConflictingSpellTargets {
   }
 }
 
+/**
+  * Hands each caster a target no other caster is already working on. Units the spell already affects are no targets;
+  * a target stays taken while a cast is on its way to it, at most `InFlightTicks`, so a lost order frees it again.
+  */
 class NonConflictingSpellTargets[T <: HasSingleTargetSpells, M <: Mobile: ClassTag](
     spell: SingleTargetSpell[T, M],
     targetConstraint: PartialFunction[Mobile, M],
-    keepLocked: M => Boolean,
+    affected: M => Boolean,
     override val universe: Universe
 ) extends HasUniverse {
-  private val locked = mutable.HashSet.empty[M]
+  private val InFlightTicks = 48
 
-  private val lockedTargets      = mutable.HashSet.empty[Target[M]]
-  private val assignments        = mutable.HashMap.empty[M, Target[M]]
+  /** Targets of casts on their way, with the tick each was ordered. */
+  private val locked = mutable.HashMap.empty[M, Int]
+
   private val prioritizedTargets = LazyVal.from {
     val base = {
       val targets = {
@@ -41,7 +46,7 @@ class NonConflictingSpellTargets[T <: HasSingleTargetSpells, M <: Mobile: ClassT
           universe.ownUnits.allByType[M]
         }
       }
-      targets.collect(targetConstraint)
+      targets.collect(targetConstraint).filterNot(affected)
     }
 
     spell.priorityRule.fold(base.toVector) { rule =>
@@ -51,31 +56,20 @@ class NonConflictingSpellTargets[T <: HasSingleTargetSpells, M <: Mobile: ClassT
 
   def afterTick(): Unit = {
     prioritizedTargets.invalidate()
-    locked.filterNot(keepLocked).foreach { elem =>
-      unlock_!(elem)
-    }
-  }
-
-  private def unlock_!(target: M): Unit = {
-    locked -= target
-    val old = assignments.remove(target).get
-    lockedTargets -= old
-    prioritizedTargets.invalidate()
+    val now = universe.currentTick
+    locked.filterInPlace((target, since) => !affected(target) && now - since < InFlightTicks)
   }
 
   def notifyLock_!(t: T, target: M): Unit = {
-    locked += target
-    val tar = Target(t, target)
-    lockedTargets += tar
-    assignments.put(target, tar)
+    locked.put(target, universe.currentTick)
     prioritizedTargets.invalidate()
   }
 
+  /** The best untaken target within cast range of the caster. */
   def suggestTargetFor(caster: T): Option[M] = {
-    // for now, just pick the first in range that is not yet taken
     val range = spell.castRangeSquare
-
-    val filtered = prioritizedTargets.filterNot(locked)
-    filtered.find { _.currentPosition.distanceSquaredTo(caster.currentPosition) < range }
+    prioritizedTargets.get.iterator.filterNot(locked.contains).find {
+      _.currentPosition.distanceSquaredTo(caster.currentPosition) < range
+    }
   }
 }

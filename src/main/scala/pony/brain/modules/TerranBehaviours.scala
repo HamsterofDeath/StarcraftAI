@@ -12,6 +12,7 @@ object TerranBehaviours {
         new SetupMineField(universe) ::
         new ShieldUnit(universe) ::
         new IrradiateUnit(universe) ::
+        new BlindEnemies(universe) ::
         new CloakSelfGhost(universe) ::
         new GoToInitialPosition(universe) ::
         new CloakSelfWraith(universe) ::
@@ -31,7 +32,6 @@ object TerranBehaviours {
                                           new DoNotStray ::
                                           new HealDamagedUnit ::
                                           new FixMedicalProblem ::
-                                          new BlindDetector ::
          */
         new Dance(universe) ::
         new HelpNearUnits(universe) ::

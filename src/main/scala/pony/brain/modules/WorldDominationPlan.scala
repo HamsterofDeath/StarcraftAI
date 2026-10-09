@@ -51,18 +51,19 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
 
   def initiateCampaignAttack(where: MapTilePosition, expeditionIds: Set[Int]): Boolean = {
     if (thinking || baseDefense.pressure) return false
-    val employer = new Employer[Mobile](universe)
-    val busy     = attacks.flatMap(_.force).toSet
-    val req      = UnitJobRequest.idleOfType(employer, classOf[Mobile], 9999).withOnlyAccepting { m =>
-      expeditionIds(m.nativeUnitId) && m.isFigher && !m.isBeingCreated && !m.isInstanceOf[WorkerUnit] &&
-      !m.isInstanceOf[SupportUnit] && !m.isInstanceOf[TransporterUnit] && !busy(m)
-    }
+    val employer         = new Employer[Mobile](universe)
+    val busy             = attacks.flatMap(_.force).toSet
+    def joins(m: Mobile) = !m.isBeingCreated && !busy(m) && (
+      // medics go along to heal and to blind the defenders; they stay among the fighters
+      m.isInstanceOf[Medic] ||
+        expeditionIds(m.nativeUnitId) && m.isFigher && !m.isInstanceOf[WorkerUnit] &&
+        !m.isInstanceOf[SupportUnit] && !m.isInstanceOf[TransporterUnit]
+    )
+    val req       = UnitJobRequest.idleOfType(employer, classOf[Mobile], 9999).withOnlyAccepting(joins)
     val available = unitManager.request(req, buildIfNoneAvailable = false).units.collect {
-      case m: Mobile
-          if expeditionIds(m.nativeUnitId) && m.isFigher && !m.isBeingCreated && !m.isInstanceOf[WorkerUnit] &&
-            !m.isInstanceOf[SupportUnit] && !m.isInstanceOf[TransporterUnit] && !busy(m) => m
+      case m: Mobile if joins(m) => m
     }.toVector.sortBy(_.nativeUnitId)
-    if (available.isEmpty) false
+    if (!available.exists(_.isFigher)) false
     else {
       initiateAttack(where, available, Lowest, campaign = true)
       true
@@ -300,10 +301,11 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
 
           t match {
             case s: SupportUnit =>
+              // among the nearest fighters of this attack; away from them, along the attack's path
               val stayHere = {
                 val stayBetweenThese = {
                   s.nearestAllies.iterator
-                    .filter(_.currentTile.distanceToIsLess(s.currentTile, 8))
+                    .filter(a => a.isFigher && currentForce(a) && a.currentTile.distanceToIsLess(s.currentTile, 8))
                     .take(3)
                     .map(_.currentTile)
                 }

@@ -25,11 +25,20 @@ class OneTimeUnitSpellCast[C <: HasSingleTargetSpells: ClassTag, T <: Mobile: Cl
   override protected def wrapBase(unit: C): SingleUnitBehaviour[C] = new SingleUnitBehaviour[C](unit, meta) {
     override def describeShort: String = s"Cast ${spell.getClass.className}"
 
+    // spells researched at a building wait for it; the rest (defensive matrix) are there from the start
+    override def preconditionOk =
+      spell.tech.nativeTech.whatResearches == bwapi.UnitType.None || upgrades.hasResearched(spell.tech)
+
     override def toOrder(what: Objective): Seq[UnitOrder] = {
       if (this.unit.canCastNow(spell.tech)) {
         val h = helper
         h.suggestTargetFor(this.unit).map { target =>
           h.notifyLock_!(this.unit, target)
+          NativeMatchEvidence.trace(
+            "spell-cast",
+            s"spell=${spell.getClass.className} caster=${this.unit.nativeUnitId} " +
+              s"target=${target.nativeUnit.getType} id=${target.nativeUnitId} energy=${this.unit.mana}"
+          )
           this.unit.toOrder(spell.tech, target)
         }.toList
       } else {
