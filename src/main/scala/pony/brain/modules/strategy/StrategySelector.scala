@@ -15,7 +15,8 @@ class StrategySelector(override val universe: Universe, registry: StrategyRegist
 
   private val configured = configuredKey.filterNot(_ == StrategySelector.Auto).map { key =>
     registry.find(key).getOrElse(throw new IllegalArgumentException(
-      s"Unknown strategy '$key'; known: ${(StrategySelector.Auto +: registry.keys).mkString(", ")}")).create(universe)
+      s"Unknown strategy '$key'; known: ${(StrategySelector.Auto +: registry.keys).mkString(", ")}"
+    )).create(universe)
   }
 
   private val candidates =

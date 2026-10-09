@@ -30,5 +30,8 @@ class TerranSkyWall(universe: Universe) extends DefaultTerranCampaign(universe) 
 }
 
 final class TerranSkyWallPlugin
-    extends StrategyPlugin("skywall", "Depot wall at the main choke, then Battlecruisers and a Science Vessel",
-      autoSelectable = false)(new TerranSkyWall(_))
+    extends StrategyPlugin(
+      "skywall",
+      "Depot wall at the main choke, then Battlecruisers and a Science Vessel",
+      autoSelectable = false
+    )(new TerranSkyWall(_))

@@ -40,5 +40,8 @@ class TerranVsTerran(override val universe: Universe) extends LongTermStrategy w
 }
 
 final class TerranVsTerranPlugin
-    extends StrategyPlugin("tvt", "Wraith-heavy Terran versus Terran with Ghosts, Dropships and Science Vessels",
-      autoSelectable = true)(new TerranVsTerran(_))
+    extends StrategyPlugin(
+      "tvt",
+      "Wraith-heavy Terran versus Terran with Ghosts, Dropships and Science Vessels",
+      autoSelectable = true
+    )(new TerranVsTerran(_))

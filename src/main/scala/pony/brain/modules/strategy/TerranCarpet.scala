@@ -42,5 +42,8 @@ class TerranCarpet(universe: Universe) extends DefaultTerranCampaign(universe) {
 }
 
 final class TerranCarpetPlugin
-    extends StrategyPlugin("carpet", "Depot wall, then flying factories and boxed tank posts with mines map-wide",
-      autoSelectable = false)(new TerranCarpet(_))
+    extends StrategyPlugin(
+      "carpet",
+      "Depot wall, then flying factories and boxed tank posts with mines map-wide",
+      autoSelectable = false
+    )(new TerranCarpet(_))

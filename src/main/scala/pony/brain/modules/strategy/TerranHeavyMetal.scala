@@ -38,5 +38,8 @@ class TerranHeavyMetal(universe: Universe) extends DefaultTerranCampaign(univers
 }
 
 final class TerranHeavyMetalPlugin
-    extends StrategyPlugin("heavy-metal", "Siege Tanks and Goliaths with armory upgrades, Battlecruisers on two bases",
-      autoSelectable = false)(new TerranHeavyMetal(_))
+    extends StrategyPlugin(
+      "heavy-metal",
+      "Siege Tanks and Goliaths with armory upgrades, Battlecruisers on two bases",
+      autoSelectable = false
+    )(new TerranHeavyMetal(_))

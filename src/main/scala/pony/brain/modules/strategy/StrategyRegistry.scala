@@ -12,7 +12,8 @@ final class StrategyRegistry(val plugins: Vector[StrategyPlugin]) {
 
   byKey.find(_._2.size > 1).foreach { case (key, clash) =>
     throw new IllegalStateException(
-      s"Strategy plugins ${clash.map(_.getClass.getName).mkString(", ")} share the key '$key'")
+      s"Strategy plugins ${clash.map(_.getClass.getName).mkString(", ")} share the key '$key'"
+    )
   }
 
   def keys: Vector[String] = plugins.map(_.key)

@@ -25,7 +25,7 @@ class DefaultTerranCampaign(override val universe: Universe) extends LongTermStr
       cost.minerals,
       cost.gas,
       unitManager.requestedToBuild(race.resourceDepositClass) ||
-      unitManager.constructionsInProgress[MainBuilding].nonEmpty,
+        unitManager.constructionsInProgress[MainBuilding].nonEmpty,
       safeReachableSite = true
     )
   }
@@ -55,5 +55,8 @@ class DefaultTerranCampaign(override val universe: Universe) extends LongTermStr
 }
 
 final class DefaultTerranCampaignPlugin
-    extends StrategyPlugin("campaign", "Bunkered fields, spare home CC, then a massed mech and infantry attack",
-      autoSelectable = true)(new DefaultTerranCampaign(_))
+    extends StrategyPlugin(
+      "campaign",
+      "Bunkered fields, spare home CC, then a massed mech and infantry attack",
+      autoSelectable = true
+    )(new DefaultTerranCampaign(_))

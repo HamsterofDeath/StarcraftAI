@@ -28,5 +28,8 @@ class TerranInfantryPush(universe: Universe) extends DefaultTerranCampaign(unive
 }
 
 final class TerranInfantryPushPlugin
-    extends StrategyPlugin("infantry", "Three barracks of upgraded Marines, Firebats and Medics; no bunkers",
-      autoSelectable = false)(new TerranInfantryPush(_))
+    extends StrategyPlugin(
+      "infantry",
+      "Three barracks of upgraded Marines, Firebats and Medics; no bunkers",
+      autoSelectable = false
+    )(new TerranInfantryPush(_))

@@ -43,5 +43,8 @@ class TerranVsZerg(override val universe: Universe) extends LongTermStrategy wit
 }
 
 final class TerranVsZergPlugin
-    extends StrategyPlugin("tvz", "Marines and Medics with Firebats versus Zerg or on small maps",
-      autoSelectable = true)(new TerranVsZerg(_))
+    extends StrategyPlugin(
+      "tvz",
+      "Marines and Medics with Firebats versus Zerg or on small maps",
+      autoSelectable = true
+    )(new TerranVsZerg(_))

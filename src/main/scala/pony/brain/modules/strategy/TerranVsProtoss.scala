@@ -56,5 +56,8 @@ class TerranVsProtoss(override val universe: Universe) extends LongTermStrategy 
 }
 
 final class TerranVsProtossPlugin
-    extends StrategyPlugin("tvp", "Mech-heavy Terran versus Protoss, with late Ghosts, Wraiths and Science Vessels",
-      autoSelectable = true)(new TerranVsProtoss(_))
+    extends StrategyPlugin(
+      "tvp",
+      "Mech-heavy Terran versus Protoss, with late Ghosts, Wraiths and Science Vessels",
+      autoSelectable = true
+    )(new TerranVsProtoss(_))

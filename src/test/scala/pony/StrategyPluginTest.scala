@@ -4,7 +4,6 @@ import org.specs2._
 import org.specs2.matcher.MustMatchers
 import pony.brain.modules.strategy._
 
-
 class StrategyPluginTest extends Specification with MustMatchers {
 
   def is =
@@ -22,12 +21,30 @@ class StrategyPluginTest extends Specification with MustMatchers {
 
   private lazy val registry = StrategyRegistry.discover()
 
-  def discovered = registry.keys === Vector("air-control", "campaign", "carpet", "factory", "heavy-air", "heavy-metal",
-    "idle", "infantry", "skywall", "tvp", "tvt", "tvz")
+  def discovered = registry.keys === Vector(
+    "air-control",
+    "campaign",
+    "carpet",
+    "factory",
+    "heavy-air",
+    "heavy-metal",
+    "idle",
+    "infantry",
+    "skywall",
+    "tvp",
+    "tvt",
+    "tvz"
+  )
 
   def autoSelectable =
-    registry.plugins.filter(_.autoSelectable).map(_.key).toSet === Set("campaign", "tvp", "air-control", "heavy-air",
-      "tvt", "tvz")
+    registry.plugins.filter(_.autoSelectable).map(_.key).toSet === Set(
+      "campaign",
+      "tvp",
+      "air-control",
+      "heavy-air",
+      "tvt",
+      "tvz"
+    )
 
   def configured = {
     val selector = new StrategySelector(universe, registry, Some("heavy-metal"))
@@ -35,7 +52,8 @@ class StrategyPluginTest extends Specification with MustMatchers {
   }
 
   def unknownKey = new StrategySelector(universe, registry, Some("nope")) must throwA[IllegalArgumentException](
-    "Unknown strategy 'nope'; known: default, air-control")
+    "Unknown strategy 'nope'; known: default, air-control"
+  )
 
   def duplicateKeys = {
     val clash = Vector(new IdleAroundPlugin, new IdleAroundPlugin)
@@ -46,11 +64,11 @@ class StrategyPluginTest extends Specification with MustMatchers {
 
   def capabilities = {
     def strategy(key: String) = registry.find(key).get.create(universe)
-    val campaign = strategy("campaign")
-    val carpet = strategy("carpet")
-    val skywall = strategy("skywall")
-    val heavyMetal = strategy("heavy-metal")
-    val idle = strategy("idle")
+    val campaign              = strategy("campaign")
+    val carpet                = strategy("carpet")
+    val skywall               = strategy("skywall")
+    val heavyMetal            = strategy("heavy-metal")
+    val idle                  = strategy("idle")
     (campaign.runsTerranCampaign && campaign.usesBunkerDefense && campaign.usesCampaignLaunch must beTrue) and
       (carpet.usesCarpet && carpet.usesWallDefense && !carpet.usesCampaignLaunch must beTrue) and
       (skywall.usesWallDefense && !skywall.usesBunkerDefense must beTrue) and

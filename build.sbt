@@ -21,4 +21,4 @@ Compile / mainClass := Some("pony.Controller")
 addCommandAlias("validate", ";scalafmtCheckAll;scalafmtSbtCheck;testFull")
 
 // Native runs put the classes directory on the classpath; plugin service files must be there after `compile`.
-Compile / compile := (Compile / compile).dependsOn(Compile / copyResources).value
+Compile / compile := Def.uncached((Compile / compile).dependsOn(Compile / copyResources).value)

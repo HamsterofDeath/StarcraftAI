@@ -28,5 +28,8 @@ class TerranIslandRich(universe: Universe) extends TerranIsland(universe) with T
 }
 
 final class TerranIslandRichPlugin
-    extends StrategyPlugin("heavy-air", "Air control with Battlecruisers and Science Vessels for rich island starts",
-      autoSelectable = true)(new TerranIslandRich(_))
+    extends StrategyPlugin(
+      "heavy-air",
+      "Air control with Battlecruisers and Science Vessels for rich island starts",
+      autoSelectable = true
+    )(new TerranIslandRich(_))

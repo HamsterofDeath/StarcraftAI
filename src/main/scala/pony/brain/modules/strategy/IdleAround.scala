@@ -21,5 +21,8 @@ class IdleAround(override val universe: Universe) extends LongTermStrategy {
 }
 
 final class IdleAroundPlugin
-    extends StrategyPlugin("idle", "Builds nothing; units only follow their default behaviours (micro scenarios)",
-      autoSelectable = false)(new IdleAround(_))
+    extends StrategyPlugin(
+      "idle",
+      "Builds nothing; units only follow their default behaviours (micro scenarios)",
+      autoSelectable = false
+    )(new IdleAround(_))

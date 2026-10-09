@@ -69,5 +69,8 @@ class TerranIsland(override val universe: Universe) extends LongTermStrategy wit
 }
 
 final class TerranIslandPlugin
-    extends StrategyPlugin("air-control", "Wraith-led air control, chosen automatically on island starts",
-      autoSelectable = true)(new TerranIsland(_))
+    extends StrategyPlugin(
+      "air-control",
+      "Wraith-led air control, chosen automatically on island starts",
+      autoSelectable = true
+    )(new TerranIsland(_))

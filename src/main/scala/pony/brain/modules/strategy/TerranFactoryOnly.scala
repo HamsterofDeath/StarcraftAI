@@ -27,5 +27,8 @@ class TerranFactoryOnly(universe: Universe) extends DefaultTerranCampaign(univer
 }
 
 final class TerranFactoryOnlyPlugin
-    extends StrategyPlugin("factory", "Four factories of Vultures, Tanks and Goliaths; no infantry, no bunkers",
-      autoSelectable = false)(new TerranFactoryOnly(_))
+    extends StrategyPlugin(
+      "factory",
+      "Four factories of Vultures, Tanks and Goliaths; no infantry, no bunkers",
+      autoSelectable = false
+    )(new TerranFactoryOnly(_))
