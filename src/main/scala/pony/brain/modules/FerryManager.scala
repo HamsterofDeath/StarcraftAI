@@ -129,7 +129,8 @@ class FerryManager(override val universe: Universe) extends HasUniverse {
     }
   }
 
-  private var sealedSplit = Option.empty[SealedSplit]
+  private var sealedSplit    = Option.empty[SealedSplit]
+  private var lastSideReport = -1
 
   def sealing = sealedSplit.isDefined
 
@@ -161,6 +162,17 @@ class FerryManager(override val universe: Universe) extends HasUniverse {
           outside <- walkable.areas.filterNot(_ == inside).maxByOpt(_.freeCount)
         } yield SealedSplit(mainArea, walkable, inside, outside)
       }
+    sealedSplit.filter(_ => currentTick / 720 != lastSideReport).foreach { split =>
+      lastSideReport = currentTick / 720
+      val workers   = ownUnits.allByType[WorkerUnit].filter(w => w.isInGame && !w.isBeingCreated && w.onGround)
+      val (in, out) = workers.partition(w => split.side(w.currentTile).contains(true))
+      def idle(ws: Iterable[WorkerUnit]) = ws.count(w => unitManager.jobOf(w).isIdleOrDefault)
+      NativeMatchEvidence.trace(
+        "sealed-workers",
+        s"inside=${in.size} idleInside=${idle(in)} outside=${out.size} idleOutside=${idle(out)} " +
+          s"loaded=${ownUnits.allByType[WorkerUnit].count(_.loaded)} ferries=${ferryPlans.size}"
+      )
+    }
     val after = sealedSplit.map(_.inside.freeCount)
     if (before.isDefined != after.isDefined)
       NativeMatchEvidence.trace(

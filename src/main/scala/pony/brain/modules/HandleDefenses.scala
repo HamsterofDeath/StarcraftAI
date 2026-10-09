@@ -16,8 +16,11 @@ class HandleDefenses(universe: Universe) extends OrderlessAIModule[Mobile](unive
       else {
         def value(u: WrapsUnit) = u.nativeUnitType.mineralPrice + u.nativeUnitType.gasPrice
         val out                 = worldDominationPlan.campaignForce ++ worldDominationPlan.raidingFleet
-        val home                = ownUnits.allMobilesWithWeapons.iterator.filter { m =>
-          m.isInGame && !m.isBeingCreated && m.isFigher && !m.isInstanceOf[WorkerUnit] && !out(m)
+        // behind a sealed wall the ground units cannot reach a raid outside it, nor help against it
+        val raided = localThreats.head.currentTile
+        val home   = ownUnits.allMobilesWithWeapons.iterator.filter { m =>
+          m.isInGame && !m.isBeingCreated && m.isFigher && !m.isInstanceOf[WorkerUnit] && !out(m) &&
+          (m.nativeUnit.isFlying || !ferryManager.sealedApart(m.currentTile, raided))
         }.map(value).sum
         val threat   = localThreats.iterator.map(value).sum
         val campaign = out.iterator.map(value).sum

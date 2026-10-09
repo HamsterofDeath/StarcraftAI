@@ -57,6 +57,9 @@ abstract class UnitWithJob[T <: WrapsUnit](
 
   def isIdle: Boolean = false
 
+  /** Idle, or only following the always-on default behaviours: free to take on real work. */
+  def isIdleOrDefault: Boolean = isIdle || this.isInstanceOf[BusyDoingSomething[?]]
+
   def lastIssuedOrder = lastOrder
 
   def wasInterceptedLastTick = ageSinceLastNonInterceptedOrder.fold(true)(_ > 1)

@@ -196,8 +196,15 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule[WrapsUni
         val result = this.universe.unitManager
           .request(UnitJobRequest.idleOfType(emp, classOf[WorkerUnit], missing)
             .withOnlyAccepting { worker =>
-              fieldAnchor.exists(tile => walkable.areInSameWalkableArea(worker.currentTile, tile))
-            }.withRequest(_.trainNear_!(base.mainBuilding.tilePosition)))
+              fieldAnchor.exists(tile =>
+                walkable.areInSameWalkableArea(worker.currentTile, tile) ||
+                  ferryManager.sealedApart(worker.currentTile, tile) && unitManager.jobOf(worker).isIdleOrDefault
+              )
+            }.withRequest { r =>
+              // behind a sealed wall an idle worker crosses by dropship; the nearest are taken first
+              fieldAnchor.foreach(t => r.withCherryPicker_!(CherryPickers.cherryPickWorkerByDistance[WorkerUnit](t)()))
+              r.trainNear_!(base.mainBuilding.tilePosition)
+            })
         if (this.universe.currentTick < 3000)
           NativeMatchEvidence.trace(
             "mining-hire",

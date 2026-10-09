@@ -85,9 +85,15 @@ class ManageMiningAtGeysirs(universe: Universe)
             val ofType   = UnitJobRequest
               .idleOfType(self, classOf[WorkerUnit], missing, Priority.CollectGas)
               .withOnlyAccepting { w =>
-                w.isCarryingNothing && anchor.exists(walkable.areInSameWalkableArea(w.currentTile, _))
+                w.isCarryingNothing && anchor.exists(tile =>
+                  walkable.areInSameWalkableArea(w.currentTile, tile) ||
+                    ferryManager.sealedApart(w.currentTile, tile) && unitManager.jobOf(w).isIdleOrDefault
+                )
               }
-              .withRequest(_.trainNear_!(base.mainBuilding.tilePosition))
+              .withRequest { r =>
+                anchor.foreach(t => r.withCherryPicker_!(CherryPickers.cherryPickWorkerByDistance[WorkerUnit](t)()))
+                r.trainNear_!(base.mainBuilding.tilePosition)
+              }
             val result = unitManager.request(ofType)
             if (result.units.isEmpty && currentTick % (24 * 60) < 24)
               NativeMatchEvidence.trace(

@@ -40,7 +40,7 @@ class TerranSealedCruisers(universe: Universe) extends DefaultTerranCampaign(uni
     val scale = spendScale
     IdealUnitRatio(classOf[Marine], 6)(fewer[Marine](6)) ::
       IdealUnitRatio(classOf[Tank], 2)(fewer[Tank](2)) ::
-      IdealUnitRatio(classOf[Dropship], 2)(fewer[Dropship](2) && unitManager.existsAndDone(classOf[Starport])) ::
+      IdealUnitRatio(classOf[Dropship], 3)(fewer[Dropship](3) && unitManager.existsAndDone(classOf[Starport])) ::
       IdealUnitRatio(classOf[Battlecruiser], 12 + scale * 2)(true) ::
       IdealUnitRatio(classOf[Vulture], scale)(scale > 0 && fewer[Vulture](8)) :: Nil
   }
