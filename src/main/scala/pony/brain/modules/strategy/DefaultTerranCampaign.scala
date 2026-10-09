@@ -35,7 +35,8 @@ class DefaultTerranCampaign(override val universe: Universe) extends LongTermStr
 
   override def suggestProducers = {
     val scale = spendScale
-    IdealProducerCount(classOf[Barracks], if (scale >= 4) 2 else 1)(true) ::
+    // marines need no gas: a growing mineral bank turns into more barracks even while gas is scarce
+    IdealProducerCount(classOf[Barracks], (1 + scale / 2) min 5)(true) ::
       IdealProducerCount(classOf[Factory], ((bases.finishedBases.size max 1) + scale) min 6)(true) :: Nil
   }
 

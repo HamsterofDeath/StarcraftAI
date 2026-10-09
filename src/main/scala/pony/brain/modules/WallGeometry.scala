@@ -50,7 +50,18 @@ private[pony] object WallGeometry {
       from: Seq[(Int, Int)],
       inside: (Int, Int) => Boolean,
       step: Int = 4
-  ): Boolean = {
+  ): Boolean = path(unit, obstacles, blockedWalkTile, region, from, inside, step).isDefined
+
+  /** The centers of one shortest way through, as `passable` judges it, from a start to the inside. */
+  def path(
+      unit: Dims,
+      obstacles: Seq[Box],
+      blockedWalkTile: (Int, Int) => Boolean,
+      region: Box,
+      from: Seq[(Int, Int)],
+      inside: (Int, Int) => Boolean,
+      step: Int = 4
+  ): Option[Vector[(Int, Int)]] = {
     def free(cx: Int, cy: Int): Boolean = {
       val body = Box(cx - unit.left, cy - unit.up, cx + unit.right, cy + unit.down)
       body.left >= region.left && body.top >= region.top && body.right <= region.right &&
@@ -63,23 +74,27 @@ private[pony] object WallGeometry {
       }
     }
     def snap(v: Int) = v - Math.floorMod(v, step)
+    val parent       = mutable.HashMap.empty[(Int, Int), (Int, Int)]
     val visited      = mutable.HashSet.empty[(Int, Int)]
     val queue        = mutable.Queue.empty[(Int, Int)]
     from.map((x, y) => (snap(x), snap(y))).filter(free.tupled).foreach { p =>
       if (visited.add(p)) queue += p
     }
-    var reached = false
-    while (queue.nonEmpty && !reached) {
+    var reached = Option.empty[(Int, Int)]
+    while (queue.nonEmpty && reached.isEmpty) {
       val (x, y) = queue.dequeue()
-      if (inside(x, y)) reached = true
+      if (inside(x, y)) reached = Some((x, y))
       else for ((dx, dy) <- Seq((step, 0), (-step, 0), (0, step), (0, -step))) {
         val next = (x + dx, y + dy)
         if (!visited(next) && free(next._1, next._2)) {
           visited += next
+          parent(next) = (x, y)
           queue += next
         }
       }
     }
-    reached
+    reached.map { end =>
+      Iterator.iterate(Option(end))(_.flatMap(parent.get)).takeWhile(_.isDefined).flatten.toVector.reverse
+    }
   }
 }

@@ -145,6 +145,8 @@ class ConstructBuilding[W <: WorkerUnit: ClassTag, B <: Building](
 
   override def couldSwitchInTheFuture = !startedActualConstruction
 
+  private var failureTraced = false
+
   override def jobHasFailedWithoutDeath: Boolean = {
     if (unit.onGround) {
       val byState = {
@@ -165,7 +167,16 @@ class ConstructBuilding[W <: WorkerUnit: ClassTag, B <: Building](
         mapNth(Primes.prime37, false)(targetBlockedByBuilding)
       }
 
-      val fail = byState || expensiveCheck
+      val blocked = expensiveCheck
+      val fail    = byState || blocked
+      if (fail && !failureTraced) {
+        failureTraced = true
+        NativeMatchEvidence.trace(
+          "construction-failed",
+          s"type=${typeOfBuilding.className} where=$buildWhere worker=${worker.nativeUnitId} at=${unit.currentTile} " +
+            s"stalled=$byState blocked=$blocked order=${worker.nativeUnit.getOrder}"
+        )
+      }
       warn(
         s"Construction of ${typeOfBuilding.className} failed, worker $worker didn't manange",
         fail
