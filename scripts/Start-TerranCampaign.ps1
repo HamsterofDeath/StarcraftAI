@@ -19,6 +19,8 @@ param(
  [ValidatePattern('^[a-z0-9-]+$')][string]$Strategy = 'default',
  # Repository-relative e2e map (for example e2e/maps/micro-vulture-4-vs-zealot-6.scm), played with map settings.
  [string]$E2EMap,
+ # Several repository-relative e2e maps played in order in one warm StarCraft process (auto restart).
+ [string[]]$E2EMaps = @(),
  # Extra bot settings as key=value; each becomes -Dtwailight.<key>=<value> (for example kiteShot=stop).
  [ValidatePattern('^[A-Za-z0-9]+=[A-Za-z0-9.,-]*$')][string[]]$BotProperties = @(),
  # Milliseconds per frame; by default 14 (3x the 42 ms 'Fastest' speed) when rendered and 0 (unthrottled) headless.
@@ -50,12 +52,18 @@ if ($foreignBot) { throw 'A bot already owns the native runtime.' }
 $dll = Join-Path $Runtime 'bwapi-data/BWAPI.dll'
 $dllHash = (Get-FileHash -LiteralPath $dll -Algorithm SHA256).Hash
 if ($dllHash -ne 'F2E0F937E9592157656118FA7E5FF30C2327694ED56C1D8F55687972AD97D308') { throw 'Expected verified BWAPI 4.4.0 revision 5016.' }
-if ($E2EMap) {
-  $e2eSource = Join-Path $Repository $E2EMap
-  if (-not (Test-Path -LiteralPath $e2eSource)) { throw 'E2E map not found in the repository.' }
-  $mapRelative = 'maps/e2e/' + (Split-Path $e2eSource -Leaf)
+if ($E2EMap) { $E2EMaps = @($E2EMap) + $E2EMaps }
+$mapPlan = @()
+if ($E2EMaps.Count -gt 0) {
   New-Item -ItemType Directory -Path (Join-Path $Runtime 'maps/e2e') -Force | Out-Null
-  Copy-Item -LiteralPath $e2eSource -Destination (Join-Path $Runtime $mapRelative) -Force
+  foreach ($e2eMap in $E2EMaps) {
+    $e2eSource = Join-Path $Repository $e2eMap
+    if (-not (Test-Path -LiteralPath $e2eSource)) { throw ('E2E map not found in the repository: ' + $e2eMap) }
+    $runtimeMap = 'maps/e2e/' + (Split-Path $e2eSource -Leaf)
+    Copy-Item -LiteralPath $e2eSource -Destination (Join-Path $Runtime $runtimeMap) -Force
+    $mapPlan += $runtimeMap
+  }
+  $mapRelative = $mapPlan[0]
   $gameType = 'USE_MAP_SETTINGS'
 } else {
   $mapRelative = 'maps/BroodWar/aiide/(2)Destination.scx'
@@ -84,7 +92,7 @@ New-Item -ItemType Directory -Path $run | Out-Null
 $iniPath = Join-Path $Runtime 'bwapi-data/bwapi.ini'
 $ini = Get-Content -LiteralPath $iniPath -Raw
 Copy-Item -LiteralPath $iniPath -Destination (Join-Path $run 'bwapi-before.ini')
-$pins = [ordered]@{ ai='NULL'; ai_dbg='NULL'; auto_menu='SINGLE_PLAYER'; auto_restart='OFF'; map=$mapRelative; race='Terran'; enemy_race='Protoss'; enemy_count='1'; game_type=$gameType; shared_memory='ON'; windowed='ON'; sound='OFF' }
+$pins = [ordered]@{ ai='NULL'; ai_dbg='NULL'; auto_menu='SINGLE_PLAYER'; auto_restart=$(if ($mapPlan.Count -gt 1) { 'ON' } else { 'OFF' }); map=$mapRelative; race='Terran'; enemy_race='Protoss'; enemy_count='1'; game_type=$gameType; shared_memory='ON'; windowed='ON'; sound='OFF' }
 1..7 | ForEach-Object { $pins['enemy_race_' + $_] = 'Protoss' }
 if ($Headless) {
   # Headless games draw nothing; their window sits far outside every monitor so it never shows up on the desktop.
@@ -110,7 +118,7 @@ $dependencies = ($entries -join ';')
 $classpath = (Join-Path $buildOut 'classes') + ';' + $dependencies
 $fieldUsefulText = $FieldUsefulFraction.ToString([System.Globalization.CultureInfo]::InvariantCulture)
 $options = @("-Xmx${HeapMb}M",'-XX:ParallelGCThreads=2','-Dscala.concurrent.context.numThreads=2','-Dscala.concurrent.context.maxThreads=2',"-Dtwailight.run=$RunName","-Dtwailight.producer=$SourceCommit",('-Dtwailight.resultDirectory="'+$run+'"'),"-Dtwailight.mapInputSha256=$mapHash","-Dtwailight.minFighters=$MinFighters","-Dtwailight.armyMinerals=$ArmyMinerals","-Dtwailight.armyGas=$ArmyGas","-Dtwailight.expansionReserve=$ExpansionReserve","-Dtwailight.requiredFields=$RequiredFields","-Dtwailight.minScoutFighters=$MinScoutFighters","-Dtwailight.minScouts=$MinScouts","-Dtwailight.fieldUsefulFraction=$fieldUsefulText","-Dtwailight.strategy=$Strategy","-Dtwailight.localSpeed=$LocalSpeedMs","-Dtwailight.aiTickFrames=$AiTickFrames",'-cp',('"'+$classpath+'"'),'pony.Controller')
-$options = $options[0..($options.Count-4)] + @($BotProperties | ForEach-Object { '-Dtwailight.' + $_ }) + @("-Dtwailight.bankMinerals=$BankMinerals", "-Dtwailight.bankGas=$BankGas", ('-Dtwailight.headless=' + $Headless.IsPresent.ToString().ToLowerInvariant()), ('-Dtwailight.autoCamera=' + (-not $NoAutoCamera.IsPresent).ToString().ToLowerInvariant())) + $options[($options.Count-3)..($options.Count-1)]
+$options = $options[0..($options.Count-4)] + @($BotProperties | ForEach-Object { '-Dtwailight.' + $_ }) + @($(if ($mapPlan.Count -gt 1) { '-Dtwailight.mapPlan=' + ($mapPlan -join ',') })) + @("-Dtwailight.bankMinerals=$BankMinerals", "-Dtwailight.bankGas=$BankGas", ('-Dtwailight.headless=' + $Headless.IsPresent.ToString().ToLowerInvariant()), ('-Dtwailight.autoCamera=' + (-not $NoAutoCamera.IsPresent).ToString().ToLowerInvariant())) + $options[($options.Count-3)..($options.Count-1)]
 $receipt = [ordered]@{ schema=1; run=$RunName; owner='twilight_ai_impl'; producer=$SourceCommit; launchedAt=(Get-Date).ToUniversalTime().ToString('o'); status='unfinished'; game='StarCraft 1.16.1'; bwapiRevision=5016; javaClient='JBWAPI 2.2.0'; bwapiSha256=$dllHash; map=$mapRelative; mapInputSha256=$mapHash; javaSha256=(Get-FileHash -LiteralPath $Java -Algorithm SHA256).Hash; heapMb=$HeapMb; nativeWorkerThreads=2; ordinaryVision=$true; revealCheat=$false; opponent='unmodified native Protoss computer'; configuration=@{minFighters=$MinFighters;armyMinerals=$ArmyMinerals;armyGas=$ArmyGas;expansionReserve=$ExpansionReserve;requiredFields=$RequiredFields;minScoutFighters=$MinScoutFighters;minScouts=$MinScouts;fieldUsefulFraction=$FieldUsefulFraction} }
 $receipt.renderingEnabled = !$Headless.IsPresent
 $receipt.configuration.bankMinerals = $BankMinerals
@@ -120,6 +128,7 @@ $receipt.configuration.windowScale = if ($Headless) { $null } else { $WindowScal
 $receipt.configuration.aiTickFrames = $AiTickFrames
 $receipt.configuration.strategy = $Strategy
 $receipt.configuration.gameType = $gameType
+$receipt.configuration.mapPlan = $mapPlan
 $receipt.configuration.botProperties = $BotProperties
 $receipt.configuration.autoCamera = !$Headless.IsPresent -and !$NoAutoCamera.IsPresent
 $bot = Start-Process -FilePath $Java -ArgumentList $options -WorkingDirectory $Runtime -WindowStyle Hidden -RedirectStandardOutput (Join-Path $run 'bot-stdout.log') -RedirectStandardError (Join-Path $run 'bot-stderr.log') -PassThru

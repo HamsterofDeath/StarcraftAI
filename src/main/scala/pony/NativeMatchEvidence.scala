@@ -6,9 +6,13 @@ import scala.jdk.CollectionConverters._
 
 /** Only the real BWAPI callbacks write terminal results. A stopped process has no outcome. */
 object NativeMatchEvidence {
-  private var vision                         = new NativeVisionCoverage
-  private var startupFailed                  = false
-  private var initialState                   = "{}"
+  private var vision        = new NativeVisionCoverage
+  private var startupFailed = false
+  private var initialState  = "{}"
+  private var gameNumber    = 0
+
+  /** 1-based number of the current game in this bot process; warm sessions play several. */
+  def currentGame: Int                       = gameNumber
   def observeLiveVision(game: Game): Boolean = {
     if (!game.isInGame) return false
     val player = game.self()
@@ -40,7 +44,7 @@ object NativeMatchEvidence {
   private def write(game: Game, status: String, winner: Option[Boolean]): Unit = {
     val directory = new File(sys.props.getOrElse("twailight.resultDirectory", "log"))
     directory.mkdirs()
-    val output    = new PrintWriter(new File(directory, "native-result.json"))
+    val output    = new PrintWriter(new File(directory, resultFileName))
     val opponents = game.enemies().asScala.map { p =>
       "{\"id\":" + p.getID + ",\"name\":" + quoted(p.getName) + ",\"race\":" + quoted(p.getRace.toString) +
         ",\"type\":" + quoted(p.getType.toString) + "}"
@@ -65,6 +69,7 @@ object NativeMatchEvidence {
           ",\"mapInputSha256\":" + quoted(sys.props.getOrElse("twailight.mapInputSha256", "unrecorded")) +
           ",\"renderingEnabled\":" + !sys.props.getOrElse("twailight.headless", "false").toBoolean +
           ",\"initialState\":" + initialState +
+          ",\"game\":" + gameNumber +
           ",\"selfForces\":" + forces(game.self().getUnits.asScala) +
           ",\"enemyForces\":" + forces(game.enemies().asScala.flatMap(_.getUnits.asScala)) +
           ",\"configuration\":{\"minFighters\":" + config.minFighters + ",\"armyMinerals\":" + config.armyMinerals +
@@ -74,7 +79,10 @@ object NativeMatchEvidence {
     finally output.close()
     println("TWAILIGHT_NATIVE_OUTCOME status=" + status + " winner=" + winner + " frame=" + game.getFrameCount)
   }
+  private def resultFileName = if (MapPlan.isSession) s"native-result-$gameNumber.json" else "native-result.json"
+
   def started(game: Game): Unit = {
+    gameNumber += 1
     vision = new NativeVisionCoverage
     startupFailed = false
     val start = game.self().getStartLocation

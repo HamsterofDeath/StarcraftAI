@@ -1,6 +1,6 @@
 package pony
 
-import bwapi.{BWClient, BWEventListener, Position, Unit => NUnit}
+import bwapi.{BWClient, BWClientConfiguration, BWEventListener, Position, Unit => NUnit}
 
 /**
   * Created by HoD on 01.08.2015.
@@ -90,6 +90,10 @@ object Controller {
         NativeMatchEvidence.ended(clientRef.getGame, b)
         ai = None
         world = None
+        if (MapPlan.isSession && MapPlan.isLast(NativeMatchEvidence.currentGame)) {
+          // the session is complete; the runner stops StarCraft once every result is written
+          System.exit(0)
+        }
       }
 
       override def onSaveGame(s: String): Unit = {}
@@ -113,6 +117,14 @@ object Controller {
           frameClock = new NativeFrameClock
           repeatedCallbacks = 0
           NativeMatchEvidence.started(clientRef.getGame)
+          MapPlan.after(NativeMatchEvidence.currentGame).foreach { next =>
+            // BWAPI loads this map when it restarts the game after this one ends
+            val accepted = clientRef.getGame.setMap(next)
+            NativeMatchEvidence.trace(
+              "next-map",
+              s"game=${NativeMatchEvidence.currentGame + 1} map=$next set=$accepted"
+            )
+          }
           val headless   = sys.props.getOrElse("twailight.headless", "false").toBoolean
           val localSpeed = sys.props.getOrElse("twailight.localSpeed", "0").toInt
           clientRef.getGame.setGUI(!headless)
@@ -153,7 +165,8 @@ object Controller {
     }
 
     clientRef = new BWClient(listener)
-    clientRef.startGame()
+    // a warm session keeps the client connected while BWAPI restarts the game with the next map
+    clientRef.startGame(new BWClientConfiguration.Builder().withAutoContinue(MapPlan.isSession).build())
 
   }
 }

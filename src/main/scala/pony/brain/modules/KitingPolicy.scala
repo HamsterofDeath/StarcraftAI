@@ -37,10 +37,23 @@ object KitingPolicy {
 
   val Directions = 16
 
-  def decide(me: Shooter, threats: Seq[Threat], walkable: Point => Boolean, step: Double = 96): Decision = {
+  /**
+    * @param lead frames before the reload ends at which a shooter with a target in range already attacks, so it has
+    *             turned and braked by the time the weapon is ready
+    */
+  def decide(
+      me: Shooter,
+      threats: Seq[Threat],
+      walkable: Point => Boolean,
+      step: Double = 96,
+      lead: Int = 4
+  ): Decision = {
     if (threats.isEmpty) Free
-    else if (me.firing) Hold
+    // the attack animation runs until the shot is released; once the reload has started the unit may move again
+    else if (me.firing && me.cooldown == 0) Hold
     else if (me.cooldown == 0) Shoot(target(me, threats).id)
+    else if (me.cooldown <= lead && threats.exists(t => me.at.distanceTo(t.at) <= me.range))
+      Shoot(target(me, threats).id)
     else if (threats.exists(t => gap(me.at, t) <= t.speed * (me.cooldown + SafetyFrames))) {
       retreatPoint(me, threats, walkable, step).map(Retreat(_)).getOrElse(Shoot(target(me, threats).id))
     } else Hold

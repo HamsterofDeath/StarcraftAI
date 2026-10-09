@@ -23,6 +23,7 @@ class KiteMeleeEnemies(universe: Universe) extends DefaultBehaviour[MobileRangeW
 
   private val shootByStopping = sys.props.get("twailight.kiteShot").contains("stop")
   private val traceDecisions  = sys.props.get("twailight.traceKite").contains("true")
+  private val leadFrames      = sys.props.get("twailight.kiteLead").flatMap(_.toIntOption).filter(_ >= 0).getOrElse(4)
 
   override def priority = SecondPriority.EvenMore
 
@@ -44,7 +45,7 @@ class KiteMeleeEnemies(universe: Universe) extends DefaultBehaviour[MobileRangeW
       }
       val threats  = meleeThreatsAround(me)
       val shooter  = shooterOf(me)
-      val decision = decide(shooter, threats.map(_._2), walkable)
+      val decision = decide(shooter, threats.map(_._2), walkable, lead = leadFrames)
 
       shootDecidedAt.foreach { decidedAt =>
         if (shooter.cooldown > 0) {

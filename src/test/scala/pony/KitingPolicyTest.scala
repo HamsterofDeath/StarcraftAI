@@ -10,6 +10,8 @@ class KitingPolicyTest extends Specification with MustMatchers {
     s2"""
        |Without melee threats the unit is free for other behaviours $free
        |A shot under way is never interrupted $firing
+       |A unit retreats as soon as its shot is released $firedThenRetreats
+       |A reloading unit attacks a target in range shortly before the reload ends $leadAttack
        |A ready weapon focuses the weakest enemy in range $weakestInRange
        |A ready weapon attacks the closest enemy when none is in range $closestOutOfRange
        |A reloading unit retreats from a threat that would catch it $retreats
@@ -31,6 +33,18 @@ class KitingPolicyTest extends Specification with MustMatchers {
   def free = decide(shooter(), Nil, open) === Free
 
   def firing = decide(shooter(firing = true), Seq(zealot(1, 1100, 1024)), open) === Hold
+
+  def firedThenRetreats = decide(shooter(cooldown = 28, firing = true), Seq(zealot(1, 1080, 1024)), open) match {
+    case Retreat(_) => ok
+    case other      => other === Retreat(Point(0, 0))
+  }
+
+  def leadAttack = {
+    val near = Seq(zealot(1, 1150, 1024))
+    (decide(shooter(cooldown = 3), Seq(zealot(1, 1600, 1024)), open) === Hold) and
+      (decide(shooter(cooldown = 3), near, open) === Shoot(1)) and
+      (decide(shooter(cooldown = 3), near, open, lead = 0) must not(beEqualTo(Shoot(1))))
+  }
 
   def weakestInRange = {
     val threats = Seq(zealot(1, 1100, 1024, 160), zealot(2, 1150, 1024, 40), zealot(3, 1500, 1024, 10))
