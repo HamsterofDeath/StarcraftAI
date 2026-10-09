@@ -160,7 +160,10 @@ class TransportGroundUnits(universe: Universe)
         ferryManager.planFor(this.unit) match {
           case Some(plan) =>
             if ((plan.instantDropRequested || plan.dropUnitsNow) && !this.unit.canDropHere) {
-              this.unit.nearestDropTile.flatMap(orderByTile)
+              // a ferry hovering with no order keeps its cargo for good: fly straight there until a path is known
+              this.unit.nearestDropTile.orElse(Some(plan.toWhere)).flatMap { tile =>
+                orderByTile(tile).orElse(Some(Orders.MoveToTile(this.unit, tile)))
+              }
             } else if (plan.instantDropRequested && this.unit.canDropHere) {
               plan.asapDrop.map { dropIt =>
                 Orders.UnloadUnit(this.unit, dropIt)

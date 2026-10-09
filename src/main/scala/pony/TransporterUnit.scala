@@ -14,7 +14,10 @@ trait TransporterUnit extends AirUnit {
   }
 
   def nearestDropTile = {
-    ferryManager.nearestDropPointTo(currentTile)
+    ferryManager.nearestDropPointTo(currentTile).orElse {
+      // over cliffs or water no drop point is known: take the one of the nearest walkable tile
+      mapLayers.rawWalkableMap.nearestFree(currentTile).flatMap(ferryManager.nearestDropPointTo)
+    }
   }
 
   def isPickingUp                = myPickingUp.get
