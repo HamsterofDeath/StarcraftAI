@@ -9,7 +9,8 @@ class RepairDamagedBuilding(universe: Universe) extends DefaultBehaviour[SCV](un
   private val helper = new NonConflictingTargets[TerranBuilding, SCV](
     universe = universe,
     rateTarget = m => PriorityChain(m.percentageHPOk),
-    validTargetTest = t => t.isDamaged && !t.isFloating,
+    // a building BWAPI cannot place (an addon of a lifted factory reports an unknown position) has no ground to reach
+    validTargetTest = t => t.isInGame && t.tilePosition.isInsideOfGame && t.isDamaged && !t.isFloating,
     subAccept = (m, t) => !t.isFloating && m.currentArea.contains(t.areaOnMap),
     subRate = (m, t) => PriorityChain(-m.currentTile.distanceSquaredTo(t.centerTile)),
     own = true,
