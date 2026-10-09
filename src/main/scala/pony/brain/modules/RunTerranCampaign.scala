@@ -192,6 +192,9 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
     wasReady = ready
     if (campaignLaunchEnabled) target.foreach { where =>
       if (ready && !worldDominationPlan.planningInProgress) {
+        // a walled main lets the army out: one wall depot is demolished to open the gate
+        val wall = universe.pluginByType[WallWithDepots]
+        if (strategy.current.usesWallDefense && wall.complete && !wall.gateOpen) wall.openGate_!()
         val accepted = worldDominationPlan.initiateCampaignAttack(where, troops.map(_.nativeUnitId).toSet)
         if (accepted) {
           if (huntTarget.contains(where)) huntInitiated = true

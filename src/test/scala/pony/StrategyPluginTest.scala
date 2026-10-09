@@ -30,6 +30,7 @@ class StrategyPluginTest extends Specification with MustMatchers {
     "heavy-metal",
     "idle",
     "infantry",
+    "rampwall",
     "skywall",
     "tvp",
     "tvt",
@@ -67,11 +68,14 @@ class StrategyPluginTest extends Specification with MustMatchers {
     val campaign              = strategy("campaign")
     val carpet                = strategy("carpet")
     val skywall               = strategy("skywall")
+    val rampwall              = strategy("rampwall")
     val heavyMetal            = strategy("heavy-metal")
     val idle                  = strategy("idle")
     (campaign.runsTerranCampaign && campaign.usesBunkerDefense && campaign.usesCampaignLaunch must beTrue) and
       (carpet.usesCarpet && carpet.usesWallDefense && !carpet.usesCampaignLaunch must beTrue) and
       (skywall.usesWallDefense && !skywall.usesBunkerDefense must beTrue) and
+      (rampwall.runsTerranCampaign && rampwall.usesWallDefense && rampwall.usesBunkerDefense &&
+        rampwall.usesCampaignLaunch must beTrue) and
       (heavyMetal.runsTerranCampaign && heavyMetal.usesBunkerDefense must beTrue) and
       (idle.runsTerranCampaign || idle.usesBunkerDefense || idle.usesCarpet must beFalse)
   }
