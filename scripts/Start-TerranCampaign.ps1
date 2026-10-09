@@ -95,7 +95,13 @@ $receipt.botPid=$bot.Id; $receipt.botStart=$bot.StartTime.ToUniversalTime().ToSt
 $receipt | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $run 'manifest.json')
 $injector = Start-Process -FilePath (Join-Path $Runtime 'injectory_x86.exe') -ArgumentList @('--launch','StarCraft.exe','--inject','bwapi-data/BWAPI.dll') -WorkingDirectory $Runtime -WindowStyle Hidden -RedirectStandardOutput (Join-Path $run 'injector-stdout.log') -RedirectStandardError (Join-Path $run 'injector-stderr.log') -PassThru
 $receipt.injectorPid=$injector.Id; $receipt.injectorStart=$injector.StartTime.ToUniversalTime().ToString('o')
-$game = @(Get-CimInstance Win32_Process -Filter "Name='StarCraft.exe' AND ParentProcessId=$($injector.Id)")
+# injectory starts the game a moment after its own start; wait for that child instead of racing it
+$game = @()
+$deadline = (Get-Date).AddSeconds(30)
+while ($game.Count -eq 0 -and (Get-Date) -lt $deadline) {
+  Start-Sleep -Milliseconds 250
+  $game = @(Get-CimInstance Win32_Process -Filter "Name='StarCraft.exe' AND ParentProcessId=$($injector.Id)")
+}
 if ($game.Count -ne 1) { $receipt | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $run 'manifest.json'); throw 'Exact owned game child not identified; preserve receipt and do not launch again.' }
 $receipt.gamePid=$game[0].ProcessId; $receipt.gameStart=$game[0].CreationDate.ToUniversalTime().ToString('o')
 $receipt | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $run 'manifest.json')
