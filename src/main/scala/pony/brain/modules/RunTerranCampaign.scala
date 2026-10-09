@@ -55,15 +55,24 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
     carpetPost(unit.nativeUnitId).orElse(defenses.get.rallyFor(unit.nativeUnitId))
   override def onNth = 31
 
-  private def fighters = ownUnits.allMobilesWithWeapons.filter { m =>
-    m.isInGame && !m.isBeingCreated && m.isFigher && !m.isInstanceOf[WorkerUnit] &&
-    !m.isInstanceOf[SupportUnit] && !m.isInstanceOf[TransporterUnit]
-  }.groupBy(_.nativeUnitId).values.map(_.head).toVector
-  private def expedition = fighters.filterNot(isReservedDefender).filterNot(m =>
+  // Behaviours ask these questions for every unit every frame; each answer walks the whole army, so it is computed
+  // once per tick of this module (every heavy tick).
+  private val fightersNow = oncePerTick {
+    ownUnits.allMobilesWithWeapons.filter { m =>
+      m.isInGame && !m.isBeingCreated && m.isFigher && !m.isInstanceOf[WorkerUnit] &&
+      !m.isInstanceOf[SupportUnit] && !m.isInstanceOf[TransporterUnit]
+    }.groupBy(_.nativeUnitId).values.map(_.head).toVector
+  }
+  private val reconnaissanceNow = oncePerTick(evaluateReconnaissance)
+  private val minimalScoutNow   = oncePerTick(evaluateMinimalScouting)
+  private def fighters          = fightersNow.get
+  private def expedition        = fighters.filterNot(isReservedDefender).filterNot(m =>
     worldDominationPlan.attackOf(m).exists(a => !a.campaign)
   )
 
-  def reconnaissanceAllowed = {
+  def reconnaissanceAllowed = reconnaissanceNow.get
+
+  private def evaluateReconnaissance = {
     val troops      = expedition
     val funds       = resources.currentResources
     val operational = universe.pluginByType[ManageMiningAtBases].secondBaseEstablished
@@ -87,7 +96,9 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
   def enemyLocated = memory.buildings.nonEmpty
 
   /** One minimal scout may go out early purely to locate the enemy for the campaign memory. */
-  def minimalScoutingActive = {
+  def minimalScoutingActive = minimalScoutNow.get
+
+  private def evaluateMinimalScouting = {
     val operational = universe.pluginByType[ManageMiningAtBases].secondBaseEstablished
     !enemyLocated && !worldDominationPlan.baseDefenseActive &&
     (operational || fighters.size >= config.minScoutFighters)

@@ -119,9 +119,12 @@ class TwilightSparkle(world: DefaultWorld) {
 
   def plugins = aiModules
 
+  // Asked for every unit every frame and from background computations; the modules never change after start.
+  private val pluginsByClass = scala.collection.concurrent.TrieMap.empty[Class[?], AIModule[?]]
+
   def pluginByType[T <: AIModule[?]: ClassTag] = {
     val c = implicitly[ClassTag[T]].runtimeClass
-    aiModules.find(e => c >= e.getClass).get.asInstanceOf[T]
+    pluginsByClass.getOrElseUpdate(c, aiModules.find(e => c >= e.getClass).get).asInstanceOf[T]
   }
 
   def queueOrdersForTick(): Unit = {

@@ -292,17 +292,11 @@ class ScoutMap(universe: Universe) extends DefaultBehaviour[ArmedMobile](univers
       }
     }
 
-    def planFor(am: ArmedMobile) = {
-      if (
-        !am.isInstanceOf[WorkerUnit] && !universe.pluginByType[RunTerranCampaign].isReservedDefender(am) &&
-        (if (race.isTerran)
-           universe.pluginByType[RunTerranCampaign].scoutingAllowed
-         else time.phase.isSinceAlmostMid)
-      ) {
-        scouts.get(am)
-      } else {
-        None
-      }
+    // Asked for every unit every frame: units without a plan, nearly all of them, are answered first.
+    def planFor(am: ArmedMobile) = scouts.get(am).filter { _ =>
+      !am.isInstanceOf[WorkerUnit] && !universe.pluginByType[RunTerranCampaign].isReservedDefender(am) &&
+      (if (race.isTerran) universe.pluginByType[RunTerranCampaign].scoutingAllowed
+       else time.phase.isSinceAlmostMid)
     }
   }
 
