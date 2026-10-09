@@ -251,13 +251,16 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
         (-barracksTiles(b).count(span.contains), b.movedBy(2, 1).distanceSquaredTo(f.chokePoint.center), b.y, b.x)
       )
       .take(16)
-    val gatePlan = gateSpots.iterator.flatMap { b =>
+    val gateChecks = mutable.ArrayBuffer.empty[String]
+    val gatePlan   = gateSpots.iterator.flatMap { b =>
       val taken = barracksTiles(b).toSet
       budget = 20000
-      solve(required.filterNot(taken).toSet, Vector.empty, taken).filter { depots =>
-        pixelPass(home, WallGeometry.Dims.Zealot, depots, Some(b)).contains(false) &&
-        pixelPass(home, WallGeometry.Dims.SiegeTank, depots, None).contains(true)
-      }.map(_ -> b).iterator
+      val depots = solve(required.filterNot(taken).toSet, Vector.empty, taken)
+      val zealot = depots.flatMap(d => pixelPass(home, WallGeometry.Dims.Zealot, d, Some(b)))
+      val tank   = depots.flatMap(d => pixelPass(home, WallGeometry.Dims.SiegeTank, d, None))
+      gateChecks += s"$b:depots=${depots.map(_.size).getOrElse(-1)}:zealotPasses=${zealot.getOrElse("?")}:" +
+        s"tankPasses=${tank.getOrElse("?")}"
+      depots.filter(_ => zealot.contains(false) && tank.contains(true)).map(_ -> b).iterator
     }.nextOption()
     gatePlan match {
       case Some((depots, barracks)) =>
@@ -267,7 +270,7 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
       case None =>
         NativeMatchEvidence.trace(
           "wall-gate-none",
-          s"barracksSpots=${gateSpots.size}; depots only, opened by demolition"
+          s"barracksSpots=${gateSpots.size} checks=${gateChecks.mkString(" ")}; depots only, opened by demolition"
         )
     }
     budget = 20000

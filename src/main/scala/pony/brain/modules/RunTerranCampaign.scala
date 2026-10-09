@@ -190,6 +190,11 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
       )
     }
     wasReady = ready
+    // A sealed depot wall must open once the army is ready, or no scout ever finds the target the launch needs.
+    if (ready) {
+      val wall = universe.pluginByType[WallWithDepots]
+      if (strategy.current.usesWallDefense && wall.complete && !wall.gateOpen) wall.openGate_!()
+    }
     if (campaignLaunchEnabled) target.foreach { where =>
       if (ready && !worldDominationPlan.planningInProgress) {
         // a walled main lets the army out: one wall depot is demolished to open the gate
