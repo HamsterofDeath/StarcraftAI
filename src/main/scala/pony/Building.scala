@@ -11,13 +11,13 @@ import scala.collection.mutable.ListBuffer
 
 trait Building extends BlockingTiles with CanDie with CanMorph {
   self =>
-  override val armorType            = BuildingArmor
-  private  val myFlying             = oncePerTick {
+  override val armorType = BuildingArmor
+  private val myFlying   = oncePerTick {
     nativeUnit.isFlying
   }
-  private  val myAbandoned          = oncePerTick {
+  private val myAbandoned = oncePerTick {
     isBeingCreated && incomplete && !isInstanceOf[Addon] && {
-      val myClass = getClass
+      val myClass     = getClass
       val takenCareOf = unitManager.constructionsInProgress(myClass).exists { job =>
         job.building.contains(self)
       }
@@ -25,7 +25,7 @@ trait Building extends BlockingTiles with CanDie with CanMorph {
     }
 
   }
-  private  val myRemainingBuildTime = oncePerTick {
+  private val myRemainingBuildTime = oncePerTick {
     nativeUnit.getRemainingBuildTime
   }
 

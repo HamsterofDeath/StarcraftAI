@@ -3,31 +3,39 @@ package brain
 package modules
 
 trait BuildingRequestHelper extends AIModule[WorkerUnit] {
-  private val buildingEmployer = new Employer[Building](universe)
+  private val buildingEmployer                                                      = new Employer[Building](universe)
   protected def onBuildingRequested(request: BuildUnitRequest[? <: Building]): Unit = {}
 
-  def requestBuilding[T <: Building](buildingType: Class[? <: T],
-                                     takeCareOfDependencies: Boolean = false,
-                                     saveMoneyIfPoor: Boolean = false,
-                                     customBuildingPosition: AlternativeBuildingSpot =
-                                     AlternativeBuildingSpot
-                                     .useDefault,
-                                     belongsTo: Option[ResourceArea] = None,
-                                     priority: Priority = Priority.Default): Unit = {
+  def requestBuilding[T <: Building](
+      buildingType: Class[? <: T],
+      takeCareOfDependencies: Boolean = false,
+      saveMoneyIfPoor: Boolean = false,
+      customBuildingPosition: AlternativeBuildingSpot =
+        AlternativeBuildingSpot
+          .useDefault,
+      belongsTo: Option[ResourceArea] = None,
+      priority: Priority = Priority.Default
+  ): Unit = {
 
     val isUpgrader = classOf[UpgradeLimitLifter].isAssignableFrom(buildingType)
-    val satisfied = {
+    val satisfied  = {
       isUpgrader && unitManager.countExistingAndPlanned(buildingType) >= 2
     }
     if (satisfied) {
       warn(s"Too many buildings of type $buildingType requested!")
     } else {
-      val req = ResourceRequests.forUnit(race, buildingType, priority)
+      val req    = ResourceRequests.forUnit(race, buildingType, priority)
       val result = resources.request(req, buildingEmployer)
       result.ifSuccess { suc =>
-        val unitReq = UnitJobRequest.newOfType(universe, buildingEmployer, buildingType, suc,
-          customBuildingPosition = customBuildingPosition, belongsTo = belongsTo,
-          priority = priority)
+        val unitReq = UnitJobRequest.newOfType(
+          universe,
+          buildingEmployer,
+          buildingType,
+          suc,
+          customBuildingPosition = customBuildingPosition,
+          belongsTo = belongsTo,
+          priority = priority
+        )
         onBuildingRequested(unitReq.request.asInstanceOf[BuildUnitRequest[T]])
         trace(s"Financing possible for building $buildingType, requesting build")
         val result = unitManager.request(unitReq)
@@ -37,8 +45,14 @@ trait BuildingRequestHelper extends AIModule[WorkerUnit] {
         if (takeCareOfDependencies) {
           result.notExistingMissingRequiments.foreach { what =>
             if (!unitManager.requestedToBuild(what)) {
-              requestBuilding(what, takeCareOfDependencies, saveMoneyIfPoor,
-                AlternativeBuildingSpot.useDefault, belongsTo, priority = priority)
+              requestBuilding(
+                what,
+                takeCareOfDependencies,
+                saveMoneyIfPoor,
+                AlternativeBuildingSpot.useDefault,
+                belongsTo,
+                priority = priority
+              )
             }
           }
         }

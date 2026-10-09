@@ -11,7 +11,7 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
   private val reorganizeJobQueue          = ListBuffer.empty[CanAcceptUnitSwitch[? <: WrapsUnit]]
   private val unfulfilledRequestsThisTick = ArrayBuffer.empty[UnitJobRequest[? <: WrapsUnit]]
   private val assignments                 = mutable.HashMap
-                                            .empty[WrapsUnit, UnitWithJob[? <: WrapsUnit]]
+    .empty[WrapsUnit, UnitWithJob[? <: WrapsUnit]]
   private val allJobs                     = new JobsInTree
   private var unfulfilledRequestsLastTick = unfulfilledRequestsThisTick.toVector
 
@@ -42,12 +42,12 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
 
   def countExistingAndPlanned(c: Class[? <: WrapsUnit]) = {
     ownUnits.allByClass(c).size +
-    requestedToBuild.count(e => c >= e.typeOfRequestedUnit) +
-    plannedToTrain.count(e => c >= e.typeOfRequestedUnit)
+      requestedToBuild.count(e => c >= e.typeOfRequestedUnit) +
+      plannedToTrain.count(e => c >= e.typeOfRequestedUnit)
   }
 
   def plannedToTrain = allUnfulfilled.iterator.map(_.request)
-                       .collect { case t: BuildUnitRequest[?] if t.isMobile => t }
+    .collect { case t: BuildUnitRequest[?] if t.isMobile => t }
 
   def existsAndDone(c: Class[? <: WrapsUnit]) = {
     ownUnits.existsComplete(c)
@@ -68,7 +68,7 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
     reorganizeJobQueue += anyJob
   }
 
-  def plannedToBuildByType[T <: Building : ClassTag]: Int = {
+  def plannedToBuildByType[T <: Building: ClassTag]: Int = {
     val typeOfFactory = implicitly[ClassTag[T]].runtimeClass.asInstanceOf[Class[? <: T]]
     unfulfilledByTargetType(typeOfFactory).size
   }
@@ -84,22 +84,21 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
   }
 
   def allUnfulfilled = unfulfilledRequestsLastTick.toSet ++
-                       unfulfilledRequestsThisTick.toSet
+    unfulfilledRequestsThisTick.toSet
 
-  def requestedConstructions[T <: Building : ClassTag] = {
+  def requestedConstructions[T <: Building: ClassTag] = {
     val typeOfFactory = implicitly[ClassTag[T]].runtimeClass.asInstanceOf[Class[? <: T]]
     unfulfilledByTargetType(typeOfFactory)
   }
 
-  def constructionsInProgress[T <: Building : ClassTag]: Seq[ConstructBuilding[WorkerUnit, T]] = {
+  def constructionsInProgress[T <: Building: ClassTag]: Seq[ConstructBuilding[WorkerUnit, T]] = {
     constructionsInProgress(implicitly[ClassTag[T]].runtimeClass.asInstanceOf[Class[? <: T]])
   }
 
-  def constructionsInProgress[T <: Building](typeOfBuilding: Class[? <: T]):
-  Seq[ConstructBuilding[WorkerUnit, T]] = {
+  def constructionsInProgress[T <: Building](typeOfBuilding: Class[? <: T]): Seq[ConstructBuilding[WorkerUnit, T]] = {
     val byJob = allJobsByType[ConstructBuilding[WorkerUnit, Building]].collect {
       case cr: ConstructBuilding[WorkerUnit, Building]
-        if typeOfBuilding >= cr.typeOfBuilding =>
+          if typeOfBuilding >= cr.typeOfBuilding =>
         cr.asInstanceOf[ConstructBuilding[WorkerUnit, T]]
     }
     byJob
@@ -108,7 +107,7 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
   def jobsByType = assignments.values.toSeq.groupBy(_.getClass)
 
   def jobsOf[T <: WrapsUnit](emp: Employer[T]) = allJobs.allFlat.getOrElse(emp, Set.empty)
-                                                 .asInstanceOf[collection.Set[UnitWithJob[T]]]
+    .asInstanceOf[collection.Set[UnitWithJob[T]]]
 
   def jobByUnitIdString(str: String) = assignments.find(_._1.unitIdText == str).map(_._2)
 
@@ -117,7 +116,7 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
   def plannedSupplyAdditions = {
     val byJob = allJobsByType[ConstructBuilding[WorkerUnit, Building]].collect {
       case cr: ConstructBuilding[WorkerUnit, Building] => cr.typeOfBuilding.toUnitType
-                                                          .supplyProvided()
+          .supplyProvided()
     }.sum
     val byUnfulfilledRequest = allUnfulfilled.map(_.request).collect {
       case b: BuildUnitRequest[?] => b.typeOfRequestedUnit.toUnitType.supplyProvided()
@@ -125,23 +124,23 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
     byJob + byUnfulfilledRequest
   }
 
-  def allJobsByType[T <: UnitWithJob[?] : ClassTag] = {
+  def allJobsByType[T <: UnitWithJob[?]: ClassTag] = {
     val wanted = implicitly[ClassTag[T]].runtimeClass
     assignments.valuesIterator.filter { job =>
       wanted >= job.getClass
-    }.map {_.asInstanceOf[T]}.toVector
+    }.map { _.asInstanceOf[T] }.toVector
   }
 
-  def allJobsByUnitType[T <: WrapsUnit : ClassTag] = selectJobs[T, UnitWithJob[T]](_ => true)
+  def allJobsByUnitType[T <: WrapsUnit: ClassTag] = selectJobs[T, UnitWithJob[T]](_ => true)
 
-  def selectJobs[U <: WrapsUnit : ClassTag, T <: UnitWithJob[U]](f: T => Boolean) = {
+  def selectJobs[U <: WrapsUnit: ClassTag, T <: UnitWithJob[U]](f: T => Boolean) = {
     val wanted = implicitly[ClassTag[U]].runtimeClass
     assignments.valuesIterator.filter { job =>
       wanted.isInstance(job.unit) && f(job.asInstanceOf[T])
-    }.map {_.asInstanceOf[T]}.toVector
+    }.map { _.asInstanceOf[T] }.toVector
   }
 
-  def failedToProvideByType[T <: WrapsUnit : ClassTag] = {
+  def failedToProvideByType[T <: WrapsUnit: ClassTag] = {
     val c = implicitly[ClassTag[T]].runtimeClass
     failedToProvideFlat.collect {
       case req: UnitRequest[?] if c >= req.typeOfRequestedUnit =>
@@ -164,17 +163,19 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
     unfulfilledRequestsLastTick = unfulfilledRequestsThisTick.toVector ++ keep
     unfulfilledRequestsThisTick.clear()
 
-    //clean/update
+    // clean/update
     ownUnits.allKnownUnits.foreach(_.onTick_!())
     assignments.valuesIterator.foreach(_.onTick_!())
     enemies.allKnownUnits.foreach(_.onTick_!())
     val removeUs = {
-      val done = assignments.iterator.collect { case (_, job) if job.isFinished => job }.toVector
+      val done   = assignments.iterator.collect { case (_, job) if job.isFinished => job }.toVector
       val failed = assignments.iterator.collect { case (_, job) if job.failedOrObsolete => job }
-                   .toVector
+        .toVector
 
-      trace(s"${failed.size}/${done.size} jobs failed/finished, putting units on the market again",
-        failed.nonEmpty || done.nonEmpty)
+      trace(
+        s"${failed.size}/${done.size} jobs failed/finished, putting units on the market again",
+        failed.nonEmpty || done.nonEmpty
+      )
 
       failed.foreach { failure =>
         info(s"FAIL! $failure")
@@ -189,8 +190,10 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
 
     removeUs.foreach { job =>
       if (universe.currentTick < 6000 && job.unit.isInstanceOf[WorkerUnit])
-        NativeMatchEvidence.trace("job-removed",
-          s"${job.getClass.getSimpleName} #${job.unit.nativeUnitId} ${job.failureDebug}")
+        NativeMatchEvidence.trace(
+          "job-removed",
+          s"${job.getClass.getSimpleName} #${job.unit.nativeUnitId} ${job.failureDebug}"
+        )
       job.unit match {
         case m: Mobile if !m.isDead =>
           // stop whatever you were doing so the next employer doesn't hire a rebel
@@ -230,25 +233,28 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
     }
 
     val myOwn = universe
-                .ownUnits
-                .inFaction
-                .filterNot(assignments.contains)
-                .flatMap(e => initialJobOf(e).toList)
-                .toSeq
+      .ownUnits
+      .inFaction
+      .filterNot(assignments.contains)
+      .flatMap(e => initialJobOf(e).toList)
+      .toSeq
     info(s"Found ${myOwn.size} new units of player", myOwn.nonEmpty)
 
     myOwn.foreach(assignJob_!)
     assignments ++= myOwn.map(e => e.unit -> e)
     if (universe.currentTick < 3000 && universe.currentTick % 24 == 0)
-      NativeMatchEvidence.trace("um-tick",
-        s"known=${universe.ownUnits.allKnownUnits.size} new=${myOwn.size} assigned=${assignments.size} nobody=${assignments.count(_._2.employer == Nobody)}")
+      NativeMatchEvidence.trace(
+        "um-tick",
+        s"known=${universe.ownUnits.allKnownUnits.size} new=${myOwn.size} assigned=${assignments.size} nobody=${assignments.count(_._2.employer ==
+            Nobody)}"
+      )
 
     val registerUs = universe
-                     .ownUnits
-                     .allKnownUnits
-                     .filterNot(assignments.contains)
-                     .flatMap(e => initialJobOf(e).toList)
-                     .toSeq
+      .ownUnits
+      .allKnownUnits
+      .filterNot(assignments.contains)
+      .flatMap(e => initialJobOf(e).toList)
+      .toSeq
     info(s"Found ${registerUs.size} new units (not of player)", registerUs.nonEmpty)
     assignments ++= registerUs.map(e => e.unit -> e)
   }
@@ -287,11 +293,11 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
   }
 
   private def findMissingRequirements[T <: WrapsUnit](c: Set[Class[? <: T]]) = {
-    val mustHave = c.flatMap(race.techTree.requiredFor)
-    val m = mutable.Set.empty[Class[? <: Building]]
-    val i = mutable.Set.empty[Class[? <: Building]]
-    val p = mutable.Set.empty[Class[? <: Building]]
-    val j = mutable.Set.empty[Class[? <: Building]]
+    val mustHave  = c.flatMap(race.techTree.requiredFor)
+    val m         = mutable.Set.empty[Class[? <: Building]]
+    val i         = mutable.Set.empty[Class[? <: Building]]
+    val p         = mutable.Set.empty[Class[? <: Building]]
+    val j         = mutable.Set.empty[Class[? <: Building]]
     lazy val jobs = unitManager.allJobsByType[ConstructBuilding[?, ?]]
 
     val missing = {
@@ -332,34 +338,46 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
     }
   }
 
-  def requestWithoutTracking[T <: WrapsUnit : ClassTag](req: UnitJobRequest[T],
-                                                        forceInclude: Set[UnitWithJob[T]] = Set
-                                                                                            .empty[UnitWithJob[T]]) = {
+  def requestWithoutTracking[T <: WrapsUnit: ClassTag](
+      req: UnitJobRequest[T],
+      forceInclude: Set[UnitWithJob[T]] = Set
+        .empty[UnitWithJob[T]]
+  ) = {
     collectCandidates(req, forceInclude).map(_.teamAsCanHireInfo.details).getOrElse(Set.empty)
   }
 
-  private def collectCandidates[T <: WrapsUnit : ClassTag](req: UnitJobRequest[T],
-                                                           forceInclude: Set[UnitWithJob[T]] = Set
-                                                                                               .empty[UnitWithJob[T]]) = {
+  private def collectCandidates[T <: WrapsUnit: ClassTag](
+      req: UnitJobRequest[T],
+      forceInclude: Set[UnitWithJob[T]] = Set
+        .empty[UnitWithJob[T]]
+  ) = {
     new UnitCollector[T](req, universe).collect_!(forceInclude)
   }
 
-  def request[T <: WrapsUnit : ClassTag](req: UnitJobRequest[T],
-                                         buildIfNoneAvailable: Boolean = true) = {
+  def request[T <: WrapsUnit: ClassTag](
+      req: UnitJobRequest[T],
+      buildIfNoneAvailable: Boolean = true
+  ) = {
     if (req.request.amount == 0) {
       new FailedPreHiringResult[T]
     } else {
       trace(s"${req.employer} requested ${req.request.toString}")
       val (missing, incomplete, planned, jobbed) = findMissingRequirements(req.allRequiredTypes)
-      val result = {
+      val result                                 = {
         if (missing.isEmpty && incomplete.isEmpty && planned.isEmpty && jobbed.isEmpty) {
           val hr = collectCandidates(req)
           hr match {
             case None =>
               if (universe.currentTick < 3000)
-                NativeMatchEvidence.trace("hire-none",
-                  s"employer=${req.employer} type=${req.requestedUnitType.getSimpleName} assigned=${assignments.size} nobody=${assignments.count(_._2.employer == Nobody)} idle=${assignments.count(_._2.isIdle)} workers=" +
-                    assignments.collect { case (u, j) if u.isInstanceOf[WorkerUnit] => s"#${u.nativeUnitId}:${j.getClass.getSimpleName}:${j.priority}:${j.isIdle}" }.mkString(","))
+                NativeMatchEvidence.trace(
+                  "hire-none",
+                  s"employer=${req.employer} type=${req.requestedUnitType.getSimpleName} assigned=${assignments.size} nobody=${assignments.count(_._2.employer ==
+                      Nobody)} idle=${assignments.count(_._2.isIdle)} workers=" +
+                    assignments.collect {
+                      case (u, j) if u.isInstanceOf[WorkerUnit] =>
+                        s"#${u.nativeUnitId}:${j.getClass.getSimpleName}:${j.priority}:${j.isIdle}"
+                    }.mkString(",")
+                )
               if (buildIfNoneAvailable) unfulfilledRequestsThisTick += req
               new FailedPreHiringResult[T]
             case Some(team) if !team.complete =>
@@ -393,11 +411,11 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
 
   def allNotOfEmployerButType[T <: WrapsUnit](employer: Employer[T], unitType: Class[? <: T]) = {
     allJobs.employers.asInstanceOf[collection.Set[Employer[T]]]
-    .iterator
-    .filter(_ != employer)
-    .flatMap { e =>
-      allJobs.jobsOf(e, unitType)
-    }
+      .iterator
+      .filter(_ != employer)
+      .flatMap { e =>
+        allJobs.jobsOf(e, unitType)
+      }
   }
 
   def allOfEmployer[T <: WrapsUnit](employer: Employer[T]) = allJobs.allOfEmployer(employer)

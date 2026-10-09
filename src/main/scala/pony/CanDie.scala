@@ -14,10 +14,10 @@ trait CanDie extends WrapsUnit with CanBeUnderStorm {
   def isAttackable = true
 
   val armorType: ArmorType
-  val price = Price(nativeUnit.getType.mineralPrice(), nativeUnit.getType.gasPrice())
+  val price               = Price(nativeUnit.getType.mineralPrice(), nativeUnit.getType.gasPrice())
   private val maxHp       = nativeUnit.getType.maxHitPoints()
   private val maxShields  = nativeUnit.getType.maxShields()
-  private val disabled    = oncePerTick {evalLocked}
+  private val disabled    = oncePerTick { evalLocked }
   private val myHitPoints = oncePerTick {
     val hp = {
       if (age == 0) {
@@ -33,7 +33,7 @@ trait CanDie extends WrapsUnit with CanBeUnderStorm {
 
   private var lastFrameHp = HitPoints(-1, -1)
   // obviously wrong, but that doesn't matter
-  private var dead        = false
+  private var dead   = false
   def percentageHPOk = {
     hitPoints.sum.toDouble / (maxHp + maxShields)
   }
@@ -41,9 +41,9 @@ trait CanDie extends WrapsUnit with CanBeUnderStorm {
   private val myAttackedByMelee = oncePerTick {
     surroundings.closeEnemyGroundUnits.exists {
       case gw: GroundWeapon => gw.isMelee &&
-                               !gw.isHarmlessNow &&
-                               gw.currentTarget.contains(self) &&
-                               gw.currentTile.distanceToIsLess(self.currentTile, 2)
+        !gw.isHarmlessNow &&
+        gw.currentTarget.contains(self) &&
+        gw.currentTile.distanceToIsLess(self.currentTile, 2)
       case _ => false
     }
   }
@@ -65,7 +65,7 @@ trait CanDie extends WrapsUnit with CanBeUnderStorm {
   def underAttackByCloaked = myAttackedByCloaked.get
 
   def isDamaged = isInGame && (hitPoints.shield < maxShields || hitPoints.hitpoints < maxHp) &&
-                  !isBeingCreated
+    !isBeingCreated
 
   def hitPoints = myHitPoints.get.hp
 
@@ -90,9 +90,9 @@ trait CanDie extends WrapsUnit with CanBeUnderStorm {
   }
 
   def matchThis[X](ifMobile: Mobile => X, ifBuilding: Building => X) = this match {
-    case m: Mobile => ifMobile(m)
+    case m: Mobile   => ifMobile(m)
     case b: Building => ifBuilding(b)
-    case x => !!!(s"Check this $x")
+    case x           => !!!(s"Check this $x")
   }
 
   override def onTick_!() = {

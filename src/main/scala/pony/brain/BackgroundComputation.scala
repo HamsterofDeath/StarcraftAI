@@ -8,8 +8,8 @@ import scala.reflect.ClassTag
 trait BackgroundComputation[T <: WrapsUnit] extends AIModule[T] {
   type ComputationInput
 
-  private var backgroundOp           = Future
-                                       .successful(BackgroundComputationResult.nothing[T](() => {}))
+  private var backgroundOp = Future
+    .successful(BackgroundComputationResult.nothing[T](() => {}))
   private var currentResult          = Option.empty[BackgroundComputationResult[T]]
   private var waitingForBackgroundOp = false
 
@@ -17,7 +17,7 @@ trait BackgroundComputation[T <: WrapsUnit] extends AIModule[T] {
     currentResult.filter(_.repeatOrderIssue) match {
       // reuse current computation result as long as it is valid
       case Some(result) => result.orders
-      case None =>
+      case None         =>
         // kick old result
         currentResult = None
         if (waitingForBackgroundOp && !backgroundOp.isCompleted) {
@@ -33,13 +33,13 @@ trait BackgroundComputation[T <: WrapsUnit] extends AIModule[T] {
           computationResult.jobs.foreach {
             case switch: CanAcceptUnitSwitch[T] =>
               // time has passed, pick a new unit for this job if possible
-              val req = switch.asRequest
+              val req                                    = switch.asRequest
               implicit val summonedClassTag: ClassTag[T] =
                 ClassTag(switch.unit.getClass)
               val candidates = {
                 def recycle = {
                   Set(switch: UnitWithJob[T])
-                  .filter(job => unitManager.jobOptOf(switch.unit).contains(job))
+                    .filter(job => unitManager.jobOptOf(switch.unit).contains(job))
                 }
                 unitManager.requestWithoutTracking[T](req, recycle)
               }
@@ -54,8 +54,10 @@ trait BackgroundComputation[T <: WrapsUnit] extends AIModule[T] {
                     assignJob_!(newRequest)
                     assigned = true
                   } else {
-                    trace(s"Unit ${switch.unit} kept its job after a background calculation",
-                      replacement == switch.unit)
+                    trace(
+                      s"Unit ${switch.unit} kept its job after a background calculation",
+                      replacement == switch.unit
+                    )
                     assignJob_!(switch)
                     assigned = true
                   }
@@ -63,7 +65,8 @@ trait BackgroundComputation[T <: WrapsUnit] extends AIModule[T] {
               }
               warn(
                 s"Background calculation finished, but no unit could do the job anymore: $switch",
-                candidates.isEmpty)
+                candidates.isEmpty
+              )
               if (!assigned) {
                 switch.fail_!()
                 // Unassigned jobs will never reach UnitManager's normal terminal listeners.
@@ -77,10 +80,10 @@ trait BackgroundComputation[T <: WrapsUnit] extends AIModule[T] {
         } else {
           // we are not waiting
           calculationInput match {
-            case None => Nil
+            case None     => Nil
             case Some(in) =>
               info(s"Background computation starting, input is $in")
-              backgroundOp = Future {evaluateNextOrders(in)}
+              backgroundOp = Future { evaluateNextOrders(in) }
               waitingForBackgroundOp = true
               Nil
           }

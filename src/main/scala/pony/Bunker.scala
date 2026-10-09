@@ -10,4 +10,4 @@ import scala.collection.immutable.HashMap
 import scala.collection.mutable.ListBuffer
 
 class Bunker(unit: APIUnit)
-  extends AnyUnit(unit) with TerranBuilding with ArmedBuildingCoveringGroundAndAir
+    extends AnyUnit(unit) with TerranBuilding with ArmedBuildingCoveringGroundAndAir

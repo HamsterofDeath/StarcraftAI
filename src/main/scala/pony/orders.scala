@@ -55,33 +55,35 @@ abstract class UnitOrder {
 object Orders {
   private val bunkerBoardingReported = scala.collection.mutable.Map.empty[Int, (Boolean, Int, Int)]
   case class LiftDepot(myUnit: CommandCenter) extends UnitOrder {
-    override def issueOrderToGame(): Unit = { myUnit.nativeUnit.lift() }
+    override def issueOrderToGame(): Unit              = { myUnit.nativeUnit.lift() }
     override def renderDebug(renderer: Renderer): Unit = {}
   }
   case class FlyDepot(myUnit: CommandCenter, to: MapTilePosition) extends UnitOrder {
-    override def issueOrderToGame(): Unit = { myUnit.nativeUnit.move(to.asMapPosition.toNative) }
+    override def issueOrderToGame(): Unit              = { myUnit.nativeUnit.move(to.asMapPosition.toNative) }
     override def renderDebug(renderer: Renderer): Unit = {}
   }
   case class LandDepot(myUnit: CommandCenter, to: MapTilePosition) extends UnitOrder {
-    override def issueOrderToGame(): Unit = { myUnit.nativeUnit.land(to.asTilePosition) }
+    override def issueOrderToGame(): Unit              = { myUnit.nativeUnit.land(to.asTilePosition) }
     override def renderDebug(renderer: Renderer): Unit = {}
   }
 
   /** Any Terran production building can lift, fly and land on another site. */
   case class LiftBuilding(myUnit: TerranBuilding) extends UnitOrder {
-    override def issueOrderToGame(): Unit = { myUnit.nativeUnit.lift() }
+    override def issueOrderToGame(): Unit              = { myUnit.nativeUnit.lift() }
     override def renderDebug(renderer: Renderer): Unit = {}
   }
   case class FlyBuilding(myUnit: TerranBuilding, to: MapTilePosition) extends UnitOrder {
     override def issueOrderToGame(): Unit = {
       val accepted = myUnit.nativeUnit.move(to.asMapPosition.toNative)
-      if (!accepted) NativeMatchEvidence.trace("building-fly-refused",
-        s"id=${myUnit.nativeUnitId} from=${myUnit.tilePosition} to=$to")
+      if (!accepted) NativeMatchEvidence.trace(
+        "building-fly-refused",
+        s"id=${myUnit.nativeUnitId} from=${myUnit.tilePosition} to=$to"
+      )
     }
     override def renderDebug(renderer: Renderer): Unit = {}
   }
   case class LandBuilding(myUnit: TerranBuilding, to: MapTilePosition) extends UnitOrder {
-    override def issueOrderToGame(): Unit = { myUnit.nativeUnit.land(to.asTilePosition) }
+    override def issueOrderToGame(): Unit              = { myUnit.nativeUnit.land(to.asTilePosition) }
     override def renderDebug(renderer: Renderer): Unit = {}
   }
 
@@ -115,7 +117,7 @@ object Orders {
   }
 
   case class TechOnSelf(caster: HasSingleTargetSpells, tech: SingleTargetMagicSpell)
-    extends UnitOrder {
+      extends UnitOrder {
     override def myUnit: WrapsUnit = caster
 
     override def issueOrderToGame(): Unit = caster.nativeUnit.useTech(tech.nativeTech)
@@ -123,9 +125,11 @@ object Orders {
     override def renderDebug(renderer: Renderer): Unit = {}
   }
 
-  case class TechOnTarget[T <: HasSingleTargetSpells](caster: HasSingleTargetSpells, target: Mobile,
-                                                      tech: SingleTargetMagicSpell)
-    extends UnitOrder {
+  case class TechOnTarget[T <: HasSingleTargetSpells](
+      caster: HasSingleTargetSpells,
+      target: Mobile,
+      tech: SingleTargetMagicSpell
+  ) extends UnitOrder {
 
     assert(tech.canCastOn.isInstance(target))
 
@@ -140,10 +144,11 @@ object Orders {
     }
   }
 
-  case class TechOnTile[T <: HasSinglePointMagicSpell](caster: HasSinglePointMagicSpell,
-                                                       target: MapTilePosition,
-                                                       tech: SinglePointMagicSpell)
-    extends UnitOrder {
+  case class TechOnTile[T <: HasSinglePointMagicSpell](
+      caster: HasSinglePointMagicSpell,
+      target: MapTilePosition,
+      tech: SinglePointMagicSpell
+  ) extends UnitOrder {
 
     override def myUnit = caster
 
@@ -162,7 +167,7 @@ object Orders {
     override def issueOrderToGame(): Unit = {
       what.nativeType match {
         case Left(upgrade) => basis.nativeUnit.upgrade(upgrade)
-        case Right(tech) => basis.nativeUnit.research(tech)
+        case Right(tech)   => basis.nativeUnit.research(tech)
       }
     }
 
@@ -183,9 +188,11 @@ object Orders {
     }
   }
 
-  case class ConstructBuilding(myUnit: WorkerUnit, buildingType: Class[? <: Building],
-                               where: MapTilePosition)
-    extends UnitOrder {
+  case class ConstructBuilding(
+      myUnit: WorkerUnit,
+      buildingType: Class[? <: Building],
+      where: MapTilePosition
+  ) extends UnitOrder {
     val area = {
       val size = Size.shared(buildingUnitType.tileWidth(), buildingUnitType.tileHeight())
       Area(where, size)
@@ -194,8 +201,10 @@ object Orders {
     override def issueOrderToGame(): Unit = {
       val accepted = myUnit.nativeUnit.build(buildingUnitType, where.asTilePosition)
       if ((buildingUnitType.isResourceDepot || buildingUnitType == bwapi.UnitType.Terran_Bunker) && !accepted)
-        NativeMatchEvidence.trace("depot-build-refused",
-          s"worker=${myUnit.nativeUnitId} from=${myUnit.currentTile} to=$where error=n/a")
+        NativeMatchEvidence.trace(
+          "depot-build-refused",
+          s"worker=${myUnit.nativeUnitId} from=${myUnit.currentTile} to=$where error=n/a"
+        )
     }
 
     private def buildingUnitType = buildingType.toUnitType
@@ -211,9 +220,7 @@ object Orders {
       myUnit.nativeUnit.train(trainType.toUnitType)
     }
 
-    override def renderDebug(renderer: Renderer): Unit = {
-
-    }
+    override def renderDebug(renderer: Renderer): Unit = {}
   }
 
   case class MoveToTile(myUnit: Mobile, to: MapTilePosition) extends UnitOrder {
@@ -239,10 +246,13 @@ object Orders {
   case class EnterBunker(myUnit: Marine, bunker: Bunker) extends UnitOrder {
     override def issueOrderToGame(): Unit = {
       val accepted = myUnit.nativeUnit.rightClick(bunker.nativeUnit)
-      val now = myUnit.universe.currentTick
+      val now      = myUnit.universe.currentTick
       val previous = bunkerBoardingReported.get(myUnit.nativeUnitId)
       if (!previous.exists(p => p._1 == accepted && p._2 == bunker.nativeUnitId && now - p._3 < 120)) {
-        NativeMatchEvidence.trace("bunker-boarding-order", s"marine=${myUnit.nativeUnitId} target=${bunker.nativeUnitId} accepted=$accepted error=n/a order=${myUnit.nativeUnit.getOrder} loaded=${myUnit.nativeUnit.isLoaded}")
+        NativeMatchEvidence.trace(
+          "bunker-boarding-order",
+          s"marine=${myUnit.nativeUnitId} target=${bunker.nativeUnitId} accepted=$accepted error=n/a order=${myUnit.nativeUnit.getOrder} loaded=${myUnit.nativeUnit.isLoaded}"
+        )
         bunkerBoardingReported(myUnit.nativeUnitId) = (accepted, bunker.nativeUnitId, now)
       }
     }
@@ -287,9 +297,7 @@ object Orders {
       myUnit.nativeUnit.attack(where.asMapPosition.toNative)
     }
 
-    override def renderDebug(renderer: Renderer): Unit = {
-
-    }
+    override def renderDebug(renderer: Renderer): Unit = {}
   }
 
   case class ContinueConstruction(myUnit: SCV, what: Building) extends UnitOrder {
@@ -329,9 +337,7 @@ object Orders {
       myUnit.nativeUnit.stop()
     }
 
-    override def renderDebug(renderer: Renderer): Unit = {
-
-    }
+    override def renderDebug(renderer: Renderer): Unit = {}
   }
 
   case class ReturnResourcesToAnyBase(myUnit: WorkerUnit) extends UnitOrder {
@@ -367,7 +373,10 @@ object Orders {
     override def issueOrderToGame(): Unit = {
       val accepted = myUnit.nativeUnit.repair(fixWhat.nativeUnit)
       if (fixWhat.isInstanceOf[Bunker] && myUnit.universe.currentTick % 120 < 24)
-        NativeMatchEvidence.trace("bunker-native-repair", s"scv=${myUnit.nativeUnitId} bunker=${fixWhat.nativeUnitId} accepted=$accepted hp=${fixWhat.nativeUnit.getHitPoints} order=${myUnit.nativeUnit.getOrder} error=n/a")
+        NativeMatchEvidence.trace(
+          "bunker-native-repair",
+          s"scv=${myUnit.nativeUnitId} bunker=${fixWhat.nativeUnitId} accepted=$accepted hp=${fixWhat.nativeUnit.getHitPoints} order=${myUnit.nativeUnit.getOrder} error=n/a"
+        )
     }
 
     override def renderDebug(renderer: Renderer): Unit = {

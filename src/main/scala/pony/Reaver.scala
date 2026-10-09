@@ -10,4 +10,5 @@ import scala.collection.immutable.HashMap
 import scala.collection.mutable.ListBuffer
 
 class Reaver(unit: APIUnit)
-  extends AnyUnit(unit) with GroundUnit with GroundWeapon with Mechanic with IsBig with IsVehicle with ArmedMobile with NormalGroundDamage with SlowAttackGround
+    extends AnyUnit(unit) with GroundUnit with GroundWeapon with Mechanic with IsBig with IsVehicle with ArmedMobile
+    with NormalGroundDamage with SlowAttackGround

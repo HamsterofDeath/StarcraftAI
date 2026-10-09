@@ -17,7 +17,7 @@ class Units(game: Game, hostile: Boolean, override val universe: Universe) exten
   private val preparedByClass    = multiMap[Class[?], WrapsUnit]
   private val nativeIdToUnit     = mutable.HashMap.empty[Int, WrapsUnit]
 
-  private var initial            = true
+  private var initial = true
 
   def byNative(nativeUnit: bwapi.Unit) = if (nativeUnit == null) None else byId(nativeUnit.getID)
 
@@ -55,11 +55,11 @@ class Units(game: Game, hostile: Boolean, override val universe: Universe) exten
           e.onKillUnTyped(died)
           killListeners.remove(u.getID)
         }
-        killListenersOnAll.foreach {_.apply(died)}
+        killListenersOnAll.foreach { _.apply(died) }
         val nowDead = removeUnit(u)
         nowDead.foreach {
           case cd: CanDie => cd.notifyDead_!()
-          case _ =>
+          case _          =>
         }
         nowDead.foreach { e =>
           graveyard += ((u.getID, e))
@@ -117,7 +117,7 @@ class Units(game: Game, hostile: Boolean, override val universe: Universe) exten
 
   def geysirs = allByType[Geysir]
 
-  def allByType[T <: WrapsUnit : ClassTag] = {
+  def allByType[T <: WrapsUnit: ClassTag] = {
     val lookFor = implicitly[ClassTag[T]].runtimeClass.asInstanceOf[Class[T]]
     allByClass(lookFor)
   }
@@ -155,7 +155,7 @@ class Units(game: Game, hostile: Boolean, override val universe: Universe) exten
       initial = false
       init()
     }
-    //sometimes units die without the event being triggered
+    // sometimes units die without the event being triggered
     if (universe.currentTick % 19 == 0) {
       val dead = allRelevant.filterNot(_.isInGame).map { e =>
         warn(s"Unit $e died without event")
@@ -164,18 +164,17 @@ class Units(game: Game, hostile: Boolean, override val universe: Universe) exten
       dead_!(dead)
     }
 
-
     val addThese = {
       if (ownAndNeutral)
         game.self().getUnits.asScala
       else
         game.enemies().asScala.flatMap(_.getUnits.asScala)
     }
-    addThese.foreach {addUnit}
+    addThese.foreach { addUnit }
   }
 
   def registerUnit(u: bwapi.Unit, lifted: WrapsUnit) = {
-    newUnitListeners.foreach {_.apply(lifted)}
+    newUnitListeners.foreach { _.apply(lifted) }
     nativeIdToUnit.put(u.getID, lifted)
     classIndexes.foreach { c =>
       if (c.isInstance(lifted)) {
@@ -186,8 +185,8 @@ class Units(game: Game, hostile: Boolean, override val universe: Universe) exten
 
   private def init(): Unit = {
     if (ownAndNeutral) {
-      game.getMinerals.asScala.foreach {addUnit}
-      game.getGeysers.asScala.foreach {addUnit}
+      game.getMinerals.asScala.foreach { addUnit }
+      game.getGeysers.asScala.foreach { addUnit }
     }
   }
 
@@ -219,7 +218,6 @@ class Units(game: Game, hostile: Boolean, override val universe: Universe) exten
                 }
               }
 
-
               registerUnit(u, lifted)
               fresh += lifted
               unit.onMorph(u.getType)
@@ -233,6 +231,5 @@ class Units(game: Game, hostile: Boolean, override val universe: Universe) exten
   }
 
   private def ownAndNeutral = !hostile
-
 
 }

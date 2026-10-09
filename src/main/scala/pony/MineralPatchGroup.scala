@@ -8,8 +8,7 @@ case class MineralPatchGroup(patchId: Int) {
 
   private val myPatches      = mutable.HashSet.empty[MineralPatch]
   private val myCenter       = new LazyVal[MapTilePosition](calcCenter)
-  private val myValue        = new
-      LazyVal[Int](myPatches.foldLeft(0)((acc, mp) => acc + mp.remaining))
+  private val myValue        = new LazyVal[Int](myPatches.foldLeft(0)((acc, mp) => acc + mp.remaining))
   private val myInitialValue = LazyVal.from(myPatches.foldLeft(0)((acc, mp) => acc + mp.remaining))
 
   def allTiles = myPatches.iterator.flatMap(_.area.tiles)

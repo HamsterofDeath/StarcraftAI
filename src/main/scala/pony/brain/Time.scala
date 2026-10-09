@@ -7,8 +7,8 @@ class Time(universe: Universe) {
   private val format = new DecimalFormat("00")
 
   def formatted = {
-    val sec = seconds.toInt
-    val min = sec / 60
+    val sec  = seconds.toInt
+    val min  = sec / 60
     val hour = min / 60
     s"${format.format(hour)}:${format.format(min % 60)}:${format.format(sec % 60)}"
   }

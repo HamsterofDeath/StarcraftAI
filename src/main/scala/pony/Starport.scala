@@ -10,4 +10,4 @@ import scala.collection.immutable.HashMap
 import scala.collection.mutable.ListBuffer
 
 class Starport(unit: APIUnit)
-  extends AnyUnit(unit) with UnitFactory with CanBuildAddons with TerranBuilding
+    extends AnyUnit(unit) with UnitFactory with CanBuildAddons with TerranBuilding

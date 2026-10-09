@@ -5,7 +5,7 @@ package modules
 import scala.collection.mutable
 
 class FormationAtFrontLineHelper(override val universe: Universe, distance: Int = 0)
-  extends HasUniverse {
+    extends HasUniverse {
   private val myDefenseLines = LazyVal.from {
     bases.allBases.flatMap { base =>
       strategicMap.defenseLineOf(base).map(_.tileDistance(distance))
@@ -17,20 +17,23 @@ class FormationAtFrontLineHelper(override val universe: Universe, distance: Int 
   def allOutsideNonBlacklisted = {
     val map = mapLayers.freeWalkableTiles
     defenseLines.iterator
-    .flatMap { e =>
-      e.pointsOutside
-      .filterNot(blacklisted)
-      .filter(map.free)
-    }
+      .flatMap { e =>
+        e.pointsOutside
+          .filterNot(blacklisted)
+          .filter(map.free)
+      }
   }
 
   def blacklisted(e: MapTilePosition) = blocked.contains(e)
 
   def defenseLines = myDefenseLines.get
 
-  universe.bases.register((base: Base) => {
-    myDefenseLines.invalidate()
-  }, notifyForExisting = true)
+  universe.bases.register(
+    (base: Base) => {
+      myDefenseLines.invalidate()
+    },
+    notifyForExisting = true
+  )
 
   def allInsideNonBlacklisted = {
     val map = mapLayers.freeWalkableTiles
@@ -39,7 +42,7 @@ class FormationAtFrontLineHelper(override val universe: Universe, distance: Int 
 
   def cleanBlacklist(dispose: (MapTilePosition, BlacklistReason) => Boolean) = {
     blocked.filter(e => dispose(e._1, e._2))
-    .foreach(e => whiteList_!(e._1))
+      .foreach(e => whiteList_!(e._1))
   }
 
   def whiteList_!(tilePosition: MapTilePosition): Unit = {

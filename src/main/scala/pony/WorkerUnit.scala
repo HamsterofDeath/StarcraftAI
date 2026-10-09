@@ -11,9 +11,16 @@ import scala.collection.mutable.ListBuffer
 
 object WorkerUnit {
   val gasMiningOrders = {
-    Set(Order.HarvestGas,
-      Order.MoveToGas, Order.ReturnGas, Order.WaitForGas,
-      Order.Harvest1, Order.Harvest2, Order.Harvest3, Order.Harvest4)
+    Set(
+      Order.HarvestGas,
+      Order.MoveToGas,
+      Order.ReturnGas,
+      Order.WaitForGas,
+      Order.Harvest1,
+      Order.Harvest2,
+      Order.Harvest3,
+      Order.Harvest4
+    )
   }
 
   def currentPriority[T <: WorkerUnit](w: UnitWithJob[T]) = {
@@ -26,16 +33,16 @@ object WorkerUnit {
 }
 
 trait WorkerUnit extends Killable with Mobile with GroundUnit with GroundWeapon with Floating {
-  override def isNonFighter = true
-  def isGatheringGas = WorkerUnit.gasMiningOrders(currentOrder)
-  def isMagic = currentOrder == Order.ResetCollision
-  def isInMiningProcess = currentOrder == Order.MiningMinerals
-  def isWaitingForMinerals = currentOrder == Order.WaitForMinerals
-  def isMovingToMinerals = currentOrder == Order.MoveToMinerals
+  override def isNonFighter   = true
+  def isGatheringGas          = WorkerUnit.gasMiningOrders(currentOrder)
+  def isMagic                 = currentOrder == Order.ResetCollision
+  def isInMiningProcess       = currentOrder == Order.MiningMinerals
+  def isWaitingForMinerals    = currentOrder == Order.WaitForMinerals
+  def isMovingToMinerals      = currentOrder == Order.MoveToMinerals
   def isInConstructionProcess = isConstructingBuilding || currentOrder == Order.PlaceBuilding
-  def isConstructingBuilding = currentOrder == Order.ConstructingBuilding
-  def isCarryingNothing = !isCarryingMinerals && !isCarryingGas
-  def isCarryingMinerals = nativeUnit.isCarryingMinerals
-  def isCarryingGas = nativeUnit.isCarryingGas
+  def isConstructingBuilding  = currentOrder == Order.ConstructingBuilding
+  def isCarryingNothing       = !isCarryingMinerals && !isCarryingGas
+  def isCarryingMinerals      = nativeUnit.isCarryingMinerals
+  def isCarryingGas           = nativeUnit.isCarryingGas
 
 }

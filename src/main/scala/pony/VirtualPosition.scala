@@ -16,12 +16,12 @@ trait VirtualPosition extends WrapsUnit with Virtual {
   private var lastSeen = Option.empty[PositionSnapshot]
 
   override def currentTile = lastSeen.map(_.where)
-                             .filterNot(_ => myVisible)
-                             .getOrElse(super.currentTile)
+    .filterNot(_ => myVisible)
+    .getOrElse(super.currentTile)
 
   override def currentPosition = lastSeen.map(_.where32)
-                                 .filterNot(_ => myVisible)
-                                 .getOrElse(super.currentPosition)
+    .filterNot(_ => myVisible)
+    .getOrElse(super.currentPosition)
 
   private val myVisible = oncePerTick {
     nativeUnit.isVisible

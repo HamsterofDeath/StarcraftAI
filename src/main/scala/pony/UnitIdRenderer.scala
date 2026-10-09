@@ -9,14 +9,14 @@ class UnitIdRenderer extends AIPlugIn {
 
       val u = lazyWorld.universe
       u.ownUnits.allByType[Mobile]
-      .iterator
-      .collect {
-        case g: GroundUnit if !g.loaded => g
-        case a: AirUnit => a
-      }
-      .foreach { u =>
-        renderer.drawTextAtMobileUnit(u, u.shortDebugString)
-      }
+        .iterator
+        .collect {
+          case g: GroundUnit if !g.loaded => g
+          case a: AirUnit                 => a
+        }
+        .foreach { u =>
+          renderer.drawTextAtMobileUnit(u, u.shortDebugString)
+        }
       u.ownUnits.allByType[Building].foreach { u =>
         renderer.drawTextAtStaticUnit(u, s"${u.shortDebugString}/${u.getClass.className}")
       }

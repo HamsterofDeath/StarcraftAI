@@ -9,6 +9,4 @@ import scala.jdk.CollectionConverters._
 import scala.collection.immutable.HashMap
 import scala.collection.mutable.ListBuffer
 
-trait Killable {
-
-}
+trait Killable {}

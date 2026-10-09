@@ -11,5 +11,5 @@ import scala.collection.mutable.ListBuffer
 
 trait Upgrader extends Controllable with Building {
   def canUpgrade(upgrade: Upgrade) = race.techTree.canUpgrade(getClass, upgrade)
-  def isDoingResearch = currentOrder == Order.ResearchTech || currentOrder == Order.Upgrade
+  def isDoingResearch              = currentOrder == Order.ResearchTech || currentOrder == Order.Upgrade
 }

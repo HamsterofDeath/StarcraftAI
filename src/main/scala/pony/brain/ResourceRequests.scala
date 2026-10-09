@@ -22,21 +22,27 @@ case class ResourceRequests(requests: Seq[ResourceRequest], priority: Priority, 
 object ResourceRequests {
   val empty = ResourceRequests(Nil, Priority.None, classOf[Irrelevant])
 
-  def forUpgrade(upgrader: Upgrader, price: UpgradePrice,
-                 priority: Priority = Priority.Upgrades) = {
+  def forUpgrade(
+      upgrader: Upgrader,
+      price: UpgradePrice,
+      priority: Priority = Priority.Upgrades
+  ) = {
     val upgrade = price.forUpgrade
-    val mins = price.nextMineralPrice
-    val gas = price.nextGasPrice
+    val mins    = price.nextMineralPrice
+    val gas     = price.nextGasPrice
     ResourceRequests(Seq(MineralsRequest(mins), GasRequest(gas)), priority, upgrader.getClass)
 
   }
 
-  def forUnit[T <: WrapsUnit](race: SCRace, unspecificType: Class[? <: T],
-                              priority: Priority = Priority.Default) = {
+  def forUnit[T <: WrapsUnit](
+      race: SCRace,
+      unspecificType: Class[? <: T],
+      priority: Priority = Priority.Default
+  ) = {
     val unitType = race.specialize(unspecificType)
-    val mins = unitType.toUnitType.mineralPrice()
-    val gas = unitType.toUnitType.gasPrice()
-    val supply = unitType.toUnitType.supplyRequired()
+    val mins     = unitType.toUnitType.mineralPrice()
+    val gas      = unitType.toUnitType.gasPrice()
+    val supply   = unitType.toUnitType.supplyRequired()
 
     val requestDetails = Seq(MineralsRequest(mins), GasRequest(gas), SupplyRequest(supply))
     ResourceRequests(requestDetails, priority, unitType)

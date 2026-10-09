@@ -3,8 +3,12 @@ package pony
 import bwapi.PlayerType
 import pony.brain.{HasUniverse, Universe}
 
-class Forces(me: bwapi.Player, myAllies: Set[bwapi.Player], myEnemies: Set[bwapi.Player],
-             override val universe: Universe) extends HasUniverse {
+class Forces(
+    me: bwapi.Player,
+    myAllies: Set[bwapi.Player],
+    myEnemies: Set[bwapi.Player],
+    override val universe: Universe
+) extends HasUniverse {
 
   def myRace = myself.scRace
 

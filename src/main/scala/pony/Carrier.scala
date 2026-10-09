@@ -10,4 +10,4 @@ import scala.collection.immutable.HashMap
 import scala.collection.mutable.ListBuffer
 
 class Carrier(unit: APIUnit)
-  extends AnyUnit(unit) with AirUnit with Mechanic with IsBig with ArmedMobile with IsShip
+    extends AnyUnit(unit) with AirUnit with Mechanic with IsBig with ArmedMobile with IsShip

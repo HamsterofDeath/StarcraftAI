@@ -10,4 +10,5 @@ import scala.collection.immutable.HashMap
 import scala.collection.mutable.ListBuffer
 
 class SporeColony(unit: APIUnit)
-  extends AnyUnit(unit) with DetectorBuilding with NormalAirDamage with MediumAttackAir with ZergBuilding with ArmedBuildingCoveringAir
+    extends AnyUnit(unit) with DetectorBuilding with NormalAirDamage with MediumAttackAir with ZergBuilding
+    with ArmedBuildingCoveringAir

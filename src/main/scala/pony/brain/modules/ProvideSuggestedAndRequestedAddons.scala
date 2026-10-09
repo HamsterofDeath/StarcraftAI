@@ -3,15 +3,17 @@ package brain
 package modules
 
 class ProvideSuggestedAndRequestedAddons(universe: Universe)
-  extends OrderlessAIModule[CanBuildAddons](universe) with AddonRequestHelper {
+    extends OrderlessAIModule[CanBuildAddons](universe) with AddonRequestHelper {
 
   override def onTick_!(): Unit = {
     val suggested = {
       val buildUs = strategy.current.suggestAddons
-                    .filter(_.isActive)
-      for (builder <- ownUnits.allAddonBuilders;
-           addon <- buildUs
-           if builder.canBuildAddon(addon.addon) & !builder.hasAddonAttached) yield (builder, addon)
+        .filter(_.isActive)
+      for (
+        builder <- ownUnits.allAddonBuilders;
+        addon   <- buildUs
+        if builder.canBuildAddon(addon.addon) & !builder.hasAddonAttached
+      ) yield (builder, addon)
     }
 
     suggested.filter(e => canBuildMoreOf(e._2.addon)).foreach { case (builder, what) =>
@@ -20,8 +22,8 @@ class ProvideSuggestedAndRequestedAddons(universe: Universe)
 
     val requested = unitManager.failedToProvideByType[Addon].iterator.collect {
       case attachIt: BuildUnitRequest[Addon]
-        if attachIt.proofForFunding.isSuccess &&
-           universe.resources.hasStillLocked(attachIt.funding) =>
+          if attachIt.proofForFunding.isSuccess &&
+            universe.resources.hasStillLocked(attachIt.funding) =>
         attachIt
     }
 
@@ -36,8 +38,11 @@ class ProvideSuggestedAndRequestedAddons(universe: Universe)
       ok
     }.foreach { req =>
       req.clearableInNextTick_!()
-      requestAddonIfResourcesProvided(req.typeOfRequestedUnit, handleDependencies = false,
-        req.proofForFunding)
+      requestAddonIfResourcesProvided(
+        req.typeOfRequestedUnit,
+        handleDependencies = false,
+        req.proofForFunding
+      )
     }
 
   }
@@ -47,11 +52,11 @@ class ProvideSuggestedAndRequestedAddons(universe: Universe)
     if (existing.isEmpty) {
       true
     } else {
-      val any = existing.head
-      def noUpgrades = !any.isInstanceOf[Upgrader]
+      val any             = existing.head
+      def noUpgrades      = !any.isInstanceOf[Upgrader]
       def requiredForUnit = race.techTree
-                            .requiredBy.get(any.getClass)
-                            .exists(_.exists(classOf[Mobile] >= _))
+        .requiredBy.get(any.getClass)
+        .exists(_.exists(classOf[Mobile] >= _))
       noUpgrades || requiredForUnit
 
     }

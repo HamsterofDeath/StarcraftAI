@@ -10,4 +10,4 @@ import scala.collection.immutable.HashMap
 import scala.collection.mutable.ListBuffer
 
 class SupplyDepot(unit: APIUnit)
-  extends AnyUnit(unit) with ImmobileSupplyProvider with TerranBuilding
+    extends AnyUnit(unit) with ImmobileSupplyProvider with TerranBuilding

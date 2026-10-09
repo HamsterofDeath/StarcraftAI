@@ -57,21 +57,21 @@ case class MapTilePosition(x: Int, y: Int) extends HasXY {
 
 object MapTilePosition {
 
-  val max          = 256 * 4
-  val points       = {
+  val max    = 256 * 4
+  val points = {
     if (memoryHog) {
       Array.tabulate(max * 2, max * 2)((x, y) => MapTilePosition(x - max, y - max))
-    } else {Array.empty[Array[MapTilePosition]]}
+    } else { Array.empty[Array[MapTilePosition]] }
   }
   val nativePoints = {
     if (memoryHog) {
       Array.tabulate(max * 2, max * 2)((x, y) => new Position(x - max, y - max))
-    } else {Array.empty[Array[Position]]}
+    } else { Array.empty[Array[Position]] }
   }
-  val zero         = MapTilePosition.shared(0, 0)
-  private val strange        = new ConcurrentHashMap[(Int, Int), MapTilePosition]
-  private val nativeStrange  = new ConcurrentHashMap[(Int, Int), Position]
-  private val computer       = new Function[(Int, Int), MapTilePosition] {
+  val zero                  = MapTilePosition.shared(0, 0)
+  private val strange       = new ConcurrentHashMap[(Int, Int), MapTilePosition]
+  private val nativeStrange = new ConcurrentHashMap[(Int, Int), Position]
+  private val computer      = new Function[(Int, Int), MapTilePosition] {
     override def apply(t: (Int, Int)) = MapTilePosition(t._1, t._2)
   }
   private val nativeComputer = new Function[(Int, Int), Position] {

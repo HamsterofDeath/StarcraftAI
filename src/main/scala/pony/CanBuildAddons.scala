@@ -13,13 +13,13 @@ trait CanBuildAddons extends Building {
   private val myAddonArea = oncePerTick {
     Area(area.lowerRight.movedBy(1, -1), Size(2, 2))
   }
-  private var attached    = Option.empty[Addon]
+  private var attached               = Option.empty[Addon]
   def positionedNextTo(addon: Addon) = {
     myAddonArea.upperLeft == addon.tilePosition
   }
-  def addonArea = myAddonArea.get
+  def addonArea                               = myAddonArea.get
   def canBuildAddon(addon: Class[? <: Addon]) = race.techTree.canBuildAddon(getClass, addon)
-  def isBuildingAddon = Option(nativeUnit.getAddon).exists(_.getRemainingBuildTime > 0)
+  def isBuildingAddon                         = Option(nativeUnit.getAddon).exists(_.getRemainingBuildTime > 0)
 
   def hasCompleteAddon = Option(nativeUnit.getAddon).exists(_.getRemainingBuildTime == 0)
 
@@ -28,7 +28,7 @@ trait CanBuildAddons extends Building {
     assert(attached.isEmpty)
     attached = Some(addon)
   }
-  def hasAddonAttached = attached.isDefined
+  def hasAddonAttached          = attached.isDefined
   override def onTick_!(): Unit = {
     super.onTick_!()
     attached.filter(_.isDead).foreach { dead =>

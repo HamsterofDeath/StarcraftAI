@@ -59,16 +59,17 @@ class AnalyzedMap(val game: Game) {
   val areas = walkableGrid.areas
 
   def debugAreas = {
-    val encoded = ('0' to '9') ++ ('a' to 'z') ++ ('A' to 'Z') ++ (1 to 100 map (_ => '?'))
-    val areas = walkableGrid.areas
+    val encoded   = ('0' to '9') ++ ('a' to 'z') ++ ('A' to 'Z') ++ (1 to 100 map (_ => '?'))
+    val areas     = walkableGrid.areas
     val separated = areas.map(_.mkString('X')).mkString("\n---\n")
     val debugThis = walkableGrid
-    separated + "\n" + (0 until debugThis.rows map { y =>
-      0 until debugThis.cols map { x =>
-        val index = areas.indexWhere(_.free(x, y))
-        if (index == -1) " " else encoded(index).toString
-      } mkString
-    } mkString "\n")
+    separated + "\n" +
+      (0 until debugThis.rows map { y =>
+        0 until debugThis.cols map { x =>
+          val index = areas.indexWhere(_.free(x, y))
+          if (index == -1) " " else encoded(index).toString
+        } mkString
+      } mkString "\n")
   }
 
   def debugMap = walkableGrid.mkString('X')
@@ -87,5 +88,6 @@ class AnalyzedMap(val game: Game) {
        |$debugMap2
        |Area analysis
        |$debugAreas
-     """.stripMargin)
+     """.stripMargin
+  )
 }

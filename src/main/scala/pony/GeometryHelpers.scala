@@ -8,13 +8,13 @@ class GeometryHelpers(maxX: Int, maxY: Int) {
   def circle(center: MapTilePosition, r: Int) = Circle(center, r, maxX, maxY)
 
   def tilesInCircle(position: MapTilePosition, radius: Int) = {
-    val fromX = 0 max position.x - radius
-    val toX = maxX min position.x + radius
-    val fromY = 0 max position.y - radius
-    val toY = maxY min position.y + radius
-    val radSqr = radius * radius
-    val x2 = position.x
-    val y2 = position.y
+    val fromX                  = 0 max position.x - radius
+    val toX                    = maxX min position.x + radius
+    val fromY                  = 0 max position.y - radius
+    val toY                    = maxY min position.y + radius
+    val radSqr                 = radius * radius
+    val x2                     = position.x
+    val y2                     = position.y
     def dstSqr(x: Int, y: Int) = {
       val xx = x - x2
       val yy = y - y2
@@ -32,12 +32,13 @@ class GeometryHelpers(maxX: Int, maxY: Int) {
     }.flatten
   }
 
-  def blockSpiralClockWise(origin: MapTilePosition,
-                           blockSize: Int = 45): Iterable[MapTilePosition] = new
-      Iterable[MapTilePosition] {
+  def blockSpiralClockWise(
+      origin: MapTilePosition,
+      blockSize: Int = 45
+  ): Iterable[MapTilePosition] = new Iterable[MapTilePosition] {
     override def iterator: Iterator[MapTilePosition] =
       iterateBlockSpiralClockWise(origin, blockSize)
-      .map(e => MapTilePosition.shared(e.x, e.y))
+        .map(e => MapTilePosition.shared(e.x, e.y))
   }
 
   def iterateBlockSpiralClockWise(origin: MapTilePosition, blockSize: Int = 45) = {
@@ -71,14 +72,14 @@ class GeometryHelpers(maxX: Int, maxY: Int) {
 
     val maxDst = blockSize * blockSize
     Iterator.iterate(new MutableXY)(_.next_!())
-    .take(blockSize * blockSize)
-    .filter(e => e.x >= 0 && e.x < maxX && e.y >= 0 && e.y < maxY)
-    .filter { e =>
-      val a = e.x - origin.x
-      val b = e.y - origin.y
-      a * a + b * b <= maxDst
-    }
-    .map(mut => MapTilePosition.shared(mut.x, mut.y))
+      .take(blockSize * blockSize)
+      .filter(e => e.x >= 0 && e.x < maxX && e.y >= 0 && e.y < maxY)
+      .filter { e =>
+        val a = e.x - origin.x
+        val b = e.y - origin.y
+        a * a + b * b <= maxDst
+      }
+      .map(mut => MapTilePosition.shared(mut.x, mut.y))
   }
 
   object intersections {
@@ -86,8 +87,11 @@ class GeometryHelpers(maxX: Int, maxY: Int) {
       tilesInCircleWithRange(seq.iterator.map(_ -> 0), minRange, times)
     }
 
-    def tilesInCircleWithRange(seq: IterableOnce[(MapTilePosition, Int)], minRange: Int,
-                               times: Int) = {
+    def tilesInCircleWithRange(
+        seq: IterableOnce[(MapTilePosition, Int)],
+        minRange: Int,
+        times: Int
+    ) = {
       val counts = mutable.HashMap.empty[MapTilePosition, Int]
       seq.iterator.foreach { p =>
         self.tilesInCircle(p._1, minRange max p._2).foreach { where =>

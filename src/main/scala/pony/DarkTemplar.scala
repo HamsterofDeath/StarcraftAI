@@ -10,5 +10,6 @@ import scala.collection.immutable.HashMap
 import scala.collection.mutable.ListBuffer
 
 class DarkTemplar(unit: APIUnit)
-  extends AnyUnit(unit) with GroundUnit with GroundWeapon with CanCloak with IsSmall with IsInfantry with ArmedMobile with CanMorph with NormalGroundDamage
-          with FastAttackGround with PermaCloak
+    extends AnyUnit(unit) with GroundUnit with GroundWeapon with CanCloak with IsSmall with IsInfantry with ArmedMobile
+    with CanMorph with NormalGroundDamage
+    with FastAttackGround with PermaCloak

@@ -10,8 +10,8 @@ class ProvideNewUnits(universe: Universe) extends OrderlessAIModule[UnitFactory]
       trace(s"Trying to satisfy $req somehow")
       val wantedType = req.typeOfRequestedUnit
       if (classOf[Mobile] >= wantedType) {
-        val typeFixed = wantedType.asInstanceOf[Class[Mobile]]
-        val wantedAmount = req.amount
+        val typeFixed     = wantedType.asInstanceOf[Class[Mobile]]
+        val wantedAmount  = req.amount
         var skipRemaining = false
         (1 to wantedAmount).iterator.takeWhile(_ => !skipRemaining) foreach { _ =>
           val builderOf = UnitJobRequest.builderOf(typeFixed, self)
@@ -28,7 +28,7 @@ class ProvideNewUnits(universe: Universe) extends OrderlessAIModule[UnitFactory]
 
                     case _ =>
                       val forUnit = ResourceRequests
-                                    .forUnit(universe.forces.myself.scRace, typeFixed, req.priority)
+                        .forUnit(universe.forces.myself.scRace, typeFixed, req.priority)
                       resources.request(forUnit, self)
                   }
                   res match {

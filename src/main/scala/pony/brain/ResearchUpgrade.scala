@@ -1,11 +1,12 @@
 package pony
 package brain
 
-class ResearchUpgrade[U <: Upgrader](employer: Employer[U],
-                                     basis: U,
-                                     what: Upgrade,
-                                     funding: ResourceApproval)
-  extends UnitWithJob[U](employer, basis, Priority.Upgrades) with JobHasFunding[U] with IssueOrderNTimes[U] {
+class ResearchUpgrade[U <: Upgrader](
+    employer: Employer[U],
+    basis: U,
+    what: Upgrade,
+    funding: ResourceApproval
+) extends UnitWithJob[U](employer, basis, Priority.Upgrades) with JobHasFunding[U] with IssueOrderNTimes[U] {
 
   private var startedResearch     = false
   private var stoppedResearch     = false
@@ -43,11 +44,12 @@ class ResearchUpgrade[U <: Upgrader](employer: Employer[U],
   private def isResearchedInRealGame = {
     what.nativeType.fold(
       u => {
-        val actual = universe.world.nativeGame.self().getUpgradeLevel(u)
+        val actual   = universe.world.nativeGame.self().getUpgradeLevel(u)
         val expected = universe.upgrades.upgradeLevelOf(u)
         actual == expected + 1
       },
-      t => universe.upgrades.isTechResearchInNativeGame(t))
+      t => universe.upgrades.isTechResearchInNativeGame(t)
+    )
 
   }
 

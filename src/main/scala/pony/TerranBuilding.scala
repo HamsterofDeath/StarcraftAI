@@ -13,10 +13,10 @@ trait TerranBuilding extends Building {
   private val myCurrentArea = oncePer(Primes.prime59) {
     mapLayers.rawWalkableMap.areaOf(centerTile).orElse {
       mapLayers.rawWalkableMap
-      .spiralAround(centerTile, 5)
-      .map(mapLayers.rawWalkableMap.areaOf)
-      .find(_.isDefined)
-      .map(_.get)
+        .spiralAround(centerTile, 5)
+        .map(mapLayers.rawWalkableMap.areaOf)
+        .find(_.isDefined)
+        .map(_.get)
     }
   }
 

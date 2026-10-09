@@ -4,8 +4,12 @@ import bwapi.TilePosition
 
 import scala.collection.mutable
 
-class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitSet,
-             protected val containsBlocked: Boolean = true) extends Serializable {
+class Grid2D(
+    val cols: Int,
+    val rows: Int,
+    areaDataBitSet: scala.collection.BitSet,
+    protected val containsBlocked: Boolean = true
+) extends Serializable {
   self =>
   def asMutable = mutableCopy
 
@@ -21,9 +25,12 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
 
   def reverseView: Grid2D = new Grid2D(cols, rows, areaDataBitSet, false)
 
-  def mutableCopy = new
-      MutableGrid2D(cols, rows, mutable.BitSet.fromBitMaskNoCopy(areaDataBitSet.toBitMask),
-        containsBlocked)
+  def mutableCopy = new MutableGrid2D(
+    cols,
+    rows,
+    mutable.BitSet.fromBitMaskNoCopy(areaDataBitSet.toBitMask),
+    containsBlocked
+  )
 
   def areasIntersecting(area: Area): Set[Grid2D] = {
     area.tiles.iterator.flatMap(areaOf).toSet
@@ -118,14 +125,19 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
 
   def anyBlockedOnLine(center: MapTilePosition, from: HasXY, to: HasXY): Boolean = {
     val absoluteFrom = center.movedBy(from)
-    val absoluteTo = center.movedBy(to)
+    val absoluteTo   = center.movedBy(to)
     anyBlockedOnLine(Line(absoluteFrom, absoluteTo))
   }
 
   def anyBlockedOnLine(line: Line): Boolean = {
-    AreaHelper.traverseTilesOfLine(line.a, line.b, (x, y) => {
-      if (inBounds(x, y) && blocked(x, y)) Some(true) else None
-    }, false)
+    AreaHelper.traverseTilesOfLine(
+      line.a,
+      line.b,
+      (x, y) => {
+        if (inBounds(x, y) && blocked(x, y)) Some(true) else None
+      },
+      false
+    )
   }
 
   def blocked(x: Int, y: Int): Boolean = !free(x, y)
@@ -144,16 +156,20 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
 
   def countBlockedOnLine(line: Line): LineInfo = {
     var blockedCount = 0
-    var freeCount = 0
-    AreaHelper.traverseTilesOfLine(line.a, line.b, (x, y) => {
-      if (inBounds(x, y)) {
-        if (blocked(x, y)) {
-          blockedCount += 1
-        } else {
-          freeCount += 1
+    var freeCount    = 0
+    AreaHelper.traverseTilesOfLine(
+      line.a,
+      line.b,
+      (x, y) => {
+        if (inBounds(x, y)) {
+          if (blocked(x, y)) {
+            blockedCount += 1
+          } else {
+            freeCount += 1
+          }
         }
       }
-    })
+    )
     LineInfo(line, blockedCount, freeCount)
   }
 
@@ -199,7 +215,7 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
   def free(index: Int) = if (containsBlocked) !areaDataBitSet(index) else areaDataBitSet(index)
 
   def minAreaSize(i: Int) = {
-    val mut = mutableCopy
+    val mut      = mutableCopy
     val tooSmall = areas.filter(_.freeCount < i)
     tooSmall.foreach { area =>
       area.allFree.foreach(mut.block_!)
@@ -228,14 +244,16 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
   }
 
   def zoomedOut = {
-    val bits = mutable.BitSet.empty
-    val subCols = cols / 4
-    val subRows = rows / 4
+    val bits                       = mutable.BitSet.empty
+    val subCols                    = cols / 4
+    val subRows                    = rows / 4
     def squareFree(x: Int, y: Int) = free(x * 4, y * 4) && free(x * 4 + 1, y * 4) &&
-                                     free(x * 4, y * 4 + 1) &&
-                                     free(x * 4 + 1, y * 4 + 1)
-    for (x <- 0 until subCols; y <- 0 until subRows
-         if !squareFree(x, y)) {
+      free(x * 4, y * 4 + 1) &&
+      free(x * 4 + 1, y * 4 + 1)
+    for (
+      x <- 0 until subCols; y <- 0 until subRows
+      if !squareFree(x, y)
+    ) {
       bits += (x + y * subCols)
     }
     new Grid2D(subCols, subRows, bits)
@@ -272,9 +290,12 @@ class Grid2D(val cols: Int, val rows: Int, areaDataBitSet: scala.collection.BitS
 
 }
 
-class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet,
-                    bitSetContainsBlocked: Boolean = true)
-  extends Grid2D(cols, rows, bitSet, bitSetContainsBlocked) {
+class MutableGrid2D(
+    cols: Int,
+    rows: Int,
+    bitSet: mutable.BitSet,
+    bitSetContainsBlocked: Boolean = true
+) extends Grid2D(cols, rows, bitSet, bitSetContainsBlocked) {
   def addOutlineToBlockedTiles_!() = {
     allBlocked.flatMap(_.asArea.growBy(1).tiles).toSet.foreach((e: MapTilePosition) => block_!(e))
     this
@@ -284,7 +305,7 @@ class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet,
 
   def areaSize(anyContained: MapTilePosition) = {
     val isFree = free(anyContained)
-    val on = if (isFree) this else reverseView
+    val on     = if (isFree) this else reverseView
     AreaHelper.freeAreaSize(anyContained, on)
   }
 
@@ -318,7 +339,7 @@ class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet,
 
   def block_!(center: MapTilePosition, from: HasXY, to: HasXY): Unit = {
     val absoluteFrom = center.movedBy(from)
-    val absoluteTo = center.movedBy(to)
+    val absoluteTo   = center.movedBy(to)
     block_!(Line(absoluteFrom, absoluteTo))
   }
 

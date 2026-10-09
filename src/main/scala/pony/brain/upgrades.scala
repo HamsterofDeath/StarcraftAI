@@ -30,14 +30,14 @@ class ArmorWeaponLevels(override val universe: Universe) extends HasUniverse {
   }
 
   private def getUpgradesOf(unit: WrapsUnit) = {
-    val p = unit.nativeUnit.getPlayer
+    val p          = unit.nativeUnit.getPlayer
     var byUnitType = cache.get(p)
     if (byUnitType == null) {
       byUnitType = new util.HashMap[UnitType, Levels]
       cache.put(p, byUnitType)
     }
     val unitType = unit.initialNativeType
-    var armor = byUnitType.get(unitType)
+    var armor    = byUnitType.get(unitType)
     if (armor == null) {
       val gLevel = p.getUpgradeLevel(unitType.groundWeapon().upgradeType())
       val aLevel = p.getUpgradeLevel(unitType.airWeapon().upgradeType())
@@ -70,18 +70,19 @@ class UpgradeManager(override val universe: Universe) extends HasUniverse {
 
   def notifyResearched_!(upgrade: Upgrade): Unit = {
     researched += ((upgrade, researched.getOrElse(upgrade, 0) + 1))
-    onResearchCompleteListener.foreach {_.onComplete(upgrade)}
+    onResearchCompleteListener.foreach { _.onComplete(upgrade) }
 
     upgrade.nativeType.fold(
       u => {
-        val actual = universe.world.nativeGame.self().getUpgradeLevel(u)
+        val actual   = universe.world.nativeGame.self().getUpgradeLevel(u)
         val expected = upgradeLevelOf(u)
         if (actual != expected) {
           warn(s"Upgrade level mismatch for $upgrade: expected $expected but game said $actual")
           researched.put(upgrade, actual)
         }
       },
-      t => warn(s"Out of sync! $upgrade", !isTechResearchInNativeGame(t)))
+      t => warn(s"Out of sync! $upgrade", !isTechResearchInNativeGame(t))
+    )
 
   }
 

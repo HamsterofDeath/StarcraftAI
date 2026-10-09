@@ -10,4 +10,4 @@ import scala.collection.immutable.HashMap
 import scala.collection.mutable.ListBuffer
 
 class LurkerEgg(unit: APIUnit)
-  extends AnyUnit(unit) with GroundUnit with IsBig with ZergUnit
+    extends AnyUnit(unit) with GroundUnit with IsBig with ZergUnit

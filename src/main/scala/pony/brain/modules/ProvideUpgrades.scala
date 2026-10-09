@@ -10,23 +10,23 @@ class ProvideUpgrades(universe: Universe) extends OrderlessAIModule[Upgrader](un
 
   override def onTick_!(): Unit = {
     val maxLimitEnabled = hasLimitDisabler
-    val requested = {
+    val requested       = {
       strategy.current.suggestUpgrades
-      .filterNot(e => researched.getOrElse(e.upgrade, 0) == maxLimitEnabled.ifElse(e.maxLevel, 1))
-      .filterNot(e => inProgress.contains(e.upgrade))
-      .filter(_.isActive)
+        .filterNot(e => researched.getOrElse(e.upgrade, 0) == maxLimitEnabled.ifElse(e.maxLevel, 1))
+        .filterNot(e => inProgress.contains(e.upgrade))
+        .filter(_.isActive)
     }
 
     requested.foreach { request =>
-      val wantedUpgrade = request.upgrade
-      val needs = race.techTree.upgraderFor(wantedUpgrade)
+      val wantedUpgrade           = request.upgrade
+      val needs                   = race.techTree.upgraderFor(wantedUpgrade)
       val buildingPlannedOrExists = unitManager.existsOrPlanned(needs)
       if (buildingPlannedOrExists) {
         val buildMissing = !unitManager.requestedToBuild(needs) &&
-                           ownUnits.allByClass(needs).size < bases.richBases.size
+          ownUnits.allByClass(needs).size < bases.richBases.size
 
         val result = unitManager
-                     .request(UnitJobRequest.upgraderFor(wantedUpgrade, self), buildMissing)
+          .request(UnitJobRequest.upgraderFor(wantedUpgrade, self), buildMissing)
         result.units.foreach { up =>
           val price = new UpgradePrice {
             private val current = researched.getOrElse(wantedUpgrade, 0)
@@ -56,8 +56,8 @@ class ProvideUpgrades(universe: Universe) extends OrderlessAIModule[Upgrader](un
         }
       } else {
         trace(s"Requesting ${
-          needs.className
-        } to be build in order for $wantedUpgrade to be researched")
+            needs.className
+          } to be build in order for $wantedUpgrade to be researched")
         helper.requestBuilding(needs, takeCareOfDependencies = true)
       }
     }

@@ -10,5 +10,6 @@ import scala.collection.immutable.HashMap
 import scala.collection.mutable.ListBuffer
 
 class Dragoon(unit: APIUnit)
-  extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with Mechanic with IsBig with IsVehicle with ArmedMobile with ExplosiveGroundDamage with ExplosiveAirDamage
-          with MediumAttackAir with MediumAttackGround
+    extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with Mechanic with IsBig with IsVehicle
+    with ArmedMobile with ExplosiveGroundDamage with ExplosiveAirDamage
+    with MediumAttackAir with MediumAttackGround

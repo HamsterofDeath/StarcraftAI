@@ -78,7 +78,7 @@ class FutureIterator[IN, T](feed: => IN, produce: IN => T, startNow: Boolean) {
   private def nextFuture = {
     val start = System.currentTimeMillis()
     val input = feed
-    val fut = BWFuture.produceFrom(produce(input))
+    val fut   = BWFuture.produceFrom(produce(input))
     fut.future.foreach {
       case any =>
         lock.writeLock().lock()

@@ -18,23 +18,47 @@ class MathTest extends Specification with MustMatchers {
   }
   def spiralSingle = {
     val first = testSpiral.head
-    first ===(100, 100)
+    first === (100, 100)
   }
   private def testSpiral = new GeometryHelpers(200, 200).blockSpiralClockWise(MapTilePosition.shared(100, 100), 5)
-                           .map(_.asTuple).toList
+    .map(_.asTuple).toList
   def spiral9 = {
     val it = testSpiral
 
-    val expected = List((100, 100), (101, 100), (101, 101), (100, 101), (99, 101), (99, 100), (99, 99), (100, 99),
-      (101, 99), (102, 99))
+    val expected = List(
+      (100, 100),
+      (101, 100),
+      (101, 101),
+      (100, 101),
+      (99, 101),
+      (99, 100),
+      (99, 99),
+      (100, 99),
+      (101, 99),
+      (102, 99)
+    )
 
     expected === it.take(expected.size)
   }
   def spiralMany = {
     val it = testSpiral
 
-    val expected = List((100, 100), (101, 100), (101, 101), (100, 101), (99, 101), (99, 100), (99, 99), (100, 99),
-      (101, 99), (102, 99), (102, 100), (102, 101), (102, 102), (101, 102))
+    val expected = List(
+      (100, 100),
+      (101, 100),
+      (101, 101),
+      (100, 101),
+      (99, 101),
+      (99, 100),
+      (99, 99),
+      (100, 99),
+      (101, 99),
+      (102, 99),
+      (102, 100),
+      (102, 101),
+      (102, 102),
+      (101, 102)
+    )
 
     expected === it.take(expected.size)
   }

@@ -17,11 +17,17 @@ class FerryManager(override val universe: Universe) extends HasUniverse {
 
   case class Feed(walkableRaw: Grid2D, walkableNow: Grid2D, previous: AltDropPositions)
 
-  private def feed = Feed(mapLayers.rawWalkableMap, mapLayers.freeWalkableTiles,
-    Option(nearestFree).flatMap(_.mostRecent).getOrElse(AltDropPositions.empty))
+  private def feed = Feed(
+    mapLayers.rawWalkableMap,
+    mapLayers.freeWalkableTiles,
+    Option(nearestFree).flatMap(_.mostRecent).getOrElse(AltDropPositions.empty)
+  )
 
-  case class AltDropPositions(fixes: Map[MapTilePosition, MapTilePosition],
-                              blockedImpossibles: Grid2D, passThrough: Grid2D) {
+  case class AltDropPositions(
+      fixes: Map[MapTilePosition, MapTilePosition],
+      blockedImpossibles: Grid2D,
+      passThrough: Grid2D
+  ) {
     def proposeFix(tile: MapTilePosition) = {
       if (passThrough.free(tile)) {
         tile.toSome
@@ -39,65 +45,69 @@ class FerryManager(override val universe: Universe) extends HasUniverse {
 
   private val nearestFree: FutureIterator[Feed, AltDropPositions] = {
     FutureIterator.feed(feed)
-    .produceAsyncLater { in =>
-      val impossibleCache = in.previous.blockedImpossibles.mutableCopy
-      val passThrough = in.walkableRaw.mutableCopy
+      .produceAsyncLater { in =>
+        val impossibleCache = in.previous.blockedImpossibles.mutableCopy
+        val passThrough     = in.walkableRaw.mutableCopy
 
-      val fixes = {
-        in.walkableRaw
-        .allFree
-        .flatMap { tile =>
-          val result = {
-            in.previous.proposeFix(tile)
-            .filter { old => universe.mapLayers.rawWalkableMap
-                             .freeAndInBounds(
-                               old.asArea.growBy(2))
-            }
-            .orElse {
-              if (impossibleCache.free(tile)) {
-                val
-                maybePossible = {
-                  in.walkableRaw.spiralAround(tile, 10)
-                  .filter { alt =>
-                    val free = universe.mapLayers.rawWalkableMap
-                               .freeAndInBounds(alt.asArea.growBy(2))
-                    def sameArea = universe.mapLayers.rawWalkableMap
-                                   .areInSameWalkableArea(alt, tile)
-                    free &&
-                    sameArea
-                  }.toSet
-                }
+        val fixes = {
+          in.walkableRaw
+            .allFree
+            .flatMap { tile =>
+              val result = {
+                in.previous.proposeFix(tile)
+                  .filter { old =>
+                    universe.mapLayers.rawWalkableMap
+                      .freeAndInBounds(
+                        old.asArea.growBy(2)
+                      )
+                  }
+                  .orElse {
+                    if (impossibleCache.free(tile)) {
+                      val maybePossible = {
+                        in.walkableRaw.spiralAround(tile, 10)
+                          .filter { alt =>
+                            val free = universe.mapLayers.rawWalkableMap
+                              .freeAndInBounds(alt.asArea.growBy(2))
+                            def sameArea = universe.mapLayers.rawWalkableMap
+                              .areInSameWalkableArea(alt, tile)
+                            free &&
+                            sameArea
+                          }.toSet
+                      }
 
-                if (maybePossible.isEmpty) {
-                  impossibleCache.block_!(tile)
+                      if (maybePossible.isEmpty) {
+                        impossibleCache.block_!(tile)
+                        None
+                      } else {
+                        maybePossible
+                          .find { alt =>
+                            universe.mapLayers.freeWalkableTiles.freeAndInBounds(alt)
+                          }
+                      }
+                    } else {
+                      None
+                    }
+                  }.map(e => tile -> e)
+              }
+
+              result.flatMap { case tup @ (from, to) =>
+                if (from == to) {
+                  // covered by pass through
                   None
                 } else {
-                  maybePossible
-                  .find { alt =>
-                    universe.mapLayers.freeWalkableTiles.freeAndInBounds(alt)
-                  }
+                  passThrough.block_!(from)
+                  tup.toSome
                 }
-              } else {
-                None
               }
-            }.map(e => tile -> e)
-          }
+            }.toMap
+        }
 
-          result.flatMap { case tup@(from, to) =>
-            if (from == to) {
-              // covered by pass through
-              None
-            } else {
-              passThrough.block_!(from)
-              tup.toSome
-            }
-          }
-        }.toMap
-      }
-
-      AltDropPositions(fixes, impossibleCache.guaranteeImmutability,
-        passThrough.guaranteeImmutability)
-    }.named("Best drop alternatives")
+        AltDropPositions(
+          fixes,
+          impossibleCache.guaranteeImmutability,
+          passThrough.guaranteeImmutability
+        )
+      }.named("Best drop alternatives")
   }
 
   def canDropHere(where: MapTilePosition) = {
@@ -112,8 +122,11 @@ class FerryManager(override val universe: Universe) extends HasUniverse {
     ferryPlans.get(ferry)
   }
 
-  def requestFerry_!(forWhat: GroundUnit, dropTarget: MapTilePosition,
-                     buildNewIfRequired: Boolean = false) = {
+  def requestFerry_!(
+      forWhat: GroundUnit,
+      dropTarget: MapTilePosition,
+      buildNewIfRequired: Boolean = false
+  ) = {
     val job = {
       val fixedDropTarget = {
         val fixed = nearestFree.flatMapOnContent { data =>
@@ -153,26 +166,39 @@ class FerryManager(override val universe: Universe) extends HasUniverse {
     job
   }
 
-  private def newPlanFor(forWhat: GroundUnit, dropTarget: MapTilePosition,
-                         buildNewIfRequired: Boolean = false) = {
-    assert(forWhat.currentArea != mapLayers.rawWalkableMap.areaOf(dropTarget),
-      s"One of the units is already in the target area")
+  private def newPlanFor(
+      forWhat: GroundUnit,
+      dropTarget: MapTilePosition,
+      buildNewIfRequired: Boolean = false
+  ) = {
+    assert(
+      forWhat.currentArea != mapLayers.rawWalkableMap.areaOf(dropTarget),
+      s"One of the units is already in the target area"
+    )
 
-    assert(mapLayers.rawWalkableMap.free(dropTarget),
-      s"$dropTarget is supposed to be a free ground tile")
+    assert(
+      mapLayers.rawWalkableMap.free(dropTarget),
+      s"$dropTarget is supposed to be a free ground tile"
+    )
 
     trace(s"Calculating new ferry job for $forWhat to $dropTarget")
 
-
     val selector = UnitJobRequest.idleOfType(employer, race.transporterClass, 1)
-                   .withOnlyAccepting { ferry =>
-                     !ferryPlans.contains(ferry)
-                   }
-    val result = unitManager.request(selector, buildNewIfRequired)
-    val newPlans = result.ifNotZero(_.map { transporter =>
-      new FerryPlan(transporter, forWhat, dropTarget,
-        mapLayers.rawWalkableMap.areaOf(dropTarget))
-    }, Nil)
+      .withOnlyAccepting { ferry =>
+        !ferryPlans.contains(ferry)
+      }
+    val result   = unitManager.request(selector, buildNewIfRequired)
+    val newPlans = result.ifNotZero(
+      _.map { transporter =>
+        new FerryPlan(
+          transporter,
+          forWhat,
+          dropTarget,
+          mapLayers.rawWalkableMap.areaOf(dropTarget)
+        )
+      },
+      Nil
+    )
 
     ferryPlans ++= newPlans.map(e => e.ferry -> e)
     trace(s"New plans: ${newPlans.mkString(", ")}")
@@ -216,27 +242,30 @@ object PlanIdCounter {
 
 }
 
-class FerryPlan(val ferry: TransporterUnit, initial: GroundUnit,
-                initiallyPlannedToDropHere: MapTilePosition,
-                val targetArea: Option[Grid2D]) extends HasUniverse {
+class FerryPlan(
+    val ferry: TransporterUnit,
+    initial: GroundUnit,
+    initiallyPlannedToDropHere: MapTilePosition,
+    val targetArea: Option[Grid2D]
+) extends HasUniverse {
 
   def toWhere = {
     ferryManager.nearestDropPointTo(initiallyPlannedToDropHere)
-    .getOr(s"No drop spot available anywhere near $initiallyPlannedToDropHere")
+      .getOr(s"No drop spot available anywhere near $initiallyPlannedToDropHere")
   }
 
-  private val currentPlannedCargo  = collection.mutable.HashMap.empty ++=
-                                     initial.toSet.map(_ -> ferry.currentTick)
+  private val currentPlannedCargo = collection.mutable.HashMap.empty ++=
+    initial.toSet.map(_ -> ferry.currentTick)
 
   private val dropTheseImmediately = collection.mutable.HashSet.empty[GroundUnit]
 
-  private val planId               = PlanIdCounter.nextId()
+  private val planId = PlanIdCounter.nextId()
 
   private def myNextPickUp = queuedForPickUp.headOption
 
-  private val myQueuedForPickup    = oncePerTick {
+  private val myQueuedForPickup = oncePerTick {
     toTransport.filter(needsToPickThatUp).toVector
-    .sortBy(_.currentTile.distanceSquaredTo(ferry.currentTile))
+      .sortBy(_.currentTile.distanceSquaredTo(ferry.currentTile))
   }
 
   private def shuttleCapacity = 8
@@ -244,12 +273,12 @@ class FerryPlan(val ferry: TransporterUnit, initial: GroundUnit,
   def replaceQueuedUnitIfPossible_!(maybeTransportThis: GroundUnit) = {
     val removeFromPlan = {
       queuedForPickUp.iterator
-      .filter(takenSpace - _.transportSize + maybeTransportThis.transportSize <= shuttleCapacity)
-      .filter { e =>
-        e.currentTile.distanceSquaredTo(ferry.currentTile) - 25 >
-        maybeTransportThis.currentTile.distanceSquaredTo(ferry.currentTile)
-      }
-      .maxByOpt(_.currentTile.distanceSquaredTo(ferry.currentTile))
+        .filter(takenSpace - _.transportSize + maybeTransportThis.transportSize <= shuttleCapacity)
+        .filter { e =>
+          e.currentTile.distanceSquaredTo(ferry.currentTile) - 25 >
+            maybeTransportThis.currentTile.distanceSquaredTo(ferry.currentTile)
+        }
+        .maxByOpt(_.currentTile.distanceSquaredTo(ferry.currentTile))
     }
 
     removeFromPlan.foreach { old =>
@@ -288,8 +317,8 @@ class FerryPlan(val ferry: TransporterUnit, initial: GroundUnit,
       currentPlannedCargo.clear()
     }
     val thoseChangedTheirMinds = currentPlannedCargo
-                                 .filter(_._2 + 12 < maxTick)
-                                 .keySet
+      .filter(_._2 + 12 < maxTick)
+      .keySet
 
     dropTheseImmediately ++= thoseChangedTheirMinds
 
@@ -338,7 +367,9 @@ class FerryPlan(val ferry: TransporterUnit, initial: GroundUnit,
 
   def toTransport = currentPlannedCargo.keySet
 
-  assert(toTransport.map(_.transportSize).sum <= shuttleCapacity,
-    s"Too many units for single transport: $toTransport")
+  assert(
+    toTransport.map(_.transportSize).sum <= shuttleCapacity,
+    s"Too many units for single transport: $toTransport"
+  )
 
 }

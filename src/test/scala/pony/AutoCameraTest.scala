@@ -49,8 +49,8 @@ class AutoCameraTest extends Specification with MustMatchers {
   def fightFollowed = {
     val d = director
     d.consider(0, Seq(fight))
-    val moved = fight.copy(tile = at(75, 24))
-    val followed = d.consider(12, Seq(moved))
+    val moved     = fight.copy(tile = at(75, 24))
+    val followed  = d.consider(12, Seq(moved))
     val calmLater = d.consider(60, Seq(army))
     (followed === Some(moved)) and (calmLater === Some(moved))
   }
@@ -67,8 +67,8 @@ class AutoCameraTest extends Specification with MustMatchers {
   }
 
   def screenClamp = {
-    val centred = CameraPan.screenFor(at(64, 64), 128, 128)
-    val corner = CameraPan.screenFor(at(0, 0), 128, 128)
+    val centred   = CameraPan.screenFor(at(64, 64), 128, 128)
+    val corner    = CameraPan.screenFor(at(0, 0), 128, 128)
     val farCorner = CameraPan.screenFor(at(127, 127), 128, 128)
     (centred === ((64 * 32 + 16 - 320) & ~7, (64 * 32 + 16 - 186) & ~7)) and
       (corner === (0, 0)) and
@@ -76,9 +76,9 @@ class AutoCameraTest extends Specification with MustMatchers {
   }
 
   def panning = {
-    val jump = CameraPan.step((0, 0), (3000, 0))
+    val jump     = CameraPan.step((0, 0), (3000, 0))
     val approach = CameraPan.step((0, 0), (400, 100))
-    val finish = CameraPan.step((100, 100), (104, 96))
+    val finish   = CameraPan.step((100, 100), (104, 96))
     (jump === (3000, 0)) and (approach === (80, 20)) and (finish === (104, 96)) and
       (CameraPan.arrived((100, 100), (104, 96)) must beTrue)
   }

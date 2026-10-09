@@ -10,5 +10,5 @@ import scala.collection.immutable.HashMap
 import scala.collection.mutable.ListBuffer
 
 class Lurker(unit: APIUnit)
-  extends AnyUnit(unit) with ZergMobileUnit with GroundUnit with GroundWeapon with NormalGroundDamage with Virtual with IsBig with ArmedMobile with FastAttackGround with CanBurrow {
-}
+    extends AnyUnit(unit) with ZergMobileUnit with GroundUnit with GroundWeapon with NormalGroundDamage with Virtual
+    with IsBig with ArmedMobile with FastAttackGround with CanBurrow {}

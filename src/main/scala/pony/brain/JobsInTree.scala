@@ -7,7 +7,7 @@ class JobsInTree {
   private val flat       = multiMap[Employer[? <: WrapsUnit], UnitWithJob[? <: WrapsUnit]]
   private val indexBy    = mutable.HashSet.empty[JobIndex[? <: WrapsUnit]]
   private val byEmployer = mutable.HashMap
-                           .empty[JobIndex[? <: WrapsUnit], JobsByClass[? <: WrapsUnit]]
+    .empty[JobIndex[? <: WrapsUnit], JobsByClass[? <: WrapsUnit]]
 
   def allNotOfEmployer[T <: WrapsUnit](employer: Employer[T]) = {
     allFlat.filter(_._1 != employer).flatMap(_._2)
@@ -23,10 +23,10 @@ class JobsInTree {
     if (!indexBy(key)) {
       indexBy += key
       allOfEmployer(employer)
-      .filter(e => unitType.isInstance(e.unit))
-      .foreach { j =>
-        node.add(j)
-      }
+        .filter(e => unitType.isInstance(e.unit))
+        .foreach { j =>
+          node.add(j)
+        }
     }
 
     node.all

@@ -21,14 +21,15 @@ class DefaultWorld(game: Game) extends WorldListener with WorldEventDispatcher {
   }
 
   // these must be initialized after the first tick. making them lazy solves this
-  lazy val resourceAnalyzer = new ResourceAnalyzer(map,
-    AllUnits(myUniverse.ownUnits, myUniverse.enemyUnits))
-  lazy val strategicMap     = new
-      StrategicMap(resourceAnalyzer.resourceAreas, map.walkableGrid, game)
+  lazy val resourceAnalyzer = new ResourceAnalyzer(
+    map,
+    AllUnits(myUniverse.ownUnits, myUniverse.enemyUnits)
+  )
+  lazy val strategicMap = new StrategicMap(resourceAnalyzer.resourceAreas, map.walkableGrid, game)
 
-  val map        = new AnalyzedMap(game)
-  val debugger   = new Debugger(game, this)
-  val orderQueue = new OrderQueue(game, debugger)
+  val map                      = new AnalyzedMap(game)
+  val debugger                 = new Debugger(game, this)
+  val orderQueue               = new OrderQueue(game, debugger)
   private val removeQueueOwn   = ArrayBuffer.empty[bwapi.Unit]
   private val removeQueueEnemy = ArrayBuffer.empty[bwapi.Unit]
   private val destroyedEnemies = mutable.Set.empty[Int]
@@ -39,9 +40,9 @@ class DefaultWorld(game: Game) extends WorldListener with WorldEventDispatcher {
   def nativeGame = game
 
   def currentResources = {
-    val self = game.self()
+    val self  = game.self()
     val total = self.supplyTotal()
-    val used = self.supplyUsed()
+    val used  = self.supplyUsed()
     Resources(self.minerals(), self.gas(), Supplies(used, total))
   }
 

@@ -4,8 +4,8 @@ import scala.compiletime.uninitialized
 
 class LazyVal[T](gen: => T, onValueChange: Option[() => Unit] = None) extends Serializable {
   protected def allowMultiRead = false
-  private   val creationThread = Thread.currentThread()
-  private   var locked         = false
+  private val creationThread   = Thread.currentThread()
+  private var locked           = false
   protected var evaluated      = false
   protected var value: T       = uninitialized
 
@@ -30,7 +30,7 @@ class LazyVal[T](gen: => T, onValueChange: Option[() => Unit] = None) extends Se
       if (onValueChange.isDefined) {
         val newVal = gen
         if (newVal != value) {
-          onValueChange.foreach(_ ())
+          onValueChange.foreach(_())
           value = newVal
         }
       } else {

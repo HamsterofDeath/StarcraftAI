@@ -9,24 +9,35 @@ import scala.collection.mutable.ArrayBuffer
 
 class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule[WrapsUnit](universe) {
 
-  private val gatheringJobs = ArrayBuffer.empty[ManageMiningAtPatchGroup]
-  private val opening = new TerranEconomicProgress
+  private val gatheringJobs        = ArrayBuffer.empty[ManageMiningAtPatchGroup]
+  private val opening              = new TerranEconomicProgress
   private var secondWasOperational = false
-  def fieldStates = gatheringJobs.filter(g => g.natural && !g.forBase.mainBuilding.isFloating)
-    .map(g => MiningFieldStatus(g.forBase.resourceArea.get.uniqueId, g.capacity, g.teamSize,
-      g.workingMiners, !g.forBase.mainBuilding.isBeingCreated && g.forBase.mainBuilding.isInGame)).toVector
+  def fieldStates                  = gatheringJobs.filter(g => g.natural && !g.forBase.mainBuilding.isFloating)
+    .map(g =>
+      MiningFieldStatus(
+        g.forBase.resourceArea.get.uniqueId,
+        g.capacity,
+        g.teamSize,
+        g.workingMiners,
+        !g.forBase.mainBuilding.isBeingCreated && g.forBase.mainBuilding.isInGame
+      )
+    ).toVector
   def startingFieldSaturated = opening.startingFieldSaturated
-  def secondBaseEstablished = opening.secondBaseEstablished
+  def secondBaseEstablished  = opening.secondBaseEstablished
   def workerCapacity = gatheringJobs.filter(g => g.natural && !g.forBase.mainBuilding.isFloating).map(_.capacity).sum
   def servingMineralDepots(field: Int): Vector[MainBuilding] = {
-    val employers = gatheringJobs.filter(g => g.natural && g.attachedToBase &&
-      g.forBase.resourceArea.exists(_.uniqueId == field)).map(_.forBase.mainBuilding)
+    val employers = gatheringJobs.filter(g =>
+      g.natural && g.attachedToBase &&
+        g.forBase.resourceArea.exists(_.uniqueId == field)
+    ).map(_.forBase.mainBuilding)
     val returningTo = unitManager.allJobsByUnitType[WorkerUnit].collect {
       case job: GatherMineralsAtSinglePatch if job.worker.isCarryingMinerals =>
         Option(job.worker.nativeUnit.getOrderTarget).map(_.getID)
     }.flatten.toSet
-    val observed = bases.finishedBases.filter(b => !b.mainBuilding.isFloating &&
-      b.resourceArea.exists(_.uniqueId == field) && returningTo(b.mainBuilding.nativeUnitId))
+    val observed = bases.finishedBases.filter(b =>
+      !b.mainBuilding.isFloating &&
+        b.resourceArea.exists(_.uniqueId == field) && returningTo(b.mainBuilding.nativeUnitId)
+    )
       .map(_.mainBuilding)
     (employers ++ observed).distinct.toVector
   }
@@ -38,16 +49,16 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule[WrapsUni
     createJobsForBases()
     ifNth(Primes.prime43) {
       val outdated = gatheringJobs.filter(_.unnatural).flatMap { e =>
-        val base = e.forBase
+        val base            = e.forBase
         val currentDistance = base.mainBuilding.centerTile.distanceSquaredTo(e.patchGroup.anyTile)
-        val nearest = universe.bases
-                      .finishedBases
-                      .iterator
-                      .filterNot(b => b == base || b.mainBuilding.isFloating)
-                      .minByOpt(_.mainBuilding.centerTile.distanceSquaredTo(e.patchGroup.anyTile))
+        val nearest         = universe.bases
+          .finishedBases
+          .iterator
+          .filterNot(b => b == base || b.mainBuilding.isFloating)
+          .minByOpt(_.mainBuilding.centerTile.distanceSquaredTo(e.patchGroup.anyTile))
         nearest.flatMap { bestReplacement =>
           val altDistance = bestReplacement.mainBuilding.centerTile
-                            .distanceSquaredTo(e.patchGroup.anyTile)
+            .distanceSquaredTo(e.patchGroup.anyTile)
 
           if (altDistance < currentDistance) {
             Some(e)
@@ -62,9 +73,13 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule[WrapsUni
     }
     gatheringJobs.foreach(_.onTick_!())
     if (universe.currentTick < 3000 && (gatheringJobs.isEmpty || gatheringJobs.map(_.teamSize).sum == 0))
-      NativeMatchEvidence.trace("mining-scan",
+      NativeMatchEvidence.trace(
+        "mining-scan",
         s"jobs=${gatheringJobs.size} staffed=${gatheringJobs.map(_.teamSize).sum} detachedNow=${detached.size} first=" +
-          gatheringJobs.headOption.map(g => s"attached=${g.attachedToBase} permitted=${g.permittedStaffing}").getOrElse("none"))
+          gatheringJobs.headOption.map(g => s"attached=${g.attachedToBase} permitted=${g.permittedStaffing}").getOrElse(
+            "none"
+          )
+      )
     val before = opening.startingFieldSaturated
     opening.observe(bases.mainBase.flatMap(_.resourceArea).map(_.uniqueId), fieldStates)
     if (!before && opening.startingFieldSaturated)
@@ -79,19 +94,20 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule[WrapsUni
     val add = {
       val naturals = {
         universe.bases
-        .finishedBases
-        .filterNot(_.mainBuilding.isFloating)
-        .groupBy(_.resourceArea).values.map(_.minBy(_.mainBuilding.nativeUnitId)).toVector
-        .filterNot(e => gatheringJobs.exists(_.covers(e)))
-        .flatMap { base =>
-          base.myMineralGroup.map { minerals =>
-            new ManageMiningAtPatchGroup(base, minerals)
+          .finishedBases
+          .filterNot(_.mainBuilding.isFloating)
+          .groupBy(_.resourceArea).values.map(_.minBy(_.mainBuilding.nativeUnitId)).toVector
+          .filterNot(e => gatheringJobs.exists(_.covers(e)))
+          .flatMap { base =>
+            base.myMineralGroup.map { minerals =>
+              new ManageMiningAtPatchGroup(base, minerals)
+            }
           }
-        }
       }
-      val unnaturals = if (strategy.current.isInstanceOf[Strategy.SimpleTerran]) Nil else {
+      val unnaturals = if (strategy.current.isInstanceOf[Strategy.SimpleTerran]) Nil
+      else {
         val poor = gatheringJobs.groupBy(_.forBase)
-                   .filter(_._2.forall(_.poor))
+          .filter(_._2.forall(_.poor))
 
         val newTargets = poor.flatMap { case (base, jobs) =>
           base.alternativeResourceAreas.find { area =>
@@ -109,19 +125,24 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule[WrapsUni
     info(
       s"""
          |Added new mineral gathering job(s): ${add.mkString(" & ")}
-       """.stripMargin, add.nonEmpty)
+       """.stripMargin,
+      add.nonEmpty
+    )
     gatheringJobs ++= add
   }
 
   class ManageMiningAtPatchGroup(base: Base, minerals: MineralPatchGroup)
-    extends Employer[WorkerUnit](universe) {
+      extends Employer[WorkerUnit](universe) {
     emp =>
 
     private val boundField = base.resourceArea.map(_.uniqueId)
-    def attachedToBase = base.mainBuilding.isInGame && !base.mainBuilding.isFloating &&
+    def attachedToBase     = base.mainBuilding.isInGame && !base.mainBuilding.isFloating &&
       base.resourceArea.map(_.uniqueId) == boundField
     def permittedStaffing = MineralFieldStaffing.permitted(
-      strategy.current.isInstanceOf[Strategy.SimpleTerran], base.myMineralGroup.map(_.patchId), minerals.patchId)
+      strategy.current.isInstanceOf[Strategy.SimpleTerran],
+      base.myMineralGroup.map(_.patchId),
+      minerals.patchId
+    )
 
     def natural = base.resourceArea.exists(_.patches.contains(minerals))
 
@@ -131,13 +152,16 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule[WrapsUni
 
     def poor = minerals.remainingPercentage <= 0.1
 
-    def forBase = base
-    def capacity = Micro.MiningOrganization.idealNumberOfWorkers
+    def forBase       = base
+    def capacity      = Micro.MiningOrganization.idealNumberOfWorkers
     def workingMiners = unitManager.allJobsByUnitType[WorkerUnit].count {
       case job: GatherMineralsAtSinglePatch => minerals.patches.contains(job.targetPatch) &&
-        job.worker.isInGame && LocalMineralMining.observed(job.worker.isInMiningProcess,
-          job.targetPatch.nativeUnitId, Option(job.worker.nativeUnit.getOrderTarget).map(_.getID),
-          job.worker.centerTile.distanceToIsLess(job.targetPatch.centerTile, 4))
+        job.worker.isInGame && LocalMineralMining.observed(
+          job.worker.isInMiningProcess,
+          job.targetPatch.nativeUnitId,
+          Option(job.worker.nativeUnit.getOrderTarget).map(_.getID),
+          job.worker.centerTile.distanceToIsLess(job.targetPatch.centerTile, 4)
+        )
       case _ => false
     }
 
@@ -156,27 +180,34 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule[WrapsUni
         // its blueprint can later cover it, which would silently reject every candidate. A clear
         // five-tile block also keeps the anchor out of pockets enclosed by the mineral line.
         val fieldAnchor = base.resourceArea.flatMap(a => walkable.nearestFreeBlock(a.center, 2))
-        if (currentTick < 600) NativeMatchEvidence.trace("mining-locality",
+        if (currentTick < 600) NativeMatchEvidence.trace(
+          "mining-locality",
           s"anchor=$fieldAnchor anchorArea=${fieldAnchor.map(t => walkable.areaOf(t).isDefined)} " +
             ownUnits.allByType[WorkerUnit].take(5).map(w =>
               s"#${w.nativeUnitId}@${w.currentTile} area=${walkable.areaOf(w.currentTile).isDefined} " +
-                s"same=${fieldAnchor.exists(t => walkable.areInSameWalkableArea(w.currentTile, t))}").mkString("|"))
+                s"same=${fieldAnchor.exists(t => walkable.areInSameWalkableArea(w.currentTile, t))}"
+            ).mkString("|")
+        )
         val result = this.universe.unitManager
-                     .request(UnitJobRequest.idleOfType(emp, classOf[WorkerUnit], missing)
-                              .withOnlyAccepting { worker =>
-                                fieldAnchor.exists(tile => walkable.areInSameWalkableArea(worker.currentTile, tile))
-                              })
+          .request(UnitJobRequest.idleOfType(emp, classOf[WorkerUnit], missing)
+            .withOnlyAccepting { worker =>
+              fieldAnchor.exists(tile => walkable.areInSameWalkableArea(worker.currentTile, tile))
+            })
         if (this.universe.currentTick < 3000)
-          NativeMatchEvidence.trace("mining-hire",
-            s"missing=$missing team=$teamSize result=${result.getClass.getSimpleName} units=${result.units.size}")
+          NativeMatchEvidence.trace(
+            "mining-hire",
+            s"missing=$missing team=$teamSize result=${result.getClass.getSimpleName} units=${result.units.size}"
+          )
         val jobs = result.units.flatMap { worker =>
           Micro.MiningOrganization.findBestPatch(worker).map { patch =>
             info(s"Added $worker to mining team of $patch")
             val job = new Micro.MineMineralsAtPatch(worker, patch)
             patch.lockToPatch_!(job)
-            NativeMatchEvidence.trace("mining-assign",
+            NativeMatchEvidence.trace(
+              "mining-assign",
               s"worker=${worker.nativeUnitId} patch=${patch.patch.nativeUnitId} hist=" +
-                worker.asInstanceOf[OrderHistorySupport].unitHistory.take(3).map(_.order.toString).mkString(","))
+                worker.asInstanceOf[OrderHistorySupport].unitHistory.take(3).map(_.order.toString).mkString(",")
+            )
             job
           }
         }
@@ -186,7 +217,7 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule[WrapsUni
 
     private def idealNumberOfWorkers = Micro.MiningOrganization.idealNumberOfWorkers
 
-    def covers(aBase: Base) = base == aBase
+    def covers(aBase: Base)   = base == aBase
     def releaseMiners(): Unit = unitManager.allJobsByUnitType[WorkerUnit].filter(_.employer == this).foreach(_.fail_!())
 
     override def toString = s"Gathering $minerals at $base"
@@ -199,10 +230,10 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule[WrapsUni
         private val workerCountByDistance = LazyVal.from {
           val distance = math.round(patch.area.distanceTo(base.mainBuilding.area)).toInt
           distance match {
-            case 0 => 1
+            case 0             => 1
             case 1 | 2 | 3 | 4 => 2
-            case 5 | 6 | 7 => 3
-            case x => (x / 2.5).toInt
+            case 5 | 6 | 7     => 3
+            case x             => (x / 2.5).toInt
           }
         }
 
@@ -227,17 +258,17 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule[WrapsUni
           info(s"Removing $worker from mining team of $patch")
           val found = miningTeam.find(_.unit == worker)
           assert(found.isDefined, s"Did not find $worker in $miningTeam")
-          found.foreach {miningTeam -= _}
+          found.foreach { miningTeam -= _ }
         }
       }
 
       class MineMineralsAtPatch(myWorker: WorkerUnit, miningTarget: MinedPatch)
-        extends UnitWithJob(emp, myWorker, Priority.Default)
-                with GatherMineralsAtSinglePatch
-                with CanAcceptUnitSwitch[WorkerUnit]
-                with Interruptable[WorkerUnit]
-                with FerrySupport[WorkerUnit]
-                with PathfindingSupport[WorkerUnit] {
+          extends UnitWithJob(emp, myWorker, Priority.Default)
+          with GatherMineralsAtSinglePatch
+          with CanAcceptUnitSwitch[WorkerUnit]
+          with Interruptable[WorkerUnit]
+          with FerrySupport[WorkerUnit]
+          with PathfindingSupport[WorkerUnit] {
 
         listen_!(failed => {
           if (miningTarget.isInTeam(myWorker)) {
@@ -254,24 +285,23 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule[WrapsUni
             base.mainBuilding.area.distanceTo(worker.currentTile)
           }
         }
-        private var state: State         = Idle
+        private var state: State = Idle
 
-        override def copyOfJobForNewUnit(replacement: WorkerUnit) = new
-            MineMineralsAtPatch(replacement, miningTarget)
+        override def copyOfJobForNewUnit(replacement: WorkerUnit) = new MineMineralsAtPatch(replacement, miningTarget)
 
         override def asRequest = {
           val picker = {
             CherryPickers.cherryPickWorkerByDistance[WorkerUnit](miningTarget.patch.centerTile)()
           }
           UnitJobRequest.idleOfType(emp, myWorker.getClass)
-          .withRequest(_.withCherryPicker_!(picker))
+            .withRequest(_.withCherryPicker_!(picker))
         }
 
         override def couldSwitchInTheFuture = miningTarget.patch.hasRemainingMinerals
 
         override def canSwitchNow = !worker.isWaitingForMinerals &&
-                                    !worker.isCarryingMinerals &&
-                                    !worker.isInMiningProcess
+          !worker.isCarryingMinerals &&
+          !worker.isInMiningProcess
 
         override def onStealUnit(): Unit = {
           super.onStealUnit()
@@ -281,16 +311,16 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule[WrapsUni
         override def requiredWorkers: Int = miningTarget.estimateRequiredWorkers
 
         override def shortDebugString: String = state match {
-          case States.Idle => s"Idle/${unit.nativeUnit.getOrder}"
-          case States.ApproachingMinerals => "Locked"
-          case States.Mining => "Mining"
-          case States.ReturningMinerals => "Delivering"
+          case States.Idle                               => s"Idle/${unit.nativeUnit.getOrder}"
+          case States.ApproachingMinerals                => "Locked"
+          case States.Mining                             => "Mining"
+          case States.ReturningMinerals                  => "Delivering"
           case States.ReturningMineralsAfterInterruption => "Delivering (really)"
         }
 
         override def ordersForTick: Seq[UnitOrder] = {
           def sendWorkerToPatch = ApproachingMinerals -> Orders.Gather(myWorker, miningTarget.patch)
-          def returnDelivery = Orders.ReturnMinerals(myWorker, base.mainBuilding)
+          def returnDelivery    = Orders.ReturnMinerals(myWorker, base.mainBuilding)
           if (myWorker.isGuarding) {
             state = Idle
           }
@@ -308,8 +338,9 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule[WrapsUni
               // repeat the order to prevent the worker from moving away
               sendWorkerToPatch
 
-            case ApproachingMinerals if myWorker.isWaitingForMinerals ||
-                                        myWorker.isInMiningProcess =>
+            case ApproachingMinerals
+                if myWorker.isWaitingForMinerals ||
+                  myWorker.isInMiningProcess =>
               // let the poor worker alone now
               Mining -> noop
 
@@ -323,8 +354,9 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule[WrapsUni
               // the worker is done mining
               ReturningMinerals -> returnDelivery
 
-            case ReturningMineralsAfterInterruption if myWorker.isCarryingMinerals &&
-                                                       !myWorker.isMoving =>
+            case ReturningMineralsAfterInterruption
+                if myWorker.isCarryingMinerals &&
+                  !myWorker.isMoving =>
               noCommandsForTicks_!(10)
               ReturningMineralsAfterInterruption -> returnDelivery
             case ReturningMineralsAfterInterruption if myWorker.isCarryingMinerals =>
@@ -379,7 +411,7 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule[WrapsUni
 
         def findBestPatch(worker: WorkerUnit) = {
           val maxFreeSlots = assignments.iterator.map(_._2.openSpotCount).max
-          val notFull = assignments.filter(_._2.openSpotCount == maxFreeSlots)
+          val notFull      = assignments.filter(_._2.openSpotCount == maxFreeSlots)
           if (notFull.nonEmpty) {
             val (_, patch) = notFull.minBy { case (mins, _) =>
               mins.area.closestDirectConnection(worker.blockedArea).length

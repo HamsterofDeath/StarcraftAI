@@ -5,9 +5,9 @@ package modules
 import bwapi.Color
 
 class ProvideExpansions(universe: Universe)
-  extends OrderlessAIModule[WorkerUnit](universe) with BuildingRequestHelper {
+    extends OrderlessAIModule[WorkerUnit](universe) with BuildingRequestHelper {
   private var plannedExpansionPoint = Option.empty[ResourceArea]
-  private lazy val terranOpening = new TerranEconomicOpening(universe)
+  private lazy val terranOpening    = new TerranEconomicOpening(universe)
 
   def forceExpand(patch: MineralPatchGroup) = {
     plannedExpansionPoint = {
@@ -56,16 +56,31 @@ class ProvideExpansions(universe: Universe)
               mapLayers.rawWalkableMap.areInSameWalkableArea(resources.nearbyFreeTile, base.mainBuilding.tilePosition)
             }
           val funds = universe.resources.unlockedResources
-          if (!unitManager.requestedToBuild(race.resourceDepositClass) &&
-            TerranCampaignConfig.load().expand(funds.minerals, funds.gas, cost.minerals, cost.gas,
-              pending = false, safeReachableSite = safe)) {
+          if (
+            !unitManager.requestedToBuild(race.resourceDepositClass) &&
+            TerranCampaignConfig.load().expand(
+              funds.minerals,
+              funds.gas,
+              cost.minerals,
+              cost.gas,
+              pending = false,
+              safeReachableSite = safe
+            )
+          ) {
             val buildingSpot = AlternativeBuildingSpot
-                               .fromExpensive(
-                                 new ConstructionSiteFinder(universe).forResourceArea(resources))(
-                                 _.find)
-            requestBuilding(race.resourceDepositClass, takeCareOfDependencies = false,
+              .fromExpensive(
+                new ConstructionSiteFinder(universe).forResourceArea(resources)
+              )(
+                _.find
+              )
+            requestBuilding(
+              race.resourceDepositClass,
+              takeCareOfDependencies = false,
               saveMoneyIfPoor = false,
-              buildingSpot, belongsTo = plannedExpansionPoint, priority = Priority.Expand)
+              buildingSpot,
+              belongsTo = plannedExpansionPoint,
+              priority = Priority.Expand
+            )
             NativeMatchEvidence.trace("expansion-request", s"${resources.center} unlocked=${funds.minerals}")
           }
       }

@@ -8,24 +8,25 @@ import scala.reflect.ClassTag
 
 /** The wall opening seals the main base's land approach with Supply Depots. */
 class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](universe)
-  with BuildingRequestHelper {
+    with BuildingRequestHelper {
 
-  private var anchors = Option.empty[Vector[MapTilePosition]]
-  private var reportedNone = false
-  private var reportedComplete = false
-  private var refusedPlanning = false
-  private var probed = false
+  private var anchors             = Option.empty[Vector[MapTilePosition]]
+  private var reportedNone        = false
+  private var reportedComplete    = false
+  private var refusedPlanning     = false
+  private var probed              = false
   private var reportedSealFailure = false
-  private var lastWallAttempt = -1
-  private var gateOpened = false
-  private var gateDepotIds = Set.empty[Int]
-  private val repairers = new Employer[SCV](universe)
-  private val demolishers = new Employer[MobileRangeWeapon](universe)
+  private var lastWallAttempt     = -1
+  private var gateOpened          = false
+  private var gateDepotIds        = Set.empty[Int]
+  private val repairers           = new Employer[SCV](universe)
+  private val demolishers         = new Employer[MobileRangeWeapon](universe)
 
-  private def active = race.isTerran && (strategy.current match {
-    case s: Strategy.SimpleTerran => s.usesWallDefense
-    case _ => false
-  })
+  private def active = race.isTerran &&
+    (strategy.current match {
+      case s: Strategy.SimpleTerran => s.usesWallDefense
+      case _                        => false
+    })
 
   /** True once every planned wall depot stands completed. */
   def complete: Boolean = anchors.exists { wall =>
@@ -45,8 +46,10 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
     if (!gateOpened) {
       gateOpened = true
       gateDepotIds = openDepots
-      NativeMatchEvidence.trace("wall-gate-open",
-        s"depots=${if (gateDepotIds.isEmpty) "-" else gateDepotIds.mkString(",")}")
+      NativeMatchEvidence.trace(
+        "wall-gate-open",
+        s"depots=${if (gateDepotIds.isEmpty) "-" else gateDepotIds.mkString(",")}"
+      )
     }
   }
 
@@ -57,7 +60,8 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
       val singles = wall.iterator.filter { a =>
         alive(a).isDefined && opensWay(home, footprint(a).toSet)
       }.take(1).map(a => Set(a)).toList
-      val pairs = if (singles.nonEmpty) Nil else wall.combinations(2).filter { pair =>
+      val pairs = if (singles.nonEmpty) Nil
+      else wall.combinations(2).filter { pair =>
         pair.forall(a => alive(a).isDefined) && opensWay(home, pair.flatMap(footprint).toSet)
       }.take(1).toList.map(_.toSet)
       (singles ++ pairs).headOption.map(_.flatMap(a => alive(a).map(_.nativeUnitId)))
@@ -74,17 +78,17 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
           mapLayers.blockedByResources.free(t)
       mapLayers.rawWalkableMap.nearestFree(home.mainBuilding.tilePosition).exists { start =>
         val visited = mutable.Set.empty[MapTilePosition]
-        val queue = mutable.Queue.empty[MapTilePosition]
+        val queue   = mutable.Queue.empty[MapTilePosition]
         visited += start
         queue += start
         var escaped = false
-        var steps = 0
+        var steps   = 0
         while (queue.nonEmpty && !escaped && steps < 20000) {
           val cur = queue.dequeue()
           steps += 1
           if (!front.defended.free(cur)) escaped = true
           else for (dx <- -1 to 1; dy <- -1 to 1 if dx != 0 || dy != 0) {
-            val n = cur.movedBy(dx, dy)
+            val n      = cur.movedBy(dx, dy)
             val corner = dx == 0 || dy == 0 || allowed(cur.movedBy(dx, 0)) || allowed(cur.movedBy(0, dy))
             if (!visited(n) && allowed(n) && corner) {
               visited += n
@@ -102,8 +106,9 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
     if (refusedPlanning || gateOpened) None
     else anchors.flatMap { wall =>
       val existing = ownUnits.allByType[SupplyDepot].filter(_.isInGame).map(_.tilePosition).toSet
-      val pending = (unitManager.requestedConstructions[SupplyDepot].flatMap(_.customPosition.requestedPosition) ++
-        unitManager.constructionsInProgress[SupplyDepot].map(_.buildWhere)).toSet
+      val pending  =
+        (unitManager.requestedConstructions[SupplyDepot].flatMap(_.customPosition.requestedPosition) ++
+          unitManager.constructionsInProgress[SupplyDepot].map(_.buildWhere)).toSet
       wall.filterNot(a => existing(a) || pending(a)).find(depotFree)
     }
   }
@@ -136,8 +141,7 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
 
   private def footprint(a: MapTilePosition) = Area(a, Size(2, 2)).tiles
 
-  private def overlaps(a: MapTilePosition, b: MapTilePosition) =
-    (a.x - b.x).abs < 2 && (a.y - b.y).abs < 2
+  private def overlaps(a: MapTilePosition, b: MapTilePosition) = (a.x - b.x).abs < 2 && (a.y - b.y).abs < 2
 
   private def barrierForGround(t: MapTilePosition) =
     !mapLayers.rawWalkableMap.insideBounds(t) ||
@@ -146,7 +150,7 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
   /** Walk from the end of the pass along the cut direction until a terrain or resource barrier. */
   private def extendToBarrier(from: MapTilePosition, dx: Int, dy: Int): Option[Vector[MapTilePosition]] = {
     val out = mutable.ArrayBuffer.empty[MapTilePosition]
-    var t = from.movedBy(dx, dy)
+    var t   = from.movedBy(dx, dy)
     while (out.size < 8 && !barrierForGround(t)) {
       out += t
       t = t.movedBy(dx, dy)
@@ -156,23 +160,27 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
 
   /** The pass the cut line crosses: the free run along the line around the choke center, pinned by
     * terrain or resource barriers on both sides (extending the line if it was truncated first). */
-  private def segmentThrough(center: MapTilePosition, from: MapTilePosition, to: MapTilePosition): Option[Vector[MapTilePosition]] = {
+  private def segmentThrough(
+      center: MapTilePosition,
+      from: MapTilePosition,
+      to: MapTilePosition
+  ): Option[Vector[MapTilePosition]] = {
     val lineTiles = mutable.ArrayBuffer.empty[MapTilePosition]
     AreaHelper.traverseTilesOfLine(from, to, (x, y) => lineTiles += MapTilePosition(x, y))
     val freeIndices = lineTiles.indices.filter(i => !barrierForGround(lineTiles(i)))
     if (freeIndices.isEmpty) None
     else {
       val startIndex = freeIndices.minBy(i => lineTiles(i).distanceSquaredTo(center))
-      var lo = startIndex
+      var lo         = startIndex
       while (lo > 0 && !barrierForGround(lineTiles(lo - 1))) lo -= 1
       var hi = startIndex
       while (hi + 1 < lineTiles.size && !barrierForGround(lineTiles(hi + 1))) hi += 1
-      val dx = Integer.signum(to.x - from.x)
-      val dy = Integer.signum(to.y - from.y)
+      val dx   = Integer.signum(to.x - from.x)
+      val dy   = Integer.signum(to.y - from.y)
       val left = if (lo > 0) Some(Vector.empty[MapTilePosition])
-        else extendToBarrier(lineTiles(lo), -dx, -dy)
+      else extendToBarrier(lineTiles(lo), -dx, -dy)
       val right = if (hi < lineTiles.size - 1) Some(Vector.empty[MapTilePosition])
-        else extendToBarrier(lineTiles(hi), dx, dy)
+      else extendToBarrier(lineTiles(hi), dx, dy)
       for {
         l <- left
         r <- right
@@ -186,16 +194,17 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
   private def computeWall(home: Base): Vector[MapTilePosition] = {
     val front = strategicMap.defenseLineOf(home)
     if (front.isEmpty) { probe("no defense line"); return Vector.empty }
-    val f = front.get
+    val f        = front.get
     val segments = f.chokePoint.lines.flatMap(cutting =>
-      segmentThrough(f.chokePoint.center, cutting.absoluteFrom, cutting.absoluteTo))
+      segmentThrough(f.chokePoint.center, cutting.absoluteFrom, cutting.absoluteTo)
+    )
     val span = segments.distinct.flatten.distinct
     if (span.isEmpty) { probe("no pinnable pass at the choke"); return Vector.empty }
     val allCandidates = span.flatMap(placementsCovering).distinct
     if (allCandidates.isEmpty) { probe(s"span=${span.size} candidates=0"); return Vector.empty }
     val coveredByCandidate = allCandidates.map(a => a -> footprint(a).filter(span.contains).toSet).toMap
-    val tileToCandidates = span.map(t => t -> allCandidates.filter(a => footprint(a).exists(_ == t))).toMap
-    var budget = 20000
+    val tileToCandidates   = span.map(t => t -> allCandidates.filter(a => footprint(a).exists(_ == t))).toMap
+    var budget             = 20000
     def solve(uncovered: Set[MapTilePosition], chosen: Vector[MapTilePosition]): Option[Vector[MapTilePosition]] = {
       if (uncovered.isEmpty) Some(chosen)
       else if (chosen.size > 12 || budget <= 0) None
@@ -210,8 +219,8 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
       }
     }
     val unbuildable = span.filter(t => tileToCandidates.getOrElse(t, Vector.empty).isEmpty)
-    val required = span.filterNot(unbuildable.contains)
-    val solved = solve(required.toSet, Vector.empty)
+    val required    = span.filterNot(unbuildable.contains)
+    val solved      = solve(required.toSet, Vector.empty)
     if (solved.isEmpty) {
       probe(s"span=${span.size} candidates=${allCandidates.size} noCover missing=${unbuildable.mkString(",")}")
       return Vector.empty
@@ -223,22 +232,22 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
 
     // Protoss probes, zealots and dragoons must not slip between or around the depots.
     // A leak is plugged along the breach path, nearest to the wall first.
-    var anchors = solved.get
+    var anchors  = solved.get
     var attempts = 0
-    var breach = breachPath(home, anchors)
+    var breach   = breachPath(home, anchors)
     if (breach.isDefined) {
       NativeMatchEvidence.trace("wall-leak", s"pathLen=${breach.get.size} path=${breach.get.take(24).mkString(",")}")
     }
     while (breach.isDefined && attempts < 6 && anchors.size <= 20) {
-      val path = breach.get
+      val path    = breach.get
       val pathSet = path.toSet
-      val fix = path.flatMap(placementsCovering).distinct
+      val fix     = path.flatMap(placementsCovering).distinct
         .filterNot(anchors.contains)
         .filterNot(a => anchors.exists(b => overlaps(a, b)))
         .map { a =>
-          val onPath = footprint(a).count(t => pathSet.contains(t))
+          val onPath       = footprint(a).count(t => pathSet.contains(t))
           val wallDistance = if (anchors.isEmpty) 0 else anchors.map(b => (a.x - b.x).abs.max((a.y - b.y).abs)).min
-          val spanCover = covers(a).size
+          val spanCover    = covers(a).size
           (a, onPath, wallDistance, spanCover)
         }
         .sortBy { case (a, onPath, wallDistance, spanCover) => (-onPath, wallDistance, -spanCover, a.y, a.x) }
@@ -251,8 +260,10 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
         case None =>
           if (!reportedSealFailure) {
             reportedSealFailure = true
-            NativeMatchEvidence.trace("wall-seal-failed",
-              s"pathLen=${path.size} buildable=${path.count(t => placementsCovering(t).nonEmpty)} anchors=${anchors.mkString(",")} path=${path.take(16).mkString(",")}")
+            NativeMatchEvidence.trace(
+              "wall-seal-failed",
+              s"pathLen=${path.size} buildable=${path.count(t => placementsCovering(t).nonEmpty)} anchors=${anchors.mkString(",")} path=${path.take(16).mkString(",")}"
+            )
           }
           return Vector.empty
       }
@@ -261,7 +272,10 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
     if (breach.isDefined) {
       if (!reportedSealFailure) {
         reportedSealFailure = true
-        NativeMatchEvidence.trace("wall-seal-failed", s"attempts=$attempts pathLen=${breach.get.size} path=${breach.get.take(24).mkString(",")} anchors=${anchors.mkString(",")}")
+        NativeMatchEvidence.trace(
+          "wall-seal-failed",
+          s"attempts=$attempts pathLen=${breach.get.size} path=${breach.get.take(24).mkString(",")} anchors=${anchors.mkString(",")}"
+        )
       }
       Vector.empty
     } else {
@@ -273,20 +287,21 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
   /** A free path from a known outside tile to the defended side means the wall leaks. */
   private def breachPath(home: Base, anchors: Vector[MapTilePosition]): Option[Vector[MapTilePosition]] = {
     strategicMap.defenseLineOf(home).flatMap { front =>
-      val wallTiles = anchors.flatMap(footprint).toSet
+      val wallTiles                            = anchors.flatMap(footprint).toSet
       def allowed(t: MapTilePosition): Boolean =
         mapLayers.rawWalkableMap.insideBounds(t) && mapLayers.rawWalkableMap.free(t) &&
           mapLayers.blockedByBuildingTiles.free(t) && mapLayers.blockedByPlannedBuildings.free(t) &&
           mapLayers.blockedByResources.free(t) &&
           !wallTiles(t)
-      val seeds = (mapLayers.rawWalkableMap.spiralAround(front.chokePoint.center, 16) ++
-        mapLayers.rawWalkableMap.spiralAround(front.chokePoint.center, 24))
-        .filter(t => allowed(t) && front.outerTerritory.free(t) && !front.defended.free(t)).take(2)
+      val seeds =
+        (mapLayers.rawWalkableMap.spiralAround(front.chokePoint.center, 16) ++
+          mapLayers.rawWalkableMap.spiralAround(front.chokePoint.center, 24))
+          .filter(t => allowed(t) && front.outerTerritory.free(t) && !front.defended.free(t)).take(2)
       if (seeds.isEmpty) None
       else {
         val visited = mutable.Set.empty[MapTilePosition]
-        val parent = mutable.Map.empty[MapTilePosition, MapTilePosition]
-        val queue = mutable.Queue.empty[MapTilePosition]
+        val parent  = mutable.Map.empty[MapTilePosition, MapTilePosition]
+        val queue   = mutable.Queue.empty[MapTilePosition]
         seeds.foreach { s => visited += s; queue += s }
         var breach = Option.empty[MapTilePosition]
         while (queue.nonEmpty && breach.isEmpty) {
@@ -306,7 +321,7 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
         }
         breach.map { b =>
           val path = mutable.ArrayBuffer.empty[MapTilePosition]
-          var p = b
+          var p    = b
           path += p
           while (parent.contains(p)) { p = parent(p); path += p }
           path.toVector
@@ -351,26 +366,33 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
         // Unfinished depots are included so the repair order resumes their construction.
         val damagedWall = wall.flatMap { a =>
           ownUnits.allByType[SupplyDepot].find(d =>
-            d.isInGame && !d.isFloating && d.tilePosition == a)
+            d.isInGame && !d.isFloating && d.tilePosition == a
+          )
         }.filter(d => d.nativeUnit.getHitPoints < d.nativeUnit.getType.maxHitPoints)
-         .filterNot(d => gateOpened && gateDepotIds.contains(d.nativeUnitId))
+          .filterNot(d => gateOpened && gateDepotIds.contains(d.nativeUnitId))
         damagedWall.foreach { d =>
           val assigned = unitManager.allJobsByType[RepairWallDepot].count(j =>
-            j.targetId == d.nativeUnitId && !j.failedOrObsolete && !j.isFinished)
+            j.targetId == d.nativeUnitId && !j.failedOrObsolete && !j.isFinished
+          )
           if (assigned < 2) {
             val nativeIds = nativeGame.self().getUnits.asScala.map(_.getID).toSet
-            val request = UnitJobRequest.idleOfType(repairers, classOf[SCV], 2 - assigned, Priority.Supply)
+            val request   = UnitJobRequest.idleOfType(repairers, classOf[SCV], 2 - assigned, Priority.Supply)
               .withOnlyAccepting { w =>
-                val job = unitManager.jobOf(w)
+                val job    = unitManager.jobOf(w)
                 val nearby = w.currentTile.distanceToIsLess(d.centerTile, 12) &&
                   w.currentArea.contains(d.areaOnMap)
                 // An unfinished depot may be far from the base; any miner may resume it.
                 nativeIds(w.nativeUnitId) && (d.isBeingCreated || nearby) &&
-                  (job.isIdle || job.isInstanceOf[GatherMineralsAtSinglePatch])
-              }.withRequest(_.withCherryPicker_!(UnitRequest.CherryPickers.cherryPickWorkerByDistance[SCV](d.centerTile)()))
+                (job.isIdle || job.isInstanceOf[GatherMineralsAtSinglePatch])
+              }.withRequest(_.withCherryPicker_!(
+                UnitRequest.CherryPickers.cherryPickWorkerByDistance[SCV](d.centerTile)()
+              ))
             unitManager.request(request, buildIfNoneAvailable = false).units.foreach { w =>
               repairers.assignJob_!(new RepairWallDepot(w, d, repairers))
-              NativeMatchEvidence.trace("wall-repair-assigned", s"depot=${d.nativeUnitId} scv=${w.nativeUnitId} hp=${d.nativeUnit.getHitPoints}")
+              NativeMatchEvidence.trace(
+                "wall-repair-assigned",
+                s"depot=${d.nativeUnitId} scv=${w.nativeUnitId} hp=${d.nativeUnit.getHitPoints}"
+              )
             }
           }
         }
@@ -388,7 +410,7 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
   }
 
   private def makeDemolishers(depot: SupplyDepot, missing: Int): Unit = {
-    def ask[T <: MobileRangeWeapon : ClassTag](cls: Class[T]): Unit = {
+    def ask[T <: MobileRangeWeapon: ClassTag](cls: Class[T]): Unit = {
       val request = UnitJobRequest.idleOfType(demolishers, cls, missing, Priority.Supply)
         .withOnlyAccepting { w =>
           val job = unitManager.jobOf(w)
@@ -396,8 +418,10 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
         }
       unitManager.request(request, buildIfNoneAvailable = false).units.foreach { w =>
         demolishers.assignJob_!(new DemolishWallDepot(w, depot, demolishers))
-        NativeMatchEvidence.trace("wall-gate-demolish",
-          s"depot=${depot.nativeUnitId} unit=${w.nativeUnitId} hp=${depot.nativeUnit.getHitPoints}")
+        NativeMatchEvidence.trace(
+          "wall-gate-demolish",
+          s"depot=${depot.nativeUnitId} unit=${w.nativeUnitId} hp=${depot.nativeUnit.getHitPoints}"
+        )
       }
     }
     if (ownUnits.allByType[Tank].exists(t => t.isInGame && !t.isBeingCreated)) ask(classOf[Tank])
@@ -408,33 +432,39 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
 private[pony] object WallRepairState {
   sealed trait State
   case object Repairing extends State
-  case object Finished extends State
-  case object Failed extends State
+  case object Finished  extends State
+  case object Failed    extends State
   def apply(workerAlive: Boolean, targetAlive: Boolean, damaged: Boolean, floating: Boolean): State =
     if (!workerAlive) Failed else if (!targetAlive || !damaged) Finished else if (floating) Failed else Repairing
 }
 
 /** An SCV patches a wall depot while it is under attack and returns to mining afterwards. */
 private[pony] class RepairWallDepot(worker: SCV, depot: SupplyDepot, owner: Employer[SCV])
-  extends UnitWithJob[SCV](owner, worker, Priority.Supply) with Interruptable[SCV] {
+    extends UnitWithJob[SCV](owner, worker, Priority.Supply) with Interruptable[SCV] {
   override def shortDebugString = s"Repair wall depot ${depot.nativeUnitId}"
-  private def state = WallRepairState(worker.nativeUnit.exists && !worker.isDead, depot.nativeUnit.exists,
-    depot.nativeUnit.getHitPoints < depot.nativeUnit.getType.maxHitPoints, depot.isFloating)
-  override def isFinished = state == WallRepairState.Finished
+  private def state             = WallRepairState(
+    worker.nativeUnit.exists && !worker.isDead,
+    depot.nativeUnit.exists,
+    depot.nativeUnit.getHitPoints < depot.nativeUnit.getType.maxHitPoints,
+    depot.isFloating
+  )
+  override def isFinished               = state == WallRepairState.Finished
   override def jobHasFailedWithoutDeath = state == WallRepairState.Failed
-  override def everyNth = 23
-  override def ordersForTick = Orders.RepairBuilding(worker, depot).toSeq
-  def targetId = depot.nativeUnitId
+  override def everyNth                 = 23
+  override def ordersForTick            = Orders.RepairBuilding(worker, depot).toSeq
+  def targetId                          = depot.nativeUnitId
 }
 
 /** One unit shells the chosen wall depot until the way out is open. */
-private[pony] class DemolishWallDepot(attacker: MobileRangeWeapon, depot: SupplyDepot,
-                                      owner: Employer[MobileRangeWeapon])
-  extends UnitWithJob[MobileRangeWeapon](owner, attacker, Priority.Supply) with Interruptable[MobileRangeWeapon] {
-  override def shortDebugString = s"Open the wall at depot ${depot.nativeUnitId}"
-  override def isFinished = !depot.nativeUnit.exists || depot.isDead
+private[pony] class DemolishWallDepot(
+    attacker: MobileRangeWeapon,
+    depot: SupplyDepot,
+    owner: Employer[MobileRangeWeapon]
+) extends UnitWithJob[MobileRangeWeapon](owner, attacker, Priority.Supply) with Interruptable[MobileRangeWeapon] {
+  override def shortDebugString         = s"Open the wall at depot ${depot.nativeUnitId}"
+  override def isFinished               = !depot.nativeUnit.exists || depot.isDead
   override def jobHasFailedWithoutDeath = !attacker.nativeUnit.exists || attacker.isDead
-  override def everyNth = 23
-  override def ordersForTick = Orders.AttackUnit(attacker, depot).toSeq
-  def targetId = depot.nativeUnitId
+  override def everyNth                 = 23
+  override def ordersForTick            = Orders.AttackUnit(attacker, depot).toSeq
+  def targetId                          = depot.nativeUnitId
 }

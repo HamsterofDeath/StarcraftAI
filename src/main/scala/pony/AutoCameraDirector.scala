@@ -17,7 +17,7 @@ final class AutoCameraDirector(minDwellFrames: Int, interruptMargin: Int, follow
         case Some(shown) if shown.reason == best.reason && shown.tile.distanceTo(best.tile) <= followRadius =>
           current = Some(best)
         case Some(shown) if frame - shownSince < minDwellFrames && best.score < shown.score + interruptMargin =>
-        case _ =>
+        case _                                                                                                =>
           current = Some(best)
           shownSince = frame
       }

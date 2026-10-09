@@ -28,6 +28,6 @@ class DefaultBehaviours(universe: Universe) extends OrderlessAIModule[WrapsUnit]
       }
     }
     info(s"Attaching default behaviour to new ${hireUs.size} units", hireUs.nonEmpty)
-    hireUs.foreach {unitManager.assignJob_!}
+    hireUs.foreach { unitManager.assignJob_! }
   }
 }

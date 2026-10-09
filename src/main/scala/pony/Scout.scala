@@ -10,4 +10,5 @@ import scala.collection.immutable.HashMap
 import scala.collection.mutable.ListBuffer
 
 class Scout(unit: APIUnit)
-  extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with Mechanic with IsBig with ExplosiveAirDamage with ArmedMobile with NormalGroundDamage with MediumAttackAir with FastAttackGround
+    extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with Mechanic with IsBig with ExplosiveAirDamage
+    with ArmedMobile with NormalGroundDamage with MediumAttackAir with FastAttackGround

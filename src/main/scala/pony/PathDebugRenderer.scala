@@ -9,7 +9,7 @@ class PathDebugRenderer(override val universe: Universe) extends AIPlugIn with H
       renderer.in_!(Color.Purple)
       universe.worldDominationPlan.allAttacks.foreach { attack =>
         val center = attack.currentCenter
-        val count = attack.force.size
+        val count  = attack.force.size
         renderer.drawCircleAround(center.asMapPosition, math.round(math.sqrt(count)).toInt)
         attack.completePath.result.foreach { path =>
           path.renderDebug(renderer)

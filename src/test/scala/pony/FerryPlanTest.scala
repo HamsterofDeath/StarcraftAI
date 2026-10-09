@@ -17,25 +17,30 @@ class FerryPlanTest extends Specification with MustMatchers {
   private val targetArea = new Grid2D(1, 1, collection.immutable.BitSet.empty)
 
   // Ferry planning needs only unit state; no native game or new mocking dependency is required.
-  private def unitState[T](unitClass: Class[T], name: String,
-                           slots: Int, x: Int, onGround: Boolean): T = {
+  private def unitState[T](
+      unitClass: Class[T],
+      name: String,
+      slots: Int,
+      x: Int,
+      onGround: Boolean
+  ): T = {
     val state = new InvocationHandler {
       override def invoke(proxy: AnyRef, method: Method, arguments: Array[AnyRef]): AnyRef = {
         method.getName match {
           case "transportSize" => Int.box(slots)
-          case "currentTile" => MapTilePosition(x, 0)
-          case "currentArea" => None
-          case "onGround" => Boolean.box(onGround)
-          case "currentTick" => Int.box(0)
-          case "toString" => name
-          case "hashCode" => Int.box(System.identityHashCode(proxy))
-          case "equals" => Boolean.box(proxy eq arguments(0))
-          case unexpected => throw new UnsupportedOperationException(unexpected)
+          case "currentTile"   => MapTilePosition(x, 0)
+          case "currentArea"   => None
+          case "onGround"      => Boolean.box(onGround)
+          case "currentTick"   => Int.box(0)
+          case "toString"      => name
+          case "hashCode"      => Int.box(System.identityHashCode(proxy))
+          case "equals"        => Boolean.box(proxy eq arguments(0))
+          case unexpected      => throw new UnsupportedOperationException(unexpected)
         }
       }
     }
     Proxy.newProxyInstance(unitClass.getClassLoader, Array[Class[?]](unitClass), state)
-    .asInstanceOf[T]
+      .asInstanceOf[T]
   }
 
   private def cargo(name: String, slots: Int, x: Int, onGround: Boolean = true) =
@@ -47,8 +52,8 @@ class FerryPlanTest extends Specification with MustMatchers {
   }
 
   def rejectOverCapacity = {
-    val queued = cargo("queued small unit", 1, 20)
-    val incoming = cargo("incoming large unit", 4, 1)
+    val queued    = cargo("queued small unit", 1, 20)
+    val incoming  = cargo("incoming large unit", 4, 1)
     val ferryPlan = plan(queued)
     (1 to 7).foreach { index =>
       ferryPlan.withMore_!(cargo(s"loaded small unit $index", 1, index, onGround = false))
@@ -61,9 +66,9 @@ class FerryPlanTest extends Specification with MustMatchers {
   }
 
   def replaceEqualSize = {
-    val queued = cargo("queued large unit", 4, 20)
-    val loaded = cargo("loaded large unit", 4, 2, onGround = false)
-    val incoming = cargo("incoming large unit", 4, 1)
+    val queued    = cargo("queued large unit", 4, 20)
+    val loaded    = cargo("loaded large unit", 4, 2, onGround = false)
+    val incoming  = cargo("incoming large unit", 4, 1)
     val ferryPlan = plan(queued).withMore_!(loaded)
 
     val replaced = ferryPlan.replaceQueuedUnitIfPossible_!(incoming)
@@ -74,9 +79,9 @@ class FerryPlanTest extends Specification with MustMatchers {
 
   def chooseFeasibleCargo = {
     val farthestSmall = cargo("farthest small unit", 1, 30)
-    val nearerLarge = cargo("nearer large unit", 4, 20)
-    val incoming = cargo("incoming large unit", 4, 1)
-    val loaded = (1 to 3).map { index =>
+    val nearerLarge   = cargo("nearer large unit", 4, 20)
+    val incoming      = cargo("incoming large unit", 4, 1)
+    val loaded        = (1 to 3).map { index =>
       cargo(s"loaded small unit $index", 1, index, onGround = false)
     }
     val ferryPlan = plan(farthestSmall).withMore_!(nearerLarge)

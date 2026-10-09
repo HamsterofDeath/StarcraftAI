@@ -21,8 +21,8 @@ trait Universe extends HasLazyVals {
 
   def pluginByType[T: ClassTag] = {
     plugins.find(_.getClass == implicitly[ClassTag[T]].runtimeClass)
-    .get
-    .asInstanceOf[T]
+      .get
+      .asInstanceOf[T]
   }
 
   private val myTime             = new Time(this)
@@ -77,5 +77,5 @@ trait Universe extends HasLazyVals {
   }
 
   private def evalRace = (ownUnits.allMobiles.iterator ++ ownUnits.allBuildings.iterator).next()
-                         .mySCRace
+    .mySCRace
 }

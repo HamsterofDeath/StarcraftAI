@@ -10,4 +10,4 @@ import scala.collection.immutable.HashMap
 import scala.collection.mutable.ListBuffer
 
 class ScienceFacility(unit: APIUnit)
-  extends AnyUnit(unit) with Upgrader with CanBuildAddons with UpgradeLimitLifter with TerranBuilding
+    extends AnyUnit(unit) with Upgrader with CanBuildAddons with UpgradeLimitLifter with TerranBuilding

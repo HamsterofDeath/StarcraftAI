@@ -10,4 +10,4 @@ import scala.collection.immutable.HashMap
 import scala.collection.mutable.ListBuffer
 
 class Scourge(unit: APIUnit)
-  extends AnyUnit(unit) with ZergMobileUnit with AirUnit with IsSmall with ArmedMobile
+    extends AnyUnit(unit) with ZergMobileUnit with AirUnit with IsSmall with ArmedMobile

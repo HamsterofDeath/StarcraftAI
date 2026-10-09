@@ -13,7 +13,6 @@ class TwilightSparkle(world: DefaultWorld) {
     worldDomination.renderDebug(renderer)
   }
 
-
   val universe: Universe = new Universe {
 
     override def pathfinders = new Pathfinders {
@@ -91,27 +90,27 @@ class TwilightSparkle(world: DefaultWorld) {
   )
 
   private val forces = {
-    val game = world.nativeGame
-    val me = game.self
+    val game    = world.nativeGame
+    val me      = game.self
     val friends = game.allies()
     val enemies = game.enemies()
     new Forces(me, friends.asScala.toSet, enemies.asScala.toSet, universe)
   }
 
-  private val unitManager            = new UnitManager(universe)
-  private val upgradeManager         = new UpgradeManager(universe)
-  private val maps                   = new MapLayers(universe)
-  private val myPathFinderGround     = LazyVal.from {
+  private val unitManager        = new UnitManager(universe)
+  private val upgradeManager     = new UpgradeManager(universe)
+  private val maps               = new MapLayers(universe)
+  private val myPathFinderGround = LazyVal.from {
     new PathFinder(maps, false, true)
   }
-  private val myPathFinderAirSafe    = universe.oncePerTick {
+  private val myPathFinderAirSafe = universe.oncePerTick {
     new PathFinder(maps, true, false)
   }
   private val myPathFinderGroundSafe = universe.oncePerTick {
     new PathFinder(maps, true, true)
   }
-  private val unitGrid               = new UnitGrid(universe)
-  private val ferryManager           = new FerryManager(universe)
+  private val unitGrid     = new UnitGrid(universe)
+  private val ferryManager = new FerryManager(universe)
 
   enemyUnits.registerKill_!(onKillOrCreate)
   ownUnits.registerKill_!(onKillOrCreate)
@@ -120,15 +119,15 @@ class TwilightSparkle(world: DefaultWorld) {
 
   def plugins = aiModules
 
-  def pluginByType[T <: AIModule[?] : ClassTag] = {
+  def pluginByType[T <: AIModule[?]: ClassTag] = {
     val c = implicitly[ClassTag[T]].runtimeClass
     aiModules.find(e => c >= e.getClass).get.asInstanceOf[T]
   }
 
   def queueOrdersForTick(): Unit = {
 
-    ownUnits.consumeFresh_! {_.init_!(universe)}
-    enemyUnits.consumeFresh_! {_.init_!(universe)}
+    ownUnits.consumeFresh_! { _.init_!(universe) }
+    enemyUnits.consumeFresh_! { _.init_!(universe) }
 
     universe.onTick_!()
 
@@ -150,8 +149,9 @@ class TwilightSparkle(world: DefaultWorld) {
       unitGrid.onTick_!()
       ferryManager.onTick_!()
 
-      val heavyTick = tick / AiCadence.frames
-      val activeInThisTick = aiModules.filter(e => tick == 0 || heavyTick % math.max(1, e.onNth / AiCadence.frames) == 0)
+      val heavyTick        = tick / AiCadence.frames
+      val activeInThisTick =
+        aiModules.filter(e => tick == 0 || heavyTick % math.max(1, e.onNth / AiCadence.frames) == 0)
       activeInThisTick.flatMap(_.ordersForTick).foreach(world.orderQueue.queue_!)
 
     }

@@ -1,11 +1,13 @@
 package pony
 package brain
 
-class ConstructAddon[W <: CanBuildAddons, A <: Addon](employer: Employer[W],
-                                                      basis: W,
-                                                      what: Class[? <: A],
-                                                      funding: ResourceApproval)
-  extends UnitWithJob[W](employer, basis, Priority.Addon) with JobHasFunding[W] with CreatesUnit[W] with IssueOrderNTimes[W] {
+class ConstructAddon[W <: CanBuildAddons, A <: Addon](
+    employer: Employer[W],
+    basis: W,
+    what: Class[? <: A],
+    funding: ResourceApproval
+) extends UnitWithJob[W](employer, basis, Priority.Addon) with JobHasFunding[W] with CreatesUnit[W]
+    with IssueOrderNTimes[W] {
   assert(!basis.isBuildingAddon)
   assert(!basis.hasCompleteAddon)
   assert(!basis.hasAddonAttached)
@@ -25,8 +27,10 @@ class ConstructAddon[W <: CanBuildAddons, A <: Addon](employer: Employer[W],
 
   override def onTick_!(): Unit = {
     super.onTick_!()
-    assert(failedOrObsolete || resources.hasStillLocked(proofForFunding),
-      s"Someone stole $proofForFunding from $this")
+    assert(
+      failedOrObsolete || resources.hasStillLocked(proofForFunding),
+      s"Someone stole $proofForFunding from $this"
+    )
     if (!startedConstruction) {
       startedConstruction = basis.isBuildingAddon
     }

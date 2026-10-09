@@ -9,19 +9,25 @@ class UnitJobRenderer(override val universe: Universe) extends AIPlugIn with Has
       val renderUs = unitManager.allJobsByUnitType[Mobile].filter { job =>
         job.unit match {
           case g: GroundUnit if !g.loaded => true
-          case a: AirUnit => true
-          case _ => false
+          case a: AirUnit                 => true
+          case _                          => false
         }
       }
 
       renderUs.foreach { job =>
-        renderer.drawTextAtMobileUnit(job.unit,
-          s"${job.shortDebugString} -> ${job.unit.nativeUnit.getOrder}", 1)
+        renderer.drawTextAtMobileUnit(
+          job.unit,
+          s"${job.shortDebugString} -> ${job.unit.nativeUnit.getOrder}",
+          1
+        )
         job.renderDebug(renderer)
       }
       unitManager.allJobsByUnitType[Building].foreach { job =>
-        renderer.drawTextAtStaticUnit(job.unit,
-          s"${job.shortDebugString} -> ${job.unit.nativeUnit.getOrder}", 1)
+        renderer.drawTextAtStaticUnit(
+          job.unit,
+          s"${job.shortDebugString} -> ${job.unit.nativeUnit.getOrder}",
+          1
+        )
       }
     }
   }

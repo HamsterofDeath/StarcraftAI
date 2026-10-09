@@ -7,7 +7,7 @@ import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
 class MigrationPath(follow: Paths, override val universe: Universe)
-  extends HasUniverse {
+    extends HasUniverse {
 
   private val remaining       = mutable.HashMap.empty[Mobile, ArrayBuffer[MapTilePosition]]
   private val counter         = mutable.HashMap.empty[Mobile, Int]
@@ -40,8 +40,8 @@ class MigrationPath(follow: Paths, override val universe: Universe)
   def isCloseToUnsafeTarget(m: Mobile) = {
     (remaining.get(m) match {
       case None if counter.contains(m) => true
-      case Some(path) if path.isEmpty => true
-      case _ => false
+      case Some(path) if path.isEmpty  => true
+      case _                           => false
     }) && m.currentTile.distanceToIsLess(originalDestination, 7)
   }
 
@@ -60,12 +60,14 @@ class MigrationPath(follow: Paths, override val universe: Universe)
 
   def nextFor(t: Mobile) = {
     assertCalled()
-    val index = counter.getOrElseUpdate(t, counter.size) % follow.pathCount
-    val initialFullPath = follow.paths(index)
-    val remainingPathForThisUnit = remaining.getOrElseUpdate(t,
-      ArrayBuffer.empty ++= initialFullPath.waypoints)
-    val closest = remainingPathForThisUnit.minByOpt(_.distanceSquaredTo(t.currentTile))
-    val formationPoint = helper.assignedPosition(t)
+    val index                    = counter.getOrElseUpdate(t, counter.size) % follow.pathCount
+    val initialFullPath          = follow.paths(index)
+    val remainingPathForThisUnit = remaining.getOrElseUpdate(
+      t,
+      ArrayBuffer.empty ++= initialFullPath.waypoints
+    )
+    val closest              = remainingPathForThisUnit.minByOpt(_.distanceSquaredTo(t.currentTile))
+    val formationPoint       = helper.assignedPosition(t)
     val canSeeFormationPoint = formationPoint.exists { target =>
       target.distanceToIsLess(t.currentTile, 15) &&
       mapLayers.rawWalkableMap.connectedByLine(target, t.currentTile)
@@ -73,10 +75,10 @@ class MigrationPath(follow: Paths, override val universe: Universe)
     def isOver30Percent = {
       remainingPathForThisUnit.size / initialFullPath.waypoints.size.toDouble <= 0.7
     }
-    def manyArrived = atFormationStep.size.toDouble / counter.size >= 0.8
+    def manyArrived   = atFormationStep.size.toDouble / counter.size >= 0.8
     def skipFormation = {
       t.currentTile.distanceSquaredTo(initialFullPath.unsafeTarget) <
-      formationPoint.map(t.currentTile.distanceSquaredTo).getOrElse(10000)
+        formationPoint.map(t.currentTile.distanceSquaredTo).getOrElse(10000)
     }
 
     def clearPath() = remainingPathForThisUnit.clear()

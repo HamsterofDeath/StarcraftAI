@@ -12,22 +12,22 @@ import scala.collection.mutable.ListBuffer
 trait GroundWeapon extends Weapon {
 
   def isInstantAttackGround = false
-  def isMelee = groundRangeTiles <= 2
+  def isMelee               = groundRangeTiles <= 2
 
-  val groundRangePixels = groundWeapon.maxRange()
-  val groundRangeTiles  = groundRangePixels / tileSize
+  val groundRangePixels               = groundWeapon.maxRange()
+  val groundRangeTiles                = groundRangePixels / tileSize
   private val groundRangeTilesSquared = groundRangeTiles * groundRangeTiles
-  val groundCanAttackAir     = groundWeapon.targetsAir()
-  val groundCanAttackGround  = groundWeapon.targetsGround()
-  val groundDamageMultiplier = groundWeapon.damageFactor()
-  def isInstantEffectAttackGround = damageDelayFactorGround == 0
+  val groundCanAttackAir              = groundWeapon.targetsAir()
+  val groundCanAttackGround           = groundWeapon.targetsGround()
+  val groundDamageMultiplier          = groundWeapon.damageFactor()
+  def isInstantEffectAttackGround     = damageDelayFactorGround == 0
   val groundDamageType: DamageType
-  protected lazy val groundWeapon          = initialNativeType.groundWeapon()
-  private        val damage                = LazyVal.from {
+  protected lazy val groundWeapon = initialNativeType.groundWeapon()
+  private val damage              = LazyVal.from {
     // will be invalidated on upgrade
     evalDamage(groundWeapon, groundDamageType, groundDamageMultiplier, targetsAir = false)
   }
-  private        val myInGroundWeaponRange = oncePerTick {
+  private val myInGroundWeaponRange = oncePerTick {
     geoHelper.circle(centerTile, math.round(groundRangePixels.toDouble / 32).toInt)
   }
 
@@ -48,8 +48,12 @@ trait GroundWeapon extends Weapon {
 
   def inGroundWeaponRange = myInGroundWeaponRange.get
 
-  override def calculateDamageOn(other: Armor, assumeHP: Int, assumeShields: Int,
-                                 shotCount: Int) = {
+  override def calculateDamageOn(
+      other: Armor,
+      assumeHP: Int,
+      assumeShields: Int,
+      shotCount: Int
+  ) = {
     if (selfCanAttack(other.owner)) {
       damage.damageIfHits(other, assumeHP, assumeShields, shotCount)
     } else {
@@ -61,7 +65,8 @@ trait GroundWeapon extends Weapon {
     matchOn[Boolean](other)(
       _ => groundCanAttackAir,
       _ => groundCanAttackGround,
-      b => if (b.isFloating) groundCanAttackAir else groundCanAttackGround)
+      b => if (b.isFloating) groundCanAttackAir else groundCanAttackGround
+    )
   }
 
   private def quickRangeExclusion(other: CanDie): Boolean = {
@@ -71,9 +76,11 @@ trait GroundWeapon extends Weapon {
   override def isInWeaponRangeExact(other: CanDie) = {
     if (selfCanAttack(other) && !quickRangeExclusion(other))
 
-      matchOn(other)(air => nativeUnit.isInWeaponRange(other.nativeUnit),
+      matchOn(other)(
+        air => nativeUnit.isInWeaponRange(other.nativeUnit),
         ground => nativeUnit.isInWeaponRange(other.nativeUnit),
-        building => nativeUnit.isInWeaponRange(other.nativeUnit))
+        building => nativeUnit.isInWeaponRange(other.nativeUnit)
+      )
     else
       super.isInWeaponRangeExact(other)
   }

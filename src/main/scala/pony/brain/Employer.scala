@@ -5,7 +5,7 @@ import scala.collection.mutable.ArrayBuffer
 import scala.reflect.ClassTag
 
 // TODO check if this class really has a purpose
-class Employer[T <: WrapsUnit : ClassTag](override val universe: Universe) extends HasUniverse {
+class Employer[T <: WrapsUnit: ClassTag](override val universe: Universe) extends HasUniverse {
   self =>
   private var employees = ArrayBuffer.empty[T]
 
@@ -40,10 +40,12 @@ class Employer[T <: WrapsUnit : ClassTag](override val universe: Universe) exten
   }
 
   def assignJob_!(job: UnitWithJob[T]): Unit = {
-    assert(!employees.contains(job.unit),
+    assert(
+      !employees.contains(job.unit),
       s"Already hired ${job.unit} by $this, cannot give it new job $job because it already has ${
-        unitManager.jobOf(job.unit)
-      }")
+          unitManager.jobOf(job.unit)
+        }"
+    )
     assert(this == job.employer, s"$this is not ${job.employer}")
     unitManager.assignJob_!(job)
   }

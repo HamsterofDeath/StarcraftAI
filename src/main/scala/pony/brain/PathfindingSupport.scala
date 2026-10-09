@@ -4,26 +4,27 @@ package brain
 trait PathfindingSupport[T <: Mobile] extends JobOrSubJob[T] {
 
   private val needsPath = oncePer(Primes.prime23) {
-    val target = pathTargetPosition
+    val target       = pathTargetPosition
     def areaOfTarget = target.flatMap(mapLayers.rawWalkableMap.areaOf)
-    def areaOfUnit = unit.currentArea
-
+    def areaOfUnit   = unit.currentArea
 
     target match {
       case Some(where) =>
         val far = unit.currentTile.distanceToIsMore(where, 15)
-        far && (unit match {
-          case g: GroundUnit if g.onGround && areaOfTarget == areaOfUnit &&
-                                areaOfTarget.isDefined =>
+        far &&
+        (unit match {
+          case g: GroundUnit
+              if g.onGround && areaOfTarget == areaOfUnit &&
+                areaOfTarget.isDefined =>
             !mapLayers.rawWalkableMap.connectedByLine(unit.currentTile, where)
           case a: AirUnit => true
-          case _ => false
+          case _          => false
         })
       case None =>
         false
     }
   }
-  private var myPath    = BWFuture.none[MigrationPath]
+  private var myPath = BWFuture.none[MigrationPath]
 
   override def renderDebug(renderer: Renderer) = {
     super.renderDebug(renderer)
@@ -38,7 +39,7 @@ trait PathfindingSupport[T <: Mobile] extends JobOrSubJob[T] {
   override def higherPriorityOrder = {
     def newPathRequired(where: MapTilePosition): Unit = {
       trace(s"Unit $unit needs paths to $where")
-      val pf = pathfinders.safeFor(unit)
+      val pf   = pathfinders.safeFor(unit)
       val task = pf.findPath(unit.currentTile, where).imap(_.toMigration(using universe))
       myPath = task
     }
@@ -64,8 +65,8 @@ trait PathfindingSupport[T <: Mobile] extends JobOrSubJob[T] {
               Nil
             } else {
               mig.nextPositionFor(unit)
-              .map(Orders.MoveToTile(unit, _))
-              .toList
+                .map(Orders.MoveToTile(unit, _))
+                .toList
             }
           }
         }.getOrElse(noopFallback)

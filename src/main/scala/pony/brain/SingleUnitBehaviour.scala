@@ -2,7 +2,7 @@ package pony
 package brain
 
 abstract class SingleUnitBehaviour[+T <: WrapsUnit](val unit: T, meta: SingleUnitBehaviourMeta)
-  extends JobOrSubJob[T] {
+    extends JobOrSubJob[T] {
   def isNoopTask = false
 
   private var skipFor = 0

@@ -17,10 +17,10 @@ class MineralDebugRenderer(override val universe: Universe) extends AIPlugIn wit
       }
 
       universe.unitManager.allJobsByType[GatherMineralsAtSinglePatch].groupBy(_.targetPatch)
-      .foreach { case (k, v) =>
-        val estimatedWorkerCount = v.head.requiredWorkers
-        renderer.drawTextAtStaticUnit(v.head.targetPatch, estimatedWorkerCount.toString, 1)
-      }
+        .foreach { case (k, v) =>
+          val estimatedWorkerCount = v.head.requiredWorkers
+          renderer.drawTextAtStaticUnit(v.head.targetPatch, estimatedWorkerCount.toString, 1)
+        }
 
     }
   }

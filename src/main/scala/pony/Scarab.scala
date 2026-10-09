@@ -10,4 +10,5 @@ import scala.collection.immutable.HashMap
 import scala.collection.mutable.ListBuffer
 
 class Scarab(unit: APIUnit)
-  extends AnyUnit(unit) with SimplePosition with Mobile with AutoPilot with IsSmall with GroundUnit with IndestructibleUnit
+    extends AnyUnit(unit) with SimplePosition with Mobile with AutoPilot with IsSmall with GroundUnit
+    with IndestructibleUnit

@@ -10,4 +10,4 @@ import scala.collection.immutable.HashMap
 import scala.collection.mutable.ListBuffer
 
 class Pylon(unit: APIUnit)
-  extends AnyUnit(unit) with Building with PsiArea with ImmobileSupplyProvider
+    extends AnyUnit(unit) with Building with PsiArea with ImmobileSupplyProvider

@@ -7,37 +7,43 @@ import pony.brain.modules.Strategy
 import scala.collection.mutable
 import scala.reflect.ClassTag
 
-class ConstructBuilding[W <: WorkerUnit : ClassTag, B <: Building](worker: W,
-                                                                   buildingType: Class[? <: B],
-                                                                   employer: Employer[W],
-                                                                   val buildWhere: MapTilePosition,
-                                                                   funding: ResourceApprovalSuccess,
-                                                                   val belongsTo:
-                                                                   Option[ResourceArea] = None,
-                                                                   sharedTravelProgress: Option[ConstructionTravelProgress] = None)
-  extends UnitWithJob[W](employer, worker, Priority.ConstructBuilding)
-          with JobHasFunding[W]
-          with CreatesUnit[W]
-          with CanAcceptUnitSwitch[W]
-          with FerrySupport[W]
-          with CanAcceptSwitchAndHasFunding[W]
-          with PathfindingSupport[W]
-          with IssueOrderNTimes[W] {
+class ConstructBuilding[W <: WorkerUnit: ClassTag, B <: Building](
+    worker: W,
+    buildingType: Class[? <: B],
+    employer: Employer[W],
+    val buildWhere: MapTilePosition,
+    funding: ResourceApprovalSuccess,
+    val belongsTo: Option[ResourceArea] = None,
+    sharedTravelProgress: Option[ConstructionTravelProgress] = None
+) extends UnitWithJob[W](employer, worker, Priority.ConstructBuilding)
+    with JobHasFunding[W]
+    with CreatesUnit[W]
+    with CanAcceptUnitSwitch[W]
+    with FerrySupport[W]
+    with CanAcceptSwitchAndHasFunding[W]
+    with PathfindingSupport[W]
+    with IssueOrderNTimes[W] {
   self =>
 
   private lazy val travelProgress = sharedTravelProgress.getOrElse {
-    val target = if (strategy.current.isInstanceOf[Strategy.SimpleTerran] &&
-      (isMainBuilding || buildingType == classOf[Bunker])) Some(buildWhere) else None
+    val target =
+      if (
+        strategy.current.isInstanceOf[Strategy.SimpleTerran] &&
+        (isMainBuilding || buildingType == classOf[Bunker])
+      ) Some(buildWhere)
+      else None
     new ConstructionTravelProgress(currentTick, unit.currentTile, target)
   }
   private var arrivalCommandsReset = false
 
-  assert(universe.mapLayers.rawWalkableMap.insideBounds(buildWhere),
-    s"Target building spot is outside of map: $buildWhere, check $self")
+  assert(
+    universe.mapLayers.rawWalkableMap.insideBounds(buildWhere),
+    s"Target building spot is outside of map: $buildWhere, check $self"
+  )
 
   val area = {
     val unitType = buildingType.toUnitType
-    val size = Size.shared(unitType.tileWidth(), unitType.tileHeight())
+    val size     = Size.shared(unitType.tileWidth(), unitType.tileHeight())
     Area(buildWhere, size)
   }
   private val alternativeWorkers = {
@@ -62,7 +68,7 @@ class ConstructBuilding[W <: WorkerUnit : ClassTag, B <: Building](worker: W,
       data
     }.named("Find worker path")
   }
-  private val isMainBuilding     = classOf[MainBuilding] >= buildingType
+  private val isMainBuilding = classOf[MainBuilding] >= buildingType
 
   listen_!((failed: Boolean) => {
     mapLayers.unblockBuilding_!(area)
@@ -71,10 +77,11 @@ class ConstructBuilding[W <: WorkerUnit : ClassTag, B <: Building](worker: W,
   assert(
     resources.detailedLocks.exists(e => e.whatFor == buildingType && e.reqs.sum == funding.sum),
     s"Something is wrong, check $this, it is supposed to have ${
-      funding.sum
-    } funding, but the resource manager only has\n ${
-      resources.detailedLocks.mkString("\n")
-    }\nlocked")
+        funding.sum
+      } funding, but the resource manager only has\n ${
+        resources.detailedLocks.mkString("\n")
+      }\nlocked"
+  )
   private var startedMovingToSite       = false
   private var startedActualConstruction = false
   private var finishedConstruction      = false
@@ -108,10 +115,10 @@ class ConstructBuilding[W <: WorkerUnit : ClassTag, B <: Building](worker: W,
   }
 
   override def stillWantsOptimization = canSwitchNow &&
-                                        buildWhere.distanceToIsMore(unit.currentTile, 3) &&
-                                        stillLocksResources &&
-                                        !failedOrObsolete &&
-                                        unit.onGround
+    buildWhere.distanceToIsMore(unit.currentTile, 3) &&
+    stillLocksResources &&
+    !failedOrObsolete &&
+    unit.onGround
 
   override def canSwitchNow = {
     !startedActualConstruction
@@ -142,9 +149,13 @@ class ConstructBuilding[W <: WorkerUnit : ClassTag, B <: Building](worker: W,
   override def jobHasFailedWithoutDeath: Boolean = {
     if (unit.onGround) {
       val byState = {
-        travelProgress.failed(currentTick, unit.currentTile,
-          unit.currentTile.distanceToIsLess(buildWhere, 4), worker.isConstructingBuilding,
-          times + 10) &&
+        travelProgress.failed(
+          currentTick,
+          unit.currentTile,
+          unit.currentTile.distanceToIsLess(buildWhere, 4),
+          worker.isConstructingBuilding,
+          times + 10
+        ) &&
         !isFinished
       }
       def expensiveCheck = {
@@ -156,8 +167,10 @@ class ConstructBuilding[W <: WorkerUnit : ClassTag, B <: Building](worker: W,
       }
 
       val fail = byState || expensiveCheck
-      warn(s"Construction of ${typeOfBuilding.className} failed, worker $worker didn't manange",
-        fail)
+      warn(
+        s"Construction of ${typeOfBuilding.className} failed, worker $worker didn't manange",
+        fail
+      )
 
       fail
     } else {
@@ -210,8 +223,15 @@ class ConstructBuilding[W <: WorkerUnit : ClassTag, B <: Building](worker: W,
     assert(!failedOrObsolete)
     stopManagingResource_!()
     markObsolete_!()
-    new ConstructBuilding(replacement, buildingType, employer, buildWhere, funding, belongsTo,
-      Some(travelProgress))
+    new ConstructBuilding(
+      replacement,
+      buildingType,
+      employer,
+      buildWhere,
+      funding,
+      belongsTo,
+      Some(travelProgress)
+    )
   }
 
   override protected def pathTargetPosition = {
@@ -224,16 +244,18 @@ class ConstructBuilding[W <: WorkerUnit : ClassTag, B <: Building](worker: W,
     private val cache = mutable.HashMap.empty[MapTilePosition, Double]
 
     def closestPathFrom(here: MapTilePosition) = {
-      cache.getOrElseUpdate(here, {
-        val candidates = source.map { path =>
-          if (path.waypoints.nonEmpty) {
-            path -> path.distanceToFinalTargetViaPath(here).getOr(s"Should never happen")
-          } else {
-            path -> 0.0
+      cache.getOrElseUpdate(
+        here, {
+          val candidates = source.map { path =>
+            if (path.waypoints.nonEmpty) {
+              path -> path.distanceToFinalTargetViaPath(here).getOr(s"Should never happen")
+            } else {
+              path -> 0.0
+            }
           }
+          candidates.minBy(_._2)._2
         }
-        candidates.minBy(_._2)._2
-      })
+      )
     }
   }
 }

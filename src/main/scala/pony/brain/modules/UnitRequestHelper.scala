@@ -10,14 +10,20 @@ trait UnitRequestHelper extends AIModule[UnitFactory] {
 
   protected def mobileCost[T <: Mobile](mobileType: Class[? <: T], priority: Priority) =
     ResourceRequests.forUnit(race, mobileType, priority)
-  protected def mobileRequest[T <: Mobile](mobileType: Class[? <: T], funding: ResourceApprovalSuccess,
-                                           priority: Priority) =
+  protected def mobileRequest[T <: Mobile](
+      mobileType: Class[? <: T],
+      funding: ResourceApprovalSuccess,
+      priority: Priority
+  ) =
     UnitJobRequest.newOfType(universe, mobileEmployer, mobileType, funding, priority = priority)
 
-  def requestUnit[T <: Mobile](mobileType: Class[? <: T], takeCareOfDependencies: Boolean,
-                               priority: Priority = Priority.Default) = {
-    val req = mobileCost(mobileType, priority)
-    var ok = false
+  def requestUnit[T <: Mobile](
+      mobileType: Class[? <: T],
+      takeCareOfDependencies: Boolean,
+      priority: Priority = Priority.Default
+  ) = {
+    val req    = mobileCost(mobileType, priority)
+    var ok     = false
     val result = resources.request(req, mobileEmployer)
     result.ifSuccess { suc =>
       val unitReq = mobileRequest(mobileType, suc, priority)

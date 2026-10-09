@@ -7,21 +7,27 @@ trait AddonRequestHelper extends AIModule[CanBuildAddons] {
 
   private val helper = new HelperAIModule[WorkerUnit](universe) with BuildingRequestHelper
 
-  def requestAddon[T <: Addon](addonType: Class[? <: T],
-                               handleDependencies: Boolean = false): Unit = {
+  def requestAddon[T <: Addon](
+      addonType: Class[? <: T],
+      handleDependencies: Boolean = false
+  ): Unit = {
     trace(s"Addon ${addonType.className} requested")
-    val req = ResourceRequests.forUnit(race, addonType, Priority.Addon)
+    val req    = ResourceRequests.forUnit(race, addonType, Priority.Addon)
     val result = resources.request(req, self)
     requestAddonIfResourcesProvided(addonType, handleDependencies, result)
   }
 
-  def requestAddonIfResourcesProvided[T <: Addon](addonType: Class[? <: T],
-                                                  handleDependencies: Boolean,
-                                                  result: ResourceApproval): Unit = {
+  def requestAddonIfResourcesProvided[T <: Addon](
+      addonType: Class[? <: T],
+      handleDependencies: Boolean,
+      result: ResourceApproval
+  ): Unit = {
     result.ifSuccess { suc =>
       trace(s"Addon ${addonType.className} requested using resources $suc")
-      assert(resources.hasStillLocked(suc),
-        s"This should never be called if $suc is no longer locked")
+      assert(
+        resources.hasStillLocked(suc),
+        s"This should never be called if $suc is no longer locked"
+      )
       val unitReq = UnitJobRequest.addonConstructor(self, addonType)
       trace(s"Financing possible for addon $addonType, requesting build")
       val result = unitManager.request(unitReq)

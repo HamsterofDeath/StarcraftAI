@@ -1,10 +1,13 @@
 package pony
 package brain
 
-class TrainUnit[F <: UnitFactory, T <: Mobile](factory: F, trainType: Class[? <: T], employer:
-Employer[F],
-                                               funding: ResourceApprovalSuccess)
-  extends UnitWithJob[F](employer, factory, Priority.Default) with JobHasFunding[F] with IssueOrderNTimes[F] with CreatesUnit[F] {
+class TrainUnit[F <: UnitFactory, T <: Mobile](
+    factory: F,
+    trainType: Class[? <: T],
+    employer: Employer[F],
+    funding: ResourceApprovalSuccess
+) extends UnitWithJob[F](employer, factory, Priority.Default) with JobHasFunding[F] with IssueOrderNTimes[F]
+    with CreatesUnit[F] {
 
   private val patience = 20
 
@@ -37,9 +40,9 @@ Employer[F],
   }
 
   override def isFinished = {
-    val idle = !factory.isProducing
+    val idle   = !factory.isProducing
     val isLazy = !factory.nativeUnit.isTraining
-    val ret = idle && isLazy && startedToProduce
+    val ret    = idle && isLazy && startedToProduce
     ret
   }
 

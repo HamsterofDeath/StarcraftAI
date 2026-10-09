@@ -42,9 +42,9 @@ class FileStorageLazyVal[T](gen: => T, fileName: String) extends LazyVal(gen, No
   }
 
   def fromZippedBytes(bytes: Array[Byte]) = {
-    val zi = new ZipInputStream(new ByteArrayInputStream(bytes))
+    val zi        = new ZipInputStream(new ByteArrayInputStream(bytes))
     val nextEntry = zi.getNextEntry
-    val os = new ObjectInputStream(new BufferedInputStream(zi))
+    val os        = new ObjectInputStream(new BufferedInputStream(zi))
     Try {
       val ret = os.readObject().asInstanceOf[T]
       os.close()
@@ -56,11 +56,11 @@ class FileStorageLazyVal[T](gen: => T, fileName: String) extends LazyVal(gen, No
 
   private def toZippedBytes(t: T): Array[Byte] = {
     val bytes = new ByteArrayOutputStream()
-    val o = new ObjectOutputStream(bytes)
+    val o     = new ObjectOutputStream(bytes)
     o.writeObject(t)
-    val data = bytes.toByteArray
+    val data   = bytes.toByteArray
     val zipped = new ByteArrayOutputStream()
-    val zo = new ZipOutputStream(zipped)
+    val zo     = new ZipOutputStream(zipped)
     zo.setLevel(Deflater.BEST_COMPRESSION)
     zo.putNextEntry(new ZipEntry("pony.magic"))
     zo.write(data)

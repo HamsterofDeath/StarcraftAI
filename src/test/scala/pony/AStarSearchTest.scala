@@ -21,8 +21,13 @@ class AStarSearchTest extends Specification with MustMatchers {
        """.stripMargin
 
   /** A 4-connected grid; `blocked` tiles get no node. */
-  private final class Board(cols: Int, rows: Int, blocked: Set[(Int, Int)] = Set.empty,
-                            shortcuts: Boolean = false, heuristics: Option[Heuristics[GridNode2DInt]] = None) {
+  private final class Board(
+      cols: Int,
+      rows: Int,
+      blocked: Set[(Int, Int)] = Set.empty,
+      shortcuts: Boolean = false,
+      heuristics: Option[Heuristics[GridNode2DInt]] = None
+  ) {
     val nodes: Map[(Int, Int), GridNode2DInt] = (for {
       x <- 0 until cols
       y <- 0 until rows
@@ -33,7 +38,8 @@ class AStarSearchTest extends Specification with MustMatchers {
       Seq((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)).flatMap(nodes.get).foreach(here.addNeighbour)
     }
 
-    def search(from: (Int, Int), to: (Int, Int)) = new AStarSearch[GridNode2DInt](nodes(from), nodes(to)).performSearch()
+    def search(from: (Int, Int), to: (Int, Int)) =
+      new AStarSearch[GridNode2DInt](nodes(from), nodes(to)).performSearch()
 
     private def node(x: Int, y: Int): GridNode2DInt = new GridNode2DInt(x, y) {
       override def suggestHeuristics: Heuristics[GridNode2DInt] = heuristics.getOrElse(manhattan)
@@ -51,7 +57,7 @@ class AStarSearchTest extends Specification with MustMatchers {
 
   private def adjacent(path: Seq[(Int, Int)]) = path.sliding(2).forall {
     case Seq((ax, ay), (bx, by)) => math.abs(ax - bx) + math.abs(ay - by) == 1
-    case _ => true
+    case _                       => true
   }
 
   def corridor = {
@@ -61,29 +67,29 @@ class AStarSearchTest extends Specification with MustMatchers {
 
   def solutionEnds = {
     val search = new Board(5, 5).search((0, 0), (4, 4))
-    val path = coords(search.fullSolution)
+    val path   = coords(search.fullSolution)
     (path.head === (0, 0)) and (path.contains((4, 4)) must beFalse) and (adjacent(path :+ (4, 4)) must beTrue) and
       ((search.targetOrNearestReachable.x, search.targetOrNearestReachable.y) === (4, 4))
   }
 
   def wallGap = {
-    val wall = (0 until 5).filterNot(_ == 3).map(2 -> _).toSet
+    val wall   = (0 until 5).filterNot(_ == 3).map(2 -> _).toSet
     val search = new Board(5, 5, wall).search((0, 0), (4, 0))
-    val path = coords(search.fullSolution) :+ (4, 0)
+    val path   = coords(search.fullSolution) :+ (4, 0)
     (search.isSolved must beTrue) and (path.contains((2, 3)) must beTrue) and (adjacent(path) must beTrue)
   }
 
   def unsolvable = {
-    val wall = (0 until 5).map(2 -> _).toSet
-    val board = new Board(5, 5, wall)
-    val search = board.search((0, 0), (4, 4))
+    val wall    = (0 until 5).map(2 -> _).toSet
+    val board   = new Board(5, 5, wall)
+    val search  = board.search((0, 0), (4, 4))
     val nearest = (search.targetOrNearestReachable.x, search.targetOrNearestReachable.y)
     (search.isUnsolvable must beTrue) and (search.isSolved must beFalse) and (nearest._1 must be_<(2))
   }
 
   def repeatable = {
-    val board = new Board(6, 6, Set((2, 2), (3, 2), (2, 3)))
-    val first = coords(board.search((0, 0), (5, 5)).fullSolution)
+    val board  = new Board(6, 6, Set((2, 2), (3, 2), (2, 3)))
+    val first  = coords(board.search((0, 0), (5, 5)).fullSolution)
     val second = coords(board.search((0, 0), (5, 5)).fullSolution)
     (first === second) and (first must not(beEmpty))
   }
@@ -104,7 +110,7 @@ class AStarSearchTest extends Specification with MustMatchers {
     val wall = (0 until 10).map(y => 6 + y * cols)
     val grid = new Grid2D(cols, rows, BitSet(wall*))
     val path = PathFinder.on(grid, isOnGround = true)
-               .findSimplePathNow(MapTilePosition(1, 1), MapTilePosition(10, 1))
+      .findSimplePathNow(MapTilePosition(1, 1), MapTilePosition(10, 1))
     (path.map(_.solved) === Some(true)) and
       (path.toSeq.flatMap(_.waypoints).forall(grid.free) must beTrue) and
       (path.map(_.waypoints.head) === Some(MapTilePosition(1, 1))) and

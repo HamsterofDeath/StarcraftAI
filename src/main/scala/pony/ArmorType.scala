@@ -20,10 +20,10 @@ case object Small extends ArmorType {
 
   override def damageFactorIfHitBy(damageType: DamageType) = {
     damageType match {
-      case Normal => Full
+      case Normal     => Full
       case Concussive => Full
-      case Explosive => Half
-      case _ => !!!(s"Check $damageType")
+      case Explosive  => Half
+      case _          => !!!(s"Check $damageType")
     }
   }
 
@@ -35,10 +35,10 @@ case object Medium extends ArmorType {
 
   override def damageFactorIfHitBy(damageType: DamageType) = {
     damageType match {
-      case Normal => Full
+      case Normal     => Full
       case Concussive => Half
-      case Explosive => ThreeQuarters
-      case _ => !!!(s"Check $damageType")
+      case Explosive  => ThreeQuarters
+      case _          => !!!(s"Check $damageType")
     }
   }
 
@@ -58,10 +58,10 @@ case object Large extends ArmorType {
 
   override def damageFactorIfHitBy(damageType: DamageType) = {
     damageType match {
-      case Normal => Full
+      case Normal     => Full
       case Concussive => Quarter
-      case Explosive => Full
-      case _ => !!!(s"Check $damageType")
+      case Explosive  => Full
+      case _          => !!!(s"Check $damageType")
     }
   }
 
@@ -73,10 +73,10 @@ case object BuildingArmor extends ArmorType {
 
   override def damageFactorIfHitBy(damageType: DamageType) = {
     damageType match {
-      case Normal => Full
+      case Normal     => Full
       case Concussive => Quarter
-      case Explosive => Full
-      case _ => !!!(s"Check $damageType")
+      case Explosive  => Full
+      case _          => !!!(s"Check $damageType")
     }
   }
 

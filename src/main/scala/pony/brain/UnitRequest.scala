@@ -13,20 +13,21 @@ object UnitRequest {
   }
 
   object CherryPickers {
-    def cherryPickWorkerByDistance[W <: WorkerUnit](target: MapTilePosition)
-                                                   (distanceEvaluation: MapTilePosition => Double
-                                                    = _
-                                                      .distanceSquaredTo(
-                                                        target)) =
+    def cherryPickWorkerByDistance[W <: WorkerUnit](target: MapTilePosition)(
+        distanceEvaluation: MapTilePosition => Double = _
+          .distanceSquaredTo(
+            target
+          )
+    ) =
       (job: UnitWithJob[W]) => {
-        val u = job.universe
+        val u       = job.universe
         val altUnit = job.unit
         val walkMap = u.mapLayers.rawWalkableMap
 
-        val sameArea = walkMap.areInSameWalkableArea(altUnit.currentTile, target)
-        val canSee = walkMap.connectedByLine(altUnit.currentTile, target)
-        val distance = distanceEvaluation(altUnit.currentTile)
-        val busyness = WorkerUnit.currentPriority(job)
+        val sameArea         = walkMap.areInSameWalkableArea(altUnit.currentTile, target)
+        val canSee           = walkMap.connectedByLine(altUnit.currentTile, target)
+        val distance         = distanceEvaluation(altUnit.currentTile)
+        val busyness         = WorkerUnit.currentPriority(job)
         val weightedDistance = distance * busyness.sum
         PriorityChain(sameArea.ifElse(0, 1), canSee.ifElse(0, 1), weightedDistance)
       }
@@ -35,12 +36,12 @@ object UnitRequest {
 
 trait UnitRequest[T <: WrapsUnit] {
 
-  private val id                  = UnitRequest.nextId()
-  private val onDisposeActions    = ArrayBuffer.empty[OnClearAction]
-  private var picker              = Option.empty[UnitWithJob[T] => PriorityChain]
-  private var filter              = Option.empty[T => Boolean]
-  private var autoCleanAfterTick  = true
-  private var keepResourcesLocked = false
+  private val id                       = UnitRequest.nextId()
+  private val onDisposeActions         = ArrayBuffer.empty[OnClearAction]
+  private var picker                   = Option.empty[UnitWithJob[T] => PriorityChain]
+  private var filter                   = Option.empty[T => Boolean]
+  private var autoCleanAfterTick       = true
+  private var keepResourcesLocked      = false
   def withFilter_!(rule: T => Boolean) = {
     filter = Some(rule)
     this
@@ -54,11 +55,11 @@ trait UnitRequest[T <: WrapsUnit] {
   def typeOfRequestedUnit: Class[? <: T]
   def amount: Int
   def acceptableUntyped(unit: WrapsUnit) = includesByType(unit) &&
-                                           acceptable(unit.asInstanceOf[T])
+    acceptable(unit.asInstanceOf[T])
   def includesByType(unit: WrapsUnit): Boolean = typeOfRequestedUnit.isInstance(unit)
-  def acceptable(unit: T) = filter.map(_.apply(unit)).getOrElse(true)
-  def clearable = autoCleanAfterTick
-  def dispose(): Unit = {
+  def acceptable(unit: T)                      = filter.map(_.apply(unit)).getOrElse(true)
+  def clearable                                = autoCleanAfterTick
+  def dispose(): Unit                          = {
     trace(s"$debugString is being disposed of")
     onDisposeActions.foreach(_.onClear())
   }

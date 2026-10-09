@@ -10,4 +10,5 @@ import scala.collection.immutable.HashMap
 import scala.collection.mutable.ListBuffer
 
 class InfestedTerran(unit: APIUnit)
-  extends AnyUnit(unit) with GroundUnit with GroundWeapon with NormalGroundDamage with IsSmall with ArmedMobile with MeleeWeapon with FastAttackGround with ZergMobileUnit
+    extends AnyUnit(unit) with GroundUnit with GroundWeapon with NormalGroundDamage with IsSmall with ArmedMobile
+    with MeleeWeapon with FastAttackGround with ZergMobileUnit

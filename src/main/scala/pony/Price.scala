@@ -10,7 +10,7 @@ import scala.collection.immutable.HashMap
 import scala.collection.mutable.ListBuffer
 
 object Price {
-  val zero = Price(0, 0)
+  val zero                          = Price(0, 0)
   implicit val ord: Ordering[Price] = Ordering.fromLessThan[Price](_ < _)
 }
 

@@ -11,20 +11,20 @@ trait BackgroundComputationResult[T <: WrapsUnit] {
 }
 
 object BackgroundComputationResult {
-  def nothing[T <: WrapsUnit](cleanUp: () => Unit): BackgroundComputationResult[T] = new
-      BackgroundComputationResult[T] {
-    override def repeatOrderIssue: Boolean = false
+  def nothing[T <: WrapsUnit](cleanUp: () => Unit): BackgroundComputationResult[T] =
+    new BackgroundComputationResult[T] {
+      override def repeatOrderIssue: Boolean = false
 
-    override def afterComputation(): Unit = cleanUp()
+      override def afterComputation(): Unit = cleanUp()
 
-    override def jobs: Iterable[UnitWithJob[T]] = Nil
-  }
+      override def jobs: Iterable[UnitWithJob[T]] = Nil
+    }
 
-  def result[T <: WrapsUnit, J <: UnitWithJob[T]](myJobs: Iterable[() => J],
-                                                  checkValidityNow: () => Boolean,
-                                                  canCreateNow: () => Boolean = () => true)
-                                                 (afterComputationDone: Iterable[J] => Unit) = new
-      BackgroundComputationResult[T] {
+  def result[T <: WrapsUnit, J <: UnitWithJob[T]](
+      myJobs: Iterable[() => J],
+      checkValidityNow: () => Boolean,
+      canCreateNow: () => Boolean = () => true
+  )(afterComputationDone: Iterable[J] => Unit) = new BackgroundComputationResult[T] {
 
     private lazy val executed = if (canCreateNow()) myJobs.map(_.apply()) else Nil
 

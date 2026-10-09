@@ -10,4 +10,5 @@ import scala.collection.immutable.HashMap
 import scala.collection.mutable.ListBuffer
 
 class Ultralisk(unit: APIUnit)
-  extends AnyUnit(unit) with ZergMobileUnit with IsBig with GroundWeapon with MeleeWeapon with GroundUnit with NormalGroundDamage with ArmedMobile with FastAttackGround
+    extends AnyUnit(unit) with ZergMobileUnit with IsBig with GroundWeapon with MeleeWeapon with GroundUnit
+    with NormalGroundDamage with ArmedMobile with FastAttackGround

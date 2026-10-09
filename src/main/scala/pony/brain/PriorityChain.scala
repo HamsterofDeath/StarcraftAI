@@ -15,7 +15,7 @@ object PriorityChain {
         override def compare(a: Vector[Double], b: Vector[Double]): Int = {
           var i = 0
           while (i < a.size) {
-            val left = a(i)
+            val left  = a(i)
             val right = b(i)
             if (left < right) return -1
             if (left > right) return 1

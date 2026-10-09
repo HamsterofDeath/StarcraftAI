@@ -9,8 +9,8 @@ object ResourceManager {
 }
 
 class ResourceManager(override val universe: Universe) extends HasUniverse {
-  private val resourceAssignmentInfos = mutable.HashMap.empty[ResourceApproval, HasFunding]
-  private val resourceHistory         = ArrayBuffer.empty[MinsGas]
+  private val resourceAssignmentInfos     = mutable.HashMap.empty[ResourceApproval, HasFunding]
+  private val resourceHistory             = ArrayBuffer.empty[MinsGas]
   private val empty                       = Resources(0, 0, Supplies(0, 0))
   private val locked                      = ArrayBuffer.empty[LockedResources[? <: WrapsUnit]]
   private val lockedWithoutFunds          = ArrayBuffer.empty[LockedResources[? <: WrapsUnit]]
@@ -24,14 +24,14 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
     super.onTick_!()
 
     lastResortGarbageCollection.filter(_._2 + 24 < currentTick)
-    .filter(_._1.stillLocksResources)
-    .foreach { unlock =>
-      unlock._1.unlockManually_!()
-      warn(s"Had to force unlock resources of garbage job ${unlock._1}")
-    }
+      .filter(_._1.stillLocksResources)
+      .foreach { unlock =>
+        unlock._1.unlockManually_!()
+        warn(s"Had to force unlock resources of garbage job ${unlock._1}")
+      }
 
     val obsolete = resourceAssignmentInfos.values
-                   .collect { case j: JobHasFunding[?] if j.failedOrObsolete => j }
+      .collect { case j: JobHasFunding[?] if j.failedOrObsolete => j }
 
     val newObsolete = obsolete.filterNot(e => lastResortGarbageCollection.exists(_._1 == e))
     lastResortGarbageCollection ++= newObsolete.map(e => e -> currentTick)
@@ -40,8 +40,10 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
   def informUsage[T <: WrapsUnit](proofForFunding: ResourceApproval, funded: HasFunding) = {
     assert(hasStillLocked(proofForFunding), s"$funded expected to have access to $proofForFunding")
     if (resourceAssignmentInfos.contains(proofForFunding)) {
-      trace(s"Holder of $proofForFunding changes from ${resourceAssignmentInfos(proofForFunding)}",
-        marker = "MONEY")
+      trace(
+        s"Holder of $proofForFunding changes from ${resourceAssignmentInfos(proofForFunding)}",
+        marker = "MONEY"
+      )
     }
     resourceAssignmentInfos.put(proofForFunding, funded)
     trace(s"Holder of $proofForFunding changed to $funded", marker = "MONEY")
@@ -53,7 +55,7 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
 
   def couldAffordNow(e: SCUnitType): Boolean = {
     unlockedResources >
-    (e.toUnitType.mineralPrice(), e.toUnitType.gasPrice(), e.toUnitType.supplyRequired())
+      (e.toUnitType.mineralPrice(), e.toUnitType.gasPrice(), e.toUnitType.supplyRequired())
   }
 
   def forceLock_![T <: WrapsUnit](req: ResourceRequests, employer: Employer[T]) = {
@@ -79,8 +81,8 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
   def failedToProvide = failedToProvideLastTick
 
   def stats = {
-    val start = resourceHistory.head
-    val now = resourceHistory.last
+    val start   = resourceHistory.head
+    val now     = resourceHistory.last
     val minPlus = now.mins - start.mins
     val gasPlus = now.gas - start.gas
     IncomeStats(minPlus, gasPlus, resourceHistory.size)
@@ -92,7 +94,7 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
     val isForced = lockedWithoutFunds.exists(_.reqs.sum.equalValue(proofForFunding))
     if (isForced) {
       lockedWithoutFunds.removeFirstMatch(_.reqs.sum.equalValue(proofForFunding))
-      //assert(!locked.exists(_.proof.contains(proofForFunding)), s"Duplicate lock:
+      // assert(!locked.exists(_.proof.contains(proofForFunding)), s"Duplicate lock:
       // $proofForFunding")
     } else {
       locked.removeFirstMatch(_.proof.contains(proofForFunding))
@@ -108,16 +110,21 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
     forceUnlockInternal_!(requests, employer)
   }
 
-  private def forceUnlockInternal_![T <: WrapsUnit](requests: ResourceRequests,
-                                                    employer: Employer[T]) = {
+  private def forceUnlockInternal_![T <: WrapsUnit](
+      requests: ResourceRequests,
+      employer: Employer[T]
+  ) = {
     val lock = LockedResources(requests, None, employer)
     assert(isAlreadyForceLocked(requests, employer))
     lockedWithoutFunds -= LockedResources(requests, None, employer)
     lockedSums.invalidate()
   }
 
-  def request[T <: WrapsUnit](requests: ResourceRequests, employer: Employer[T],
-                              lock: Boolean = true) = {
+  def request[T <: WrapsUnit](
+      requests: ResourceRequests,
+      employer: Employer[T],
+      lock: Boolean = true
+  ) = {
     val forcedLocked = isAlreadyForceLocked(requests, employer)
     if (forcedLocked) {
       forceUnlockInternal_!(requests, employer)
@@ -126,7 +133,7 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
       trace(s"Incoming resource request: $requests")
       // first check if we have enough resources
       val hasEnoughDespiteLocking = unlockedResources.asSum.canCoverCost(requests.sum)
-      def approvalFail = {
+      def approvalFail            = {
         failedToProvideThisTick += requests
         ResourceApprovalFail
       }
@@ -140,24 +147,24 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
           val freeableResources = {
             // check if enough resources could be unlocked
             val unlockOrder = detailedLocks
-                              .filter(requests.priority > _.priority)
-                              .sortBy { e =>
-                                (e.reqs.priority, -e.reqs.sum.mineralGasSum)
-                              }
+              .filter(requests.priority > _.priority)
+              .sortBy { e =>
+                (e.reqs.priority, -e.reqs.sum.mineralGasSum)
+              }
             val abortableJobs = unitManager.allJobsWithReleaseableResources
-            val used = mutable.HashSet.empty[JobHasFunding[?]]
+            val used          = mutable.HashSet.empty[JobHasFunding[?]]
             unlockOrder.flatMap { locked =>
               val ret = abortableJobs.iterator
-                        .filter(!used(_))
-                        .find(e => locked.proof.contains(e.proofForFunding))
+                .filter(!used(_))
+                .find(e => locked.proof.contains(e.proofForFunding))
               used ++= ret
               ret.map(e => e -> locked)
             }
           }
 
-          var freed = ResourceRequestSum(0, 0, 0)
-          val available = unlockedResources.asSum
-          def needsMore = !((freed + available).canCoverCost(requests.sum))
+          var freed          = ResourceRequestSum(0, 0, 0)
+          val available      = unlockedResources.asSum
+          def needsMore      = !((freed + available).canCoverCost(requests.sum))
           val requiredToFree = freeableResources.takeWhile { case (job, singleLocked) =>
             val stillNeedsMore = needsMore
             if (stillNeedsMore) {
@@ -198,9 +205,11 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
     result
   }
 
-  private def lock_![T <: WrapsUnit](requests: ResourceRequests,
-                                     proof: Option[ResourceApprovalSuccess],
-                                     employer: Employer[T]): Unit = {
+  private def lock_![T <: WrapsUnit](
+      requests: ResourceRequests,
+      proof: Option[ResourceApprovalSuccess],
+      employer: Employer[T]
+  ): Unit = {
     val newLock = LockedResources(requests, proof, employer)
     assert(!isAlreadyForceLocked(requests, employer), s"Lock aready force locked: $requests")
     trace(s"Locked $newLock")
@@ -242,13 +251,15 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
 
   def plannedSuppliesToAdd = {
     unitManager
-    .selectJobs[WorkerUnit, ConstructBuilding[WorkerUnit, Building]]((e: ConstructBuilding[WorkerUnit, Building]) => e.typeOfBuilding ==
-                                                                unitManager.race.supplyClass)
+      .selectJobs[WorkerUnit, ConstructBuilding[WorkerUnit, Building]]((e: ConstructBuilding[WorkerUnit, Building]) =>
+        e.typeOfBuilding ==
+          unitManager.race.supplyClass
+      )
   }
 
   private def calcLockedSums = {
     val normallyLocked = locked.foldLeft(ResourceRequestSum.empty)(_ + _)
-    val highPrioLocks = lockedWithoutFunds.foldLeft(ResourceRequestSum.empty)(_ + _)
+    val highPrioLocks  = lockedWithoutFunds.foldLeft(ResourceRequestSum.empty)(_ + _)
     normallyLocked + highPrioLocks
   }
 }

@@ -10,4 +10,4 @@ import scala.collection.immutable.HashMap
 import scala.collection.mutable.ListBuffer
 
 class Probe(unit: APIUnit)
-  extends AnyUnit(unit) with WorkerUnit with IsSmall with NormalGroundDamage with FastAttackGround
+    extends AnyUnit(unit) with WorkerUnit with IsSmall with NormalGroundDamage with FastAttackGround

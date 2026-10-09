@@ -10,4 +10,5 @@ import scala.collection.immutable.HashMap
 import scala.collection.mutable.ListBuffer
 
 class SunkenColony(unit: APIUnit)
-  extends AnyUnit(unit) with ZergBuilding with NormalGroundDamage with MediumAttackGround with ArmedBuildingCoveringGround
+    extends AnyUnit(unit) with ZergBuilding with NormalGroundDamage with MediumAttackGround
+    with ArmedBuildingCoveringGround

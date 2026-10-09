@@ -10,4 +10,4 @@ import scala.collection.immutable.HashMap
 import scala.collection.mutable.ListBuffer
 
 class Observer(unit: APIUnit)
-  extends AnyUnit(unit) with MobileDetector with Mechanic with IsSmall with AirUnit with PermaCloak
+    extends AnyUnit(unit) with MobileDetector with Mechanic with IsSmall with AirUnit with PermaCloak

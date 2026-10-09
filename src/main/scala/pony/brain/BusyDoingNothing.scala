@@ -4,7 +4,7 @@ package brain
 import bwapi.Order
 
 class BusyDoingNothing[T <: WrapsUnit](unit: T, employer: Employer[T])
-  extends UnitWithJob(employer, unit, Priority.None) with IssueOrderNTimes[T] with Interruptable[T] {
+    extends UnitWithJob(employer, unit, Priority.None) with IssueOrderNTimes[T] with Interruptable[T] {
   override def isIdle = true
 
   override def getOrder: Seq[UnitOrder] = {

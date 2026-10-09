@@ -5,22 +5,21 @@ package modules
 import scala.collection.mutable
 
 class SetupAntiCloakDefenses(universe: Universe)
-  extends OrderlessAIModule[WorkerUnit](universe) with BuildingRequestHelper {
+    extends OrderlessAIModule[WorkerUnit](universe) with BuildingRequestHelper {
 
   private val richBaseCount = oncePerTick {
     (bases.richBasesCount / 2) max 1
   }
-  private val analyzed      = FutureIterator.feed(input).produceAsyncLater { in =>
-
+  private val analyzed = FutureIterator.feed(input).produceAsyncLater { in =>
     val counts = mutable.HashMap.empty[MapTilePosition, Int]
 
     // goal: position detectors so that all values are >= 0
     in.exposed.allBlocked
-    .filter(in.ownArea.blocked)
-    .foreach { where =>
-      val isIsland = mapLayers.isOnIsland(where)
-      counts.put(where, -in.limit - (if (isIsland) 2 else 0))
-    }
+      .filter(in.ownArea.blocked)
+      .foreach { where =>
+        val isIsland = mapLayers.isOnIsland(where)
+        counts.put(where, -in.limit - (if (isIsland) 2 else 0))
+      }
 
     in.existing.foreach { case (detector, circle) =>
       circle.asTiles.foreach { where =>
@@ -39,7 +38,7 @@ class SetupAntiCloakDefenses(universe: Universe)
           geoHelper.circle(candidate, 8).asTiles.count { tile =>
             counts.get(tile) match {
               case Some(value) if value < 0 => true
-              case _ => false
+              case _                        => false
             }
           }
         }
@@ -79,8 +78,11 @@ class SetupAntiCloakDefenses(universe: Universe)
           analyzed.prepareNextIfDone()
         } else {
           bestBuildingLocation.foreach { where =>
-            requestBuilding(targetBuildingType, takeCareOfDependencies = true,
-              customBuildingPosition = AlternativeBuildingSpot.fromPreset(where))
+            requestBuilding(
+              targetBuildingType,
+              takeCareOfDependencies = true,
+              customBuildingPosition = AlternativeBuildingSpot.fromPreset(where)
+            )
           }
         }
       }
@@ -98,10 +100,10 @@ class SetupAntiCloakDefenses(universe: Universe)
   private def input = new Input
 
   class Input {
-    val limit                  = richBaseCount.get min 3
-    val created                = currentTick
-    val buildingType           = targetBuildingType
-    val existing               = ownUnits.allByClass(buildingType).map { det =>
+    val limit        = richBaseCount.get min 3
+    val created      = currentTick
+    val buildingType = targetBuildingType
+    val existing     = ownUnits.allByClass(buildingType).map { det =>
       det -> det.detectionArea
     }
     val planned                = unitManager.plannedToBuildByClass(buildingType)

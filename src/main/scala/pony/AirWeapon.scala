@@ -12,17 +12,17 @@ import scala.collection.mutable.ListBuffer
 trait AirWeapon extends Weapon {
 
   def isInstantAttackAir = false
-  val airRangePixels = airWeapon.maxRange()
+  val airRangePixels     = airWeapon.maxRange()
   // fails at goliath range upgrade
-  val airRangeTiles  = airRangePixels / tileSize
+  val airRangeTiles                = airRangePixels / tileSize
   private val airRangeTilesSquared = airRangeTiles * airRangeTiles
-  val airCanAttackAir     = airWeapon.targetsAir()
-  val airCanAttackGround  = airWeapon.targetsGround()
-  val airDamageMultiplier = airWeapon.damageFactor()
+  val airCanAttackAir              = airWeapon.targetsAir()
+  val airCanAttackGround           = airWeapon.targetsGround()
+  val airDamageMultiplier          = airWeapon.damageFactor()
   val airDamageType: DamageType
   def isInstantEffectAttackAir = damageDelayFactorAir == 0
   protected lazy val airWeapon = initialNativeType.airWeapon()
-  private        val damage    = LazyVal.from {
+  private val damage           = LazyVal.from {
     // will be invalidated on upgrade
     evalDamage(airWeapon, airDamageType, airDamageMultiplier, targetsAir = true)
   }
@@ -33,7 +33,7 @@ trait AirWeapon extends Weapon {
   def inAirWeaponRange = myInAirWeaponRange.get
 
   def damageDelayFactorAir: Int
-  override def weaponRangeRadius: Int = super.weaponRangeRadius max airRangePixels
+  override def weaponRangeRadius: Int            = super.weaponRangeRadius max airRangePixels
   override def assumeShotDelayOn(target: CanDie) = {
     if (canAttackIfNear(target)) {
       damageDelayFactorAir
@@ -44,8 +44,12 @@ trait AirWeapon extends Weapon {
   override def canAttackIfNear(other: CanDie) = {
     super.canAttackIfNear(other) || selfCanAttack(other)
   }
-  override def calculateDamageOn(other: Armor, assumeHP: Int, assumeShields: Int,
-                                 shotCount: Int) = {
+  override def calculateDamageOn(
+      other: Armor,
+      assumeHP: Int,
+      assumeShields: Int,
+      shotCount: Int
+  ) = {
     if (selfCanAttack(other.owner)) {
       damage.damageIfHits(other, assumeHP, assumeShields, shotCount)
     } else {
@@ -57,7 +61,8 @@ trait AirWeapon extends Weapon {
     matchOn(other)(
       _ => airCanAttackAir,
       _ => airCanAttackGround,
-      b => if (b.isFloating) airCanAttackAir else airCanAttackGround)
+      b => if (b.isFloating) airCanAttackAir else airCanAttackGround
+    )
   }
 
   private def quickRangeExclusion(other: CanDie): Boolean = {
@@ -66,9 +71,11 @@ trait AirWeapon extends Weapon {
 
   override def isInWeaponRangeExact(other: CanDie) = {
     if (selfCanAttack(other) && !quickRangeExclusion(other))
-      matchOn(other)(air => nativeUnit.isInWeaponRange(other.nativeUnit),
+      matchOn(other)(
+        air => nativeUnit.isInWeaponRange(other.nativeUnit),
         ground => nativeUnit.isInWeaponRange(other.nativeUnit),
-        building => nativeUnit.isInWeaponRange(other.nativeUnit))
+        building => nativeUnit.isInWeaponRange(other.nativeUnit)
+      )
     else
       super.isInWeaponRangeExact(other)
   }

@@ -8,22 +8,25 @@ import scala.collection.mutable.ArrayBuffer
 
 class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
 
-  private           val attacks                                             = ArrayBuffer
-                                                                              .empty[Attack]
-  private           var planInProgress: BWFuture[Option[IncompleteAttacks]] = BWFuture(None)
-  @volatile private var thinking                                            = false
-  private           var thinkingSince                                       = 0
-  private val baseDefense = new CampaignDefenseControl
-  def baseDefenseActive = baseDefense.pressure
-  def setBaseDefensePressure(active: Boolean): Unit = {
+  private val attacks = ArrayBuffer
+    .empty[Attack]
+  private var planInProgress: BWFuture[Option[IncompleteAttacks]] = BWFuture(None)
+  @volatile private var thinking                                  = false
+  private var thinkingSince                                       = 0
+  private val baseDefense                                         = new CampaignDefenseControl
+  def baseDefenseActive                                           = baseDefense.pressure
+  def setBaseDefensePressure(active: Boolean): Unit               = {
     val changed = active != baseDefense.pressure
     baseDefense.setPressure(active)
     if (active) attacks.retain(a => !a.campaign)
     if (changed) NativeMatchEvidence.trace("base-defense-pressure", s"active=$active")
   }
   def requestBaseDefense(where: MapTilePosition): Unit = {
-    if (baseDefense.pressure && (baseDefense.target.forall(_.distanceToIsMore(where, 6)) ||
-      (!thinking && attacks.isEmpty))) baseDefense.queue(where)
+    if (
+      baseDefense.pressure &&
+      (baseDefense.target.forall(_.distanceToIsMore(where, 6)) ||
+        (!thinking && attacks.isEmpty))
+    ) baseDefense.queue(where)
   }
   def immediateBaseDefenseOrder(unit: Mobile): Option[UnitOrder] = {
     if (!baseDefense.pressure || attackOf(unit).exists(_.migrationPlan.isDefined)) None
@@ -32,15 +35,15 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
     else baseDefense.target.map(where => Orders.AttackMove(unit, where))
   }
 
-  def allAttacks = attacks.toVector
-  def planningInProgress = thinking
-  def campaignForceSize = attacks.filter(_.campaign).map(_.force.size).sum
-  private var campaignTarget = Option.empty[MapTilePosition]
+  def allAttacks                                               = attacks.toVector
+  def planningInProgress                                       = thinking
+  def campaignForceSize                                        = attacks.filter(_.campaign).map(_.force.size).sum
+  private var campaignTarget                                   = Option.empty[MapTilePosition]
   def setCampaignTarget(target: Option[MapTilePosition]): Unit = {
     // Small retargets from fog updates must not cancel a running campaign attack.
     val meaningfullyChanged = (target, campaignTarget) match {
       case (Some(next), Some(prev)) => next.distanceToIsMore(prev, 8)
-      case (next, prev) => next != prev
+      case (next, prev)             => next != prev
     }
     if (meaningfullyChanged) attacks.retain(a => !a.campaign)
     campaignTarget = target
@@ -49,14 +52,15 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
   def initiateCampaignAttack(where: MapTilePosition, expeditionIds: Set[Int]): Boolean = {
     if (thinking || baseDefense.pressure) return false
     val employer = new Employer[Mobile](universe)
-    val busy = attacks.flatMap(_.force).toSet
-    val req = UnitJobRequest.idleOfType(employer, classOf[Mobile], 9999).withOnlyAccepting { m =>
+    val busy     = attacks.flatMap(_.force).toSet
+    val req      = UnitJobRequest.idleOfType(employer, classOf[Mobile], 9999).withOnlyAccepting { m =>
       expeditionIds(m.nativeUnitId) && m.isFigher && !m.isBeingCreated && !m.isInstanceOf[WorkerUnit] &&
-        !m.isInstanceOf[SupportUnit] && !m.isInstanceOf[TransporterUnit] && !busy(m)
+      !m.isInstanceOf[SupportUnit] && !m.isInstanceOf[TransporterUnit] && !busy(m)
     }
     val available = unitManager.request(req, buildIfNoneAvailable = false).units.collect {
-      case m: Mobile if expeditionIds(m.nativeUnitId) && m.isFigher && !m.isBeingCreated && !m.isInstanceOf[WorkerUnit] &&
-        !m.isInstanceOf[SupportUnit] && !m.isInstanceOf[TransporterUnit] && !busy(m) => m
+      case m: Mobile
+          if expeditionIds(m.nativeUnitId) && m.isFigher && !m.isBeingCreated && !m.isInstanceOf[WorkerUnit] &&
+            !m.isInstanceOf[SupportUnit] && !m.isInstanceOf[TransporterUnit] && !busy(m) => m
     }.toVector.sortBy(_.nativeUnitId)
     if (available.isEmpty) false
     else {
@@ -71,7 +75,7 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
       case (where, attacksSharingTarget) =>
         where.foreach { tile =>
           val (arrived, total) = attacksSharingTarget.foldLeft(0, 0)((acc, e) => {
-            val (arrived, total) = acc
+            val (arrived, total)           = acc
             val (addToArrived, addToTotal) = e.meetingStats.getOrElse(0, 0)
             (arrived + addToArrived, total + addToTotal)
           })
@@ -93,9 +97,11 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
     attacks.retain(_.hasNotEnded)
     if (thinking) {
       planInProgress.result.foreach { plan =>
-        attacks ++= plan.parts.filter(p => !p.campaign ||
-          (campaignTarget.exists(c => !c.distanceToIsMore(p.destination.where, 12)) &&
-            baseDefense.acceptsCampaign(p.defenseGeneration)))
+        attacks ++= plan.parts.filter(p =>
+          !p.campaign ||
+            (campaignTarget.exists(c => !c.distanceToIsMore(p.destination.where, 12)) &&
+              baseDefense.acceptsCampaign(p.defenseGeneration))
+        )
           .flatMap(_.complete)
         thinking = false
         planInProgress = BWFuture.none
@@ -113,18 +119,18 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
   def initiateAttack(where: MapTilePosition, priority: AttackPriority = Lowest): Unit = {
     majorInfo(s"Initiating attack of $where")
     if (thinking) return
-    //this attack has priority over an existing one
+    // this attack has priority over an existing one
     if (priority.isHigh) {
       attacks.clear()
     }
 
     val employer = new Employer[Mobile](universe)
-    val req = UnitJobRequest.idleOfType(employer, classOf[Mobile], 9999)
-    val result = unitManager.request(req, buildIfNoneAvailable = false)
+    val req      = UnitJobRequest.idleOfType(employer, classOf[Mobile], 9999)
+    val result   = unitManager.request(req, buildIfNoneAvailable = false)
     result.ifNotZero { seq =>
-      val busy = attacks.flatMap(_.force).toSet
+      val busy                = attacks.flatMap(_.force).toSet
       val notAlreadyAttacking = seq.collect { case m: Mobile if m.isFigher => m }
-                                .filterNot(busy)
+        .filterNot(busy)
       initiateAttack(where, notAlreadyAttacking, priority)
     }
   }
@@ -132,25 +138,29 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
   def initiateAttack(where: MapTilePosition, units: Seq[Mobile], priority: AttackPriority): Unit =
     initiateAttack(where, units, priority, campaign = false)
 
-  def initiateAttack(where: MapTilePosition, units: Seq[Mobile], priority: AttackPriority,
-                     campaign: Boolean): Unit = {
+  def initiateAttack(
+      where: MapTilePosition,
+      units: Seq[Mobile],
+      priority: AttackPriority,
+      campaign: Boolean
+  ): Unit = {
     if (thinking || units.isEmpty) return
     debug(s"Attacking $where with $units")
-    val helper = new GroupingHelper(universe.mapLayers.rawWalkableMap, units, universe.allUnits)
+    val helper            = new GroupingHelper(universe.mapLayers.rawWalkableMap, units, universe.allUnits)
     val defenseGeneration = baseDefense.generation
     planInProgress = BWFuture.produceFrom {
-      val on = universe.mapLayers.rawWalkableMap
-      val grouped = helper.evaluateUnitGroups
+      val on         = universe.mapLayers.rawWalkableMap
+      val grouped    = helper.evaluateUnitGroups
       val newAttacks = grouped.map { group =>
         val asUnits = {
           group.memberIds
-          .flatMap { e =>
-            val op = ownUnits.byId(e)
-            op.forNone {
-              warn(s"Cannot find unit with id $e aka ${e.toBase36}")
+            .flatMap { e =>
+              val op = ownUnits.byId(e)
+              op.forNone {
+                warn(s"Cannot find unit with id $e aka ${e.toBase36}")
+              }
+              op.map(_.asInstanceOf[Mobile])
             }
-            op.map(_.asInstanceOf[Mobile])
-          }
         }
 
         new IncompleteAttack(asUnits.toSet, TargetPosition(where, 10), priority, campaign, defenseGeneration)
@@ -177,17 +187,22 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
     override def asOrder = Orders.NoUpdate(who)
   }
 
-  class IncompleteAttack(private var currentForce: Set[Mobile], targetOfAttack: TargetPosition,
-                         priority: AttackPriority, val campaign: Boolean, val defenseGeneration: Int) {
+  class IncompleteAttack(
+      private var currentForce: Set[Mobile],
+      targetOfAttack: TargetPosition,
+      priority: AttackPriority,
+      val campaign: Boolean,
+      val defenseGeneration: Int
+  ) {
     def destination = targetOfAttack
-    def complete = {
+    def complete    = {
       val living = currentForce.filter(_.isInGame)
       if (living.isEmpty) None else Some(new Attack(living, targetOfAttack, campaign))
     }
   }
 
   class Attack(private var currentForce: Set[Mobile], targetOfAttack: TargetPosition, val campaign: Boolean)
-    extends HasLazyVals {
+      extends HasLazyVals {
     val uniqueId = WrapsUnit.nextId
 
     def meetingStats = migrationPlan.map(_.meetingStats)
@@ -203,12 +218,12 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
     private val area = {
       currentForce.map { unit =>
         mapLayers.rawWalkableMap
-        .areaOf(unit.currentTile)
+          .areaOf(unit.currentTile)
       }
-      .groupBy(identity)
-      .mapValuesStrict(_.size)
-      .maxBy(_._2)
-      ._1
+        .groupBy(identity)
+        .mapValuesStrict(_.size)
+        .maxBy(_._2)
+        ._1
     }
 
     assert(currentForce.nonEmpty, "WTF?")
@@ -219,11 +234,11 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
         ) / currentForce.size
       }
       area.flatMap(_.nearestFree(realCenter))
-      .getOrElse(realCenter)
+        .getOrElse(realCenter)
     }
-    private val pathToFollow  = {
+    private val pathToFollow = {
       universe.pathfinders.groundSafe
-      .findPaths(currentCenter, targetOfAttack.where)
+        .findPaths(currentCenter, targetOfAttack.where)
     }
 
     private val migration = pathToFollow.map(_.map(_.toMigration(using universe)))
@@ -282,13 +297,13 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
               val stayHere = {
                 val stayBetweenThese = {
                   s.nearestAllies.iterator
-                  .filter(_.currentTile.distanceToIsLess(s.currentTile, 8))
-                  .take(3)
-                  .map(_.currentTile)
+                    .filter(_.currentTile.distanceToIsLess(s.currentTile, 8))
+                    .take(3)
+                    .map(_.currentTile)
                 }
                 MapTilePosition.averageOpt(stayBetweenThese)
               }
-              stayHere.map {AttackToPosition(t, _)}.getOrElse {defaultCommand}
+              stayHere.map { AttackToPosition(t, _) }.getOrElse { defaultCommand }
             case _ =>
               defaultCommand
           }

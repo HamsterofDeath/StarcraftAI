@@ -10,10 +10,10 @@ class BuildableRenderer(ignoreWalkable: Boolean) extends AIPlugIn {
 
         val builable = lazyWorld.map.buildableGrid
         builable.allBlocked
-        .filter { e => !ignoreWalkable || !lazyWorld.map.walkableGrid.blocked(e) }
-        .foreach { blocked =>
-          renderer.drawCrossedOutOnTile(blocked)
-        }
+          .filter { e => !ignoreWalkable || !lazyWorld.map.walkableGrid.blocked(e) }
+          .foreach { blocked =>
+            renderer.drawCrossedOutOnTile(blocked)
+          }
       }
     }
   }

@@ -10,6 +10,4 @@ import scala.collection.immutable.HashMap
 import scala.collection.mutable.ListBuffer
 
 abstract class AnyUnit(val nativeUnit: APIUnit)
-  extends WrapsUnit with NiceToString with OrderHistorySupport {
-
-}
+    extends WrapsUnit with NiceToString with OrderHistorySupport {}

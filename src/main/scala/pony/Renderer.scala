@@ -24,7 +24,6 @@ class Renderer(g: Game, private var color: bwapi.Color) {
     line = 0
   }
 
-
   def drawLine(from: MapTilePosition, to: MapTilePosition): Unit = {
     game.drawLineMap(from.mapX, from.mapY, to.mapX, to.mapY, color)
   }
@@ -34,14 +33,26 @@ class Renderer(g: Game, private var color: bwapi.Color) {
   }
 
   def drawStar(where: MapTilePosition, size: Int = 3): Unit = {
-    game.drawLineMap(where.movedBy(-size, -size).nativeMapPosition,
-      where.movedBy(size, size).nativeMapPosition, color)
-    game.drawLineMap(where.movedBy(size, -size).nativeMapPosition,
-      where.movedBy(-size, size).nativeMapPosition, color)
-    game.drawLineMap(where.movedBy(-size, 0).nativeMapPosition,
-      where.movedBy(size, 0).nativeMapPosition, color)
-    game.drawLineMap(where.movedBy(0, -size).nativeMapPosition,
-      where.movedBy(0, size).nativeMapPosition, color)
+    game.drawLineMap(
+      where.movedBy(-size, -size).nativeMapPosition,
+      where.movedBy(size, size).nativeMapPosition,
+      color
+    )
+    game.drawLineMap(
+      where.movedBy(size, -size).nativeMapPosition,
+      where.movedBy(-size, size).nativeMapPosition,
+      color
+    )
+    game.drawLineMap(
+      where.movedBy(-size, 0).nativeMapPosition,
+      where.movedBy(size, 0).nativeMapPosition,
+      color
+    )
+    game.drawLineMap(
+      where.movedBy(0, -size).nativeMapPosition,
+      where.movedBy(0, size).nativeMapPosition,
+      color
+    )
   }
 
   def drawLine(from: MapPosition, to: MapPosition): Unit = {
@@ -58,8 +69,12 @@ class Renderer(g: Game, private var color: bwapi.Color) {
   }
 
   def drawOutline(where: Area): Unit = {
-    drawOutline(where.upperLeft.mapX, where.upperLeft.mapY, where.lowerRight.mapX + tileSize,
-      where.lowerRight.mapY + tileSize)
+    drawOutline(
+      where.upperLeft.mapX,
+      where.upperLeft.mapY,
+      where.lowerRight.mapX + tileSize,
+      where.lowerRight.mapY + tileSize
+    )
   }
 
   def drawOutline(x1: Int, y1: Int, x2: Int, y2: Int): Unit = {
@@ -83,11 +98,13 @@ class Renderer(g: Game, private var color: bwapi.Color) {
   }
 
   def indicateTarget(currentPosition: MapPosition, to: MapTilePosition): Unit = {
-    game.drawLineMap(currentPosition.x + tileSize / 2,
+    game.drawLineMap(
+      currentPosition.x + tileSize / 2,
       currentPosition.y + tileSize / 2,
       to.mapX + tileSize / 2,
       to.mapY + tileSize / 2,
-      color)
+      color
+    )
     drawCircleAroundTile(to)
   }
 

@@ -10,4 +10,5 @@ import scala.collection.immutable.HashMap
 import scala.collection.mutable.ListBuffer
 
 class Drone(unit: APIUnit)
-  extends AnyUnit(unit) with WorkerUnit with IsSmall with Organic with NormalGroundDamage with FastAttackGround with ZergMobileUnit
+    extends AnyUnit(unit) with WorkerUnit with IsSmall with Organic with NormalGroundDamage with FastAttackGround
+    with ZergMobileUnit

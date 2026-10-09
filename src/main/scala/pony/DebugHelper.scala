@@ -28,7 +28,7 @@ class DebugHelper(main: MainAI) extends AIPlugIn with HasUniverse {
                     case "3" => LogLevels.LogInfo
                     case "4" => LogLevels.LogDebug
                     case "5" => LogLevels.LogTrace
-                    case _ => !!!(logLevel)
+                    case _   => !!!(logLevel)
                   })
                 case _ => usage(command, "one log level from 0 to 5")
               }
@@ -36,7 +36,7 @@ class DebugHelper(main: MainAI) extends AIPlugIn with HasUniverse {
               params match {
                 case List(mineralsId) =>
                   val patch = world.resourceAnalyzer.groups.find(_.patchId.toString == mineralsId)
-                              .get
+                    .get
                   main.brain.pluginByType[ProvideExpansions].forceExpand(patch)
                 case _ => usage(command, "one mineral patch id")
               }
@@ -84,7 +84,7 @@ class DebugHelper(main: MainAI) extends AIPlugIn with HasUniverse {
         case Nil =>
 
       }) match {
-        case Success(_) =>
+        case Success(_)  =>
         case Failure(ex) =>
           ex.printStackTrace()
       }

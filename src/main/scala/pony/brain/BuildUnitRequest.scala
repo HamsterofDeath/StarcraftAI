@@ -3,13 +3,15 @@ package brain
 
 import pony.brain.modules.AlternativeBuildingSpot
 
-case class BuildUnitRequest[T <: WrapsUnit](universe: Universe, typeOfRequestedUnit: Class[? <: T],
-                                            amount: Int,
-                                            funding: ResourceApproval,
-                                            override val priority: Priority,
-                                            customBuildingPosition: AlternativeBuildingSpot,
-                                            belongsTo: Option[ResourceArea] = None)
-  extends UnitRequest[T] with HasFunding with HasUniverse {
+case class BuildUnitRequest[T <: WrapsUnit](
+    universe: Universe,
+    typeOfRequestedUnit: Class[? <: T],
+    amount: Int,
+    funding: ResourceApproval,
+    override val priority: Priority,
+    customBuildingPosition: AlternativeBuildingSpot,
+    belongsTo: Option[ResourceArea] = None
+) extends UnitRequest[T] with HasFunding with HasUniverse {
 
   self =>
 

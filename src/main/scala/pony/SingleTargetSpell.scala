@@ -10,15 +10,17 @@ import scala.collection.immutable.HashMap
 import scala.collection.mutable.ListBuffer
 import scala.reflect.ClassTag
 
-abstract class SingleTargetSpell[C <: HasSingleTargetSpells, M <: Mobile : ClassTag]
-(val tech: Upgrade & SingleTargetMagicSpell) {
+abstract class SingleTargetSpell[C <: HasSingleTargetSpells, M <: Mobile: ClassTag](val tech: Upgrade &
+  SingleTargetMagicSpell) {
   val castRange       = 300
   val castRangeSquare = castRange * castRange
 
   private val targetClass = tech.canCastOn
 
-  assert(targetClass >= implicitly[ClassTag[M]].runtimeClass,
-    s"$targetClass vs ${implicitly[ClassTag[M]].runtimeClass}")
+  assert(
+    targetClass >= implicitly[ClassTag[M]].runtimeClass,
+    s"$targetClass vs ${implicitly[ClassTag[M]].runtimeClass}"
+  )
 
   def castOn: CastOn = EnemyUnits
 

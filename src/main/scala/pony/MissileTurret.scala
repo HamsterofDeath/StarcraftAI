@@ -10,5 +10,5 @@ import scala.collection.immutable.HashMap
 import scala.collection.mutable.ListBuffer
 
 class MissileTurret(unit: APIUnit)
-  extends AnyUnit(unit) with ArmedBuildingCoveringAir with DetectorBuilding with SlowAttackAir with AirWeapon
-          with ExplosiveAirDamage with TerranBuilding
+    extends AnyUnit(unit) with ArmedBuildingCoveringAir with DetectorBuilding with SlowAttackAir with AirWeapon
+    with ExplosiveAirDamage with TerranBuilding

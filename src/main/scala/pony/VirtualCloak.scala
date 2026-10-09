@@ -13,7 +13,7 @@ trait VirtualCloak extends CanCloak with Virtual {
 
   case class CloakStateSnapshot(cloaked: Boolean)
 
-  private var lastSeen = Option.empty[CloakStateSnapshot]
+  private var lastSeen   = Option.empty[CloakStateSnapshot]
   override def isCloaked = lastSeen.map(_.cloaked).getOrElse(super.isCloaked)
 
   override def remember_!() = {

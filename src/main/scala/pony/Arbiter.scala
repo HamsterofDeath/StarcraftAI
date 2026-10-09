@@ -10,4 +10,5 @@ import scala.collection.immutable.HashMap
 import scala.collection.mutable.ListBuffer
 
 class Arbiter(unit: APIUnit)
-  extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with Mechanic with IsBig with IsShip with ArmedMobile with ExplosiveAirDamage with ExplosiveGroundDamage with MediumAttackAir with MediumAttackGround
+    extends AnyUnit(unit) with AirUnit with GroundAndAirWeapon with Mechanic with IsBig with IsShip with ArmedMobile
+    with ExplosiveAirDamage with ExplosiveGroundDamage with MediumAttackAir with MediumAttackGround

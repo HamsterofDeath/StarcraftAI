@@ -8,13 +8,14 @@ class Bases(world: DefaultWorld, override val universe: Universe) extends HasUni
   private val newBaseListeners = ArrayBuffer.empty[NewBaseListener]
 
   def isCovered(field: ResourceArea) = myBases.exists(b =>
-    !b.mainBuilding.isFloating && b.mainBuilding.isInGame && b.resourceArea.contains(field))
+    !b.mainBuilding.isFloating && b.mainBuilding.isInGame && b.resourceArea.contains(field)
+  )
 
   def rich = {
     def singleValuable = myMineralFields.exists(_.value > 15000) &&
-                         myMineralFields.exists(_.patches.size >= 10)
+      myMineralFields.exists(_.patches.size >= 10)
     def multipleIncomes = myMineralFields.size >= 2 && myMineralFields.map(_.value).sum > 5000
-    def muchGas = myGeysirs.map(_.remaining).sum > 3000
+    def muchGas         = myGeysirs.map(_.remaining).sum > 3000
     (singleValuable || multipleIncomes) && muchGas
   }
 

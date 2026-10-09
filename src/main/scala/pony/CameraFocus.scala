@@ -4,8 +4,8 @@ package pony
 final case class CameraFocus(tile: MapTilePosition, score: Int, reason: String)
 
 object CameraFocus {
-  val CombatScore = 1000
+  val CombatScore        = 1000
   val EnemySightingScore = 500
-  val ArmyScore = 100
-  val HomeScore = 1
+  val ArmyScore          = 100
+  val HomeScore          = 1
 }

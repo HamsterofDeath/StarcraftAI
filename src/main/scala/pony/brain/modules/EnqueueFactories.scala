@@ -3,11 +3,12 @@ package brain
 package modules
 
 class EnqueueFactories(universe: Universe)
-  extends OrderlessAIModule[WorkerUnit](universe) with BuildingRequestHelper {
+    extends OrderlessAIModule[WorkerUnit](universe) with BuildingRequestHelper {
 
   def ratios = evaluateCapacities.map { cap =>
-    cap -> (ownUnits.allByClass(cap.typeOfFactory).size +
-            unitManager.plannedToBuildByClass(cap.typeOfFactory).size)
+    cap ->
+      (ownUnits.allByClass(cap.typeOfFactory).size +
+        unitManager.plannedToBuildByClass(cap.typeOfFactory).size)
   }.toMap
 
   override def onTick_!(): Unit = {
@@ -21,12 +22,12 @@ class EnqueueFactories(universe: Universe)
 
   private def evaluateCapacities = {
     strategy.current.suggestProducers
-    .filter(_.isActive)
-    .groupBy(_.typeOfFactory)
-    .values.map { elems =>
-      val sum = elems.map(_.maximumSustainable).sum
-      val copy = elems.head.withNewMaximum(sum)
-      copy
-    }
+      .filter(_.isActive)
+      .groupBy(_.typeOfFactory)
+      .values.map { elems =>
+        val sum  = elems.map(_.maximumSustainable).sum
+        val copy = elems.head.withNewMaximum(sum)
+        copy
+      }
   }
 }

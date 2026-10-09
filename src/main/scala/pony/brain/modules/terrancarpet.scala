@@ -8,18 +8,22 @@ import scala.collection.mutable
 private[pony] object CarpetQuotas {
   private def intProp(name: String, defaultValue: Int) =
     sys.props.get(name).flatMap(_.toIntOption).filter(_ > 0).getOrElse(defaultValue)
-  def tanksPerPost: Int = intProp("twailight.carpetTanksPerPost", 2)
-  def vulturesPerPost: Int = intProp("twailight.carpetVulturesPerPost", 1)
-  def goliathsPerPost: Int = intProp("twailight.carpetGoliathsPerPost", 1)
+  def tanksPerPost: Int      = intProp("twailight.carpetTanksPerPost", 2)
+  def vulturesPerPost: Int   = intProp("twailight.carpetVulturesPerPost", 1)
+  def goliathsPerPost: Int   = intProp("twailight.carpetGoliathsPerPost", 1)
   def tanksBeforeFlight: Int = intProp("twailight.carpetFlyTanks", 2)
-  def homeGuards: Int = intProp("twailight.carpetHomeGuards", 6)
+  def homeGuards: Int        = intProp("twailight.carpetHomeGuards", 6)
+
   /** Zero spreads over every resource area on the map. */
   def maxPosts: Int = sys.props.get("twailight.carpetPosts").flatMap(_.toIntOption).filter(_ > 0).getOrElse(0)
+
   /** Depot boxes around carpet tanks; switch off with -Dtwailight.carpetBoxes=0. */
   def tankBoxesEnabled: Boolean = sys.props.get("twailight.carpetBoxes").forall(_ != "0")
+
   /** Only spend on boxes once this many minerals are unlocked. */
   def tankBoxMinMinerals: Int = intProp("twailight.carpetBoxMinMinerals", 600)
-  def tankBoxMaxDepots: Int = intProp("twailight.carpetBoxMaxDepots", 8)
+  def tankBoxMaxDepots: Int   = intProp("twailight.carpetBoxMaxDepots", 8)
+
   /** Open the wall once this many fighters exist and the second base stands. */
   def gateFighters: Int = intProp("twailight.carpetGateFighters", 12)
 }
@@ -30,8 +34,8 @@ private[pony] object CarpetPosts {
     val distinct = candidates.distinct
     if (distinct.isEmpty || count <= 0) Vector.empty
     else {
-      val first = distinct.minBy(t => (t.y, t.x))
-      val chosen = mutable.ArrayBuffer(first)
+      val first     = distinct.minBy(t => (t.y, t.x))
+      val chosen    = mutable.ArrayBuffer(first)
       val remaining = mutable.Set.empty[MapTilePosition] ++ distinct
       remaining.remove(first)
       while (chosen.size < count && remaining.nonEmpty) {
@@ -49,13 +53,13 @@ private[pony] object CarpetPosts {
 
 /** Spreads tanks, vultures and goliaths evenly over the map instead of one death ball. */
 class CarpetSpread(universe: Universe) extends OrderlessAIModule[Mobile](universe) {
-  private val assignments = mutable.Map.empty[Int, MapTilePosition]
+  private val assignments   = mutable.Map.empty[Int, MapTilePosition]
   private var reportedPosts = false
 
   def postOf(unitId: Int): Option[MapTilePosition] = assignments.get(unitId)
 
   private def carpet = strategy.current.isInstanceOf[Strategy.TerranCarpet]
-  private def wall = universe.pluginByType[WallWithDepots]
+  private def wall   = universe.pluginByType[WallWithDepots]
 
   private val pocket = oncePerTick {
     bases.mainBase.flatMap(home => strategicMap.defenseLineOf(home.mainBuilding.tilePosition))
@@ -65,7 +69,7 @@ class CarpetSpread(universe: Universe) extends OrderlessAIModule[Mobile](univers
   private def insidePocket(t: MapTilePosition) = wall.complete && pocket.get.exists(_.defended.free(t))
 
   private val plannedPosts = oncePerTick {
-    val home = bases.mainBase.flatMap(_.resourceArea).map(_.uniqueId)
+    val home       = bases.mainBase.flatMap(_.resourceArea).map(_.uniqueId)
     val candidates = strategicMap.resources.filterNot(a => home.contains(a.uniqueId))
       .map(_.nearbyFreeTile).toVector.filter(mapLayers.rawWalkableMap.insideBounds)
     val count = if (CarpetQuotas.maxPosts > 0) CarpetQuotas.maxPosts else candidates.size
@@ -73,9 +77,9 @@ class CarpetSpread(universe: Universe) extends OrderlessAIModule[Mobile](univers
   }
 
   private def kind(m: Mobile) = m match {
-    case _: Tank => 0
+    case _: Tank    => 0
     case _: Vulture => 1
-    case _ => 2
+    case _          => 2
   }
 
   private def quota(kind: Int) = kind match {
@@ -90,8 +94,10 @@ class CarpetSpread(universe: Universe) extends OrderlessAIModule[Mobile](univers
     // defense, and one depot is demolished so the army can reach its map-wide posts.
     if (wall.complete && !wall.gateOpen) {
       val operational = universe.pluginByType[ManageMiningAtBases].secondBaseEstablished
-      val army = ownUnits.allMobilesWithWeapons.count(m => m.isInGame && !m.isBeingCreated &&
-        m.isFigher && !m.isInstanceOf[WorkerUnit])
+      val army        = ownUnits.allMobilesWithWeapons.count(m =>
+        m.isInGame && !m.isBeingCreated &&
+          m.isFigher && !m.isInstanceOf[WorkerUnit]
+      )
       if (operational && army >= CarpetQuotas.gateFighters) wall.openGate_!()
     }
     val posts = plannedPosts.get
@@ -99,17 +105,19 @@ class CarpetSpread(universe: Universe) extends OrderlessAIModule[Mobile](univers
       NativeMatchEvidence.trace("carpet-posts", s"posts=${posts.size} at=${posts.mkString(",")}")
       reportedPosts = true
     }
-    val units = ownUnits.allMobilesWithWeapons.filter(m => m.isInGame && !m.isBeingCreated &&
-      (m.isInstanceOf[Tank] || m.isInstanceOf[Vulture] || m.isInstanceOf[Goliath]))
+    val units = ownUnits.allMobilesWithWeapons.filter(m =>
+      m.isInGame && !m.isBeingCreated &&
+        (m.isInstanceOf[Tank] || m.isInstanceOf[Vulture] || m.isInstanceOf[Goliath])
+    )
       .groupBy(_.nativeUnitId).values.map(_.head).toVector.sortBy(_.nativeUnitId)
     assignments.filterInPlace((id, post) => posts.contains(post) && units.exists(_.nativeUnitId == id))
     val counts = mutable.Map.empty[(MapTilePosition, Int), Int]
     assignments.foreach { case (id, post) =>
       units.find(_.nativeUnitId == id).foreach(u => counts((post, kind(u))) = counts.getOrElse((post, kind(u)), 0) + 1)
     }
-    val home = bases.mainBase.map(_.mainBuilding.tilePosition)
+    val home      = bases.mainBase.map(_.mainBuilding.tilePosition)
     val homeQuota = if (wall.complete) 0 else CarpetQuotas.homeGuards
-    val eligible = units.filterNot(u => assignments.contains(u.nativeUnitId))
+    val eligible  = units.filterNot(u => assignments.contains(u.nativeUnitId))
       .sortBy(u => (home.map(h => u.currentTile.distanceSquaredTo(h)).getOrElse(0), u.nativeUnitId))
       .filterNot(u => insidePocket(u.currentTile))
       .drop(homeQuota)
@@ -125,26 +133,29 @@ class CarpetSpread(universe: Universe) extends OrderlessAIModule[Mobile](univers
       }
     }
     if (currentTick % (31 * 16) == 0) {
-      NativeMatchEvidence.trace("strategy-carpet",
-        s"posts=${posts.size} units=${units.size} assigned=${assignments.size} homeGuards=$homeQuota wallComplete=${wall.complete} wallRefused=${wall.refused}")
+      NativeMatchEvidence.trace(
+        "strategy-carpet",
+        s"posts=${posts.size} units=${units.size} assigned=${assignments.size} homeGuards=$homeQuota wallComplete=${wall.complete} wallRefused=${wall.refused}"
+      )
     }
   }
 }
 
 /** With plenty of minerals, seal each stationary carpet tank behind a ring of depots. */
 class TankBoxes(universe: Universe) extends OrderlessAIModule[WorkerUnit](universe)
-  with BuildingRequestHelper {
-  private val done = mutable.Set.empty[Int]
+    with BuildingRequestHelper {
+  private val done      = mutable.Set.empty[Int]
   private var activeBox = Option.empty[(Int, Vector[MapTilePosition])]
 
   private def carpet = strategy.current.isInstanceOf[Strategy.TerranCarpet]
-  private def wall = universe.pluginByType[WallWithDepots]
+  private def wall   = universe.pluginByType[WallWithDepots]
   private def spread = universe.pluginByType[CarpetSpread]
 
   private def coveredAnchors = {
     val existing = ownUnits.allByType[SupplyDepot].filter(_.isInGame).map(_.tilePosition).toSet
-    val pending = (unitManager.requestedConstructions[SupplyDepot].flatMap(_.customPosition.requestedPosition) ++
-      unitManager.constructionsInProgress[SupplyDepot].map(_.buildWhere)).toSet
+    val pending  =
+      (unitManager.requestedConstructions[SupplyDepot].flatMap(_.customPosition.requestedPosition) ++
+        unitManager.constructionsInProgress[SupplyDepot].map(_.buildWhere)).toSet
     existing ++ pending
   }
 
@@ -163,18 +174,18 @@ class TankBoxes(universe: Universe) extends OrderlessAIModule[WorkerUnit](univer
 
   /** Depot anchors that block every walkable attack tile; terrain provides the rest. */
   private def boxPlan(tank: Tank): Option[Vector[MapTilePosition]] = {
-    val t = tank.currentTile
+    val t         = tank.currentTile
     val needCover = ringOf(t).filter(walkableFree).distinct
     if (needCover.isEmpty) None
     else {
       val anchors = (for (dx <- -2 to 2; dy <- -2 to 2) yield MapTilePosition(t.x + dx, t.y + dy)).toVector
         .filterNot(a => overlapsTank(a, t)).filter(wall.depotSpotFree)
-      val footprint = anchors.map(a => a -> Area(a, Size(2, 2)).tiles.toVector).toMap
-      val covers = anchors.filter(a => footprint(a).exists(needCover.contains))
-      val coveredBy = covers.map(a => a -> footprint(a).filter(needCover.contains).toSet).toMap
+      val footprint        = anchors.map(a => a -> Area(a, Size(2, 2)).tiles.toVector).toMap
+      val covers           = anchors.filter(a => footprint(a).exists(needCover.contains))
+      val coveredBy        = covers.map(a => a -> footprint(a).filter(needCover.contains).toSet).toMap
       val tileToCandidates = needCover.map(r => r -> covers.filter(a => coveredBy(a).contains(r))).toMap
-      val maxDepots = math.min(CarpetQuotas.tankBoxMaxDepots, 12)
-      var budget = 20000
+      val maxDepots        = math.min(CarpetQuotas.tankBoxMaxDepots, 12)
+      var budget           = 20000
       def solve(uncovered: Set[MapTilePosition], chosen: Vector[MapTilePosition]): Option[Vector[MapTilePosition]] = {
         if (uncovered.isEmpty) Some(chosen)
         else if (chosen.size >= maxDepots || budget <= 0) None
@@ -206,9 +217,12 @@ class TankBoxes(universe: Universe) extends OrderlessAIModule[WorkerUnit](univer
           activeBox = None
         } else {
           missing.find(wall.depotSpotFree).foreach { a =>
-            requestBuilding(classOf[SupplyDepot], takeCareOfDependencies = false,
+            requestBuilding(
+              classOf[SupplyDepot],
+              takeCareOfDependencies = false,
               customBuildingPosition = AlternativeBuildingSpot.fromValidatedPreset(a)(wall.depotSpotFree(a)),
-              priority = Priority.Expand)
+              priority = Priority.Expand
+            )
             NativeMatchEvidence.trace("tank-box-depot", s"tank=$tankId at=$a")
           }
         }
@@ -232,25 +246,27 @@ class TankBoxes(universe: Universe) extends OrderlessAIModule[WorkerUnit](univer
 
 /** Once the wall stands and tanks exist, factories fly out to the open fields and produce there. */
 class FlyFactoriesToNatural(universe: Universe) extends OrderlessAIModule[Factory](universe) {
-  private val employers = new Employer[Factory](universe)
-  private var flight = Option.empty[RelocateFactory]
+  private val employers     = new Employer[Factory](universe)
+  private var flight        = Option.empty[RelocateFactory]
   private val claimedFields = collection.mutable.Set.empty[Int]
 
   private def carpet = strategy.current.isInstanceOf[Strategy.TerranCarpet]
-  private def wall = universe.pluginByType[WallWithDepots]
+  private def wall   = universe.pluginByType[WallWithDepots]
 
   override def onTick_!(): Unit = {
     if (!carpet || currentTick < 31 || currentTick % Primes.prime31.i != 0) return
     flight = flight.filterNot(j => j.failedOrObsolete || j.isFinished)
     if (flight.isDefined) return
     val wallSealed = wall.complete || wall.refused || wall.gateOpen
-    val tanks = ownUnits.allByType[Tank].count(t => t.isInGame && !t.isBeingCreated)
+    val tanks      = ownUnits.allByType[Tank].count(t => t.isInGame && !t.isBeingCreated)
     if (!wallSealed || tanks < CarpetQuotas.tanksBeforeFlight) return
     val homeAreaId = bases.mainBase.map(_.mainBuilding.tilePosition)
-    ownUnits.allByType[Factory].filter(f => f.isInGame && !f.isBeingCreated && !f.isFloating &&
-      !f.nativeUnit.isTraining && f.nativeUnit.getRemainingTrainTime == 0 &&
-      homeAreaId.forall(ht => f.tilePosition.distanceToIsLess(ht, 20)) &&
-      unitManager.jobOf(f).isIdle)
+    ownUnits.allByType[Factory].filter(f =>
+      f.isInGame && !f.isBeingCreated && !f.isFloating &&
+        !f.nativeUnit.isTraining && f.nativeUnit.getRemainingTrainTime == 0 &&
+        homeAreaId.forall(ht => f.tilePosition.distanceToIsLess(ht, 20)) &&
+        unitManager.jobOf(f).isIdle
+    )
       .toVector.sortBy(f => (f.tilePosition.y, f.tilePosition.x, f.nativeUnitId))
       .headOption.foreach { factory =>
         val request = UnitJobRequest.idleOfType(employers, classOf[Factory], priority = Priority.Expand)
@@ -259,25 +275,29 @@ class FlyFactoriesToNatural(universe: Universe) extends OrderlessAIModule[Factor
           val job = new RelocateFactory(employers, unit, claimedFields)
           employers.assignJob_!(job)
           flight = Some(job)
-          NativeMatchEvidence.trace("factory-flight",
-            s"id=${unit.nativeUnitId} from=${unit.tilePosition} tanks=$tanks wallComplete=${wall.complete}")
+          NativeMatchEvidence.trace(
+            "factory-flight",
+            s"id=${unit.nativeUnitId} from=${unit.tilePosition} tanks=$tanks wallComplete=${wall.complete}"
+          )
         }
       }
   }
 }
 
 /** Lift one factory, fly it to the open field nearest home and land it there. */
-private[pony] class RelocateFactory(employer: Employer[Factory], factory: Factory,
-                                    claimedFields: collection.mutable.Set[Int])
-  extends UnitWithJob[Factory](employer, factory, Priority.Expand) {
-  private var destination = Option.empty[MapTilePosition]
+private[pony] class RelocateFactory(
+    employer: Employer[Factory],
+    factory: Factory,
+    claimedFields: collection.mutable.Set[Int]
+) extends UnitWithJob[Factory](employer, factory, Priority.Expand) {
+  private var destination      = Option.empty[MapTilePosition]
   private var destinationField = Option.empty[ResourceArea]
-  private var phase = Option.empty[DepotRelocation.Step]
-  private var lastTile = factory.tilePosition
-  private var lastProgress = currentTick
-  private var landingRetries = 0
-  private var failedFields = Set.empty[Int]
-  private var lastTelemetry = 0
+  private var phase            = Option.empty[DepotRelocation.Step]
+  private var lastTile         = factory.tilePosition
+  private var lastProgress     = currentTick
+  private var landingRetries   = 0
+  private var failedFields     = Set.empty[Int]
+  private var lastTelemetry    = 0
 
   private def home = bases.mainBase.map(_.mainBuilding.tilePosition)
 
@@ -286,10 +306,11 @@ private[pony] class RelocateFactory(employer: Employer[Factory], factory: Factor
       unitGrid.enemy.allInRange[Mobile](area.nearbyFreeTile, 12).isEmpty
 
   private def chooseDestination(): Unit = {
-    val homeTile = home.getOrElse(factory.tilePosition)
+    val homeTile   = home.getOrElse(factory.tilePosition)
     val homeAreaId = bases.mainBase.flatMap(_.resourceArea).map(_.uniqueId)
-    val forceHome = factory.isFloating && failedFields.size >= 2
-    val found = if (forceHome) None else strategicMap.resources.filterNot(a => homeAreaId.contains(a.uniqueId))
+    val forceHome  = factory.isFloating && failedFields.size >= 2
+    val found      = if (forceHome) None
+    else strategicMap.resources.filterNot(a => homeAreaId.contains(a.uniqueId))
       .filterNot(a => failedFields.contains(a.uniqueId) || claimedFields.contains(a.uniqueId))
       .filter(safe)
       .toVector.sortBy(a => (a.nearbyFreeTile.distanceSquaredTo(homeTile), a.uniqueId))
@@ -307,20 +328,27 @@ private[pony] class RelocateFactory(employer: Employer[Factory], factory: Factor
     }
   }
 
-  override def everyNth = 31
-  override def shortDebugString = "Relocate factory: " + phase
-  override def isFinished = phase.contains(DepotRelocation.Established)
-  override def jobHasFailedWithoutDeath = false
+  override def everyNth                      = 31
+  override def shortDebugString              = "Relocate factory: " + phase
+  override def isFinished                    = phase.contains(DepotRelocation.Established)
+  override def jobHasFailedWithoutDeath      = false
   override def ordersForTick: Seq[UnitOrder] = {
     if (destination.isEmpty) chooseDestination()
     destination.toList.flatMap { landingTile =>
       val tile = factory.tilePosition
       if (tile != lastTile) { lastTile = tile; lastProgress = currentTick }
       val landedThere = !factory.isFloating && factory.nativeUnit.isCompleted && tile == landingTile
-      val next = DepotRelocation.next(true, false, factory.isFloating,
-        tile.distanceToIsLess(landingTile, 4), landedThere)
-      if (!phase.contains(next)) NativeMatchEvidence.trace("factory-flight",
-        s"id=${factory.nativeUnitId} phase=$next from=$tile to=$landingTile field=${destinationField.map(_.uniqueId).getOrElse(-1)}")
+      val next        = DepotRelocation.next(
+        true,
+        false,
+        factory.isFloating,
+        tile.distanceToIsLess(landingTile, 4),
+        landedThere
+      )
+      if (!phase.contains(next)) NativeMatchEvidence.trace(
+        "factory-flight",
+        s"id=${factory.nativeUnitId} phase=$next from=$tile to=$landingTile field=${destinationField.map(_.uniqueId).getOrElse(-1)}"
+      )
       phase = Some(next)
       next match {
         case DepotRelocation.Lift =>
@@ -328,8 +356,11 @@ private[pony] class RelocateFactory(employer: Employer[Factory], factory: Factor
         case DepotRelocation.Fly =>
           if (currentTick - lastTelemetry > 240) {
             lastTelemetry = currentTick
-            NativeMatchEvidence.trace("factory-flight",
-              s"id=${factory.nativeUnitId} phase=Fly at=${factory.tilePosition} moving=${factory.nativeUnit.isMoving} to=$landingTile sinceProgress=${currentTick - lastProgress}")
+            NativeMatchEvidence.trace(
+              "factory-flight",
+              s"id=${factory.nativeUnitId} phase=Fly at=${factory.tilePosition} moving=${factory.nativeUnit.isMoving} to=$landingTile sinceProgress=${currentTick -
+                  lastProgress}"
+            )
           }
           val stuck = currentTick - lastProgress > 24 * 120
           if (stuck && factory.isFloating && factory.nativeUnit.canLand(factory.tilePosition.asTilePosition)) {
@@ -351,11 +382,13 @@ private[pony] class RelocateFactory(employer: Employer[Factory], factory: Factor
           else {
             // Long flights can stall at the edge of what the engine can path for a building;
             // hop toward the target so every order makes bounded progress.
-            val here = factory.tilePosition
+            val here     = factory.tilePosition
             val distance = math.max(math.abs(landingTile.x - here.x), math.abs(landingTile.y - here.y))
-            val step = math.min(8, distance)
-            val towards = MapTilePosition(here.x + Integer.signum(landingTile.x - here.x) * step,
-              here.y + Integer.signum(landingTile.y - here.y) * step)
+            val step     = math.min(8, distance)
+            val towards  = MapTilePosition(
+              here.x + Integer.signum(landingTile.x - here.x) * step,
+              here.y + Integer.signum(landingTile.y - here.y) * step
+            )
             Orders.FlyBuilding(factory, towards).toSeq
           }
         case DepotRelocation.Land =>

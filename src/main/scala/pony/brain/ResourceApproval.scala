@@ -7,8 +7,8 @@ trait ResourceApproval {
   def gas: Int
   def supply: Int
   def success: Boolean
-  def failed = !success
-  def isSuccess = success
+  def failed           = !success
+  def isSuccess        = success
   def assumeSuccessful = {
     assert(success)
     this.asInstanceOf[ResourceApprovalSuccess]

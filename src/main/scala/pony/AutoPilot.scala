@@ -10,7 +10,7 @@ import scala.collection.immutable.HashMap
 import scala.collection.mutable.ListBuffer
 
 trait AutoPilot extends Mobile {
-  def isManuallyControlled = !isAutoPilot
-  override def isAutoPilot = true
+  def isManuallyControlled  = !isAutoPilot
+  override def isAutoPilot  = true
   override def isNonFighter = true
 }

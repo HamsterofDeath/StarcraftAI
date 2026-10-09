@@ -30,7 +30,7 @@ class BWFuture[+T](val future: Future[T], incomplete: T) {
   def result = future.value match {
     case Some(Success(x)) => x
     case Some(Failure(e)) => throw e
-    case _ => incomplete
+    case _                => incomplete
   }
 
   def matchOnSelf[X](ifDone: T => X, ifRunning: => X) = {
@@ -50,7 +50,7 @@ object BWFuture {
   def apply[T](produce: => Option[T]): BWFuture[Option[T]] = BWFuture(produce, None)
 
   def apply[T](produce: => T, ifIncomplete: T) = {
-    val fut = Future {produce}
+    val fut = Future { produce }
     new BWFuture(fut, ifIncomplete)
   }
 
@@ -74,10 +74,13 @@ object BWFuture {
     }
 
     def matchOnOptSelf[X](ifDone: T => X, ifRunning: => X) = {
-      fut.matchOnSelf({
-        case Some(t) => ifDone(t)
-        case _ => ifRunning
-      }, ifRunning)
+      fut.matchOnSelf(
+        {
+          case Some(t) => ifDone(t)
+          case _       => ifRunning
+        },
+        ifRunning
+      )
     }
   }
 

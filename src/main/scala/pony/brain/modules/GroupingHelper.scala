@@ -8,22 +8,28 @@ object GroupingHelper {
   def typedGroup[T <: WrapsUnit](universe: Universe, group: Group[T]) = {
     val members = group.memberIds.flatMap { e =>
       universe.enemyUnits
-      .byId(e)
-      .orElse(universe.ownUnits.byId(e))
-      .asInstanceOf[Option[T]]
+        .byId(e)
+        .orElse(universe.ownUnits.byId(e))
+        .asInstanceOf[Option[T]]
     }.toVector
     UnitGroup(members, group.center)
   }
 
   def groupThese[T <: WrapsUnit](seq: IterableOnce[T], universe: Universe) = {
-    val helper = new GroupingHelper(universe.mapLayers.rawWalkableMap.guaranteeImmutability, seq,
-      universe.allUnits)
+    val helper = new GroupingHelper(
+      universe.mapLayers.rawWalkableMap.guaranteeImmutability,
+      seq,
+      universe.allUnits
+    )
     BWFuture(Option(helper.evaluateUnitGroups))
   }
 
   def groupTheseNow[T <: WrapsUnit](seq: IterableOnce[T], universe: Universe) = {
-    val helper = new GroupingHelper(universe.mapLayers.rawWalkableMap.guaranteeImmutability, seq,
-      universe.allUnits)
+    val helper = new GroupingHelper(
+      universe.mapLayers.rawWalkableMap.guaranteeImmutability,
+      seq,
+      universe.allUnits
+    )
     helper.evaluateUnitGroups
   }
 
@@ -34,7 +40,9 @@ object GroupingHelper {
 }
 
 class GroupingHelper[T <: WrapsUnit](val map: Grid2D, seq: IterableOnce[T], source: AllUnits) {
-  private val immutable: Vector[(Int, MapTilePosition)] = seq.iterator.map { u => (u.nativeUnitId, u.centerTile) }.toVector
+  private val immutable: Vector[(Int, MapTilePosition)] = seq.iterator.map { u =>
+    (u.nativeUnitId, u.centerTile)
+  }.toVector
 
   /**
     * can/should be run asynchronously
@@ -46,7 +54,7 @@ class GroupingHelper[T <: WrapsUnit](val map: Grid2D, seq: IterableOnce[T], sour
     immutable.foreach { elem =>
       groups.find(_.canJoin(elem)) match {
         case Some(joinMe) => joinMe.add_!(elem)
-        case None =>
+        case None         =>
           val ng = new Group[T](map, source)
           groups += ng
           ng.add_!(elem)

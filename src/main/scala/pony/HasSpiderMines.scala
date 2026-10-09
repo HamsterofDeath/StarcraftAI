@@ -10,6 +10,6 @@ import scala.collection.immutable.HashMap
 import scala.collection.mutable.ListBuffer
 
 trait HasSpiderMines extends WrapsUnit {
-  private val mines = oncePerTick {nativeUnit.getSpiderMineCount}
+  private val mines   = oncePerTick { nativeUnit.getSpiderMineCount }
   def spiderMineCount = mines.get
 }

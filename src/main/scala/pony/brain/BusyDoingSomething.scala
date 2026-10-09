@@ -1,10 +1,11 @@
 package pony
 package brain
 
-class BusyDoingSomething[T <: WrapsUnit](employer: Employer[T],
-                                         behaviour: Seq[SingleUnitBehaviour[T]],
-                                         private var objective: Objective)
-  extends UnitWithJob(employer, behaviour.head.unit, Priority.DefaultBehaviour) with Interruptable[T] {
+class BusyDoingSomething[T <: WrapsUnit](
+    employer: Employer[T],
+    behaviour: Seq[SingleUnitBehaviour[T]],
+    private var objective: Objective
+) extends UnitWithJob(employer, behaviour.head.unit, Priority.DefaultBehaviour) with Interruptable[T] {
 
   assert(behaviour.map(_.unit).distinct.size == 1, s"Wrong grouping: $behaviour")
 
@@ -21,7 +22,7 @@ class BusyDoingSomething[T <: WrapsUnit](employer: Employer[T],
   }
 
   override def interruptableNow = super.interruptableNow &&
-                                  lastTickOrderIssuedBy.exists(_.canInterrupt)
+    lastTickOrderIssuedBy.exists(_.canInterrupt)
 
   def newObjective_!(objective: Objective): Unit = {
     this.objective = objective
@@ -53,7 +54,7 @@ class BusyDoingSomething[T <: WrapsUnit](employer: Employer[T],
   private def highestPriorityOrdersForTick = {
     val options = active.map { rule =>
       rule -> rule.orderForTick(objective)
-              .map(_.lockingFor_!(rule.blocksForTicks).forceRepeat_!(rule.forceRepeats))
+        .map(_.lockingFor_!(rule.blocksForTicks).forceRepeat_!(rule.forceRepeats))
     }.filter(_._2.nonEmpty)
     if (options.isEmpty) {
       None -> Nil

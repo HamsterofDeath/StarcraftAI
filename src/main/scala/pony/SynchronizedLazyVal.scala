@@ -5,7 +5,7 @@ object SynchronizedLazyVal {
 }
 
 class SynchronizedLazyVal[T](gen: => T, onValueChange: Option[() => Unit] = None)
-  extends LazyVal(gen, onValueChange) {
+    extends LazyVal(gen, onValueChange) {
 
   private var lastGeneratedValue = Option.empty[T]
 

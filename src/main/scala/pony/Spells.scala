@@ -30,21 +30,21 @@ object Spells {
   }
 
   case object Stimpack
-    extends SingleTargetSpell[CanUseStimpack, CanUseStimpack](Upgrades.Terran.InfantryCooldown) {
+      extends SingleTargetSpell[CanUseStimpack, CanUseStimpack](Upgrades.Terran.InfantryCooldown) {
     override def isAffected(m: CanUseStimpack) = {
       m.isStimmed
     }
   }
 
   case object Irradiate
-    extends SingleTargetSpell[ScienceVessel, Organic](Upgrades.Terran.Irradiate) {
+      extends SingleTargetSpell[ScienceVessel, Organic](Upgrades.Terran.Irradiate) {
     override def isAffected(m: Organic) = {
       m.isIrradiated
     }
   }
 
   case object DefenseMatrix
-    extends SingleTargetSpell[ScienceVessel, Mobile](Upgrades.Terran.Defensematrix) {
+      extends SingleTargetSpell[ScienceVessel, Mobile](Upgrades.Terran.Defensematrix) {
     override def isAffected(m: Mobile) = m.matrixHp >= 25 // allow refreshing the matrix
 
     override def castOn = OwnUnits

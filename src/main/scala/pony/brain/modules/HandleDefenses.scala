@@ -29,16 +29,19 @@ class HandleDefenses(universe: Universe) extends OrderlessAIModule[Mobile](unive
         }
       }
     } else {
-      backgroundOp.matchOnOptSelf(groups => {
-        debug(s"Attackers grouped")
-        val typedGroups = groups.map(GroupingHelper.typedGroup(universe, _))
-        //prototype: just attack the biggest group with everything
+      backgroundOp.matchOnOptSelf(
+        groups => {
+          debug(s"Attackers grouped")
+          val typedGroups = groups.map(GroupingHelper.typedGroup(universe, _))
+          // prototype: just attack the biggest group with everything
 
-        val biggest = typedGroups.maxBy(_.members.iterator.map(_.armorType.transportSize).sum)
-        worldDominationPlan.initiateAttack(biggest.center, Lowest)
+          val biggest = typedGroups.maxBy(_.members.iterator.map(_.armorType.transportSize).sum)
+          worldDominationPlan.initiateAttack(biggest.center, Lowest)
 
-        resetBackgroundOp()
-      }, {})
+          resetBackgroundOp()
+        },
+        {}
+      )
     }
   }
 

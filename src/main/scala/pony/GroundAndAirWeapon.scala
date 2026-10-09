@@ -9,6 +9,4 @@ import scala.jdk.CollectionConverters._
 import scala.collection.immutable.HashMap
 import scala.collection.mutable.ListBuffer
 
-trait GroundAndAirWeapon extends RangeWeapon with GroundWeapon with AirWeapon {
-
-}
+trait GroundAndAirWeapon extends RangeWeapon with GroundWeapon with AirWeapon {}

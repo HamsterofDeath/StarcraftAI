@@ -10,11 +10,12 @@ import pony.brain.{HasUniverse, Universe}
   */
 class AutoCamera(override val universe: Universe) extends AIPlugIn with HasUniverse {
   private val enabled = sys.props.get("twailight.autoCamera").forall(_ != "false") &&
-                        !sys.props.get("twailight.headless").contains("true")
+    !sys.props.get("twailight.headless").contains("true")
   private val director = new AutoCameraDirector(
     minDwellFrames = sys.props.get("twailight.autoCameraDwellFrames").flatMap(_.toIntOption).filter(_ > 0)
-                     .getOrElse(96),
-    interruptMargin = CameraFocus.EnemySightingScore)
+      .getOrElse(96),
+    interruptMargin = CameraFocus.EnemySightingScore
+  )
   private val scanFrames       = 12
   private val manualHoldFrames = 240
   private val clusterRadius    = 8
@@ -30,12 +31,13 @@ class AutoCamera(override val universe: Universe) extends AIPlugIn with HasUnive
 
   override protected def tickPlugIn(): Unit = {
     if (enabled) {
-      val frame = currentTick
+      val frame  = currentTick
       val native = nativeGame.getScreenPosition
       val screen = (native.getX, native.getY)
-      val moved = previousScreen.exists(_ != screen)
+      val moved  = previousScreen.exists(_ != screen)
       if (moved && frame - lastCommandFrame > commandLagFrames) {
-        if (frame >= holdUntil) NativeMatchEvidence.trace("camera-manual-hold", s"screen=$screen frames=$manualHoldFrames")
+        if (frame >= holdUntil)
+          NativeMatchEvidence.trace("camera-manual-hold", s"screen=$screen frames=$manualHoldFrames")
         holdUntil = frame + manualHoldFrames
       }
       if (moved) stalledCommands = 0
@@ -70,18 +72,18 @@ class AutoCamera(override val universe: Universe) extends AIPlugIn with HasUnive
 
   private def candidates: Seq[CameraFocus] = {
     val fighting = ownUnits.allByType[ArmedMobile].filter(u => u.isInGame && u.isInFight).map(_.currentTile) ++
-                   ownUnits.allBuildings.filter(b => b.isInGame && b.isBeingAttacked).map(_.centerTile)
+      ownUnits.allBuildings.filter(b => b.isInGame && b.isBeingAttacked).map(_.centerTile)
     val combat = AutoCameraDirector.densest(fighting.toVector, clusterRadius).map { case (tile, count) =>
       CameraFocus(tile, CameraFocus.CombatScore + count * 10, "combat")
     }
     val visibleEnemies = enemies.allByType[ArmedMobile]
-                         .filter(u => u.isInGame && u.nativeUnit.isVisible && !u.isInstanceOf[WorkerUnit])
-                         .map(_.currentTile)
+      .filter(u => u.isInGame && u.nativeUnit.isVisible && !u.isInstanceOf[WorkerUnit])
+      .map(_.currentTile)
     val sighting = AutoCameraDirector.densest(visibleEnemies.toVector, clusterRadius).map { case (tile, count) =>
       CameraFocus(tile, CameraFocus.EnemySightingScore + count, "enemy forces")
     }
     val army = ownUnits.allByType[ArmedMobile].filter(u => u.isInGame && !u.isInstanceOf[WorkerUnit])
-               .map(_.currentTile)
+      .map(_.currentTile)
     val armyGroup = AutoCameraDirector.densest(army.toVector, clusterRadius).map { case (tile, count) =>
       CameraFocus(tile, CameraFocus.ArmyScore + count, "army")
     }

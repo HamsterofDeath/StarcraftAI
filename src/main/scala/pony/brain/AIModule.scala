@@ -3,8 +3,8 @@ package brain
 
 import scala.reflect.ClassTag
 
-abstract class AIModule[T <: WrapsUnit : ClassTag](override val universe: Universe)
-  extends Employer[T](universe) with HasUniverse {
+abstract class AIModule[T <: WrapsUnit: ClassTag](override val universe: Universe)
+    extends Employer[T](universe) with HasUniverse {
   def ordersForTick: Iterable[UnitOrder]
 
   def onNth: Int = 1
@@ -15,7 +15,7 @@ abstract class AIModule[T <: WrapsUnit : ClassTag](override val universe: Univer
 }
 
 object AIModule {
-  def noop[T <: WrapsUnit : ClassTag](universe: Universe) = new AIModule[T](universe) {
+  def noop[T <: WrapsUnit: ClassTag](universe: Universe) = new AIModule[T](universe) {
     override def ordersForTick: Iterable[UnitOrder] = Nil
   }
 }

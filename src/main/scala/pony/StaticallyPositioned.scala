@@ -15,8 +15,8 @@ trait StaticallyPositioned extends WrapsUnit {
 
   val myTilePosition = once {
     val position = nativeUnit.getTilePosition
-    val x = position.getX
-    val y = position.getY
+    val x        = position.getX
+    val y        = position.getY
     MapTilePosition.shared(x, y)
   }
 
@@ -28,7 +28,7 @@ trait StaticallyPositioned extends WrapsUnit {
 
   private val myAreaOnMap = once {
     mapLayers.rawWalkableMap.areaOf(centerTile)
-    .getOr(s"Building is not on valid ground: $self")
+      .getOr(s"Building is not on valid ground: $self")
   }
 
   def areaOnMap = myAreaOnMap.get

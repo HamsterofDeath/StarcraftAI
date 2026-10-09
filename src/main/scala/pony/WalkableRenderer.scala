@@ -10,10 +10,10 @@ class WalkableRenderer extends AIPlugIn {
 
         val walkable = lazyWorld.map.walkableGrid
         walkable.all
-        .filter(walkable.blocked)
-        .foreach { blocked =>
-          renderer.drawCrossedOutOnTile(blocked)
-        }
+          .filter(walkable.blocked)
+          .foreach { blocked =>
+            renderer.drawCrossedOutOnTile(blocked)
+          }
       }
     }
   }

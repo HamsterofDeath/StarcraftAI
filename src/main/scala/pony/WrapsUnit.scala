@@ -13,7 +13,7 @@ import scala.compiletime.uninitialized
 trait WrapsUnit extends HasUniverse with AfterTickListener {
 
   lazy val isEnemy = universe.enemyUnits.byId(nativeUnitId).isDefined &&
-                     universe.ownUnits.byId(nativeUnitId).isEmpty
+    universe.ownUnits.byId(nativeUnitId).isEmpty
 
   def currentTileNative = currentTile.asNative
 
@@ -24,9 +24,9 @@ trait WrapsUnit extends HasUniverse with AfterTickListener {
   def isFigher = !isNonFighter
 
   def currentPositionNative = currentPosition.toNative
-  def currentPosition = myCurrentPosition.get
+  def currentPosition       = myCurrentPosition.get
 
-  private val myTile            = oncePerTick {
+  private val myTile = oncePerTick {
     val tp = nativeUnit.getPosition
     MapTilePosition.shared(tp.getX / 32, tp.getY / 32)
   }
@@ -44,8 +44,8 @@ trait WrapsUnit extends HasUniverse with AfterTickListener {
   private val myExists = oncePerTick {
     nativeUnit.exists()
   }
-  val nativeUnitId      = nativeUnit.getID
-  val initialNativeType = nativeUnit.getType
+  val nativeUnitId         = nativeUnit.getID
+  val initialNativeType    = nativeUnit.getType
   private val myNativeType = oncePerTick {
     val ret = nativeUnit.getType
     morphed |= ret != initialNativeType
@@ -54,11 +54,11 @@ trait WrapsUnit extends HasUniverse with AfterTickListener {
 
   def nativeUnitType = myNativeType.get
 
-  private val myTarget    = oncePerTick {
+  private val myTarget = oncePerTick {
     nativeUnit.getTarget.wrapNull
-    .orElse(nativeUnit.getOrderTarget.wrapNull)
-    .map(_.getID)
-    .flatMap(universe.allUnits.byNativeId)
+      .orElse(nativeUnit.getOrderTarget.wrapNull)
+      .map(_.getID)
+      .flatMap(universe.allUnits.byNativeId)
   }
   private val nativeOrder = oncePerTick {
     nativeUnit.getOrder
@@ -66,9 +66,10 @@ trait WrapsUnit extends HasUniverse with AfterTickListener {
 
   def currentTarget = myTarget.get
 
-  private val curOrder     = oncePerTick {nativeUnit.getOrder}
-  private val unfinished   = oncePerTick(
-    nativeUnit.getRemainingBuildTime > 0 || !nativeUnit.isCompleted)
+  private val curOrder   = oncePerTick { nativeUnit.getOrder }
+  private val unfinished = oncePerTick(
+    nativeUnit.getRemainingBuildTime > 0 || !nativeUnit.isCompleted
+  )
   private val myCenterTile = oncePerTick {
     val c = center
     MapTilePosition(c.x / 32, c.y / 32)
@@ -95,13 +96,9 @@ trait WrapsUnit extends HasUniverse with AfterTickListener {
     order == Order.PlayerGuard || order == Order.Nothing
   }
 
-  override def postTick(): Unit = {
+  override def postTick(): Unit = {}
 
-  }
-
-  def onMorph(getType: UnitType) = {
-
-  }
+  def onMorph(getType: UnitType) = {}
 
   def shouldReRegisterOnMorph = false
 
@@ -127,21 +124,19 @@ trait WrapsUnit extends HasUniverse with AfterTickListener {
     universe.register_!(this)
   }
 
-  protected def onUniverseSet(universe: Universe): Unit = {
-
-  }
+  protected def onUniverseSet(universe: Universe): Unit = {}
 
   def center: MapPosition
 
   def isSelected = nativeUnit.isSelected
   def nativeUnit: APIUnit
   def shortDebugString = s"$unitIdText"
-  def unitIdText = Integer.toString(unitId, 36)
-  def mySCRace = {
+  def unitIdText       = Integer.toString(unitId, 36)
+  def mySCRace         = {
     val r = nativeUnit.getType.getRace
     SCRace.fromNative(r)
   }
-  def isBeingCreated = unfinished.get
+  def isBeingCreated      = unfinished.get
   override def onTick_!() = {
     super.onTick_!()
   }

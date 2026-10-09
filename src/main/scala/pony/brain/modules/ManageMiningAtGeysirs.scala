@@ -7,17 +7,17 @@ import pony.brain.UnitRequest.CherryPickers
 import scala.collection.mutable.ArrayBuffer
 
 class ManageMiningAtGeysirs(universe: Universe)
-  extends OrderlessAIModule[WorkerUnit](universe) with BuildingRequestHelper {
+    extends OrderlessAIModule[WorkerUnit](universe) with BuildingRequestHelper {
   private val gatheringJobs = ArrayBuffer.empty[ManageMiningAtGeysir]
-  def workerCapacity = gatheringJobs.filter(_.keep).map(_.idealWorkerCount).sum
+  def workerCapacity        = gatheringJobs.filter(_.keep).map(_.idealWorkerCount).sum
 
   override def onTick_!(): Unit = {
     val unattended = unitManager.bases.finishedBases.filterNot(_.mainBuilding.isFloating)
-                     .filter(base => !gatheringJobs.exists(_.covers(base)))
+      .filter(base => !gatheringJobs.exists(_.covers(base)))
     unattended.foreach { base =>
       base.myGeysirs.filterNot(g => gatheringJobs.exists(_.targetGeysir == g)).map { geysir =>
         new ManageMiningAtGeysir(base, geysir)
-      }.foreach {gatheringJobs += _}
+      }.foreach { gatheringJobs += _ }
     }
 
     gatheringJobs.filterNot(_.keep).foreach(_.releaseMiners())
@@ -26,14 +26,14 @@ class ManageMiningAtGeysirs(universe: Universe)
 
   class ManageMiningAtGeysir(base: Base, geysir: Geysir) extends Employer[WorkerUnit](universe) {
     self =>
-    val targetGeysir = geysir
-    val idealWorkerCount            = 3 +
-                                              (base.mainBuilding.area.distanceTo(geysir.area) / 3)
-                                              .toInt
+    val targetGeysir     = geysir
+    val idealWorkerCount = 3 +
+      (base.mainBuilding.area.distanceTo(geysir.area) / 3)
+        .toInt
     private val workerCountBeforeWantingGas = this.universe.mapLayers
-                                              .isOnIsland(base.mainBuilding.tilePosition)
-                                              .ifElse(8, 14)
-    private var refinery                    = Option.empty[Refinery]
+      .isOnIsland(base.mainBuilding.tilePosition)
+      .ifElse(8, 14)
+    private var refinery = Option.empty[Refinery]
 
     override def toString = s"GetGas@${geysir.tilePosition}"
 
@@ -48,17 +48,18 @@ class ManageMiningAtGeysirs(universe: Universe)
         case None =>
           if (ownUnits.allByType[WorkerUnit].size >= workerCountBeforeWantingGas) {
             def requestExists = unitManager.requestedConstructions[Refinery]
-                                .exists(_.customPosition.predefined.contains(geysir.tilePosition))
+              .exists(_.customPosition.predefined.contains(geysir.tilePosition))
             def jobExists = unitManager.constructionsInProgress[Refinery]
-                            .exists(_.buildWhere == geysir.tilePosition)
+              .exists(_.buildWhere == geysir.tilePosition)
             def findAndRememberRefinery() = refinery.orElse(ownUnits.allByType[Refinery]
-                                                            .find(
-                                                              _.tilePosition == geysir.tilePosition)
-                                                            .filterNot(_.isBeingCreated)
-                                                            .flatMap { refinery =>
-                                                              self.refinery = Some(refinery)
-                                                              self.refinery
-                                                            })
+              .find(
+                _.tilePosition == geysir.tilePosition
+              )
+              .filterNot(_.isBeingCreated)
+              .flatMap { refinery =>
+                self.refinery = Some(refinery)
+                self.refinery
+              })
 
             if (!requestExists && !jobExists && findAndRememberRefinery().isEmpty) {
               val where = AlternativeBuildingSpot.fromPreset(geysir.tilePosition)
@@ -69,8 +70,8 @@ class ManageMiningAtGeysirs(universe: Universe)
           val missing = idealWorkerCount - teamSize
           if (missing > 0) {
             val ofType = UnitJobRequest
-                         .idleOfType(self, classOf[WorkerUnit], missing, Priority.CollectGas)
-                         .withOnlyAccepting(_.isCarryingNothing)
+              .idleOfType(self, classOf[WorkerUnit], missing, Priority.CollectGas)
+              .withOnlyAccepting(_.isCarryingNothing)
             val result = unitManager.request(ofType)
             result.units.foreach { freeWorker =>
               assignJob_!(new MineGasAtGeysir(freeWorker, geysir))
@@ -82,12 +83,12 @@ class ManageMiningAtGeysirs(universe: Universe)
     def covers(base: Base) = this.base.mainBuilding == base.mainBuilding && base.myGeysirs.contains(geysir)
 
     class MineGasAtGeysir(worker: WorkerUnit, targetGeysir: Geysir)
-      extends UnitWithJob[WorkerUnit](self, worker, Priority.ConstructBuilding)
-              with Interruptable[WorkerUnit]
-              with CanAcceptUnitSwitch[WorkerUnit]
-              with FerrySupport[WorkerUnit]
-              with PathfindingSupport[WorkerUnit] {
-      private val freeNearGeysir       = {
+        extends UnitWithJob[WorkerUnit](self, worker, Priority.ConstructBuilding)
+        with Interruptable[WorkerUnit]
+        with CanAcceptUnitSwitch[WorkerUnit]
+        with FerrySupport[WorkerUnit]
+        with PathfindingSupport[WorkerUnit] {
+      private val freeNearGeysir = {
         mapLayers.rawWalkableMap.nearestFreeBlock(geysir.tilePosition, 1)
       }
       private val nearestReachableBase = oncePer(Primes.prime71) {
@@ -97,17 +98,16 @@ class ManageMiningAtGeysirs(universe: Universe)
           base.mainBuilding.area.distanceTo(worker.currentTile)
         }
       }
-      private var state: State         = Idle
+      private var state: State = Idle
 
-      override def copyOfJobForNewUnit(replacement: WorkerUnit) = new
-          MineGasAtGeysir(replacement, targetGeysir)
+      override def copyOfJobForNewUnit(replacement: WorkerUnit) = new MineGasAtGeysir(replacement, targetGeysir)
 
       override def asRequest = {
         val picker = {
           CherryPickers.cherryPickWorkerByDistance[WorkerUnit](targetGeysir.centerTile)()
         }
         UnitJobRequest.idleOfType(employer, worker.getClass)
-        .withRequest(_.withCherryPicker_!(picker))
+          .withRequest(_.withCherryPicker_!(picker))
       }
 
       override def couldSwitchInTheFuture = geysir.nonEmpty

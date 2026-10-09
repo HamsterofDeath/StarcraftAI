@@ -11,10 +11,10 @@ import scala.collection.mutable.ListBuffer
 
 trait TransporterUnit extends AirUnit {
   override def isNonFighter = true
-  private val myPickingUp = oncePerTick {
+  private val myPickingUp   = oncePerTick {
     nativeUnit.getOrderTarget != null
   }
-  private val myLoaded    = oncePerTick {
+  private val myLoaded = oncePerTick {
     nativeUnit.getLoadedUnits.asScala.flatMap { u =>
       ownUnits.byNative(u).asInstanceOf[Option[GroundUnit]]
     }.toSet
@@ -24,10 +24,10 @@ trait TransporterUnit extends AirUnit {
     ferryManager.nearestDropPointTo(currentTile)
   }
 
-  def isPickingUp = myPickingUp.get
-  def loaded = myLoaded.get
+  def isPickingUp                = myPickingUp.get
+  def loaded                     = myLoaded.get
   def isCarrying(gu: GroundUnit) = myLoaded(gu)
-  def canDropHere = ferryManager.canDropHere(currentTile)
+  def canDropHere                = ferryManager.canDropHere(currentTile)
 
   def hasUnitsLoaded = myLoaded.nonEmpty
 }

@@ -23,8 +23,7 @@ trait AIAPI {
 
   def onSendText(s: String): Unit = {
     trace(s"User send $s")
-    plugins.collect { case receiver: AIAPIEventDispatcher => receiver.onSendText(s)
-    }
+    plugins.collect { case receiver: AIAPIEventDispatcher => receiver.onSendText(s) }
   }
 
   private val aiMS     = ArrayBuffer.empty[Long]
@@ -35,27 +34,29 @@ trait AIAPI {
       debugger.renderer.beforeTick()
       world.tick()
       val heavyFrame = AiCadence.heavyNow(world.tickCount)
-      val before = System.nanoTime()
+      val before     = System.nanoTime()
       plugins.filter(_.isActive).foreach(_.onTickOnPlugin())
-      val after = System.nanoTime()
+      val after   = System.nanoTime()
       val aiNanos = after - before
       aiMS += aiNanos
       world.postTick()
-      val afterAfter = System.nanoTime()
+      val afterAfter  = System.nanoTime()
       val nativeNanos = afterAfter - after
       nativeMS += nativeNanos
       if (heavyFrame)
-        NativeMatchEvidence.trace("ai-heavy",
-          s"pluginMs=${aiNanos / 1000000.0} nativeMs=${nativeNanos / 1000000.0}")
+        NativeMatchEvidence.trace(
+          "ai-heavy",
+          s"pluginMs=${aiNanos / 1000000.0} nativeMs=${nativeNanos / 1000000.0}"
+        )
       debug(
-        s"AI took ${aiNanos.nanoToMillis} ms for calculations and then ${nativeNanos.nanoToMillis}")
+        s"AI took ${aiNanos.nanoToMillis} ms for calculations and then ${nativeNanos.nanoToMillis}"
+      )
       if (aiMS.size > 100) aiMS.remove(0)
       if (nativeMS.size > 100) nativeMS.remove(0)
-      val aiMillis = (aiMS.sum.nanoToMillis / 100).format
+      val aiMillis     = (aiMS.sum.nanoToMillis / 100).format
       val nativeMillis = nativeMS.sum.nanoToMillis / 100
       debugger.renderer.drawTextOnScreen(s"AI: ${aiMillis}ms, Native ${nativeMillis.format}ms")
-    }
-    catch {
+    } catch {
       case t: Throwable =>
         NativeMatchEvidence.failed(world.nativeGame, t)
         t.printStackTrace()
@@ -106,12 +107,12 @@ trait AIPlugIn {
   private var active                = true
   private var myWorld: DefaultWorld = uninitialized
 
-  def debugger = lazyWorld.debugger
+  def debugger                           = lazyWorld.debugger
   def queueOrder(order: UnitOrder): Unit = {
     orders.queue_!(order)
   }
-  def orders = lazyWorld.orderQueue
-  def lazyWorld = myWorld
+  def orders                                = lazyWorld.orderQueue
+  def lazyWorld                             = myWorld
   def setWorld_!(world: DefaultWorld): Unit = {
     this.myWorld = world
   }
@@ -124,7 +125,7 @@ trait AIPlugIn {
     }
   }
   def off_!(): Unit = active = false
-  def on_!(): Unit = active = true
+  def on_!(): Unit  = active = true
   protected def tickPlugIn(): Unit
 }
 
@@ -138,4 +139,3 @@ trait AIPluginRunOnce extends AIPlugIn {
     }
   }
 }
-

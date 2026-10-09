@@ -40,7 +40,7 @@ package object pony {
 
   setTinyLogLevel_!(Level.TRACE)
   implicit val exCon: ExecutionContext = ExecutionContext.global
-  val tileSize  = 32
+  val tileSize                         = 32
 
   private var tinyLogLevel: LogLevel = LogLevels.LogTrace
 
@@ -57,7 +57,7 @@ package object pony {
 
   def setTinyLogLevel_!(newLevel: Level): Unit = {
     new java.io.File("log").mkdirs()
-    val levelName = newLevel.toString.toLowerCase
+    val levelName  = newLevel.toString.toLowerCase
     val properties = new java.util.HashMap[String, String]()
     properties.put("level", levelName)
     properties.put("writer", "file")
@@ -120,7 +120,7 @@ package object pony {
 
   implicit class RichOption[T](val o: Option[T]) extends AnyVal {
     def getOr(excuse: => String) = o match {
-      case None => !!!(excuse)
+      case None    => !!!(excuse)
       case Some(x) => x
     }
 
@@ -217,7 +217,7 @@ package object pony {
   implicit class RichMutableMap[K, V](val m: mutable.Map[K, V]) extends AnyVal {
     def insertReplace(k: K, f: V => V, initial: V) = {
       m.get(k) match {
-        case None => m.put(k, initial)
+        case None      => m.put(k, initial)
         case Some(old) => m.put(k, f(old))
       }
     }
@@ -251,7 +251,7 @@ package object pony {
     def <=(other: Class[?]) = other.isAssignableFrom(c)
 
     def className = {
-      val lastDot = c.getName.lastIndexOf('.')
+      val lastDot    = c.getName.lastIndexOf('.')
       val lastDollar = c.getName.lastIndexOf('$')
       c.getName.drop((lastDot max lastDollar) + 1)
     }

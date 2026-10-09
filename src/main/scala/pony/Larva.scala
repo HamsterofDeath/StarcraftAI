@@ -10,4 +10,4 @@ import scala.collection.immutable.HashMap
 import scala.collection.mutable.ListBuffer
 
 class Larva(unit: APIUnit)
-  extends AnyUnit(unit) with IsSmall with GroundUnit with ZergUnit
+    extends AnyUnit(unit) with IsSmall with GroundUnit with ZergUnit

@@ -10,4 +10,4 @@ import scala.collection.immutable.HashMap
 import scala.collection.mutable.ListBuffer
 
 trait ArmedBuildingCoveringGroundAndAir
-  extends ArmedBuildingCoveringAir with ArmedBuildingCoveringGround
+    extends ArmedBuildingCoveringAir with ArmedBuildingCoveringGround

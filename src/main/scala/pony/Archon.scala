@@ -10,4 +10,5 @@ import scala.collection.immutable.HashMap
 import scala.collection.mutable.ListBuffer
 
 class Archon(unit: APIUnit)
-  extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with IsBig with IsInfantry with NormalAirDamage with ArmedMobile with NormalGroundDamage with FastAttackAir with FastAttackGround
+    extends AnyUnit(unit) with GroundUnit with GroundAndAirWeapon with IsBig with IsInfantry with NormalAirDamage
+    with ArmedMobile with NormalGroundDamage with FastAttackAir with FastAttackGround

@@ -7,14 +7,19 @@ case class Area(upperLeft: MapTilePosition, sizeOfArea: Size) {
 
   val lowerRight = upperLeft.movedBy(sizeOfArea).movedBy(-1, -1)
   val edges      = upperLeft ::
-                   MapTilePosition(lowerRight.x, upperLeft.y) ::
-                   lowerRight ::
-                   MapTilePosition(upperLeft.x, lowerRight.y) ::
-                   Nil
-  val center     = MapPosition((upperLeft.mapX + lowerRight.mapX) / 2,
-    (upperLeft.mapY + lowerRight.mapY) / 2)
-  val centerTile = MapTilePosition((upperLeft.x + lowerRight.x) / 2, (upperLeft.y + lowerRight.y)
-                                                                     / 2)
+    MapTilePosition(lowerRight.x, upperLeft.y) ::
+    lowerRight ::
+    MapTilePosition(upperLeft.x, lowerRight.y) ::
+    Nil
+  val center = MapPosition(
+    (upperLeft.mapX + lowerRight.mapX) / 2,
+    (upperLeft.mapY + lowerRight.mapY) / 2
+  )
+  val centerTile = MapTilePosition(
+    (upperLeft.x + lowerRight.x) / 2,
+    (upperLeft.y + lowerRight.y)
+      / 2
+  )
 
   def moveTo(e: MapTilePosition) = copy(upperLeft = e)
 
@@ -55,12 +60,16 @@ case class Area(upperLeft: MapTilePosition, sizeOfArea: Size) {
     new Iterable[MapTilePosition] {
       override def iterator: Iterator[MapTilePosition] = {
         val topAndBottom = (0 until sizeOfArea.x).iterator.flatMap { x =>
-          Iterator(MapTilePosition.shared(upperLeft.x + x, upperLeft.y),
-            MapTilePosition.shared(upperLeft.x + x, upperLeft.y + sizeOfArea.y))
+          Iterator(
+            MapTilePosition.shared(upperLeft.x + x, upperLeft.y),
+            MapTilePosition.shared(upperLeft.x + x, upperLeft.y + sizeOfArea.y)
+          )
         }
         val sides = (1 until sizeOfArea.y - 1).iterator.flatMap { y =>
-          Iterator(MapTilePosition.shared(upperLeft.x, upperLeft.y + y),
-            MapTilePosition.shared(upperLeft.x + sizeOfArea.x, upperLeft.y + y))
+          Iterator(
+            MapTilePosition.shared(upperLeft.x, upperLeft.y + y),
+            MapTilePosition.shared(upperLeft.x + sizeOfArea.x, upperLeft.y + y)
+          )
         }
         topAndBottom ++ sides
       }

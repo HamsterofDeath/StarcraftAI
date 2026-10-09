@@ -9,6 +9,4 @@ import scala.jdk.CollectionConverters._
 import scala.collection.immutable.HashMap
 import scala.collection.mutable.ListBuffer
 
-trait MeleeWeapon extends Weapon {
-
-}
+trait MeleeWeapon extends Weapon {}

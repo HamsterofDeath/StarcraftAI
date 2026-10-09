@@ -3,9 +3,9 @@ package brain
 package modules
 
 class EnqueueArmy(universe: Universe)
-  extends OrderlessAIModule[UnitFactory](universe) with UnitRequestHelper {
+    extends OrderlessAIModule[UnitFactory](universe) with UnitRequestHelper {
 
-  type Ratio = (Class[? <: Mobile], Double)
+  type Ratio        = (Class[? <: Mobile], Double)
   type RequestOrder = Seq[Ratio]
 
   private val myRequestPlan = oncePerTick {
@@ -15,7 +15,7 @@ class EnqueueArmy(universe: Universe)
       existingRatio / idealRatio
     }
     val needsSomething = {
-    val (_, later) = mostMissing.partition { case (c, _) => universe.unitManager.allRequirementsFulfilled(c) }
+      val (_, later) = mostMissing.partition { case (c, _) => universe.unitManager.allRequirementsFulfilled(c) }
       later.toSet
     }
 
@@ -23,13 +23,13 @@ class EnqueueArmy(universe: Universe)
       case (c, _) => universe.unitManager.requirementsQueuedToBuild(c)
     }
     val highestPriority = canBuildNow
-    val buildThese =
+    val buildThese      =
       highestPriority.takeWhile { e =>
-        val rich = resources.couldAffordNow(e._1)
+        val rich             = resources.couldAffordNow(e._1)
         def mineralsOverflow = resources.unlockedResources.moreMineralsThanGas &&
-                               resources.unlockedResources.minerals > 400
+          resources.unlockedResources.minerals > 400
         def gasOverflow = resources.unlockedResources.moreGasThanMinerals &&
-                          resources.unlockedResources.gas > 400
+          resources.unlockedResources.gas > 400
         rich || mineralsOverflow || gasOverflow
       }
     RequestPlan(buildThese, needsSomething)
@@ -37,17 +37,19 @@ class EnqueueArmy(universe: Universe)
 
   override def onTick_!(): Unit = {
     super.onTick_!()
-    if (race.isTerran && strategy.current.isInstanceOf[Strategy.SimpleTerran] &&
-      universe.pluginByType[RunTerranCampaign].holdingNewArmy) return
+    if (
+      race.isTerran && strategy.current.isInstanceOf[Strategy.SimpleTerran] &&
+      universe.pluginByType[RunTerranCampaign].holdingNewArmy
+    ) return
     val RequestPlan(buildThese, needsSomething) = myRequestPlan.get
-    var resourceResults = Option.empty[ResourceRequests]
+    var resourceResults                         = Option.empty[ResourceRequests]
     buildThese.filterNot(needsSomething.contains).foreach { case (thisOne, _) =>
       val needsToSaveMinerals = resourceResults
-                                .exists(_.minerals > resources.unlockedResources.minerals)
+        .exists(_.minerals > resources.unlockedResources.minerals)
       val needsToSaveGas = resourceResults.exists(_.gas > resources.unlockedResources.gas)
-      val required = ResourceRequests.forUnit(race, thisOne)
-      val mineralsGood = !needsToSaveMinerals
-      val gasGood = !needsToSaveGas || required.gas == 0
+      val required       = ResourceRequests.forUnit(race, thisOne)
+      val mineralsGood   = !needsToSaveMinerals
+      val gasGood        = !needsToSaveGas || required.gas == 0
       if (mineralsGood && gasGood) {
         val accepted = requestUnit(thisOne, takeCareOfDependencies = false)
         if (!accepted) {
@@ -65,15 +67,15 @@ class EnqueueArmy(universe: Universe)
 
   def percentages: Percentages = {
     val ratios = strategy.current
-                 .suggestUnits
-                 .filter(_.isActive)
+      .suggestUnits
+      .filter(_.isActive)
     val summed = {
       ratios.groupBy(_.unitType)
-      .map { case (t, v) =>
-        (t, v.map(_.fixedAmount).sum)
-      }
+        .map { case (t, v) =>
+          (t, v.map(_.fixedAmount).sum)
+        }
     }
-    val totalWanted = summed.values.sum
+    val totalWanted       = summed.values.sum
     val percentagesWanted = summed.map { case (t, v) => t -> v.toDouble / totalWanted }
 
     val existingCounts = {
@@ -83,14 +85,16 @@ class EnqueueArmy(universe: Universe)
       }.toMap
     }
 
-    val totalExisting = existingCounts.values.sum
+    val totalExisting       = existingCounts.values.sum
     val percentagesExisting = existingCounts.map { case (t, v) =>
       t -> (if (totalExisting == 0) 0 else v.toDouble / totalExisting)
     }
     Percentages(percentagesWanted, percentagesExisting)
   }
 
-  case class Percentages(wanted: Map[Class[? <: Mobile], Double],
-                         existing: Map[Class[? <: Mobile], Double])
+  case class Percentages(
+      wanted: Map[Class[? <: Mobile], Double],
+      existing: Map[Class[? <: Mobile], Double]
+  )
 
 }

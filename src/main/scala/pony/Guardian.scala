@@ -10,4 +10,5 @@ import scala.collection.immutable.HashMap
 import scala.collection.mutable.ListBuffer
 
 class Guardian(unit: APIUnit)
-  extends AnyUnit(unit) with ZergMobileUnit with AirUnit with GroundWeapon with IsBig with NormalGroundDamage with ArmedMobile with MediumAttackGround
+    extends AnyUnit(unit) with ZergMobileUnit with AirUnit with GroundWeapon with IsBig with NormalGroundDamage
+    with ArmedMobile with MediumAttackGround

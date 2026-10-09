@@ -31,22 +31,29 @@ trait Weapon extends Controllable with ArmedUnit {
   def isStartingToAttack = nativeUnit.isStartingAttack
   // air & groundweapon need to override this
   def canAttackIfNear(other: CanDie) = false
-  def calculateDamageOn(other: CanDie, assumeHP: Int, assumeShields: Int,
-                        shotCount: Int): DamageSingleAttack = {
+  def calculateDamageOn(
+      other: CanDie,
+      assumeHP: Int,
+      assumeShields: Int,
+      shotCount: Int
+  ): DamageSingleAttack = {
     calculateDamageOn(other.armor, assumeHP, assumeShields, shotCount)
   }
-  def calculateDamageOn(other: Armor, assumeHP: Int, assumeShields: Int,
-                        shotCount: Int): DamageSingleAttack = {
+  def calculateDamageOn(
+      other: Armor,
+      assumeHP: Int,
+      assumeShields: Int,
+      shotCount: Int
+  ): DamageSingleAttack = {
     !!!("Forgot to override this")
   }
 
-  def matchOn[X](other: CanDie)
-                (ifAir: AirUnit => X, ifGround: GroundUnit => X, ifBuilding: Building => X) =
+  def matchOn[X](other: CanDie)(ifAir: AirUnit => X, ifGround: GroundUnit => X, ifBuilding: Building => X) =
     other match {
-      case a: AirUnit => ifAir(a)
+      case a: AirUnit    => ifAir(a)
       case g: GroundUnit => ifGround(g)
-      case b: Building => ifBuilding(b)
-      case x => !!!(s"Check this $x")
+      case b: Building   => ifBuilding(b)
+      case x             => !!!(s"Check this $x")
     }
   // needs to be overridden
   def isInWeaponRangeExact(target: CanDie): Boolean = false
@@ -56,12 +63,22 @@ trait Weapon extends Controllable with ArmedUnit {
   // needs to be overridden
   def weaponRangeRadius: Int = 0
 
-  protected def evalDamage(weapon: WeaponType, damageType: DamageType, hitCount: Int,
-                           targetsAir: Boolean) = {
+  protected def evalDamage(
+      weapon: WeaponType,
+      damageType: DamageType,
+      hitCount: Int,
+      targetsAir: Boolean
+  ) = {
     val level = universe.upgrades.weaponLevelOf(self)
-    Damage(weapon.damageAmount(), weapon.damageBonus(), weapon.damageCooldown(), damageType,
-      hitCount, level,
-      targetsAir)
+    Damage(
+      weapon.damageAmount(),
+      weapon.damageBonus(),
+      weapon.damageCooldown(),
+      damageType,
+      hitCount,
+      level,
+      targetsAir
+    )
   }
 
 }

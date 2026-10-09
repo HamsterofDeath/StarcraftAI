@@ -9,5 +9,10 @@ import scala.jdk.CollectionConverters._
 import scala.collection.immutable.HashMap
 import scala.collection.mutable.ListBuffer
 
-case class IsUnder(attack: Boolean, storm: Boolean, darkSwarm: Boolean, disruptor: Boolean,
-                   whenTick: Int)
+case class IsUnder(
+    attack: Boolean,
+    storm: Boolean,
+    darkSwarm: Boolean,
+    disruptor: Boolean,
+    whenTick: Int
+)

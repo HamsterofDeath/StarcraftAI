@@ -20,8 +20,11 @@ final class AStarSearch[T <: Node[T]](start: T, target: T, heuristics: Heuristic
 
   private val estimates  = Option(heuristics).getOrElse(Heuristics.none[T])
   private val allOpened  = new mutable.ArrayBuffer[T](1024)
-  private val openByCost = new java.util.PriorityQueue[T](8192, (a: T, b: T) =>
-    Integer.compare(a.estimatedTotalCost(target, estimates), b.estimatedTotalCost(target, estimates)))
+  private val openByCost = new java.util.PriorityQueue[T](
+    8192,
+    (a: T, b: T) =>
+      Integer.compare(a.estimatedTotalCost(target, estimates), b.estimatedTotalCost(target, estimates))
+  )
 
   private var progress         = Progress.Idle
   private var bestFound: T     = uninitialized
@@ -47,7 +50,7 @@ final class AStarSearch[T <: Node[T]](start: T, target: T, heuristics: Heuristic
           best.neighbours.foreach { node =>
             node.state match {
               case State.Closed =>
-              case State.Open =>
+              case State.Open   =>
                 if (node.wholePathCost > best.wholePathCost + node.evalCostFromParent(best)) {
                   openByCost.remove(node)
                   node.setNewParent(best)
@@ -64,7 +67,7 @@ final class AStarSearch[T <: Node[T]](start: T, target: T, heuristics: Heuristic
       }
     }
 
-    val end = if (target.hasParent) target else bestFound
+    val end  = if (target.hasParent) target else bestFound
     val path = end.ancestors.toVector.reverse
     completeSolution = path
     shortcutSolution = withShortcuts(path)
@@ -76,7 +79,7 @@ final class AStarSearch[T <: Node[T]](start: T, target: T, heuristics: Heuristic
 
   /** The target once it was reached, otherwise the closest node the last search got to. */
   def targetOrNearestReachable: T = progress match {
-    case Progress.SolutionFound => target
+    case Progress.SolutionFound                    => target
     case Progress.NotSolvable if bestFound != null => bestFound
     case _ => throw new IllegalStateException(s"No completed search ($progress)")
   }
@@ -100,7 +103,7 @@ final class AStarSearch[T <: Node[T]](start: T, target: T, heuristics: Heuristic
     if (path.isEmpty || !path.head.supportsShortcuts) path
     else {
       val remaining = path.toBuffer
-      var i = 0
+      var i         = 0
       while (i < remaining.size - 2) {
         val node = remaining(i)
         while (remaining.size - i > 2 && node.canReachDirectly(remaining(i + 2))) {

@@ -6,8 +6,8 @@ class AreaHelper(source: Grid2D) {
   private val baseOn = source.ensureContainsBlocked
 
   def findFreeAreas = {
-    val areas = mutable.ArrayBuffer.empty[Grid2D]
-    val used = mutable.BitSet.empty
+    val areas          = mutable.ArrayBuffer.empty[Grid2D]
+    val used           = mutable.BitSet.empty
     val knownInAnyArea = new MutableGrid2D(baseOn.cols, baseOn.rows, used)
     baseOn.allFree.foreach { p =>
       if (knownInAnyArea.free(p)) {
@@ -22,26 +22,28 @@ class AreaHelper(source: Grid2D) {
       }
     }
     val ret = areas.sortBy(-_.freeCount)
-    assert({
-      val before = baseOn.freeCount
-      val after = ret.map(_.freeCount)
-      before == after.sum
-    }, {
-      val merged = new MutableGrid2D(baseOn.cols, baseOn.rows, mutable.BitSet.empty, false)
-      ret.foreach { grid =>
-        grid.allFree.foreach { p =>
-          assert(merged.blocked(p), s"$p should be blocked, but is free")
-          merged.free_!(p)
-          assert(merged.free(p))
+    assert(
+      {
+        val before = baseOn.freeCount
+        val after  = ret.map(_.freeCount)
+        before == after.sum
+      }, {
+        val merged = new MutableGrid2D(baseOn.cols, baseOn.rows, mutable.BitSet.empty, false)
+        ret.foreach { grid =>
+          grid.allFree.foreach { p =>
+            assert(merged.blocked(p), s"$p should be blocked, but is free")
+            merged.free_!(p)
+            assert(merged.free(p))
+          }
         }
-      }
-      s"""
+        s"""
          |Sum of single areas is not equal to the complete area:
          |${baseOn.zoomedOut.mkString}
          |vs
          |${merged.zoomedOut.mkString}
          """.stripMargin
-    })
+      }
+    )
     ret.sortBy(_.freeCount).reverse
   }
 
@@ -67,33 +69,40 @@ class AreaHelper(source: Grid2D) {
 object AreaHelper {
 
   def directLineOfSight(a: MapTilePosition, b: MapTilePosition, grid2D: Grid2D): Boolean = {
-    AreaHelper.traverseTilesOfLine(a, b, (x, y) => {
-      if (grid2D.blocked(x, y)) Some(false) else None
-    }, true)
+    AreaHelper.traverseTilesOfLine(
+      a,
+      b,
+      (x, y) => {
+        if (grid2D.blocked(x, y)) Some(false) else None
+      },
+      true
+    )
   }
 
-  def traverseTilesOfLine[T](a: MapTilePosition, b: MapTilePosition, f: (Int, Int) => Option[T],
-                             orElse: T): T = {
-    var startX = a.x
-    var startY = a.y
-    val endX = b.x
-    val endY = b.y
-    var dy: Int = endY - startY
-    var dx: Int = endX - startX
+  def traverseTilesOfLine[T](
+      a: MapTilePosition,
+      b: MapTilePosition,
+      f: (Int, Int) => Option[T],
+      orElse: T
+  ): T = {
+    var startX     = a.x
+    var startY     = a.y
+    val endX       = b.x
+    val endY       = b.y
+    var dy: Int    = endY - startY
+    var dx: Int    = endX - startX
     var stepY: Int = 0
     if (dy < 0) {
       dy = -dy
       stepY = -1
-    }
-    else {
+    } else {
       stepY = 1
     }
     var stepX: Int = 0
     if (dx < 0) {
       dx = -dx
       stepX = -1
-    }
-    else {
+    } else {
       stepX = 1
     }
     dy <<= 1
@@ -112,8 +121,7 @@ object AreaHelper {
         val hit = f(startX, startY)
         if (hit.isDefined) return hit.get
       }
-    }
-    else {
+    } else {
       var fraction: Int = dx - (dy >> 1)
       while (startY != endY) {
         if (fraction >= 0) {
@@ -130,14 +138,18 @@ object AreaHelper {
   }
 
   def traverseTilesOfLine[T](a: MapTilePosition, b: MapTilePosition, f: (Int, Int) => T): Unit = {
-    traverseTilesOfLine(a, b, (x, y) => {f(x, y); None}, None)
+    traverseTilesOfLine(a, b, (x, y) => { f(x, y); None }, None)
   }
 
   def freeAreaSize(start: MapTilePosition, baseOn: Grid2D) = {
     var count = 0
-    traverseTilesOfArea(start, (x, y) => {
-      count += 1
-    }, baseOn)
+    traverseTilesOfArea(
+      start,
+      (x, y) => {
+        count += 1
+      },
+      baseOn
+    )
     count
   }
 
@@ -146,7 +158,7 @@ object AreaHelper {
     val sizeY = baseOn.rows
     if (baseOn.free(start)) {
       val taken = mutable.HashSet.empty[MapTilePosition]
-      val open = mutable.ListBuffer.empty[MapTilePosition]
+      val open  = mutable.ListBuffer.empty[MapTilePosition]
       open += start
       taken += start
 

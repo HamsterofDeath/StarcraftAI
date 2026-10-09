@@ -10,6 +10,6 @@ import scala.collection.immutable.HashMap
 import scala.collection.mutable.ListBuffer
 
 class SpiderMine(unit: APIUnit)
-  extends AnyUnit(unit) with SimplePosition with GroundUnit with IsSmall with AutoPilot {
+    extends AnyUnit(unit) with SimplePosition with GroundUnit with IsSmall with AutoPilot {
   override def canMove = false
 }

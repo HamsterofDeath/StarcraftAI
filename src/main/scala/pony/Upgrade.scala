@@ -24,8 +24,10 @@ class Upgrade(val nativeType: Either[UpgradeType, TechType]) {
     this(Right(t))
   }
 
-  def energyCost = nativeType.fold(_ => throw new UnsupportedOperationException(s"Called on $this"),
-    _.energyCost())
+  def energyCost = nativeType.fold(
+    _ => throw new UnsupportedOperationException(s"Called on $this"),
+    _.energyCost()
+  )
 
   override def toString = s"Upgrade: ${nativeType.fold(_.toString, _.toString)}"
 

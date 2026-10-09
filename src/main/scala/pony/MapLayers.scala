@@ -12,9 +12,9 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   }
 
   type AreaFromCircle = FutureIterator[IterableOnce[Circle], Grid2D]
-  private val rawMapWalk        = world.map.walkableGrid
-  private val empty             = world.map.walkableGrid.emptySameSize(false)
-                                  .guaranteeImmutability
+  private val rawMapWalk = world.map.walkableGrid
+  private val empty      = world.map.walkableGrid.emptySameSize(false)
+    .guaranteeImmutability
   private val full              = empty.reverseView
   private val rawMapWalkMutable = world.map.walkableGrid.mutableCopy
   private val rawMapBuild       = world.map.buildableGrid.mutableCopy
@@ -50,37 +50,37 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   }
 
   // too cpu heavy to be done in the main thread
-  private val justAreasToDefend                    = evalOnlyAreasToDefend
-                                                     .registeredAs("Areas to defend")
-  private val coveredByPsiStorm                    = evalUnderPsiStorm
-                                                     .registeredAs("Unser psi storm")
-                                                     .setupRecalcHint(Primes.prime2)
-  private val justBlockedForMainBuilding           = evalOnlyBlockedForMainBuildings
-                                                     .registeredAs("Main building blocked")
+  private val justAreasToDefend = evalOnlyAreasToDefend
+    .registeredAs("Areas to defend")
+  private val coveredByPsiStorm = evalUnderPsiStorm
+    .registeredAs("Unser psi storm")
+    .setupRecalcHint(Primes.prime2)
+  private val justBlockedForMainBuilding = evalOnlyBlockedForMainBuildings
+    .registeredAs("Main building blocked")
   private val coveredByDangerousUnits              = evalDangerousOnGround.registeredAs("Dangerous")
   private val coveredByHostileLongRangeGroundUnits = evalHostileLongRangeGroundUnits
-                                                     .registeredAs("Long range ground hostiles")
-  private val coveredByHostileCloakedGroundUnits   = evalHostileCloakedGroundUnits
-                                                     .registeredAs("Cloaked ground hostiles")
-                                                     .setupRecalcHint(Primes.prime11)
-  private val coveredByHostileCloakedAirUnits      = evalHostileCloakedAirUnits
-                                                     .registeredAs("Cloaked air hostiles")
-                                                     .setupRecalcHint(Primes.prime11)
-  private val coveredByHostileLongRangeAirUnits    = evalHostileLongRangeAirUnits
-                                                     .registeredAs("Long range air hostiles")
-  private val coveredByAnythingWithGroundWeapons   = evalSlightlyDangerousForGroundUnits
-                                                     .registeredAs("Ground hostiles")
+    .registeredAs("Long range ground hostiles")
+  private val coveredByHostileCloakedGroundUnits = evalHostileCloakedGroundUnits
+    .registeredAs("Cloaked ground hostiles")
+    .setupRecalcHint(Primes.prime11)
+  private val coveredByHostileCloakedAirUnits = evalHostileCloakedAirUnits
+    .registeredAs("Cloaked air hostiles")
+    .setupRecalcHint(Primes.prime11)
+  private val coveredByHostileLongRangeAirUnits = evalHostileLongRangeAirUnits
+    .registeredAs("Long range air hostiles")
+  private val coveredByAnythingWithGroundWeapons = evalSlightlyDangerousForGroundUnits
+    .registeredAs("Ground hostiles")
   private val coveredByAnythingWithAirWeapons = evalSlightlyDangerousForAirUnits
-                                                .registeredAs("Air hostiles")
-  private val coveredByOwnDetectors           = evalDetected.registeredAs("detected (self)")
-  private val coveredByOwnGround              = evalGroundDefended
-                                                .registeredAs("Covered by ground (self)")
-  private val coveredbyOwnAir                 = evalAirDefended
-                                                .registeredAs("Covered by air (self)")
-  private val exposedToCloaked                = evalExposedToCloakedUnits
-                                                .registeredAs("Exposed to cloaked units (self)")
-  private val justBlockingMobilesExtended     = evalOnlyMobileBlockingUnitsExtended
-                                                .registeredAs("Ground mobiles (self)")
+    .registeredAs("Air hostiles")
+  private val coveredByOwnDetectors = evalDetected.registeredAs("detected (self)")
+  private val coveredByOwnGround    = evalGroundDefended
+    .registeredAs("Covered by ground (self)")
+  private val coveredbyOwnAir = evalAirDefended
+    .registeredAs("Covered by air (self)")
+  private val exposedToCloaked = evalExposedToCloakedUnits
+    .registeredAs("Exposed to cloaked units (self)")
+  private val justBlockingMobilesExtended = evalOnlyMobileBlockingUnitsExtended
+    .registeredAs("Ground mobiles (self)")
 
   // initializion order mess
   private val walkableSafe                           = register(evalWalkableSafe)
@@ -93,10 +93,10 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
 
   def isOnIsland(tilePosition: MapTilePosition) = {
     val areaInQuestion = rawMapWalk.areaOf(tilePosition)
-    val maxArea = rawWalkableMap.areas.sortBy(-_.freeCount)
+    val maxArea        = rawWalkableMap.areas.sortBy(-_.freeCount)
     if (maxArea.size > 1) {
-      val main = maxArea.head
-      val second = maxArea(1)
+      val main            = maxArea.head
+      val second          = maxArea(1)
       val assumeIslandMap = second.freeCount * 2 > main.freeCount
       assumeIslandMap || !areaInQuestion.contains(main)
     } else false
@@ -136,22 +136,22 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   def dangerousAsBlocked = coveredByDangerousUnits.getOrElse(emptyGrid)
 
   def coveredByEnemyLongRangeGroundAsBlocked = coveredByHostileLongRangeGroundUnits
-                                               .getOrElse(emptyGrid)
+    .getOrElse(emptyGrid)
 
   def coveredByEnemyCloakedGroundAsBlocked = coveredByHostileCloakedGroundUnits
-                                             .getOrElse(emptyGrid)
+    .getOrElse(emptyGrid)
 
   def coveredByEnemyCloakedAirAsBlocked = coveredByHostileCloakedAirUnits
-                                          .getOrElse(emptyGrid)
+    .getOrElse(emptyGrid)
 
   def coveredByEnemyLongRangeAirAsBlocked = coveredByHostileLongRangeAirUnits
-                                            .getOrElse(emptyGrid)
+    .getOrElse(emptyGrid)
 
   def slightlyDangerousForGroundAsBlocked = coveredByAnythingWithGroundWeapons
-                                            .getOrElse(emptyGrid)
+    .getOrElse(emptyGrid)
 
   def slightlyDangerousForAirAsBlocked = coveredByAnythingWithAirWeapons
-                                         .getOrElse(emptyGrid)
+    .getOrElse(emptyGrid)
 
   def freeTilesForConstruction = {
     withEverythingStaticBuildable.asReadOnlyView
@@ -247,8 +247,8 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
       invalidate(mapKey)
 
       cpuHeavy.iterator
-      .filter(_.triggerRecalcOn(currentTick))
-      .foreach(_.prepareNextIfDone())
+        .filter(_.triggerRecalcOn(currentTick))
+        .foreach(_.prepareNextIfDone())
     }
   }
 
@@ -275,7 +275,8 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   private def emptyCopy = world.map.emptyZoomed.mutableCopy
 
   private def evalOnlyBlockedForMainBuildings = evalOnlyBlockedResourceAreas(
-    ownUnits.allByType[Resource])
+    ownUnits.allByType[Resource]
+  )
 
   private def evalOnlyBlockedResourceAreas(units: => IterableOnce[Resource]) = {
     def areas = units.iterator.map(_.blockingAreaForMainBuilding)
@@ -288,7 +289,8 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
     }
   }
 
-  private def evalPotentialAddonLocations = evalOnlyAddonAreas(ownUnits.allByType[CanBuildAddons].filterNot(_.isFloating))
+  private def evalPotentialAddonLocations =
+    evalOnlyAddonAreas(ownUnits.allByType[CanBuildAddons].filterNot(_.isFloating))
 
   private def evalOnlyAddonAreas(units: IterableOnce[CanBuildAddons]) = {
     val ret = emptyCopy
@@ -299,13 +301,14 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   }
 
   private def evalOnlyMobileBlockingUnits = evalOnlyMobileUnits(
-    ownUnits.allByType[GroundUnit].iterator.filter(_.onGround))
+    ownUnits.allByType[GroundUnit].iterator.filter(_.onGround)
+  )
 
   private def evalOnlyMobileBlockingUnitsExtended = FutureIterator.feed(blockedByMobileUnits)
-                                                    .produceAsync { in =>
-                                                      in.mutableCopy.addOutlineToBlockedTiles_!()
-                                                      .guaranteeImmutability
-                                                    }
+    .produceAsync { in =>
+      in.mutableCopy.addOutlineToBlockedTiles_!()
+        .guaranteeImmutability
+    }
 
   private def evalOnlyMines = evalOnlyMobileUnits(ownUnits.allByType[SpiderMine])
 
@@ -318,8 +321,9 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   }
 
   private def evalOnlyResources = evalOnlyUnits(
-    ownUnits.allByType[MineralPatch].filter(_.remaining > 0))
-                                  .or_!(evalOnlyUnits(ownUnits.allByType[Geysir]))
+    ownUnits.allByType[MineralPatch].filter(_.remaining > 0)
+  )
+    .or_!(evalOnlyUnits(ownUnits.allByType[Geysir]))
 
   private def evalOnlyUnits(units: IterableOnce[StaticallyPositioned]) = {
     val ret = emptyCopy
@@ -331,35 +335,35 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   }
 
   private def evalEverythingStaticBuildable = withBuildingsAndResources.mutableCopy
-                                              .or_!(plannedBuildings)
-                                              .or_!(justWorkerPaths)
-                                              .or_!(rawMapBuild)
+    .or_!(plannedBuildings)
+    .or_!(justWorkerPaths)
+    .or_!(rawMapBuild)
 
   private def evalEverythingStaticWalkable = withBuildingsAndResources.mutableCopy
-                                             .or_!(plannedBuildings)
-                                             .or_!(rawMapWalkMutable)
+    .or_!(plannedBuildings)
+    .or_!(rawMapWalkMutable)
 
   private def evalEverythingBlockingBuildable = withEverythingStaticBuildable.mutableCopy
-                                                .or_!(justBlockingMobiles)
+    .or_!(justBlockingMobiles)
 
   private def evalSlightlyDangerousForAnyUnit = slightlyDangerousForGroundAsBlocked
-                                                .or(slightlyDangerousForAirAsBlocked)
+    .or(slightlyDangerousForAirAsBlocked)
 
   private def evalAvoidanceSuggestionGround = coveredByEnemyLongRangeGroundAsBlocked
-                                              .or(coveredByEnemyCloakedGroundAsBlocked)
+    .or(coveredByEnemyCloakedGroundAsBlocked)
 
   private def evalAvoidanceSuggestionAir = coveredByEnemyLongRangeAirAsBlocked
-                                           .or(coveredByEnemyCloakedAirAsBlocked)
+    .or(coveredByEnemyCloakedAirAsBlocked)
 
   private def evalEverythingBlockingWalkable = withEverythingStaticWalkable.mutableCopy
-                                               .or_!(justBlockingMobiles)
+    .or_!(justBlockingMobiles)
 
   private def evalWalkableSafe = withEverythingStaticWalkable
-                                 .or(dangerousAsBlocked)
+    .or(dangerousAsBlocked)
 
   private def evalAirSafe = emptyCopy
-                            .or_!(slightlyDangerousForAirAsBlocked.mutableCopy)
-                            .asReadOnlyView
+    .or_!(slightlyDangerousForAirAsBlocked.mutableCopy)
+    .asReadOnlyView
 
   private def evalDetected = areaOfCircles {
     universe.ownUnits.allDetectors.map(_.detectionArea)
@@ -401,7 +405,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
       base.geoHelper.intersections.tilesInCircle(in.enemy.buildings, 12, 3).foreach(base.block_!)
       base.geoHelper.intersections.tilesInCircle(in.enemy.units, 12, 5).foreach(base.block_!)
       base.geoHelper.intersections.tilesInCircle(in.enemy.armedBuildingsGround, 12, 1)
-      .foreach(base.block_!)
+        .foreach(base.block_!)
       base.guaranteeImmutability
     }
   }
@@ -414,8 +418,8 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
     FutureIterator.feed(safeInputForCurrentTick).produceAsync { in =>
       val base = in.base
       base.geoHelper.intersections
-      .tilesInCircleWithRange(in.enemy.longRangeGroundCoveringUnits, 7, 1)
-      .foreach(base.block_!)
+        .tilesInCircleWithRange(in.enemy.longRangeGroundCoveringUnits, 7, 1)
+        .foreach(base.block_!)
       base.guaranteeImmutability
     }
   }
@@ -424,7 +428,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
     FutureIterator.feed(safeInputForCurrentTick).produceAsync { in =>
       val base = in.base
       base.geoHelper.intersections.tilesInCircleWithRange(in.enemy.cloakedGroundCoveringUnits, 4, 1)
-      .foreach(base.block_!)
+        .foreach(base.block_!)
       base.guaranteeImmutability
     }
   }
@@ -433,7 +437,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
     FutureIterator.feed(safeInputForCurrentTick).produceAsync { in =>
       val base = in.base
       base.geoHelper.intersections.tilesInCircle(in.own.ownUnitsUnderPsi, 2, 1)
-      .foreach(base.block_!)
+        .foreach(base.block_!)
       base.guaranteeImmutability
     }
   }
@@ -442,7 +446,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
     FutureIterator.feed(safeInputForCurrentTick).produceAsync { in =>
       val base = in.base
       base.geoHelper.intersections.tilesInCircleWithRange(in.enemy.cloakedAirCoveringUnits, 4, 1)
-      .foreach(base.block_!)
+        .foreach(base.block_!)
       base.guaranteeImmutability
     }
   }
@@ -451,7 +455,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
     FutureIterator.feed(safeInputForCurrentTick).produceAsync { in =>
       val base = in.base
       base.geoHelper.intersections.tilesInCircleWithRange(in.enemy.longRangeAirCoveringUnits, 7, 1)
-      .foreach(base.block_!)
+        .foreach(base.block_!)
       base.guaranteeImmutability
     }
   }
@@ -461,7 +465,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
       val base = in.base
       base.geoHelper.intersections.tilesInCircle(in.enemy.units, 12, 1).foreach(base.block_!)
       base.geoHelper.intersections.tilesInCircle(in.enemy.armedBuildingsGround, 12, 1)
-      .foreach(base.block_!)
+        .foreach(base.block_!)
       base.guaranteeImmutability
     }
   }
@@ -471,7 +475,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
       val base = in.base
       base.geoHelper.intersections.tilesInCircle(in.enemy.units, 12, 1).foreach(base.block_!)
       base.geoHelper.intersections.tilesInCircle(in.enemy.armedBuildingsAir, 12, 1)
-      .foreach(base.block_!)
+        .foreach(base.block_!)
       base.guaranteeImmutability
     }
   }
@@ -492,43 +496,43 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
 
       val longRangeGroundCoveringUnits = {
         universe.enemyUnits.allWithGroundWeapon.filterNot(_.isHarmlessNow)
-        .filter(_.groundRangeTiles >= 7)
-        .map { e =>
-          e.centerTile -> e.groundRangeTiles
-        }
+          .filter(_.groundRangeTiles >= 7)
+          .map { e =>
+            e.centerTile -> e.groundRangeTiles
+          }
       }
-      val cloakedGroundCoveringUnits   = {
+      val cloakedGroundCoveringUnits = {
         universe.enemyUnits.allWithGroundWeapon.filterNot(_.isHarmlessNow)
-        .collect { case cd: CanHide if cd.isHidden => cd }
-        .map { e =>
-          e.centerTile -> e.groundRangeTiles
-        }
+          .collect { case cd: CanHide if cd.isHidden => cd }
+          .map { e =>
+            e.centerTile -> e.groundRangeTiles
+          }
       }
-      val cloakedAirCoveringUnits      = {
+      val cloakedAirCoveringUnits = {
         universe.enemyUnits.allWithAirWeapon.filterNot(_.isHarmlessNow)
-        .collect { case cd: CanHide if cd.isHidden => cd }
-        .map { e =>
-          e.centerTile -> e.airRangeTiles
-        }
+          .collect { case cd: CanHide if cd.isHidden => cd }
+          .map { e =>
+            e.centerTile -> e.airRangeTiles
+          }
       }
-      val longRangeAirCoveringUnits    = {
+      val longRangeAirCoveringUnits = {
         universe.enemyUnits.allWithAirWeapon.filterNot(_.isHarmlessNow)
-        .filter(_.airRangeTiles >= 7)
-        .map { e =>
-          e.centerTile -> e.airRangeTiles
-        }
+          .filter(_.airRangeTiles >= 7)
+          .map { e =>
+            e.centerTile -> e.airRangeTiles
+          }
       }
     }
 
     class OwnData {
       val ownUnitsUnderPsi = {
         universe.ownUnits.allMobiles
-        .filter(_.wasUnderPsiStormSince(48))
-        .flatMap(_.lastKnownStormPosition)
+          .filter(_.wasUnderPsiStormSince(48))
+          .flatMap(_.lastKnownStormPosition)
       }
     }
 
     val enemy = new EnemyData
-    val own = new OwnData
+    val own   = new OwnData
   }
 }

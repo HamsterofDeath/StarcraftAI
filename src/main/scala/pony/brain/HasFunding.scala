@@ -4,7 +4,7 @@ package brain
 trait HasFunding {
   private var explicitlyUnlocked         = false
   private var autoUnlocked               = false
-  private var unlockedDebug        : Any = null
+  private var unlockedDebug: Any         = null
   private var unlockedManuallyDebug: Any = null
   private var doNotUnlock                = false
 
@@ -14,7 +14,7 @@ trait HasFunding {
   }
   def proofForFunding: ResourceApproval
   def resources: ResourceManager
-  def stillLocksResources = !explicitlyUnlocked && !autoUnlocked
+  def stillLocksResources                  = !explicitlyUnlocked && !autoUnlocked
   def notifyResourcesDisapproved_!(): Unit = {
     trace(s"Resources of $this just got disapproved")
     unlockManually_!()

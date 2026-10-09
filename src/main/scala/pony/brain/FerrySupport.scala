@@ -4,7 +4,7 @@ package brain
 trait FerrySupport[T <: GroundUnit] extends JobOrSubJob[T] {
 
   override def higherPriorityOrder: Seq[UnitOrder] = {
-    val where = unit.currentTile
+    val where  = unit.currentTile
     val target = ferryDropTarget
 
     val myOrder = target.map { to =>
@@ -17,7 +17,7 @@ trait FerrySupport[T <: GroundUnit] extends JobOrSubJob[T] {
             // do nothing while in transporter
             Orders.NoUpdate(unit).toList
           case None =>
-            //go to some hopefully near point and wait for ferry
+            // go to some hopefully near point and wait for ferry
             Orders.MoveToTile(unit, to).toList
           case Some(_) =>
             // neither grounded nor loaded: boarding is in progress, so leave the unit alone

@@ -10,7 +10,7 @@ import scala.collection.immutable.HashMap
 import scala.collection.mutable.ListBuffer
 
 trait VirtualCloakHelpers
-  extends CanCloak with Virtual with VirtualCloak with VirtualHitPoints with VirtualPosition {
+    extends CanCloak with Virtual with VirtualCloak with VirtualHitPoints with VirtualPosition {
 
   override def onTick_!() = {
     super.onTick_!()

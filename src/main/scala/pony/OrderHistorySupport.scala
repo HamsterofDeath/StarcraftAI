@@ -11,16 +11,19 @@ import scala.collection.mutable.ListBuffer
 import scala.compiletime.uninitialized
 
 trait OrderHistorySupport extends WrapsUnit {
-  private val history    = ListBuffer.empty[HistoryElement]
-  private val maxHistory = if (memoryHog) 1000 else 24
+  private val history                    = ListBuffer.empty[HistoryElement]
+  private val maxHistory                 = if (memoryHog) 1000 else 24
   def trackOrder(order: UnitOrder): Unit = {
     history.lastOption.foreach(_.trackOrder_!(order))
   }
   override def onTick_!(): Unit = {
     super.onTick_!()
     if (universe.unitManager.hasJob(this)) {
-      history += HistoryElement(nativeUnit.getOrder, nativeUnit.getOrderTarget,
-        universe.unitManager.jobOf(this))
+      history += HistoryElement(
+        nativeUnit.getOrder,
+        nativeUnit.getOrderTarget,
+        universe.unitManager.jobOf(this)
+      )
       if (history.size > maxHistory) {
         history.remove(0)
       }

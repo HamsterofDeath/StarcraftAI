@@ -2,7 +2,7 @@ package pony
 package brain
 
 class BusyBeingTrained[T <: WrapsUnit](unit: T, employer: Employer[T])
-  extends UnitWithJob(employer, unit, Priority.Max) {
+    extends UnitWithJob(employer, unit, Priority.Max) {
   override def isIdle = false
 
   override def ordersForTick: Seq[UnitOrder] = Nil

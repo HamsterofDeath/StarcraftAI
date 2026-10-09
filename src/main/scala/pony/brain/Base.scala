@@ -7,9 +7,9 @@ case class Base(mainBuilding: MainBuilding) {
 
   def resourceArea = {
     world.resourceAnalyzer.resourceAreas
-    .minByOpt { c =>
-      mainBuilding.area.distanceTo(c.center)
-    }
+      .minByOpt { c =>
+        mainBuilding.area.distanceTo(c.center)
+      }
   }
 
   // Bind resource geometry on the native callback thread before the alternative-path future starts.
@@ -20,14 +20,14 @@ case class Base(mainBuilding: MainBuilding) {
 
   private val myAlternativeResourceAreas = {
     val safeGround = mainBuilding.pathfinders.groundSafe
-    val safeAir = mainBuilding.pathfinders.airSafe
-    val tile = mainBuilding.centerTile
+    val safeAir    = mainBuilding.pathfinders.airSafe
+    val tile       = mainBuilding.centerTile
 
     def sortByPath = {
 
       def evaluate(area: ResourceArea, ground: Boolean) = {
         val finder = if (ground) safeGround else safeAir
-        val path = safeGround.findSimplePathNow(tile, area.anyTile)
+        val path   = safeGround.findSimplePathNow(tile, area.anyTile)
 
         path match {
           case None =>
@@ -46,7 +46,7 @@ case class Base(mainBuilding: MainBuilding) {
       val all = ground.sortBy(_._2).map(_._1) ++ air.sortBy(_._2).map(_._1)
       all.filterNot(initialResourceArea.contains).filter { candidate =>
         mainBuilding.mapLayers.rawWalkableMap
-        .areInSameWalkableArea(candidate.anyTile, tile)
+          .areInSameWalkableArea(candidate.anyTile, tile)
       }
     }
 
@@ -59,7 +59,8 @@ case class Base(mainBuilding: MainBuilding) {
   info(
     s"""
        |Found base/minerals $mainBuilding: $myMineralGroup
-     """.stripMargin)
+     """.stripMargin
+  )
 
   override def toString: String = s"Base@$mainBuilding"
 }

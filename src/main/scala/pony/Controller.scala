@@ -10,9 +10,9 @@ object Controller {
   def main(args: Array[String]): Unit = {
     try {
       hookOnToBroodwar(ConcoctedAI.concoct)
-    }
-    catch {
-      case ex: Throwable => ex.printStackTrace()
+    } catch {
+      case ex: Throwable =>
+        ex.printStackTrace()
         System.exit(1)
     }
   }
@@ -20,11 +20,11 @@ object Controller {
   def hookOnToBroodwar(aiGenerator: (DefaultWorld) => AIAPI) = {
     var clientRef: BWClient = null
 
-    var ai = Option.empty[AIAPI]
-    var world = Option.empty[DefaultWorld]
-    var frameClock = new NativeFrameClock
+    var ai                = Option.empty[AIAPI]
+    var world             = Option.empty[DefaultWorld]
+    var frameClock        = new NativeFrameClock
     var repeatedCallbacks = 0
-    val listener = new BWEventListener {
+    val listener          = new BWEventListener {
       override def onUnitCreate(unit: NUnit): Unit = {
         world.foreach(_.onUnitCreate(unit))
       }
@@ -37,8 +37,10 @@ object Controller {
         if (!frameClock.advance(liveGame.getFrameCount)) {
           repeatedCallbacks += 1
           if (repeatedCallbacks == 100) {
-            NativeMatchEvidence.trace("native-stall",
-              s"nativeFrame=${liveGame.getFrameCount} paused=${liveGame.isPaused} inGame=${liveGame.isInGame} fps=${liveGame.getFPS}")
+            NativeMatchEvidence.trace(
+              "native-stall",
+              s"nativeFrame=${liveGame.getFrameCount} paused=${liveGame.isPaused} inGame=${liveGame.isInGame} fps=${liveGame.getFPS}"
+            )
             if (liveGame.isInGame && liveGame.isPaused) {
               liveGame.resumeGame()
               NativeMatchEvidence.trace("native-resume", "resume paused local match")
@@ -51,11 +53,14 @@ object Controller {
         ai.foreach(_.onTickOnApi())
         if (TickCounter.tickCount % 2400 == 0) {
           val game = clientRef.getGame
-          val own = game.self().getUnits
+          val own  = game.self().getUnits
           import scala.jdk.CollectionConverters._
           val ownUnits = own.asScala
-          NativeMatchEvidence.trace("economy-heartbeat",
-            s"nativeFrame=${game.getFrameCount} paused=${game.isPaused} inGame=${game.isInGame} fps=${game.getFPS} minerals=${game.self().minerals()} gas=${game.self().gas()} supply=${game.self().supplyUsed()}/${game.self().supplyTotal()} scvs=${ownUnits.count(_.getType == bwapi.UnitType.Terran_SCV)} depots=${ownUnits.count(_.getType == bwapi.UnitType.Terran_Command_Center)} completeMap=${game.isFlagEnabled(bwapi.Flag.CompleteMapInformation)}")
+          NativeMatchEvidence.trace(
+            "economy-heartbeat",
+            s"nativeFrame=${game.getFrameCount} paused=${game.isPaused} inGame=${game.isInGame} fps=${game.getFPS} minerals=${game.self().minerals()} gas=${game.self().gas()} supply=${game.self().supplyUsed()}/${game.self().supplyTotal()} scvs=${ownUnits.count(_.getType ==
+                bwapi.UnitType.Terran_SCV)} depots=${ownUnits.count(_.getType == bwapi.UnitType.Terran_Command_Center)} completeMap=${game.isFlagEnabled(bwapi.Flag.CompleteMapInformation)}"
+          )
         }
       }
 
@@ -87,9 +92,7 @@ object Controller {
         world = None
       }
 
-      override def onSaveGame(s: String): Unit = {
-
-      }
+      override def onSaveGame(s: String): Unit = {}
 
       override def onPlayerDropped(player: bwapi.Player): Unit = {
         world.foreach(_.onPlayerDropped(player))
@@ -110,7 +113,7 @@ object Controller {
           frameClock = new NativeFrameClock
           repeatedCallbacks = 0
           NativeMatchEvidence.started(clientRef.getGame)
-          val headless = sys.props.getOrElse("twailight.headless", "false").toBoolean
+          val headless   = sys.props.getOrElse("twailight.headless", "false").toBoolean
           val localSpeed = sys.props.getOrElse("twailight.localSpeed", "0").toInt
           clientRef.getGame.setGUI(!headless)
           clientRef.getGame.setLocalSpeed(localSpeed)
@@ -119,8 +122,7 @@ object Controller {
           val w = DefaultWorld.spawn(clientRef.getGame)
           world = Some(w)
           ai = Some(aiGenerator(w))
-        }
-        catch {
+        } catch {
           case ex: Throwable =>
             NativeMatchEvidence.failed(clientRef.getGame, ex)
             throw ex
@@ -157,7 +159,7 @@ object Controller {
 }
 
 private[pony] class NativeFrameClock {
-  private var previous = -1
+  private var previous                   = -1
   def advance(nativeFrame: Int): Boolean = {
     if (nativeFrame <= previous) false
     else { previous = nativeFrame; true }
