@@ -22,6 +22,9 @@ class TerranSealedCruisers(universe: Universe) extends DefaultTerranCampaign(uni
 
   override def raidsWithCruisers = true
 
+  // a cruiser takes six supply: game 82 sat at 191 supply with 125 SCVs and room for ten cruisers
+  override def maxWorkers = 60
+
   private def fewer[T <: WrapsUnit: scala.reflect.ClassTag](than: Int) = ownUnits.allByType[T].size < than
 
   override def suggestProducers = {

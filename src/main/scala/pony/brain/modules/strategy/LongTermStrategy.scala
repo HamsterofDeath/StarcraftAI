@@ -44,4 +44,7 @@ trait LongTermStrategy extends HasUniverse {
 
   /** Battlecruisers raid the enemy and fly home to a repair crew (CruiserRaids). */
   def raidsWithCruisers: Boolean = false
+
+  /** No more workers are trained beyond this many: the rest of the supply belongs to the army. */
+  def maxWorkers: Int = 75
 }

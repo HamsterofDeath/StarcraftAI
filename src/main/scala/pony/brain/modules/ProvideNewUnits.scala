@@ -8,8 +8,11 @@ class ProvideNewUnits(universe: Universe) extends OrderlessAIModule[UnitFactory]
   override def onTick_!(): Unit = {
     unitManager.failedToProvideFlat.distinct.foreach { req =>
       trace(s"Trying to satisfy $req somehow")
-      val wantedType = req.typeOfRequestedUnit
-      if (classOf[Mobile] >= wantedType) {
+      val wantedType       = req.typeOfRequestedUnit
+      val workerCapReached = classOf[WorkerUnit] >= wantedType &&
+        ownUnits.allByType[WorkerUnit].size >= strategy.current.maxWorkers
+      if (workerCapReached) req.clearableInNextTick_!()
+      else if (classOf[Mobile] >= wantedType) {
         val typeFixed     = wantedType.asInstanceOf[Class[Mobile]]
         val wantedAmount  = req.amount
         var skipRemaining = false
