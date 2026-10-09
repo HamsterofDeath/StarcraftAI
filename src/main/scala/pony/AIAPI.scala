@@ -31,14 +31,17 @@ trait AIAPI {
   def onTickOnApi(): Unit = {
     try {
       debugger.renderer.beforeTick()
-      world.tick()
+      CpuProfile.time("world.tick")(world.tick())
       val heavyFrame = AiCadence.heavyNow(world.tickCount)
       val before     = System.nanoTime()
-      plugins.filter(_.isActive).foreach(_.onTickOnPlugin())
+      plugins.filter(_.isActive).foreach { plugin =>
+        CpuProfile.time("plugin:" + plugin.getClass.getName.split('.').last)(plugin.onTickOnPlugin())
+      }
       val after   = System.nanoTime()
       val aiNanos = after - before
       aiMS += aiNanos
-      world.postTick()
+      CpuProfile.time("world.postTick")(world.postTick())
+      CpuProfile.frameDone()
       val afterAfter  = System.nanoTime()
       val nativeNanos = afterAfter - after
       nativeMS += nativeNanos

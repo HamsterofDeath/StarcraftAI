@@ -64,8 +64,15 @@ class TerranEconomicOpening(universe: Universe)
       val cfg    = TerranCampaignConfig.load()
       val landed = depots.filterNot(cc => cc.isBeingCreated || cc.isFloating)
       // Fields count as held while healthy, so the next command center is under way before one runs dry.
-      val heldRichFields                 = landed.flatMap(fieldOf).filter(fieldHealthy).map(_.uniqueId).distinct
-      val deficit                        = cfg.requiredFields - heldRichFields.size
+      val heldRichFields = landed.flatMap(fieldOf).filter(fieldHealthy).map(_.uniqueId).distinct
+      val heldStates     = mining.fieldStates.filter(s => heldRichFields.contains(s.id))
+      val wanted         = ExpansionChoice.wantedFields(
+        cfg.requiredFields,
+        heldRichFields.size,
+        heldStates.nonEmpty && heldStates.forall(_.saturated),
+        cfg.maxFields
+      )
+      val deficit                        = wanted - heldRichFields.size
       val economyMoving                  = mining.startingFieldSaturated || mining.secondBaseEstablished
       def sharedField(cc: CommandCenter) =
         fieldOf(cc).exists(a => landed.count(o => o != cc && fieldOf(o).contains(a)) > 0)
@@ -155,7 +162,7 @@ class TerranEconomicOpening(universe: Universe)
         }
         NativeMatchEvidence.trace(
           "strategy-expansion",
-          s"fields=${heldRichFields.size}/${cfg.requiredFields} ccs=${depots.size} deficit=$deficit " +
+          s"fields=${heldRichFields.size}/$wanted ccs=${depots.size} deficit=$deficit " +
             s"fresh=${fresh.size} exhausted=${exhausted.size} unlockedMinerals=${funds.minerals}/" +
             s"${cost.minerals + cfg.expansionReserve} newUnderWay=$newUnderWay " +
             s"saturated=${mining.startingFieldSaturated} secondBase=${mining.secondBaseEstablished} expand=$expandState"

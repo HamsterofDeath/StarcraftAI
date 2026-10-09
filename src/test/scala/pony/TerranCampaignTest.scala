@@ -64,6 +64,7 @@ class TerranCampaignTest extends Specification with MustMatchers {
     A mineral field at or below five percent is mined out, at or below forty percent no longer held $fieldReplenishment
     A new command center is preferred over moving one that still mines $preferNewDepot
     New bases go to our half of the map first, then close to the main base $expansionSites
+    Fully staffed fields ask for one more field, up to the maximum $moreFields
     An endgame hunt sweeps every resource area farthest from home first and wraps around $huntSweep
     A farthest-point carpet spread picks far-apart posts in a deterministic order $carpetPosts
   """
@@ -219,6 +220,17 @@ class TerranCampaignTest extends Specification with MustMatchers {
       c.ready(true, 12, 1500, 300, 1000, 300)
     ) === (false, false, false, false, true)
   }
+  def moreFields = {
+    import pony.brain.modules.ExpansionChoice.wantedFields
+    (
+      wantedFields(2, 1, allSaturated = true, max = 5),
+      wantedFields(2, 2, allSaturated = false, max = 5),
+      wantedFields(2, 2, allSaturated = true, max = 5),
+      wantedFields(2, 4, allSaturated = true, max = 5),
+      wantedFields(2, 5, allSaturated = true, max = 5)
+    ) === (2, 2, 3, 5, 5)
+  }
+
   def expansionSites = {
     import pony.brain.modules.ExpansionSite._
     // our start at the bottom, the enemy at the top; field 3 is closest to the main but on the enemy's half

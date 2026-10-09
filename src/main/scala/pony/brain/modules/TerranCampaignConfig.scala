@@ -13,12 +13,13 @@ case class TerranCampaignConfig(
     minScoutFighters: Int = 6,
     minScouts: Int = 1,
     fieldUsefulFraction: Double = 0.05,
-    fieldHealthyFraction: Double = 0.4
+    fieldHealthyFraction: Double = 0.4,
+    maxFields: Int = 5
 ) {
   require(minFighters > 0 && armyMinerals >= 0 && armyGas >= 0 && expansionReserve >= 0 &&
     bankMinerals >= 0 && bankGas >= 0 && requiredFields >= 1 && minScoutFighters >= 1 &&
     minScouts >= 1 && fieldUsefulFraction > 0.0 && fieldUsefulFraction < fieldHealthyFraction &&
-    fieldHealthyFraction < 1.0)
+    fieldHealthyFraction < 1.0 && maxFields >= requiredFields)
   def launch(count: Int, minerals: Int, gas: Int) =
     count >= minFighters && minerals >= armyMinerals && gas >= armyGas
   def ready(
@@ -73,7 +74,8 @@ object TerranCampaignConfig {
       number("minScoutFighters", 6),
       number("minScouts", 1),
       fraction("fieldUsefulFraction", 0.05),
-      fraction("fieldHealthyFraction", 0.4)
+      fraction("fieldHealthyFraction", 0.4),
+      number("maxFields", 5)
     )
   }
 }

@@ -20,6 +20,13 @@ private[pony] object ExpansionChoice {
   case object WaitForMinerals extends Choice
 
   /**
+    * Healthy fields to hold: at least `required`, and one more than held once every held field is fully staffed,
+    * because then only another field grows the income; never more than `max`.
+    */
+  def wantedFields(required: Int, held: Int, allSaturated: Boolean, max: Int): Int =
+    math.min(max, if (held >= required && allSaturated) held + 1 else required)
+
+  /**
     * @param deficit     healthy fields missing
     * @param fresh       depots built at home that have not flown to a field of their own yet
     * @param exhausted   depots whose field is mined out

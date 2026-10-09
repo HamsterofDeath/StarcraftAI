@@ -12,17 +12,25 @@ class TerranBunkerDefense(universe: Universe)
     override protected def onBuildingRequested(request: BuildUnitRequest[? <: Building]): Unit =
       if (request.typeOfRequestedUnit == classOf[Bunker]) ownedRequests += request
   }
-  private val plans                            = mutable.Map.empty[Int, (Vector[MapPosition], Vector[Area])]
-  private val geometry                         = mutable.Map.empty[Int, Vector[Area]]
-  private val garrison                         = new BunkerGarrison
-  private val repairers                        = new Employer[SCV](universe)
-  private var cargoObserved                    = Map.empty[Int, Set[Int]]
-  private var announcedReady                   = Set.empty[Int]
-  private var uncoveredReported                = Set.empty[Int]
-  private var placementReported                = Set.empty[MapTilePosition]
+  private val plans             = mutable.Map.empty[Int, (Vector[MapPosition], Vector[Area])]
+  private val geometry          = mutable.Map.empty[Int, Vector[Area]]
+  private val garrison          = new BunkerGarrison
+  private val repairers         = new Employer[SCV](universe)
+  private var cargoObserved     = Map.empty[Int, Set[Int]]
+  private var announcedReady    = Set.empty[Int]
+  private var uncoveredReported = Set.empty[Int]
+  private var placementReported = Set.empty[MapTilePosition]
+
+  /**
+    * When a worker was first assigned to each site; a site whose bunker does not appear within a game minute after that
+    * is blocked, so a waiting request for money never blocks it.
+    */
+  private val assignedAt                       = mutable.Map.empty[MapTilePosition, Int]
+  private var blockedSites                     = Set.empty[MapTilePosition]
+  private val SiteTimeout                      = 24 * 60
   private def active                           = race.isTerran && strategy.current.usesBunkerDefense
   private def bunkers                          = ownUnits.allByType[Bunker].filter(_.isInGame).toVector
-  private def plannedSites                     = plans.values.flatMap(_._2.map(_.upperLeft)).toSet
+  private def plannedSites                     = plans.values.flatMap(_._2.map(_.upperLeft)).toSet -- blockedSites
   private def activeBunkers                    = bunkers.filter(b => plannedSites(b.tilePosition))
   private def nativeCargo(b: Bunker): Set[Int] = b.nativeUnit.getLoadedUnits.asScala.filter { u =>
     u.getType == bwapi.UnitType.Terran_Marine && u.isLoaded &&
@@ -125,6 +133,7 @@ class TerranBunkerDefense(universe: Universe)
           (unitManager.requestedConstructions[CommandCenter].flatMap(_.customPosition.requestedPosition) ++
             unitManager.constructionsInProgress[CommandCenter].map(_.buildWhere)).map(p => Area(p, Size(4, 3)))
         val candidates = finder.bunkerSites(field, workTiles)
+          .filterNot(a => blockedSites(a.upperLeft))
           .filterNot(a => a.tiles.exists(routeTiles))
           .filterNot(a => depotFootprints.exists(cc => a.growBy(1).tiles.exists(cc.tiles.toSet)))
         // Points no candidate footprint can reach (map edge lanes, ground occupied by other
@@ -177,7 +186,15 @@ class TerranBunkerDefense(universe: Universe)
           unitManager.constructionsInProgress[Bunker].nonEmpty || bunkers.exists(_.isBeingCreated)
         val pending = unitManager.requestedConstructions[Bunker].flatMap(_.customPosition.requestedPosition).toSet ++
           unitManager.constructionsInProgress[Bunker].map(_.buildWhere)
-        sites.foreach { site =>
+        // A requested bunker that never appears (a worker that cannot place it) must not block every other site.
+        val assigned = unitManager.constructionsInProgress[Bunker].map(_.buildWhere).toSet
+        sites.filter(s => assigned(s.upperLeft) && !bunkers.exists(_.tilePosition == s.upperLeft)).foreach { site =>
+          if (currentTick - assignedAt.getOrElseUpdate(site.upperLeft, currentTick) > SiteTimeout) {
+            blockedSites += site.upperLeft
+            NativeMatchEvidence.trace("bunker-site-blocked", s"field=${field.uniqueId} site=${site.upperLeft}")
+          }
+        }
+        sites.filterNot(s => blockedSites(s.upperLeft)).foreach { site =>
           if (!bunkers.exists(_.tilePosition == site.upperLeft) && !pending(site.upperLeft) && !bunkerUnderWay) {
             val safe = new ConstructionSiteFinder(universe).bunkerSiteSafe(site)
             if (safe) {

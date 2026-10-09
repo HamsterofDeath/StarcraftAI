@@ -129,37 +129,40 @@ class TwilightSparkle(world: DefaultWorld) {
     ownUnits.consumeFresh_! { _.init_!(universe) }
     enemyUnits.consumeFresh_! { _.init_!(universe) }
 
-    universe.onTick_!()
+    CpuProfile.time("universe")(universe.onTick_!())
 
     // Cheap per-frame pipeline: job lifecycle, command emission and action bookkeeping must
     // advance every frame so interruptability and order-lock semantics keep their frame meaning.
-    unitManager.tick()
+    CpuProfile.time("unitManager")(unitManager.tick())
 
     // Satisfy failed hiring requests while they are still alive (they clear after two frames).
-    provideNewUnits.onTick_!()
+    CpuProfile.time("provideNewUnits")(provideNewUnits.onTick_!())
 
     val tick = world.tickCount
     if (AiCadence.heavyNow(tick)) {
       // Expensive planning runs once per heavy tick (a game second by default).
-      maps.tick()
-      resources.tick()
-      strategy.tick()
-      bases.tick()
-      worldDomination.onTick_!()
-      unitGrid.onTick_!()
-      ferryManager.onTick_!()
+      CpuProfile.time("maps")(maps.tick())
+      CpuProfile.time("resources")(resources.tick())
+      CpuProfile.time("strategy")(strategy.tick())
+      CpuProfile.time("bases")(bases.tick())
+      CpuProfile.time("worldDomination")(worldDomination.onTick_!())
+      CpuProfile.time("unitGrid")(unitGrid.onTick_!())
+      CpuProfile.time("ferryManager")(ferryManager.onTick_!())
 
       val heavyTick        = tick / AiCadence.frames
       val activeInThisTick =
         aiModules.filter(e => tick == 0 || heavyTick % math.max(1, e.onNth / AiCadence.frames) == 0)
-      activeInThisTick.flatMap(_.ordersForTick).foreach(world.orderQueue.queue_!)
+      activeInThisTick.foreach { module =>
+        CpuProfile.time(module.getClass.getName.split('.').last)(module.ordersForTick.toVector)
+          .foreach(world.orderQueue.queue_!)
+      }
 
     }
 
     // Emit job orders after this frame's planning so freshly hired jobs command their units
     // in the same frame (keeps the order-history liveness check from failing new jobs).
     sendOrders.ordersForTick.foreach(world.orderQueue.queue_!)
-    universe.afterTick()
+    CpuProfile.time("afterTick")(universe.afterTick())
 
   }
 
