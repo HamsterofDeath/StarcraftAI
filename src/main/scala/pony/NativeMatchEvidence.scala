@@ -12,6 +12,15 @@ object NativeMatchEvidence {
   private var gameNumber    = 0
   private var liveGame      = Option.empty[Game]
 
+  private val refusals = scala.collection.mutable.HashMap.empty[String, Int]
+
+  /** Counts refusals of one build; true for the 1st, 10th, 100th, ... so repeated refusals stay readable. */
+  def firstRefusals(key: String): Boolean = {
+    val n = refusals.getOrElse(key, 0) + 1
+    refusals(key) = n
+    n == 1 || n == 10 || n % 100 == 0
+  }
+
   /**
     * Why BWAPI may refuse `builder` building `kind` at `tile`: JBWAPI does not expose BWAPI's last error, so this reports
     * the checks behind it.

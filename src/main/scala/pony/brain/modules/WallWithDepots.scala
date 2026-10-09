@@ -26,6 +26,7 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
   private var gate                = Option.empty[MapTilePosition]
   private var gateBarracksId      = Option.empty[Int]
   private var gateWasOpen         = false
+  private var gateRequested       = false
   private val demolishers         = new Employer[MobileRangeWeapon](universe)
 
   private def active = race.isTerran && strategy.current.usesWallDefense
@@ -535,7 +536,8 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
 
   override def onTick_!(): Unit = {
     if (!active) return
-    // every module tick: the gate must close quickly when enemies come
+    // every module tick: the gate must close quickly when enemies come, and building requests live only briefly
+    requestGate()
     controlGate()
     if (currentTick < 31 || currentTick % Primes.prime31.i != 0) return
     bases.mainBase.foreach { home =>
@@ -555,15 +557,6 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
             )
           }
           chosen
-        }
-      }
-      gate.foreach { g =>
-        val pending =
-          unitManager.requestedConstructions[Barracks].exists(_.customPosition.requestedPosition.contains(g)) ||
-            unitManager.constructionsInProgress[Barracks].exists(_.buildWhere == g)
-        if (gateBarracks.isEmpty && !pending && barracksFree(g)) {
-          requestBuilding(classOf[Barracks], customBuildingPosition = AlternativeBuildingSpot.fromPreset(g))
-          NativeMatchEvidence.trace("wall-gate-request", s"barracks=$g")
         }
       }
       if (wall.isEmpty) {
@@ -625,6 +618,17 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
             }
         }
       }
+    }
+  }
+
+  /** Renews the request for the gate barracks until it stands (requests expire unless repeated). */
+  private def requestGate(): Unit = gate.foreach { g =>
+    val pending = unitManager.requestedConstructions[Barracks].exists(_.customPosition.requestedPosition.contains(g)) ||
+      unitManager.constructionsInProgress[Barracks].exists(_.buildWhere == g)
+    if (gateBarracks.isEmpty && !pending && barracksFree(g)) {
+      requestBuilding(classOf[Barracks], customBuildingPosition = AlternativeBuildingSpot.fromPreset(g))
+      if (!gateRequested) NativeMatchEvidence.trace("wall-gate-request", s"barracks=$g")
+      gateRequested = true
     }
   }
 
