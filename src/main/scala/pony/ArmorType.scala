@@ -1,6 +1,6 @@
 package pony
 
-import bwapi.{Unit => APIUnit, _}
+import bwapi.{Unit => APIUnit, DamageType => _, _}
 import pony.Upgrades.Terran.{Nuke, ScannerSweep}
 import pony.Upgrades.{IsTech, SinglePointMagicSpell, SingleTargetMagicSpell}
 import pony.brain._
@@ -68,7 +68,7 @@ case object Large extends ArmorType {
   override def transportSize = 4
 }
 
-case object Building extends ArmorType {
+case object BuildingArmor extends ArmorType {
   override val tileSize = Size(4, 3)
 
   override def damageFactorIfHitBy(damageType: DamageType) = {

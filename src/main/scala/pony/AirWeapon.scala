@@ -1,6 +1,6 @@
 package pony
 
-import bwapi.{Unit => APIUnit, _}
+import bwapi.{Unit => APIUnit, DamageType => _, _}
 import pony.Upgrades.Terran.{Nuke, ScannerSweep}
 import pony.Upgrades.{IsTech, SinglePointMagicSpell, SingleTargetMagicSpell}
 import pony.brain._

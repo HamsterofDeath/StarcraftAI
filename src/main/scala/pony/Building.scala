@@ -11,7 +11,7 @@ import scala.collection.mutable.ListBuffer
 
 trait Building extends BlockingTiles with CanDie with CanMorph {
   self =>
-  override val armorType            = Building
+  override val armorType            = BuildingArmor
   private  val myFlying             = oncePerTick {
     nativeUnit.isFlying
   }
