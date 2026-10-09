@@ -27,6 +27,7 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
   private var gateBarracksId      = Option.empty[Int]
   private var gateWasOpen         = false
   private var gateRequested       = false
+  private var gateChangedAt       = 0
   private val demolishers         = new Employer[MobileRangeWeapon](universe)
 
   private def active = race.isTerran && strategy.current.usesWallDefense
@@ -643,13 +644,20 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
     val wantOpen = armyOut || campaign.reconnaissanceAllowed || campaign.minimalScoutingActive
     val danger   = unitGrid.enemy.allInRange[Mobile](g.movedBy(2, 1), 10)
       .exists(e => !e.nativeUnit.isFlying && !e.isInstanceOf[WorkerUnit])
-    val open   = wantOpen && !danger
+    // hysteresis: the barracks takes seconds to lift or land, so an open gate stays open 20 seconds unless enemies
+    // come, and a closed one stays closed 5 seconds
+    val held = currentTick - gateChangedAt
+    val open =
+      if (danger) false
+      else if (gateWasOpen) wantOpen || held < 24 * 20
+      else wantOpen && held >= 24 * 5
     val native = b.nativeUnit
     if (open && !b.isFloating) {
       if (native.isTraining) native.cancelTrain() else native.lift()
     } else if (!open && b.isFloating && native.getOrder != bwapi.Order.BuildingLand) native.land(g.asTilePosition)
     if (open != gateWasOpen) {
       gateWasOpen = open
+      gateChangedAt = currentTick
       NativeMatchEvidence.trace(
         "wall-gate",
         s"${if (open) "open" else "close"} army=$armyOut danger=$danger barracks=${b.nativeUnitId}"

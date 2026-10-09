@@ -86,7 +86,9 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
       armyValue >= config.armyMinerals + config.bankMinerals && armyGas >= config.armyGas + config.bankGas
     // Always keep pressure on: attack as soon as the army is big enough, without waiting for full bunker coverage or
     // a banked reserve, and always when supply is nearly maxed, because nothing more can be built anyway.
-    val supplyCapped = nativeGame.self().supplyUsed >= 2 * TerranCampaignConfig.SupplyCappedAt
+    // ... as long as that supply holds an army: a base full of workers sends no handful of fighters to die
+    val supplyCapped = nativeGame.self().supplyUsed >= 2 * TerranCampaignConfig.SupplyCappedAt &&
+      troops.size >= config.minFighters
     operational && !worldDominationPlan.baseDefenseActive &&
     (launched || overwhelming || supplyCapped || config.pressure(troops.size, armyValue, armyGas))
   }
