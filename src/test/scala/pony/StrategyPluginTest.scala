@@ -9,7 +9,7 @@ class StrategyPluginTest extends Specification with MustMatchers {
   def is =
     s2"""
        |Every built-in strategy is discovered through the service file $discovered
-       |The bot picks among the six classic strategies on its own $autoSelectable
+       |The bot picks among the six classic strategies and the ramp wall on its own $autoSelectable
        |A configured key selects that strategy $configured
        |An unknown key stops the bot and names the known keys $unknownKey
        |Two plugins with one key are rejected $duplicateKeys
@@ -40,6 +40,7 @@ class StrategyPluginTest extends Specification with MustMatchers {
   def autoSelectable =
     registry.plugins.filter(_.autoSelectable).map(_.key).toSet === Set(
       "campaign",
+      "rampwall",
       "tvp",
       "air-control",
       "heavy-air",
