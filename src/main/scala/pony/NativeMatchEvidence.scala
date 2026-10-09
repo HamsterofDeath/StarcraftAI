@@ -18,7 +18,8 @@ object NativeMatchEvidence {
     */
   def buildDiagnosis(builder: bwapi.Unit, tile: bwapi.TilePosition, kind: bwapi.UnitType): String =
     liveGame.fold("game=unknown") { g =>
-      s"canMake=${g.canMake(kind, builder)} canBuildHere=${g.canBuildHere(tile, kind, builder)} " +
+      s"builderCanBuild=${builder.canBuild(kind)} builderCanBuildThere=${builder.canBuild(kind, tile)} " +
+        s"canMake=${g.canMake(kind, builder)} canBuildHere=${g.canBuildHere(tile, kind, builder)} " +
         s"explored=${g.canBuildHere(tile, kind, builder, true)} interruptible=${builder.isInterruptible} " +
         s"order=${builder.getOrder} minerals=${g.self().minerals}"
     }
