@@ -244,33 +244,17 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
     val unbuildable = span.filter(t => tileToCandidates.getOrElse(t, Vector.empty).isEmpty)
     val required    = span.filterNot(unbuildable.contains)
 
-    // Prefer a barracks as the gate: depots cover the rest of the pass, a zealot must not get through with the
-    // barracks landed, and a siege tank must get through with it lifted.
-    val gateSpots = span.flatMap(barracksCovering).distinct
-      .sortBy(b =>
-        (-barracksTiles(b).count(span.contains), b.movedBy(2, 1).distanceSquaredTo(f.chokePoint.center), b.y, b.x)
-      )
-      .take(16)
-    val gateChecks = mutable.ArrayBuffer.empty[String]
-    val gatePlan   = gateSpots.iterator.flatMap { b =>
-      val taken = barracksTiles(b).toSet
-      budget = 20000
-      val depots = solve(required.filterNot(taken).toSet, Vector.empty, taken)
-      val zealot = depots.flatMap(d => pixelPass(home, WallGeometry.Dims.Zealot, d, Some(b)))
-      val tank   = depots.flatMap(d => pixelPass(home, WallGeometry.Dims.SiegeTank, d, None))
-      gateChecks += s"$b:depots=${depots.map(_.size).getOrElse(-1)}:zealotPasses=${zealot.getOrElse("?")}:" +
-        s"tankPasses=${tank.getOrElse("?")}"
-      depots.filter(_ => zealot.contains(false) && tank.contains(true)).map(_ -> b).iterator
-    }.nextOption()
-    gatePlan match {
-      case Some((depots, barracks)) =>
+    // Prefer a barracks as the gate, on the choke line or a parallel line up to two tiles in or out: a ramp's width
+    // varies, and a barracks (three tiles) and depots (two) must fill the pass exactly.
+    gatePlan(home, f.chokePoint) match {
+      case (Some((depots, barracks)), _) =>
         gate = Some(barracks)
         NativeMatchEvidence.trace("wall-gate-planned", s"barracks=$barracks depots=${depots.mkString(",")}")
         return depots
-      case None =>
+      case (None, checks) =>
         NativeMatchEvidence.trace(
           "wall-gate-none",
-          s"barracksSpots=${gateSpots.size} checks=${gateChecks.mkString(" ")}; depots only, opened by demolition"
+          s"checks=${checks.mkString(" ")}; depots only, opened by demolition"
         )
     }
     budget = 20000
@@ -336,6 +320,76 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
       probe(s"span=${span.size} depots=${anchors.size} sealed=true")
       anchors
     }
+  }
+
+  /** Depots (3x2) covering every tile of `required` without overlapping each other or the `taken` tiles. */
+  private def coverWithDepots(
+      required: Set[MapTilePosition],
+      taken: Set[MapTilePosition]
+  ): Option[Vector[MapTilePosition]] = {
+    val candidates = required.toVector.flatMap(placementsCovering).distinct.filterNot(a => footprint(a).exists(taken))
+    val covers     = candidates.map(a => a -> footprint(a).filter(required).toSet).toMap
+    val byTile     = required.map(t => t -> candidates.filter(a => covers(a)(t))).toMap
+    var budget     = 20000
+    def solve(uncovered: Set[MapTilePosition], chosen: Vector[MapTilePosition]): Option[Vector[MapTilePosition]] =
+      if (uncovered.isEmpty) Some(chosen)
+      else if (chosen.size > 8 || budget <= 0) None
+      else {
+        budget -= 1
+        val target = uncovered.minBy(t => (t.y, t.x))
+        byTile.getOrElse(target, Vector.empty)
+          .filterNot(a => chosen.exists(b => overlaps(a, b)))
+          .sortBy(a => (-covers(a).count(uncovered.contains), a.y, a.x))
+          .iterator.flatMap(a => solve(uncovered -- covers(a), chosen :+ a).iterator)
+          .nextOption()
+      }
+    solve(required, Vector.empty)
+  }
+
+  /**
+    * A barracks gate and the depots that close the rest of the pass, on the choke line or a parallel line shifted up to
+    * two tiles: accepted only if a zealot cannot pass with the barracks landed and a siege tank can pass with it lifted
+    * (judged on pixels). Also returns one diagnosis per line.
+    */
+  private def gatePlan(
+      home: Base,
+      choke: ChokePoint
+  ): (Option[(Vector[MapTilePosition], MapTilePosition)], Vector[String]) = {
+    val checks = mutable.ArrayBuffer.empty[String]
+    val plans  = for {
+      shift   <- Iterator(0, 1, -1, 2, -2)
+      cutting <- choke.lines.iterator
+      (dx, dy) = (
+        Integer.signum(cutting.absoluteTo.x - cutting.absoluteFrom.x),
+        Integer.signum(cutting.absoluteTo.y - cutting.absoluteFrom.y)
+      )
+      (nx, ny) = (-dy * shift, dx * shift)
+      span <- segmentThrough(
+        choke.center.movedBy(nx, ny),
+        cutting.absoluteFrom.movedBy(nx, ny),
+        cutting.absoluteTo.movedBy(nx, ny)
+      ).iterator
+    } yield {
+      val spots = span.flatMap(barracksCovering).distinct
+        .sortBy(b =>
+          (-barracksTiles(b).count(span.contains), b.movedBy(2, 1).distanceSquaredTo(choke.center), b.y, b.x)
+        )
+        .take(8)
+      var covered = 0
+      val plan    = spots.iterator.flatMap { b =>
+        val taken = barracksTiles(b).toSet
+        coverWithDepots(span.filterNot(taken).toSet, taken).iterator.flatMap { depots =>
+          covered += 1
+          val closes = pixelPass(home, WallGeometry.Dims.Zealot, depots, Some(b)).contains(false)
+          val opens  = closes && pixelPass(home, WallGeometry.Dims.SiegeTank, depots, None).contains(true)
+          Option.when(closes && opens)(depots -> b)
+        }
+      }.nextOption()
+      checks += s"shift=$shift:span=${span.size}:spots=${spots.size}:covered=$covered:ok=${plan.isDefined}"
+      plan
+    }
+    val found = plans.flatten.nextOption()
+    (found, checks.toVector)
   }
 
   /**
