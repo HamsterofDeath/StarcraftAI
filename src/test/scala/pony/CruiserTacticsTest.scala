@@ -11,7 +11,7 @@ class CruiserTacticsTest extends Specification with MustMatchers {
        |A cruiser leaves below 40 percent and returns only when mended to 90 $repairHysteresis
        |A raid needs three fit cruisers and ends worn down or with fewer than two $raidStartAndEnd
        |The crew grows with the fleet from two to six SCVs $crew
-       |Expansions are raided before the main, the main before a lone building, a start last $targets
+       |Known expansions come first, then likely expansion sites, the main, a lone building, a start $targets
        """.stripMargin
 
   def repairHysteresis = (needsRepair(0.39, repairing = false) must beTrue) and
@@ -31,11 +31,13 @@ class CruiserTacticsTest extends Specification with MustMatchers {
     val enemyMain = MapTilePosition(64, 118)
     val natural   = MapTilePosition(76, 116)
     val pylon     = MapTilePosition(50, 60)
+    val site      = MapTilePosition(90, 70)
     (
-      choose(Seq(enemyMain, natural), Seq(enemyMain, natural, pylon), Seq(enemyMain), home),
-      choose(Seq(enemyMain), Seq(enemyMain, pylon), Seq(enemyMain), home),
-      choose(Nil, Seq(pylon), Seq(enemyMain), home),
-      choose(Nil, Nil, Seq(enemyMain), home)
-    ) === (Some(natural), Some(enemyMain), Some(pylon), Some(enemyMain))
+      choose(Seq(enemyMain, natural), Seq(site), Seq(enemyMain, natural, pylon), Seq(enemyMain), home),
+      choose(Seq(enemyMain), Seq(site), Seq(enemyMain, pylon), Seq(enemyMain), home),
+      choose(Seq(enemyMain), Nil, Seq(enemyMain, pylon), Seq(enemyMain), home),
+      choose(Nil, Nil, Seq(pylon), Seq(enemyMain), home),
+      choose(Nil, Nil, Nil, Seq(enemyMain), home)
+    ) === (Some(natural), Some(site), Some(enemyMain), Some(pylon), Some(enemyMain))
   }
 }

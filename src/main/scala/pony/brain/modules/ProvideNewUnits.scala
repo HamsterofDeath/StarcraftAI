@@ -14,7 +14,13 @@ class ProvideNewUnits(universe: Universe) extends OrderlessAIModule[UnitFactory]
         val wantedAmount  = req.amount
         var skipRemaining = false
         (1 to wantedAmount).iterator.takeWhile(_ => !skipRemaining) foreach { _ =>
-          val builderOf = UnitJobRequest.builderOf(typeFixed, self)
+          val builderOf = req.trainNear.fold(UnitJobRequest.builderOf(typeFixed, self)) { near =>
+            // a worker for one base comes from that base: one trained elsewhere may never walk there
+            UnitJobRequest.builderOf(typeFixed, self).withRequest(
+              _.withFilter_!(f => !ferryManager.sealedApart(f.tilePosition, near))
+                .withCherryPicker_!(job => PriorityChain(job.unit.tilePosition.distanceSquaredTo(near).toDouble))
+            )
+          }
           unitManager.request(builderOf) match {
             case producer: ExactlyOneSuccess[UnitFactory] =>
               unitManager.jobOf(producer.onlyOne) match {

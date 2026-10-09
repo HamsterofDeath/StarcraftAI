@@ -192,7 +192,7 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule[WrapsUni
           .request(UnitJobRequest.idleOfType(emp, classOf[WorkerUnit], missing)
             .withOnlyAccepting { worker =>
               fieldAnchor.exists(tile => walkable.areInSameWalkableArea(worker.currentTile, tile))
-            })
+            }.withRequest(_.trainNear_!(base.mainBuilding.tilePosition)))
         if (this.universe.currentTick < 3000)
           NativeMatchEvidence.trace(
             "mining-hire",

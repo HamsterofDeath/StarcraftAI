@@ -79,9 +79,15 @@ class ManageMiningAtGeysirs(universe: Universe)
           if (missing < 0)
             unitManager.allJobsByUnitType[WorkerUnit].filter(_.employer == this).take(-missing).foreach(_.fail_!())
           if (missing > 0) {
-            val ofType = UnitJobRequest
+            // like the mineral miners: only workers that can walk to this base, else one trained at its depot
+            val walkable = mapLayers.freeWalkableIgnoringMobiles
+            val anchor   = base.resourceArea.flatMap(a => walkable.nearestFreeBlock(a.center, 2))
+            val ofType   = UnitJobRequest
               .idleOfType(self, classOf[WorkerUnit], missing, Priority.CollectGas)
-              .withOnlyAccepting(_.isCarryingNothing)
+              .withOnlyAccepting { w =>
+                w.isCarryingNothing && anchor.exists(walkable.areInSameWalkableArea(w.currentTile, _))
+              }
+              .withRequest(_.trainNear_!(base.mainBuilding.tilePosition))
             val result = unitManager.request(ofType)
             if (result.units.isEmpty && currentTick % (24 * 60) < 24)
               NativeMatchEvidence.trace(

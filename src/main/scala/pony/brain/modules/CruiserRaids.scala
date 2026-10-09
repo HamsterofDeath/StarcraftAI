@@ -92,8 +92,15 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
       val own    = nativeGame.self().getStartLocation
       val starts = nativeGame.getStartLocations.asScala.toVector.filterNot(_ == own)
         .map(t => MapTilePosition(t.x, t.y)).filterNot(swept)
+      val ours = MapTilePosition(own.x, own.y)
+      // resource areas nearer to an enemy start than to ours, the start itself aside: where expansions are likely
+      val likely = strategicMap.resources.toVector.map(_.center).filter { c =>
+        starts.exists(s => c.distanceSquaredTo(s) < c.distanceSquaredTo(ours)) &&
+        !starts.exists(_.distanceToIsLess(c, 8))
+      }.filterNot(swept)
       target = choose(
         known.filter(_.base).map(_.tile),
+        likely,
         known.map(_.tile),
         starts,
         main.mainBuilding.tilePosition
@@ -165,18 +172,21 @@ private[pony] object CruiserTactics {
   def crewSize(cruisers: Int) = if (cruisers == 0) 0 else (2 + cruisers / 3) min 6
 
   /**
-    * The nearest known enemy base that is no start location (an expansion is defended least), else the nearest base,
-    * else the nearest enemy building, else the nearest enemy start not yet found empty.
+    * The nearest known enemy base that is no start location (an expansion is defended least), else the nearest
+    * unvisited site where the enemy likely expanded, else the nearest base, else the nearest enemy building, else the
+    * nearest enemy start not yet found empty.
     */
   def choose(
       enemyBases: Seq[MapTilePosition],
+      likelyExpansions: Seq[MapTilePosition],
       enemyBuildings: Seq[MapTilePosition],
       enemyStarts: Seq[MapTilePosition],
       home: MapTilePosition
   ): Option[MapTilePosition] = {
     def nearest(tiles: Seq[MapTilePosition]) = tiles.minByOpt(_.distanceSquaredTo(home))
     val expansions                           = enemyBases.filterNot(b => enemyStarts.exists(_.distanceToIsLess(b, 8)))
-    nearest(expansions).orElse(nearest(enemyBases)).orElse(nearest(enemyBuildings)).orElse(nearest(enemyStarts))
+    nearest(expansions).orElse(nearest(likelyExpansions)).orElse(nearest(enemyBases))
+      .orElse(nearest(enemyBuildings)).orElse(nearest(enemyStarts))
   }
 }
 

@@ -50,6 +50,16 @@ trait UnitRequest[T <: WrapsUnit] {
     picker = Some(rate)
     this
   }
+
+  private var trainingSpot = Option.empty[MapTilePosition]
+
+  /** A unit trained for this request comes from the producer nearest this tile, on its side of a sealed wall. */
+  def trainNear_!(tile: MapTilePosition) = {
+    trainingSpot = Some(tile)
+    this
+  }
+
+  def trainNear     = trainingSpot
   def ratingFuntion = picker
   def priority: Priority
   def typeOfRequestedUnit: Class[? <: T]
