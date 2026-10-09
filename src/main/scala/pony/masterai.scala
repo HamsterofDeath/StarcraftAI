@@ -24,5 +24,6 @@ object ConcoctedAI {
     .addPlugin(new UnitDebugRenderer(mainAi.universe))
     .addPlugin(new AiDebugRenderer(mainAi.universe))
     .addPlugin(new DebugHelper(mainAi))
+    .addPlugin(new AutoCamera(mainAi.universe))
   }
 }
