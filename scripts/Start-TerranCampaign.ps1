@@ -15,7 +15,10 @@ param(
  [int]$MinScoutFighters = 6,
  [int]$MinScouts = 1,
  [double]$FieldUsefulFraction = 0.15,
- [ValidateSet('default','infantry','factory','skywall','carpet')][string]$Strategy = 'default',
+ # A strategy key the bot knows, or 'default' to let it choose; the bot rejects unknown keys at start.
+ [ValidatePattern('^[a-z0-9-]+$')][string]$Strategy = 'default',
+ # Repository-relative e2e map (for example e2e/maps/micro-vulture-4-vs-zealot-6.scm), played with map settings.
+ [string]$E2EMap,
  # Milliseconds per frame; by default 14 (3x the 42 ms 'Fastest' speed) when rendered and 0 (unthrottled) headless.
  [int]$LocalSpeedMs = -1,
  # Rendered window size as a multiple of StarCraft's 640x480.
@@ -45,7 +48,17 @@ if ($foreignBot) { throw 'A bot already owns the native runtime.' }
 $dll = Join-Path $Runtime 'bwapi-data/BWAPI.dll'
 $dllHash = (Get-FileHash -LiteralPath $dll -Algorithm SHA256).Hash
 if ($dllHash -ne 'F2E0F937E9592157656118FA7E5FF30C2327694ED56C1D8F55687972AD97D308') { throw 'Expected verified BWAPI 4.4.0 revision 5016.' }
-$mapRelative = 'maps/BroodWar/aiide/(2)Destination.scx'
+if ($E2EMap) {
+  $e2eSource = Join-Path $Repository $E2EMap
+  if (-not (Test-Path -LiteralPath $e2eSource)) { throw 'E2E map not found in the repository.' }
+  $mapRelative = 'maps/e2e/' + (Split-Path $e2eSource -Leaf)
+  New-Item -ItemType Directory -Path (Join-Path $Runtime 'maps/e2e') -Force | Out-Null
+  Copy-Item -LiteralPath $e2eSource -Destination (Join-Path $Runtime $mapRelative) -Force
+  $gameType = 'USE_MAP_SETTINGS'
+} else {
+  $mapRelative = 'maps/BroodWar/aiide/(2)Destination.scx'
+  $gameType = 'MELEE'
+}
 $mapHash = (Get-FileHash -LiteralPath (Join-Path $Runtime $mapRelative) -Algorithm SHA256).Hash
 $buildOut = Join-Path $Repository 'target/out/jvm/scala-3.10.0/starcrafter'
 $classpathFile = Join-Path $buildOut 'streams/compile/dependencyClasspath/_global/streams/export'
@@ -66,7 +79,7 @@ New-Item -ItemType Directory -Path $run | Out-Null
 $iniPath = Join-Path $Runtime 'bwapi-data/bwapi.ini'
 $ini = Get-Content -LiteralPath $iniPath -Raw
 Copy-Item -LiteralPath $iniPath -Destination (Join-Path $run 'bwapi-before.ini')
-$pins = [ordered]@{ ai='NULL'; ai_dbg='NULL'; auto_menu='SINGLE_PLAYER'; auto_restart='OFF'; map=$mapRelative; race='Terran'; enemy_race='Protoss'; enemy_count='1'; game_type='MELEE'; shared_memory='ON'; windowed='ON'; sound='OFF' }
+$pins = [ordered]@{ ai='NULL'; ai_dbg='NULL'; auto_menu='SINGLE_PLAYER'; auto_restart='OFF'; map=$mapRelative; race='Terran'; enemy_race='Protoss'; enemy_count='1'; game_type=$gameType; shared_memory='ON'; windowed='ON'; sound='OFF' }
 1..7 | ForEach-Object { $pins['enemy_race_' + $_] = 'Protoss' }
 if (-not $Headless) { $pins['width'] = [string](640 * $WindowScale); $pins['height'] = [string](480 * $WindowScale) }
 foreach ($entry in $pins.GetEnumerator()) {
@@ -95,6 +108,7 @@ $receipt.configuration.localSpeed = $LocalSpeedMs
 $receipt.configuration.windowScale = if ($Headless) { $null } else { $WindowScale }
 $receipt.configuration.aiTickFrames = $AiTickFrames
 $receipt.configuration.strategy = $Strategy
+$receipt.configuration.gameType = $gameType
 $receipt.configuration.autoCamera = !$Headless.IsPresent -and !$NoAutoCamera.IsPresent
 $bot = Start-Process -FilePath $Java -ArgumentList $options -WorkingDirectory $Runtime -WindowStyle Hidden -RedirectStandardOutput (Join-Path $run 'bot-stdout.log') -RedirectStandardError (Join-Path $run 'bot-stderr.log') -PassThru
 $receipt.botPid=$bot.Id; $receipt.botStart=$bot.StartTime.ToUniversalTime().ToString('o')

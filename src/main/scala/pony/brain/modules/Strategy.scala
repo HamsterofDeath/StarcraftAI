@@ -147,9 +147,17 @@ object Strategy {
       "infantry" -> new TerranInfantryPush(universe),
       "factory"  -> new TerranFactoryOnly(universe),
       "skywall"  -> new TerranSkyWall(universe),
-      "carpet"   -> new TerranCarpet(universe)
+      "carpet"   -> new TerranCarpet(universe),
+      "idle"     -> new IdleAround(universe)
     )
-    private val configured = sys.props.get("twailight.strategy").filterNot(_ == "default").flatMap(byKey.get)
+    private val configured = sys.props.get("twailight.strategy").filterNot(_ == "default").map { key =>
+      byKey.getOrElse(
+        key,
+        throw new IllegalArgumentException(
+          s"Unknown strategy '$key'; known: default, ${byKey.keys.toSeq.sorted.mkString(", ")}"
+        )
+      )
+    }
     private var best: LongTermStrategy = new IdleAround(universe)
 
     def current = configured.getOrElse(best)
