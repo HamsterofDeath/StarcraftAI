@@ -644,7 +644,9 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
   private def controlGate(): Unit = for (g <- gate; b <- gateBarracks if !b.isBeingCreated) {
     val campaign = universe.pluginByType[RunTerranCampaign]
     val armyOut  = worldDominationPlan.campaignForceSize > 0
-    val wantOpen = armyOut || campaign.reconnaissanceAllowed || campaign.minimalScoutingActive
+    // never for the minimal scouts: a handful of fighters at five minutes lifted the gate just before the enemy's
+    // first attack, which then broke into the main and killed the gate barracks
+    val wantOpen = armyOut || campaign.reconnaissanceAllowed
     // landing takes a moment and fails while an enemy stands in the slot: close well before enemies arrive
     val danger = unitGrid.enemy.allInRange[Mobile](g.movedBy(2, 1), 16)
       .exists(e => !e.nativeUnit.isFlying && !e.isInstanceOf[WorkerUnit])
