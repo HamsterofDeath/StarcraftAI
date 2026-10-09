@@ -22,14 +22,36 @@ class TerranBunkerDefense(universe: Universe)
   private var placementReported = Set.empty[MapTilePosition]
 
   /**
-    * When each site's bunker was requested, and which workers were sent to build it. A site still without its bunker
-    * after three different workers or three game minutes cannot be built (the workers never get there) and is blocked.
+    * When each site's bunker was requested, and since when workers have been sent to build it. A site whose bunker
+    * has not appeared a game minute after the first worker was sent, or three game minutes after its request, cannot
+    * be built (some sites stop every worker short of them) and is blocked.
     */
-  private val requestedAt        = mutable.Map.empty[MapTilePosition, Int]
-  private val triedBy            = mutable.Map.empty[MapTilePosition, Set[Int]]
-  private var blockedSites       = Set.empty[MapTilePosition]
-  private val SiteTimeout        = 24 * 180
-  private val GiveUpAfterWorkers = 3
+  private val requestedAt  = mutable.Map.empty[MapTilePosition, Int]
+  private val workingSince = mutable.Map.empty[MapTilePosition, Int]
+  private var blockedSites = Set.empty[MapTilePosition]
+  private val SiteTimeout  = 24 * 180
+  private val StuckAfter   = 24 * 60
+
+  private def block(site: MapTilePosition, reason: String): Unit = if (!blockedSites(site)) {
+    blockedSites += site
+    // free the worker at once; the request is retired with the next plan check
+    unitManager.constructionsInProgress[Bunker].filter(j => j.buildWhere == site && j.building.isEmpty).foreach(
+      _.fail_!()
+    )
+    NativeMatchEvidence.trace(
+      "bunker-site-blocked",
+      s"site=$site reason=$reason requested=${requestedAt.get(site).map(currentTick - _).getOrElse(-1)} " +
+        s"working=${workingSince.get(site).map(currentTick - _).getOrElse(-1)}"
+    )
+  }
+
+  private def blockStuckSites(): Unit = {
+    unitManager.constructionsInProgress[Bunker].foreach(job =>
+      workingSince.getOrElseUpdate(job.buildWhere, currentTick)
+    )
+    workingSince.filterInPlace((site, _) => !bunkers.exists(_.tilePosition == site))
+    workingSince.foreach { case (site, since) => if (currentTick - since > StuckAfter) block(site, "worker") }
+  }
 
   /** The depots and patches of each field at which its last planning attempt found no plan. */
   private val unplannable                      = mutable.Map.empty[Int, Vector[Area]]
@@ -92,7 +114,10 @@ class TerranBunkerDefense(universe: Universe)
   }
   override def onTick_!(): Unit = {
     super.onTick_!()
-    if (!active || currentTick < 31 || currentTick % 31 != 0) return
+    if (!active) return
+    // cheap, so on every module tick: a stuck site must not hold up the bunker queue for the 31-tick planning cadence
+    blockStuckSites()
+    if (currentTick < 31 || currentTick % 31 != 0) return
     boarding.get
     val range  = nativeGame.self().weaponMaxRange(bwapi.UnitType.Terran_Marine.groundWeapon()) + 64
     val fields = bases.allBases.filter(b => !b.mainBuilding.isBeingCreated && !b.mainBuilding.isFloating)
@@ -209,20 +234,9 @@ class TerranBunkerDefense(universe: Universe)
           unitManager.constructionsInProgress[Bunker].nonEmpty || bunkers.exists(_.isBeingCreated)
         val pending = unitManager.requestedConstructions[Bunker].flatMap(_.customPosition.requestedPosition).toSet ++
           unitManager.constructionsInProgress[Bunker].map(_.buildWhere)
-        // A requested bunker that never appears (a worker that cannot place it) must not block every other site.
-        unitManager.constructionsInProgress[Bunker].foreach { job =>
-          triedBy(job.buildWhere) = triedBy.getOrElse(job.buildWhere, Set.empty[Int]) + job.unit.nativeUnitId
-        }
+        // A requested bunker that never appears must not block every other site.
         sites.filter(s => pending(s.upperLeft) && !bunkers.exists(_.tilePosition == s.upperLeft)).foreach { site =>
-          val tried = triedBy.getOrElse(site.upperLeft, Set.empty[Int]).size
-          if (tried >= GiveUpAfterWorkers || requestedAt.get(site.upperLeft).exists(currentTick - _ > SiteTimeout)) {
-            blockedSites += site.upperLeft
-            NativeMatchEvidence.trace(
-              "bunker-site-blocked",
-              s"field=${field.uniqueId} site=${site.upperLeft} workers=$tried " +
-                s"since=${requestedAt.get(site.upperLeft).map(currentTick - _).getOrElse(-1)}"
-            )
-          }
+          if (requestedAt.get(site.upperLeft).exists(currentTick - _ > SiteTimeout)) block(site.upperLeft, "request")
         }
         sites.filterNot(s => blockedSites(s.upperLeft)).foreach { site =>
           if (!bunkers.exists(_.tilePosition == site.upperLeft) && !pending(site.upperLeft) && !bunkerUnderWay) {
