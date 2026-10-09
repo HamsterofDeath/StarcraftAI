@@ -74,23 +74,17 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
 
   private def evaluateReconnaissance = {
     val troops      = expedition
-    val funds       = resources.currentResources
     val operational = universe.pluginByType[ManageMiningAtBases].secondBaseEstablished
     // An army carrying the reserve's value inside it needs no further banked reserve.
     val armyValue    = troops.map(_.nativeUnitType.mineralPrice).sum
     val armyGas      = troops.map(_.nativeUnitType.gasPrice).sum
     val overwhelming = troops.size >= config.minFighters * 2 &&
       armyValue >= config.armyMinerals + config.bankMinerals && armyGas >= config.armyGas + config.bankGas
+    // Always keep pressure on: attack as soon as the army is big enough, without waiting for full bunker coverage or
+    // a banked reserve, and always when supply is nearly maxed, because nothing more can be built anyway.
+    val supplyCapped = nativeGame.self().supplyUsed >= 2 * TerranCampaignConfig.SupplyCappedAt
     operational && !worldDominationPlan.baseDefenseActive &&
-    (launched || overwhelming ||
-      (universe.pluginByType[TerranBunkerDefense].defenseSufficient && config.ready(
-        operational,
-        troops.size,
-        armyValue,
-        armyGas,
-        funds.minerals,
-        funds.gas
-      )))
+    (launched || overwhelming || supplyCapped || config.launch(troops.size, armyValue, armyGas))
   }
 
   def enemyLocated = memory.buildings.nonEmpty
@@ -124,6 +118,8 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
   }
 
   override def onTick_!(): Unit = {
+    // refreshes the per-tick answers (fighters, defenses, scouting gates)
+    super.onTick_!()
     if (!race.isTerran) return
     val visible = nativeGame.getAllUnits.asScala.iterator.filter { u =>
       u.getPlayer.isEnemy(nativeGame.self()) && u.isVisible && u.getType.isBuilding

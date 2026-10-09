@@ -60,7 +60,10 @@ case class TerranCampaignConfig(
 }
 
 object TerranCampaignConfig {
-  def load() = {
+
+  /** Supply (in whole units) at which the army attacks whatever its size: more cannot be built. */
+  val SupplyCappedAt = 180
+  def load()         = {
     def number(key: String, default: Int)      = sys.props.get("twailight." + key).map(_.toInt).getOrElse(default)
     def fraction(key: String, default: Double) = sys.props.get("twailight." + key).map(_.toDouble).getOrElse(default)
     TerranCampaignConfig(
