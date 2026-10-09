@@ -31,8 +31,13 @@ $rows = foreach ($map in $Maps) {
     $run = Join-Path $Repository ('target/native-runs/' + $runName)
     $resultFile = Join-Path $run 'native-result.json'
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
-    # The bot writes its result when the game ends; stop then instead of waiting for the post-game menus.
-    while ((Get-Process -Id $receipt.botPid -ErrorAction SilentlyContinue) -and -not (Test-Path -LiteralPath $resultFile) -and
+    # The bot writes an unfinished result at the start and the final one when the game ends; stop at the final one
+    # instead of waiting for the post-game menus.
+    $finished = {
+      try { (Get-Content -LiteralPath $resultFile -Raw -ErrorAction Stop | ConvertFrom-Json).status -ne 'unfinished' }
+      catch { $false }
+    }
+    while ((Get-Process -Id $receipt.botPid -ErrorAction SilentlyContinue) -and -not (& $finished) -and
            (Get-Date) -lt $deadline) {
       Start-Sleep -Milliseconds 250
     }
