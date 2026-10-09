@@ -6,7 +6,7 @@ import scala.collection.mutable
 
 class DefaultBehaviours(universe: Universe) extends OrderlessAIModule[WrapsUnit](universe) {
   self =>
-  private val rules  = Terran.allBehaviours(universe)
+  private val rules  = TerranBehaviours.allBehaviours(universe)
   private val ignore = mutable.HashSet.empty[WrapsUnit]
 
   override def renderDebug(renderer: Renderer): Unit = {

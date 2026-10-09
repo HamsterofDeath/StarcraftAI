@@ -1,14 +1,5 @@
 package pony
 
-import bwapi.{Unit => APIUnit, _}
-import pony.Upgrades.Terran.{Nuke, ScannerSweep}
-import pony.Upgrades.{IsTech, SinglePointMagicSpell, SingleTargetMagicSpell}
-import pony.brain._
-
-import scala.jdk.CollectionConverters._
-import scala.collection.immutable.HashMap
-import scala.collection.mutable.ListBuffer
-
 trait CanBuildAddons extends Building {
   private val myAddonArea = oncePerTick {
     Area(area.lowerRight.movedBy(1, -1), Size(2, 2))

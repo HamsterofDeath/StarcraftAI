@@ -2,7 +2,6 @@ package pony
 
 import pony.brain.{HasUniverse, Universe}
 
-import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.language.implicitConversions
 

@@ -11,8 +11,8 @@ libraryDependencies ++= Seq(
   "commons-io"  % "commons-io"   % "2.22.0"
 )
 
-// Every compiler warning fails the build.
-scalacOptions ++= Seq("-deprecation", "-feature", "-Werror", "-release", "17")
+// Every compiler warning, including an unused import, fails the build.
+scalacOptions ++= Seq("-deprecation", "-feature", "-Wunused:imports", "-Werror", "-release", "17")
 javacOptions ++= Seq("--release", "17", "-Xlint:all", "-Werror")
 
 Compile / mainClass := Some("pony.Controller")

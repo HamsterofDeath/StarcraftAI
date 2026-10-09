@@ -1,13 +1,7 @@
 package pony
 
-import bwapi.{Unit => APIUnit, _}
-import pony.Upgrades.Terran.{Nuke, ScannerSweep}
-import pony.Upgrades.{IsTech, SinglePointMagicSpell, SingleTargetMagicSpell}
-import pony.brain._
+import pony.Upgrades.SingleTargetMagicSpell
 
-import scala.jdk.CollectionConverters._
-import scala.collection.immutable.HashMap
-import scala.collection.mutable.ListBuffer
 import scala.reflect.ClassTag
 
 abstract class SingleTargetSpell[C <: HasSingleTargetSpells, M <: Mobile: ClassTag](val tech: Upgrade &

@@ -1,56 +1,9 @@
 package pony
 
-import bwapi.{Color, Game, TechType}
+import bwapi.{Color, TechType}
 import pony.Upgrades.{SinglePointMagicSpell, SingleTargetMagicSpell}
 
-import scala.collection.mutable.ArrayBuffer
 import scala.util.Try
-import scala.compiletime.uninitialized
-
-abstract class UnitOrder {
-  private var myGame: Game      = uninitialized
-  private var locks             = 0
-  private var forceAllowRepeats = false
-
-  def forceRepetition = forceAllowRepeats
-
-  def forceRepeat_!(forceRepeats: Boolean) = {
-    forceAllowRepeats = forceRepeats
-    this
-  }
-
-  def lockTicks = locks
-
-  def obsolete = !myUnit.isInGame
-
-  def setGame_!(game: Game): Unit = {
-    myGame = game
-  }
-
-  def game = myGame
-
-  def isNoop = false
-
-  def myUnit: WrapsUnit
-
-  def record(): Unit = {
-    myUnit match {
-      case his: OrderHistorySupport =>
-        his.trackOrder(this)
-      case _ =>
-    }
-  }
-
-  def issueOrderToGame(): Unit
-
-  def renderDebug(renderer: Renderer): Unit
-
-  def lockingFor_!(ticks: Int) = {
-    locks = ticks
-    this
-  }
-
-}
 
 object Orders {
   private val bunkerBoardingReported = scala.collection.mutable.Map.empty[Int, (Boolean, Int, Int)]
@@ -395,41 +348,4 @@ object Orders {
     override def myUnit = unit
   }
 
-}
-
-class OrderQueue(game: Game, debugger: Debugger) {
-  private val queue              = ArrayBuffer.empty[UnitOrder]
-  private val delegatedToBasicAI = collection.mutable.HashMap.empty[WrapsUnit, UnitOrder]
-  private val locked             = collection.mutable.HashMap.empty[WrapsUnit, Int]
-
-  def queue_!(order: UnitOrder): Unit = {
-    order.setGame_!(game)
-    queue += order
-  }
-
-  def debugAll(): Unit = {
-    if (debugger.isDebugging) {
-      debugger.debugRender { renderer =>
-        delegatedToBasicAI.foreach(_._2.renderDebug(renderer))
-      }
-    }
-  }
-
-  def issueAll(elapsedFrames: Int): Unit = {
-    val tickOrders = queue.filterNot(_.isNoop)
-    trace(s"Orders: ${tickOrders.mkString(", ")}", queue.nonEmpty)
-    tickOrders.foreach(_.record())
-    delegatedToBasicAI.clear()
-    tickOrders.foreach { order =>
-      delegatedToBasicAI.put(order.myUnit, order)
-      val isLocked = locked.get(order.myUnit).exists(_ > 0)
-      if (isLocked) {
-        locked.put(order.myUnit, locked(order.myUnit) - elapsedFrames)
-      } else {
-        order.issueOrderToGame()
-        locked.put(order.myUnit, order.lockTicks)
-      }
-    }
-    queue.clear()
-  }
 }

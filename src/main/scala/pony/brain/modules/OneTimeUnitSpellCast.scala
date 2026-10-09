@@ -1,0 +1,40 @@
+package pony
+package brain
+package modules
+
+import scala.reflect.ClassTag
+
+class OneTimeUnitSpellCast[C <: HasSingleTargetSpells: ClassTag, T <: Mobile: ClassTag](
+    universe: Universe,
+    spell: SingleTargetSpell[C, T]
+) extends DefaultBehaviour[C](universe) {
+  private val helper = NonConflictingSpellTargets.forSpell(spell, universe)
+
+  universe.register_!(() => {
+    helper.afterTick()
+  })
+
+  override def onTick_!() = {
+    super.onTick_!()
+  }
+
+  override def refuseCommandsForTicks = 12
+
+  override def priority: SecondPriority = SecondPriority.Max
+
+  override protected def wrapBase(unit: C): SingleUnitBehaviour[C] = new SingleUnitBehaviour[C](unit, meta) {
+    override def describeShort: String = s"Cast ${spell.getClass.className}"
+
+    override def toOrder(what: Objective): Seq[UnitOrder] = {
+      if (this.unit.canCastNow(spell.tech)) {
+        val h = helper
+        h.suggestTargetFor(this.unit).map { target =>
+          h.notifyLock_!(this.unit, target)
+          this.unit.toOrder(spell.tech, target)
+        }.toList
+      } else {
+        Nil
+      }
+    }
+  }
+}
