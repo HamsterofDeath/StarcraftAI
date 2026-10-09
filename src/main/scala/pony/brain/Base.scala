@@ -1,0 +1,65 @@
+package pony
+package brain
+
+case class Base(mainBuilding: MainBuilding) {
+
+  def world = mainBuilding.world
+
+  def resourceArea = {
+    world.resourceAnalyzer.resourceAreas
+    .minByOpt { c =>
+      mainBuilding.area.distanceTo(c.center)
+    }
+  }
+
+  // Bind resource geometry on the native callback thread before the alternative-path future starts.
+  // The current field remains dynamic so a lifted depot can later rebind after landing.
+  private val initialResourceArea = resourceArea
+
+  def alternativeResourceAreas = myAlternativeResourceAreas.result
+
+  private val myAlternativeResourceAreas = {
+    val safeGround = mainBuilding.pathfinders.groundSafe
+    val safeAir = mainBuilding.pathfinders.airSafe
+    val tile = mainBuilding.centerTile
+
+    def sortByPath = {
+
+      def evaluate(area: ResourceArea, ground: Boolean) = {
+        val finder = if (ground) safeGround else safeAir
+        val path = safeGround.findSimplePathNow(tile, area.anyTile)
+
+        path match {
+          case None =>
+            None
+          case Some(p) =>
+            Some(area -> p.length)
+
+        }
+      }
+      val ground = world.resourceAnalyzer.resourceAreas.flatMap(evaluate(_, true))
+
+      val air = world.resourceAnalyzer.resourceAreas.filterNot { area =>
+        ground.exists(_._1 == area)
+      }.flatMap(evaluate(_, false))
+
+      val all = ground.sortBy(_._2).map(_._1) ++ air.sortBy(_._2).map(_._1)
+      all.filterNot(initialResourceArea.contains).filter { candidate =>
+        mainBuilding.mapLayers.rawWalkableMap
+        .areInSameWalkableArea(candidate.anyTile, tile)
+      }
+    }
+
+    BWFuture(sortByPath, Nil)
+  }
+
+  def myMineralGroup = resourceArea.flatMap(_.patches)
+  def myGeysirs      = resourceArea.map(_.geysirs).getOrElse(Set.empty)
+
+  info(
+    s"""
+       |Found base/minerals $mainBuilding: $myMineralGroup
+     """.stripMargin)
+
+  override def toString: String = s"Base@$mainBuilding"
+}
