@@ -75,6 +75,45 @@ try {
 }
 finally { if ($key) { $key.Close() }; $registry.Close() }
 if ($CheckOnly) { 'Runtime, source and ordinary native slot checks passed.'; return }
+if (-not (Test-Path -LiteralPath (Join-Path $buildOut 'classes/META-INF/services/pony.brain.modules.strategy.StrategyPlugin'))) {
+  throw 'The build output lacks the strategy plugin services file; run sbt compile in the repository first.'
+}
+if ($Headless) {
+  Add-Type -TypeDefinition @'
+using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+public static class HiddenDesktop {
+  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+  struct StartupInfo {
+    public int cb; public string reserved; public string desktop; public string title;
+    public int x, y, xSize, ySize, xChars, yChars, fill, flags; public short show, reserved2;
+    public IntPtr reserved3, stdIn, stdOut, stdErr;
+  }
+  [StructLayout(LayoutKind.Sequential)]
+  struct ProcessInformation { public IntPtr process, thread; public int processId, threadId; }
+  [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+  static extern IntPtr CreateDesktop(string name, IntPtr device, IntPtr mode, int flags, uint access, IntPtr security);
+  [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+  static extern bool CreateProcess(string app, string commandLine, IntPtr processSecurity, IntPtr threadSecurity,
+    bool inheritHandles, uint flags, IntPtr environment, string directory, ref StartupInfo startup, out ProcessInformation info);
+  [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr handle);
+  /** Starts exe on the named desktop of the interactive window station; its child processes stay there too. */
+  public static int Start(string desktop, string exe, string arguments, string directory) {
+    if (CreateDesktop(desktop, IntPtr.Zero, IntPtr.Zero, 0, 0x10000000, IntPtr.Zero) == IntPtr.Zero) throw new Win32Exception();
+    var startup = new StartupInfo();
+    startup.cb = Marshal.SizeOf(startup);
+    startup.desktop = @"WinSta0\" + desktop;
+    ProcessInformation info;
+    if (!CreateProcess(exe, "\"" + exe + "\" " + arguments, IntPtr.Zero, IntPtr.Zero, false, 0, IntPtr.Zero, directory,
+        ref startup, out info)) throw new Win32Exception();
+    CloseHandle(info.thread);
+    CloseHandle(info.process);
+    return info.processId;
+  }
+}
+'@
+}
 $run = Join-Path $Repository ('target/native-runs/' + $RunName)
 if (Test-Path -LiteralPath $run) { throw 'Preserve old evidence; choose a new RunName.' }
 New-Item -ItemType Directory -Path $run | Out-Null
@@ -116,14 +155,21 @@ $receipt.configuration.autoCamera = !$Headless.IsPresent -and !$NoAutoCamera.IsP
 $bot = Start-Process -FilePath $Java -ArgumentList $options -WorkingDirectory $Runtime -WindowStyle Hidden -RedirectStandardOutput (Join-Path $run 'bot-stdout.log') -RedirectStandardError (Join-Path $run 'bot-stderr.log') -PassThru
 $receipt.botPid=$bot.Id; $receipt.botStart=$bot.StartTime.ToUniversalTime().ToString('o')
 $receipt | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $run 'manifest.json')
-$injector = Start-Process -FilePath (Join-Path $Runtime 'injectory_x86.exe') -ArgumentList @('--launch','StarCraft.exe','--inject','bwapi-data/BWAPI.dll') -WorkingDirectory $Runtime -WindowStyle Hidden -RedirectStandardOutput (Join-Path $run 'injector-stdout.log') -RedirectStandardError (Join-Path $run 'injector-stderr.log') -PassThru
-$receipt.injectorPid=$injector.Id; $receipt.injectorStart=$injector.StartTime.ToUniversalTime().ToString('o')
+$injectorExe = Join-Path $Runtime 'injectory_x86.exe'
+if ($Headless) {
+  # Headless games run on a separate, never-shown desktop: no window appears and nothing can take the keyboard focus.
+  $injectorPid = [HiddenDesktop]::Start('twailight-headless', $injectorExe, '--launch StarCraft.exe --inject bwapi-data/BWAPI.dll', $Runtime)
+} else {
+  $injectorPid = (Start-Process -FilePath $injectorExe -ArgumentList @('--launch','StarCraft.exe','--inject','bwapi-data/BWAPI.dll') -WorkingDirectory $Runtime -WindowStyle Hidden -RedirectStandardOutput (Join-Path $run 'injector-stdout.log') -RedirectStandardError (Join-Path $run 'injector-stderr.log') -PassThru).Id
+}
+$receipt.injectorPid=$injectorPid
+$receipt.injectorDesktop = if ($Headless) { 'twailight-headless' } else { 'default' }
 # injectory starts the game a moment after its own start; wait for that child instead of racing it
 $game = @()
 $deadline = (Get-Date).AddSeconds(30)
 while ($game.Count -eq 0 -and (Get-Date) -lt $deadline) {
   Start-Sleep -Milliseconds 250
-  $game = @(Get-CimInstance Win32_Process -Filter "Name='StarCraft.exe' AND ParentProcessId=$($injector.Id)")
+  $game = @(Get-CimInstance Win32_Process -Filter "Name='StarCraft.exe' AND ParentProcessId=$injectorPid")
 }
 if ($game.Count -ne 1) { $receipt | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $run 'manifest.json'); throw 'Exact owned game child not identified; preserve receipt and do not launch again.' }
 $receipt.gamePid=$game[0].ProcessId; $receipt.gameStart=$game[0].CreationDate.ToUniversalTime().ToString('o')

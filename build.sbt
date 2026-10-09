@@ -19,3 +19,6 @@ Compile / mainClass := Some("pony.Controller")
 
 // Formatting check plus the full, non-incremental test run; use before every push.
 addCommandAlias("validate", ";scalafmtCheckAll;scalafmtSbtCheck;testFull")
+
+// Native runs put the classes directory on the classpath; plugin service files must be there after `compile`.
+Compile / compile := (Compile / compile).dependsOn(Compile / copyResources).value
