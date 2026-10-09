@@ -22,12 +22,14 @@ class TerranBunkerDefense(universe: Universe)
   private var placementReported = Set.empty[MapTilePosition]
 
   /**
-    * When each site's bunker was requested; a site still without its bunker two game minutes later, while the bank
-    * could pay for it, is blocked.
+    * When each site's bunker was requested, and which workers were sent to build it. A site still without its bunker
+    * after three different workers or three game minutes cannot be built (the workers never get there) and is blocked.
     */
   private val requestedAt                      = mutable.Map.empty[MapTilePosition, Int]
+  private val triedBy                          = mutable.Map.empty[MapTilePosition, Set[Int]]
   private var blockedSites                     = Set.empty[MapTilePosition]
-  private val SiteTimeout                      = 24 * 120
+  private val SiteTimeout                      = 24 * 180
+  private val GiveUpAfterWorkers               = 3
   private def active                           = race.isTerran && strategy.current.usesBunkerDefense
   private def bunkers                          = ownUnits.allByType[Bunker].filter(_.isInGame).toVector
   private def plannedSites                     = plans.values.flatMap(_._2.map(_.upperLeft)).toSet -- blockedSites
@@ -134,9 +136,12 @@ class TerranBunkerDefense(universe: Universe)
             unitManager.constructionsInProgress[CommandCenter].map(_.buildWhere)).map(p => Area(p, Size(4, 3)))
         // A worker must be able to walk up to the site: BWAPI's path check ignores minerals, so a pocket behind the
         // mineral line passes canBuildHere and still never gets its bunker.
-        val depotSides                     = depots.flatMap(_.growBy(1).outline.filter(ground.freeAndInBounds))
+        val depotSides = depots.flatMap(_.growBy(1).outline.filter(ground.freeAndInBounds))
+        // BWAPI's own path check works at walk-tile resolution and sees cliff edges the tile grid joins.
         def reachable(site: Area): Boolean = site.growBy(1).outline.filter(ground.freeAndInBounds).exists(t =>
           depotSides.exists(ground.areInSameWalkableArea(_, t))
+        ) && depots.forall(d =>
+          nativeGame.hasPath(d.center.toNative, site.center.toNative)
         )
         val candidates = finder.bunkerSites(field, workTiles)
           .filterNot(a => blockedSites(a.upperLeft))
@@ -194,11 +199,18 @@ class TerranBunkerDefense(universe: Universe)
         val pending = unitManager.requestedConstructions[Bunker].flatMap(_.customPosition.requestedPosition).toSet ++
           unitManager.constructionsInProgress[Bunker].map(_.buildWhere)
         // A requested bunker that never appears (a worker that cannot place it) must not block every other site.
-        val affordable = nativeGame.self().minerals >= 150
+        unitManager.constructionsInProgress[Bunker].foreach { job =>
+          triedBy(job.buildWhere) = triedBy.getOrElse(job.buildWhere, Set.empty[Int]) + job.unit.nativeUnitId
+        }
         sites.filter(s => pending(s.upperLeft) && !bunkers.exists(_.tilePosition == s.upperLeft)).foreach { site =>
-          if (affordable && requestedAt.get(site.upperLeft).exists(currentTick - _ > SiteTimeout)) {
+          val tried = triedBy.getOrElse(site.upperLeft, Set.empty[Int]).size
+          if (tried >= GiveUpAfterWorkers || requestedAt.get(site.upperLeft).exists(currentTick - _ > SiteTimeout)) {
             blockedSites += site.upperLeft
-            NativeMatchEvidence.trace("bunker-site-blocked", s"field=${field.uniqueId} site=${site.upperLeft}")
+            NativeMatchEvidence.trace(
+              "bunker-site-blocked",
+              s"field=${field.uniqueId} site=${site.upperLeft} workers=$tried " +
+                s"since=${requestedAt.get(site.upperLeft).map(currentTick - _).getOrElse(-1)}"
+            )
           }
         }
         sites.filterNot(s => blockedSites(s.upperLeft)).foreach { site =>
