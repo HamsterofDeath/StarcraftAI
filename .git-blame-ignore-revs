@@ -1,0 +1,3 @@
+# Pure formatting commits; use with git blame --ignore-revs-file or blame.ignoreRevsFile
+# scalafmt over the whole codebase
+1ac224f4931dadd35e966b358090956e91fbc79b
