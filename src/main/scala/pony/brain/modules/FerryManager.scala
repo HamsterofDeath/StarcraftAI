@@ -111,15 +111,22 @@ class FerryManager(override val universe: Universe) extends HasUniverse {
 
   /**
     * While the strategy seals the main and its wall stands, the main's terrain area is cut in two: what a worker can
-    * walk to from the main command center with the standing buildings in the way (planned ones aside), and the rest. Both halves are one walkable
-    * area to the terrain, so the ferry checks ask this as well. Recomputed every tick: a breached wall seals nothing.
+    * walk to from the main command center with the standing buildings in the way (planned ones aside), and the largest
+    * area beyond the wall. Both halves are one walkable area to the terrain, so the ferry checks ask this as well.
+    * Pockets enclosed by buildings or minerals belong to neither side. Recomputed every tick: a breached wall seals
+    * nothing.
     */
-  private case class SealedSplit(mainArea: Grid2D, walkable: Grid2D, inside: Grid2D) {
+  private case class SealedSplit(mainArea: Grid2D, walkable: Grid2D, inside: Grid2D, outside: Grid2D) {
 
-    /** A tile under a building counts on the side of the free tiles next to it. */
-    def isInside(tile: MapTilePosition) =
-      if (walkable.inBounds(tile) && walkable.free(tile)) inside.free(tile)
-      else walkable.spiralAround(tile, 4).find(t => walkable.inBounds(t) && walkable.free(t)).exists(inside.free)
+    /** Some(true) inside, Some(false) outside, None in a pocket; a tile under a building takes a free neighbour's. */
+    def side(tile: MapTilePosition): Option[Boolean] = {
+      def known(t: MapTilePosition) =
+        if (!walkable.inBounds(t) || !walkable.free(t)) None
+        else if (inside.free(t)) Some(true)
+        else if (outside.free(t)) Some(false)
+        else None
+      known(tile).orElse(walkable.spiralAround(tile, 4).iterator.flatMap(known).nextOption())
+    }
   }
 
   private var sealedSplit = Option.empty[SealedSplit]
@@ -128,8 +135,10 @@ class FerryManager(override val universe: Universe) extends HasUniverse {
 
   /** Whether the sealed wall stands between two tiles of the main's terrain area. */
   def sealedApart(a: MapTilePosition, b: MapTilePosition) = sealedSplit.exists { split =>
-    split.mainArea.inBounds(a) && split.mainArea.inBounds(b) && split.mainArea.free(a) && split.mainArea.free(b) &&
-    split.isInside(a) != split.isInside(b)
+    split.mainArea.inBounds(a) && split.mainArea.inBounds(b) && split.mainArea.free(a) && split.mainArea.free(b) && {
+      val (sa, sb) = (split.side(a), split.side(b))
+      sa.isDefined && sb.isDefined && sa != sb
+    }
   }
 
   private def updateSealedSplit(): Unit = {
@@ -149,7 +158,8 @@ class FerryManager(override val universe: Universe) extends HasUniverse {
           mainArea <- mapLayers.rawWalkableMap.areaOf(anchor)
           // the wall must actually cut the main off: otherwise the inside reaches the rest of the terrain area
           if inside.freeCount * 2 < mainArea.freeCount
-        } yield SealedSplit(mainArea, walkable, inside)
+          outside <- walkable.areas.filterNot(_ == inside).maxByOpt(_.freeCount)
+        } yield SealedSplit(mainArea, walkable, inside, outside)
       }
     val after = sealedSplit.map(_.inside.freeCount)
     if (before.isDefined != after.isDefined)
