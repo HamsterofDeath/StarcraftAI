@@ -17,7 +17,7 @@ param(
  [double]$FieldUsefulFraction = 0.15,
  # A strategy key the bot knows, or 'default' to let it choose; the bot rejects unknown keys at start.
  [ValidatePattern('^[a-z0-9-]+$')][string]$Strategy = 'default',
- # Repository-relative e2e map (for example e2e/maps/micro-vulture-4-vs-zealot-6.scm), played with map settings.
+ # Repository-relative e2e map (for example e2e/maps/micro-vulture-4-vs-zealot-6.scx), played with map settings.
  [string]$E2EMap,
  # Several repository-relative e2e maps played in order in one warm StarCraft process (auto restart).
  [string[]]$E2EMaps = @(),
@@ -60,7 +60,7 @@ if ($E2EMaps.Count -gt 0) {
   $mapFolder = if ($E2EMaps.Count -gt 1) { 'maps/e2e-session' } else { 'maps/e2e' }
   New-Item -ItemType Directory -Path (Join-Path $Runtime $mapFolder) -Force | Out-Null
   if ($E2EMaps.Count -gt 1) {
-    Get-ChildItem -LiteralPath (Join-Path $Runtime $mapFolder) -Filter '*.scm' | ForEach-Object { $_.Delete() }
+    Get-ChildItem -LiteralPath (Join-Path $Runtime $mapFolder) -Filter '*.sc?' | ForEach-Object { $_.Delete() }
   }
   $number = 0
   foreach ($e2eMap in $E2EMaps) {
@@ -73,7 +73,7 @@ if ($E2EMaps.Count -gt 0) {
     Copy-Item -LiteralPath $e2eSource -Destination (Join-Path $Runtime $runtimeMap) -Force
     $mapPlan += $runtimeMap
   }
-  $mapRelative = if ($mapPlan.Count -gt 1) { $mapFolder + '/*.scm' } else { $mapPlan[0] }
+  $mapRelative = if ($mapPlan.Count -gt 1) { $mapFolder + '/*.scx' } else { $mapPlan[0] }
   $gameType = 'USE_MAP_SETTINGS'
 } else {
   $mapRelative = 'maps/BroodWar/aiide/(2)Destination.scx'

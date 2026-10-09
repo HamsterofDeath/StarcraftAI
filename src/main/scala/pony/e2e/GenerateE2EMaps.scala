@@ -82,7 +82,7 @@ object GenerateE2EMaps {
   def main(args: Array[String]): Unit = {
     val template = ChkFile.parse(MpqArchive.open(Paths.get(args(0))).read(InspectMap.ScenarioPath))
     All.foreach { case (fileName, scenario) =>
-      val target = Paths.get(args(1)).resolve(fileName + ".scm")
+      val target = Paths.get(args(1)).resolve(fileName + ".scx")
       write(scenario, template, target)
       println(s"wrote $target (${Files.size(target)} bytes)")
     }

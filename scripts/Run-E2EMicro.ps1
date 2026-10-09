@@ -18,7 +18,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 if (-not $Maps) {
-  $Maps = Get-ChildItem -LiteralPath (Join-Path $Repository 'e2e/maps') -Filter 'micro-*.scm' |
+  $Maps = Get-ChildItem -LiteralPath (Join-Path $Repository 'e2e/maps') -Filter 'micro-*.scx' |
     ForEach-Object { 'e2e/maps/' + $_.Name }
 }
 # Every game of the batch runs in one warm StarCraft process: BWAPI restarts with the next map after each game.
