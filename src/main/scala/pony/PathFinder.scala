@@ -3,6 +3,7 @@ package pony
 import pony.astar.{AStarSearch, GridNode2DInt, Heuristics}
 
 import scala.jdk.CollectionConverters._
+import scala.language.implicitConversions
 
 object PathFinder {
 

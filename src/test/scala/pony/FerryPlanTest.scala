@@ -34,7 +34,7 @@ class FerryPlanTest extends Specification with MustMatchers {
         }
       }
     }
-    Proxy.newProxyInstance(unitClass.getClassLoader, Array[Class[_]](unitClass), state)
+    Proxy.newProxyInstance(unitClass.getClassLoader, Array[Class[?]](unitClass), state)
     .asInstanceOf[T]
   }
 

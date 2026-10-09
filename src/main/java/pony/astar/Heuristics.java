@@ -8,16 +8,13 @@ import org.jetbrains.annotations.NotNull;
  *
  * @author HamsterofDeath Created 22.12.2007 @ 17:03:26
  */
-public interface Heuristics<T extends Node> {
-    Heuristics<Node> NONE = new Heuristics<Node>() {
-        public int estimateCost(
-                @NotNull
-                final Node p_from,
-                @NotNull
-                final Node p_target) {
-            return 0;
-        }
-    };
+public interface Heuristics<T extends Node<T>> {
+    /**
+     * @return a heuristic that estimates every remaining cost as zero, turning A* into Dijkstra
+     */
+    static <T extends Node<T>> Heuristics<T> none() {
+        return (p_from, p_target) -> 0;
+    }
 
 
     int estimateCost(

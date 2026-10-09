@@ -8,16 +8,17 @@ import pony.brain._
 import scala.jdk.CollectionConverters._
 import scala.collection.immutable.HashMap
 import scala.collection.mutable.ListBuffer
+import scala.reflect.ClassTag
 
-abstract class SingleTargetSpell[C <: HasSingleTargetSpells, M <: Mobile : Manifest]
+abstract class SingleTargetSpell[C <: HasSingleTargetSpells, M <: Mobile : ClassTag]
 (val tech: Upgrade & SingleTargetMagicSpell) {
   val castRange       = 300
   val castRangeSquare = castRange * castRange
 
   private val targetClass = tech.canCastOn
 
-  assert(targetClass >= implicitly[Manifest[M]].runtimeClass,
-    s"$targetClass vs ${implicitly[Manifest[M]].runtimeClass}")
+  assert(targetClass >= implicitly[ClassTag[M]].runtimeClass,
+    s"$targetClass vs ${implicitly[ClassTag[M]].runtimeClass}")
 
   def castOn: CastOn = EnemyUnits
 

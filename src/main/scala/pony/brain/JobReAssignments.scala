@@ -1,6 +1,8 @@
 package pony
 package brain
 
+import scala.reflect.ClassTag
+
 class JobReAssignments(universe: Universe) extends OrderlessAIModule[Controllable](universe) {
   override def onTick_!(): Unit = {
     unitManager.nextJobReorganisationRequest
@@ -12,7 +14,7 @@ class JobReAssignments(universe: Universe) extends OrderlessAIModule[Controllabl
         trace(s"Not found, try again later")
         unitManager.tryFindBetterEmployeeFor(optimizeMe)
       } else {
-        def doTyped[T <: WrapsUnit : Manifest](old: CanAcceptUnitSwitch[T]) = {
+        def doTyped[T <: WrapsUnit : ClassTag](old: CanAcceptUnitSwitch[T]) = {
           val uc = new UnitCollector(old.asRequest, universe).collect_!(Set(old))
           uc match {
             case Some(replacement) if replacement.hasOneMember &&

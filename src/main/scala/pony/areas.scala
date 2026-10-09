@@ -89,7 +89,7 @@ class StrategicMap(val resources: Seq[ResourceArea], walkable: Grid2D, game: Gam
           walkable.anyBlockedOnLine(left) &&
           walkable.anyBlockedOnLine(right)
         }
-      }.map { case (a, b) => Line(a.a, b.b) }.seq
+      }.map { case (a, b) => Line(a.a, b.b) }
     }
     val byReferencePoint = multiMap[MapTilePosition, Line]
     tooMany.foreach { line =>
@@ -159,7 +159,7 @@ class StrategicMap(val resources: Seq[ResourceArea], walkable: Grid2D, game: Gam
             }
 
             val subAreas = operateOn.areasExpensive
-            val cuttingLines = cutters.map(CuttingLine)
+            val cuttingLines = cutters.map(CuttingLine(_))
             val chokePoint = ChokePoint(center, cuttingLines)
             val grouped = relevantResources.groupBy { r1 =>
               val mainArea = subAreas.find(subArea => r1.coveredTiles.exists(subArea.free))
@@ -180,8 +180,8 @@ class StrategicMap(val resources: Seq[ResourceArea], walkable: Grid2D, game: Gam
             }
           } else
             None
-        }.seq
-      }.seq
+        }
+      }
     }
 
     println("\nGrouping choke points...")

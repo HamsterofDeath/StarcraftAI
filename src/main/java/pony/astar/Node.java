@@ -33,7 +33,15 @@ public abstract class Node<T extends Node<T>> implements Iterable<T>, Serializab
             final T p_parent);
 
     public int getEstimatedTotalCost(final T p_target, final Heuristics<T> p_heuristics) {
-        return (m_costAndState >>> 2) + p_heuristics.estimateCost((T) this, p_target);
+        return (m_costAndState >>> 2) + p_heuristics.estimateCost(self(), p_target);
+    }
+
+    /**
+     * The self-bound {@code T extends Node<T>} makes every concrete node its own {@code T}.
+     */
+    @SuppressWarnings("unchecked")
+    private T self() {
+        return (T) this;
     }
 
     public void setNewParent(
@@ -78,7 +86,7 @@ public abstract class Node<T extends Node<T>> implements Iterable<T>, Serializab
         setState(NodeState.OPEN);
     }
 
-    public abstract Heuristics suggestHeuristics();
+    public abstract Heuristics<T> suggestHeuristics();
 
     public abstract void remove();
 
@@ -96,7 +104,7 @@ public abstract class Node<T extends Node<T>> implements Iterable<T>, Serializab
     }
 
     @Nullable
-    public Node getParent() {
+    public T getParent() {
         return m_parent;
     }
 
@@ -130,7 +138,7 @@ public abstract class Node<T extends Node<T>> implements Iterable<T>, Serializab
                     return false;
                 }
                 if (m_current == null) {
-                    m_current = (T) Node.this;
+                    m_current = self();
                     if (m_current.m_parent == null) {
                         return false;
                     }

@@ -95,7 +95,7 @@ class ConstructionSiteFinder(universe: Universe) {
     }
   }
 
-  def findSpotFor[T <: Building](near: MapTilePosition, building: Class[_ <: T], maxRange: Int = 75,
+  def findSpotFor[T <: Building](near: MapTilePosition, building: Class[? <: T], maxRange: Int = 75,
                                  bestOfN: Int = 256,
                                  preferNear: Option[MapTilePosition] = None,
                                  acceptableArea: Area => Boolean = _ => true) = {

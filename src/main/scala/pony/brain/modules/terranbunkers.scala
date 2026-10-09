@@ -166,9 +166,9 @@ private[pony] class RepairDefensiveBunker(worker: SCV, bunker: Bunker, owner: Em
 
 class TerranBunkerDefense(universe: Universe)
   extends OrderlessAIModule[UnitFactory](universe) with UnitRequestHelper {
-  private val ownedRequests = mutable.ArrayBuffer.empty[BuildUnitRequest[_ <: Building]]
+  private val ownedRequests = mutable.ArrayBuffer.empty[BuildUnitRequest[? <: Building]]
   private val builder = new HelperAIModule[WorkerUnit](universe) with BuildingRequestHelper {
-    override protected def onBuildingRequested(request: BuildUnitRequest[_ <: Building]): Unit =
+    override protected def onBuildingRequested(request: BuildUnitRequest[? <: Building]): Unit =
       if (request.typeOfRequestedUnit == classOf[Bunker]) ownedRequests += request
   }
   private val plans = mutable.Map.empty[Int, (Vector[MapPosition], Vector[Area])]

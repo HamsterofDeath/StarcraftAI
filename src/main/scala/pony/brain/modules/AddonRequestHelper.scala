@@ -7,7 +7,7 @@ trait AddonRequestHelper extends AIModule[CanBuildAddons] {
 
   private val helper = new HelperAIModule[WorkerUnit](universe) with BuildingRequestHelper
 
-  def requestAddon[T <: Addon](addonType: Class[_ <: T],
+  def requestAddon[T <: Addon](addonType: Class[? <: T],
                                handleDependencies: Boolean = false): Unit = {
     trace(s"Addon ${addonType.className} requested")
     val req = ResourceRequests.forUnit(race, addonType, Priority.Addon)
@@ -15,7 +15,7 @@ trait AddonRequestHelper extends AIModule[CanBuildAddons] {
     requestAddonIfResourcesProvided(addonType, handleDependencies, result)
   }
 
-  def requestAddonIfResourcesProvided[T <: Addon](addonType: Class[_ <: T],
+  def requestAddonIfResourcesProvided[T <: Addon](addonType: Class[? <: T],
                                                   handleDependencies: Boolean,
                                                   result: ResourceApproval): Unit = {
     result.ifSuccess { suc =>

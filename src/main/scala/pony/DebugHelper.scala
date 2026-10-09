@@ -30,6 +30,7 @@ class DebugHelper(main: MainAI) extends AIPlugIn with HasUniverse {
                     case "5" => LogLevels.LogTrace
                     case _ => !!!(logLevel)
                   })
+                case _ => usage(command, "one log level from 0 to 5")
               }
             case "expand" | "e" =>
               params match {
@@ -37,12 +38,14 @@ class DebugHelper(main: MainAI) extends AIPlugIn with HasUniverse {
                   val patch = world.resourceAnalyzer.groups.find(_.patchId.toString == mineralsId)
                               .get
                   main.brain.pluginByType[ProvideExpansions].forceExpand(patch)
+                case _ => usage(command, "one mineral patch id")
               }
 
             case "speed" | "s" =>
               params match {
                 case List(integer) =>
                   universe.world.debugger.speed(integer.toInt)
+                case _ => usage(command, "one speed value")
               }
             case "debugoff" | "doff" =>
               universe.world.debugger.off()
@@ -57,6 +60,7 @@ class DebugHelper(main: MainAI) extends AIPlugIn with HasUniverse {
                 case List(id) =>
                   ownUnits.allKnownUnits.find(_.unitIdText == id).foreach(debugUnit)
                   enemies.allKnownUnits.find(_.unitIdText == id).foreach(debugUnit)
+                case _ => usage(command, "one unit id")
               }
             case "attack" | "a" =>
               val target = params match {
@@ -71,6 +75,7 @@ class DebugHelper(main: MainAI) extends AIPlugIn with HasUniverse {
 
                 case List(x, id) if x == "u" || x == "unit" =>
                   enemies.allMobilesAndBuildings.find(_.unitIdText == id).map(_.centerTile)
+                case _ => usage(command, "a target kind (m, c, n or u) and an id")
               }
               target.foreach { where =>
                 main.brain.universe.worldDominationPlan.initiateAttack(where, Highest)
@@ -93,6 +98,9 @@ class DebugHelper(main: MainAI) extends AIPlugIn with HasUniverse {
   override protected def tickPlugIn(): Unit = {
     // nop
   }
+
+  private def usage(command: String, expected: String): Nothing =
+    !!!(s"Debug command '$command' expects $expected")
 
   private def debugUnit(wrapsUnit: WrapsUnit): Unit = {
     info(s"user requested inspection of $wrapsUnit")

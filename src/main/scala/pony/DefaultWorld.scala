@@ -5,9 +5,10 @@ import pony.brain.{Supplies, Universe}
 
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
+import scala.compiletime.uninitialized
 
 class DefaultWorld(game: Game) extends WorldListener with WorldEventDispatcher {
-  private var myUniverse: Universe = _
+  private var myUniverse: Universe = uninitialized
 
   def init_!(universe: Universe) = {
     this.myUniverse = universe

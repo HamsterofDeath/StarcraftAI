@@ -51,7 +51,7 @@ trait UnitRequest[T <: WrapsUnit] {
   }
   def ratingFuntion = picker
   def priority: Priority
-  def typeOfRequestedUnit: Class[_ <: T]
+  def typeOfRequestedUnit: Class[? <: T]
   def amount: Int
   def acceptableUntyped(unit: WrapsUnit) = includesByType(unit) &&
                                            acceptable(unit.asInstanceOf[T])

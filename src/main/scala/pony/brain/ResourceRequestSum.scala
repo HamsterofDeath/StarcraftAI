@@ -15,7 +15,7 @@ case class ResourceRequestSum(minerals: Int, gas: Int, supply: Int) {
   def equalValue(proof: ResourceApprovalSuccess) = minerals == proof.minerals && gas == proof.gas &&
                                                    supply == proof.supply
 
-  def +(e: LockedResources[_]): ResourceRequestSum = {
+  def +(e: LockedResources[?]): ResourceRequestSum = {
     val sum = e.reqs.sum
     copy(minerals = minerals + sum.minerals, gas = gas + sum.gas, supply = supply + sum.supply)
   }

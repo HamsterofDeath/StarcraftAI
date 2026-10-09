@@ -3,10 +3,12 @@ package brain
 
 import pony.brain.modules.AlternativeBuildingSpot
 
-case class UnitJobRequest[T <: WrapsUnit : Manifest](request: UnitRequest[T],
+import scala.reflect.ClassTag
+
+case class UnitJobRequest[T <: WrapsUnit : ClassTag](request: UnitRequest[T],
                                                      employer: Employer[T],
                                                      priority: Priority,
-                                                     makeSureDependenciesCleared: Set[Class[_ <:
+                                                     makeSureDependenciesCleared: Set[Class[? <:
                                                        WrapsUnit]] =
                                                      Set.empty) {
 
@@ -17,13 +19,13 @@ case class UnitJobRequest[T <: WrapsUnit : Manifest](request: UnitRequest[T],
   assert(requestedUnitType >= moreSpecificType,
     s"$moreSpecificType > $requestedUnitType")
 
-  def canInterrupt(uwj: UnitWithJob[_ <: WrapsUnit]) = {
+  def canInterrupt(uwj: UnitWithJob[? <: WrapsUnit]) = {
     assert(priority > uwj.priority, "Oops :(")
     // perfect solution: match every type against every type and use heavy logic to determine the
     // result
     // reality: lazily add cases
     uwj match {
-      case i: Interruptable[_] if i.interruptableNow => true
+      case i: Interruptable[?] if i.interruptableNow => true
       case _ => false
     }
   }
@@ -50,7 +52,7 @@ case class UnitJobRequest[T <: WrapsUnit : Manifest](request: UnitRequest[T],
 
   def moreSpecificType = request.typeOfRequestedUnit
 
-  def requestedUnitType = implicitly[Manifest[T]].runtimeClass.asInstanceOf[Class[_ <: T]]
+  def requestedUnitType = implicitly[ClassTag[T]].runtimeClass.asInstanceOf[Class[? <: T]]
 
   def onClear(): Unit = request.dispose()
 }
@@ -63,25 +65,25 @@ object UnitJobRequest {
     UnitJobRequest(req, employer, priority).withOnlyAccepting(!_.isDoingResearch)
   }
 
-  def builderOf[T <: Mobile, F <: UnitFactory : Manifest](wantedType: Class[_ <: T],
+  def builderOf[T <: Mobile, F <: UnitFactory : ClassTag](wantedType: Class[? <: T],
                                                           employer: Employer[F],
                                                           priority: Priority = Priority
                                                                                .Default):
   UnitJobRequest[F] = {
 
-    val actualClass = employer.universe.forces.myRace.specialize(implicitly[Manifest[F]].runtimeClass
+    val actualClass = employer.universe.forces.myRace.specialize(implicitly[ClassTag[F]].runtimeClass
                                                                  .asInstanceOf[Class[F]])
     val req = AnyFactoryRequest[F, T](actualClass, 1, wantedType)
 
     UnitJobRequest(req, employer, priority)
   }
 
-  def constructor[T <: WorkerUnit : Manifest](employer: Employer[T],
+  def constructor[T <: WorkerUnit : ClassTag](employer: Employer[T],
                                               priority: Priority = Priority
                                                                    .ConstructBuilding):
   UnitJobRequest[T] = {
 
-    val actualClass = employer.universe.forces.myRace.specialize(implicitly[Manifest[T]].runtimeClass)
+    val actualClass = employer.universe.forces.myRace.specialize(implicitly[ClassTag[T]].runtimeClass)
                       .asInstanceOf[Class[T]]
     val req = AnyUnitRequest(actualClass, 1)
               .withCherryPicker_!(WorkerUnit.currentPriority)
@@ -89,8 +91,8 @@ object UnitJobRequest {
     UnitJobRequest(req, employer, priority)
   }
 
-  def addonConstructor[T <: CanBuildAddons : Manifest](employer: Employer[T],
-                                                       what: Class[_ <: Addon],
+  def addonConstructor[T <: CanBuildAddons : ClassTag](employer: Employer[T],
+                                                       what: Class[? <: Addon],
                                                        priority: Priority = Priority
                                                                             .ConstructBuilding) = {
 
@@ -102,7 +104,7 @@ object UnitJobRequest {
     UnitJobRequest(req, employer, priority, Set(what))
   }
 
-  def idleOfType[T <: WrapsUnit : Manifest](employer: Employer[T], ofType: Class[_ <: T],
+  def idleOfType[T <: WrapsUnit : ClassTag](employer: Employer[T], ofType: Class[? <: T],
                                             amount: Int = 1,
                                             priority: Priority = Priority.Default) = {
     val realType = employer.universe.forces.myRace.specialize(ofType)
@@ -111,8 +113,8 @@ object UnitJobRequest {
     UnitJobRequest(req, employer, priority)
   }
 
-  def newOfType[T <: WrapsUnit : Manifest](universe: Universe, employer: Employer[T],
-                                           ofType: Class[_ <: T],
+  def newOfType[T <: WrapsUnit : ClassTag](universe: Universe, employer: Employer[T],
+                                           ofType: Class[? <: T],
                                            funding: ResourceApprovalSuccess, amount: Int = 1,
                                            priority: Priority = Priority.Default,
                                            customBuildingPosition: AlternativeBuildingSpot =

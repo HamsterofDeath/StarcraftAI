@@ -3,7 +3,7 @@ package brain
 
 import pony.brain.modules.UpgradePrice
 
-case class ResourceRequests(requests: Seq[ResourceRequest], priority: Priority, whatFor: Class[_]) {
+case class ResourceRequests(requests: Seq[ResourceRequest], priority: Priority, whatFor: Class[?]) {
   def minerals = requests.collect { case MineralsRequest(amount) => amount }.sum
 
   def gas = requests.collect { case GasRequest(amount) => amount }.sum
@@ -31,7 +31,7 @@ object ResourceRequests {
 
   }
 
-  def forUnit[T <: WrapsUnit](race: SCRace, unspecificType: Class[_ <: T],
+  def forUnit[T <: WrapsUnit](race: SCRace, unspecificType: Class[? <: T],
                               priority: Priority = Priority.Default) = {
     val unitType = race.specialize(unspecificType)
     val mins = unitType.toUnitType.mineralPrice()

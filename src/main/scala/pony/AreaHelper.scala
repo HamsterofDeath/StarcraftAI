@@ -98,7 +98,8 @@ object AreaHelper {
     }
     dy <<= 1
     dx <<= 1
-    f(startX, startY).foreach { e => return e }
+    val hit = f(startX, startY)
+    if (hit.isDefined) return hit.get
     if (dx > dy) {
       var fraction: Int = dy - (dx >> 1)
       while (startX != endX) {
@@ -108,7 +109,8 @@ object AreaHelper {
         }
         startX += stepX
         fraction += dy
-        f(startX, startY).foreach { e => return e }
+        val hit = f(startX, startY)
+        if (hit.isDefined) return hit.get
       }
     }
     else {
@@ -120,7 +122,8 @@ object AreaHelper {
         }
         startY += stepY
         fraction += dx
-        f(startX, startY).foreach { e => return e }
+        val hit = f(startX, startY)
+        if (hit.isDefined) return hit.get
       }
     }
     orElse

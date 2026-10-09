@@ -4,8 +4,9 @@ package brain
 import pony.brain.modules.AlternativeBuildingSpot
 
 import scala.collection.mutable
+import scala.reflect.ClassTag
 
-class UnitCollector[T <: WrapsUnit : Manifest](req: UnitJobRequest[T], override val universe:
+class UnitCollector[T <: WrapsUnit : ClassTag](req: UnitJobRequest[T], override val universe:
 Universe)
   extends HasUniverse {
 
@@ -51,22 +52,20 @@ Universe)
       }
     }
 
-    available.foreach { candidate =>
-      collect(candidate.unit)
-
-      if (complete) {
-        return Some(this)
-      }
+    val candidates = available.iterator
+    var filled = false
+    while (!filled && candidates.hasNext) {
+      collect(candidates.next().unit)
+      filled = complete
     }
 
-
-    if (hasAny)
+    if (filled || hasAny)
       Some(this)
     else
       None
   }
 
-  def typed(any: UnitWithJob[_ <: WrapsUnit]) = any.asInstanceOf[UnitWithJob[T]]
+  def typed(any: UnitWithJob[? <: WrapsUnit]) = any.asInstanceOf[UnitWithJob[T]]
 
   def hasAny = hired.nonEmpty
 
@@ -80,11 +79,11 @@ Universe)
 
   def complete = remainingOpenSpots == 0
 
-  def requests(unit: UnitWithJob[_ <: WrapsUnit]) = {
+  def requests(unit: UnitWithJob[? <: WrapsUnit]) = {
     req.wantsUnit(unit.unit)
   }
 
-  def interrupts(unit: UnitWithJob[_ <: WrapsUnit]) = {
+  def interrupts(unit: UnitWithJob[? <: WrapsUnit]) = {
     req.canInterrupt(unit)
   }
 

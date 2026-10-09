@@ -1,7 +1,9 @@
 package pony
 package brain
 
-abstract class OrderlessAIModule[T <: WrapsUnit : Manifest](universe: Universe)
+import scala.reflect.ClassTag
+
+abstract class OrderlessAIModule[T <: WrapsUnit : ClassTag](universe: Universe)
   extends AIModule[T](universe) with Orderless[T] {
   def debugText = ""
 }

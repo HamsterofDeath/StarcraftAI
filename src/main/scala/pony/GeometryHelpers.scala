@@ -82,14 +82,14 @@ class GeometryHelpers(maxX: Int, maxY: Int) {
   }
 
   object intersections {
-    def tilesInCircle(seq: TraversableOnce[MapTilePosition], minRange: Int, times: Int) = {
-      tilesInCircleWithRange(seq.map(_ -> 0), minRange, times)
+    def tilesInCircle(seq: IterableOnce[MapTilePosition], minRange: Int, times: Int) = {
+      tilesInCircleWithRange(seq.iterator.map(_ -> 0), minRange, times)
     }
 
-    def tilesInCircleWithRange(seq: TraversableOnce[(MapTilePosition, Int)], minRange: Int,
+    def tilesInCircleWithRange(seq: IterableOnce[(MapTilePosition, Int)], minRange: Int,
                                times: Int) = {
       val counts = mutable.HashMap.empty[MapTilePosition, Int]
-      seq.foreach { p =>
+      seq.iterator.foreach { p =>
         self.tilesInCircle(p._1, minRange max p._2).foreach { where =>
           counts.insertReplace(where, _ + 1, 1)
         }
@@ -100,9 +100,9 @@ class GeometryHelpers(maxX: Int, maxY: Int) {
       }.map(_._1)
     }
 
-    def tilesInSquare(seq: TraversableOnce[MapTilePosition], range: Int, times: Int) = {
+    def tilesInSquare(seq: IterableOnce[MapTilePosition], range: Int, times: Int) = {
       val counts = mutable.HashMap.empty[MapTilePosition, Int]
-      seq.foreach { p =>
+      seq.iterator.foreach { p =>
         iterateBlockSpiralClockWise(p, range * 2).foreach { where =>
           counts.insertReplace(where, _ + 1, 0)
         }

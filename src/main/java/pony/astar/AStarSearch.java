@@ -19,7 +19,7 @@ import java.util.PriorityQueue;
  */
 public class AStarSearch<T extends Node<T>> {
     @NotNull
-    final         Heuristics m_heuristics;
+    final         Heuristics<T> m_heuristics;
     @NotNull
     private final T          m_start;
     @NotNull
@@ -56,12 +56,12 @@ public class AStarSearch<T extends Node<T>> {
             @NotNull
             final T p_target,
             @Nullable
-            final Heuristics p_heuristics) {
+            final Heuristics<T> p_heuristics) {
         super();
         m_start = p_start;
         m_target = p_target;
         if (p_heuristics == null) {
-            m_heuristics = Heuristics.NONE;
+            m_heuristics = Heuristics.none();
         } else {
             m_heuristics = p_heuristics;
         }
@@ -137,7 +137,7 @@ public class AStarSearch<T extends Node<T>> {
             m_solution = l_list;
         }
 
-        for (final Node l_node : m_allOpened) {
+        for (final T l_node : m_allOpened) {
             l_node.initForSearch();
         }
         m_allOpened.clear();
@@ -148,7 +148,7 @@ public class AStarSearch<T extends Node<T>> {
         if (!p_list.isEmpty()) {
             if (p_list.get(0).supportsShortcuts()) {
                 for (int i = 0; i < p_list.size() - 2; i++) {
-                    final Node l_node = p_list.get(i);
+                    final T l_node = p_list.get(i);
                     while (p_list.size() - i > 2 && l_node.canReachDirectly(p_list.get(i + 2))) {
                         p_list.remove(i + 1);
                     }

@@ -11,7 +11,7 @@ import scala.collection.mutable.ListBuffer
 
 trait HasSingleTargetSpells extends Mobile with HasMana {
   type CasterType <: HasSingleTargetSpells
-  val spells: Seq[SingleTargetSpell[CasterType, _]]
+  val spells: Seq[SingleTargetSpell[CasterType, ?]]
   protected val cooldown = 24
   private   var lastCast = -9999
   override def hasSpells = true

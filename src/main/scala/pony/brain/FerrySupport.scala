@@ -19,6 +19,9 @@ trait FerrySupport[T <: GroundUnit] extends JobOrSubJob[T] {
           case None =>
             //go to some hopefully near point and wait for ferry
             Orders.MoveToTile(unit, to).toList
+          case Some(_) =>
+            // neither grounded nor loaded: boarding is in progress, so leave the unit alone
+            Orders.NoUpdate(unit).toList
         }
       } else Nil
     }.getOrElse(Nil)

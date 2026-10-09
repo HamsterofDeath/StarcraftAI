@@ -4,6 +4,7 @@ package modules
 
 import scala.collection.mutable
 import scala.jdk.CollectionConverters._
+import scala.reflect.ClassTag
 
 /** The wall opening seals the main base's land approach with Supply Depots. */
 class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](universe)
@@ -387,7 +388,7 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
   }
 
   private def makeDemolishers(depot: SupplyDepot, missing: Int): Unit = {
-    def ask[T <: MobileRangeWeapon : Manifest](cls: Class[T]): Unit = {
+    def ask[T <: MobileRangeWeapon : ClassTag](cls: Class[T]): Unit = {
       val request = UnitJobRequest.idleOfType(demolishers, cls, missing, Priority.Supply)
         .withOnlyAccepting { w =>
           val job = unitManager.jobOf(w)

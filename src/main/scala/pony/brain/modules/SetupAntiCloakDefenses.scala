@@ -48,7 +48,7 @@ class SetupAntiCloakDefenses(universe: Universe)
       // of those, take the first one that is ok
       val bestPosition = byPriority.iterator.flatMap { where =>
         in.constructionSiteFinder.findSpotFor(where, in.buildingType, 1, 1)
-      }.toStream.headOption
+      }.nextOption()
       info(s"Next detector should be built at ${bestPosition.get}", bestPosition.isDefined)
       trace(s"Exposed by $exposure, but cannot add detector building", bestPosition.isEmpty)
       bestPosition

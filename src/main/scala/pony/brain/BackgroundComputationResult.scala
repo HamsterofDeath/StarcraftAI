@@ -3,7 +3,7 @@ package brain
 
 trait BackgroundComputationResult[T <: WrapsUnit] {
 
-  def jobs: Traversable[UnitWithJob[T]]
+  def jobs: Iterable[UnitWithJob[T]]
 
   def orders = jobs.flatMap(_.ordersForThisTick)
   def afterComputation(): Unit
@@ -17,13 +17,13 @@ object BackgroundComputationResult {
 
     override def afterComputation(): Unit = cleanUp()
 
-    override def jobs: Traversable[UnitWithJob[T]] = Nil
+    override def jobs: Iterable[UnitWithJob[T]] = Nil
   }
 
-  def result[T <: WrapsUnit, J <: UnitWithJob[T]](myJobs: Traversable[() => J],
+  def result[T <: WrapsUnit, J <: UnitWithJob[T]](myJobs: Iterable[() => J],
                                                   checkValidityNow: () => Boolean,
                                                   canCreateNow: () => Boolean = () => true)
-                                                 (afterComputationDone: Traversable[J] => Unit) = new
+                                                 (afterComputationDone: Iterable[J] => Unit) = new
       BackgroundComputationResult[T] {
 
     private lazy val executed = if (canCreateNow()) myJobs.map(_.apply()) else Nil

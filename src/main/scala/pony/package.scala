@@ -7,9 +7,9 @@ import org.tinylog.Logger
 import org.tinylog.configuration.Configuration
 import pony.LogLevels.{LogError, LogWarn}
 
-import scala.annotation.elidable
 import scala.collection.mutable
 import scala.concurrent.ExecutionContext
+import scala.language.implicitConversions
 
 /**
   * Created by HoD on 01.08.2015.
@@ -35,8 +35,7 @@ package object pony {
   // milestone 5:
   // TODO create technologial singularity
 
-  type MultiMap[K, V] = mutable.HashMap[K, mutable.Set[V]]
-  type SCUnitType = Class[_ <: WrapsUnit]
+  type SCUnitType = Class[? <: WrapsUnit]
   val memoryHog = false
 
   setTinyLogLevel_!(Level.TRACE)
@@ -49,7 +48,7 @@ package object pony {
 
   def !!!(msg: String): Nothing = throw new RuntimeException(msg)
 
-  def multiMap[K, V] = new mutable.HashMap[K, mutable.Set[V]] with mutable.MultiMap[K, V] with MMToImmutable[K, V]
+  def multiMap[K, V] = new MultiMap[K, V]
 
   def setLogLevel_!(logLevel: LogLevel): Unit = {
     setTinyLogLevel_!(logLevel.toTinyLogLevel)
@@ -71,13 +70,11 @@ package object pony {
 
   def logLevel = tinyLogLevel
 
-  @elidable(LOGLEVEL)
   def error(a: => Any, doIt: Boolean = true): Unit = {
     if (LogError.includes(tinyLogLevel) && doIt)
       Logger.error("{}", s"[$tick] ${a.toString}")
   }
 
-  @elidable(LOGLEVEL)
   def warn(a: => Any, doIt: Boolean = true): Unit = {
     if (LogWarn.includes(tinyLogLevel) && doIt)
       Logger.warn("{}", s"[$tick] ${a.toString}")
@@ -87,7 +84,6 @@ package object pony {
 
   import LogLevels._
 
-  @elidable(LOGLEVEL)
   def info(a: => Any, doIt: Boolean = true): Unit = {
     if (LogInfo.includes(tinyLogLevel) && doIt)
       Logger.info("{}", s"[$tick] ${a.toString}")
@@ -95,31 +91,19 @@ package object pony {
 
   def tick = TickCounter.tickCount
 
-  @elidable(LOGLEVEL)
   def majorInfo(a: => Any, doIt: Boolean = true): Unit = {
     if (LogInfo.includes(tinyLogLevel) && doIt)
       Logger.info("{}", s"<MAJOR> [$tick] ${a.toString}")
   }
 
-  @elidable(LOGLEVEL)
   def debug(a: => Any, doIt: Boolean = true): Unit = {
     if (LogDebug.includes(tinyLogLevel) && doIt)
       Logger.debug("{}", s"[$tick] ${a.toString}")
   }
 
-  private val LOGLEVEL = 500
-
-  @elidable(LOGLEVEL)
   def trace(a: => Any, doIt: Boolean = true, marker: String = ""): Unit = {
     if (LogTrace.includes(tinyLogLevel) && doIt)
       Logger.trace("{}", s"[$tick] ${if (marker.isEmpty) "" else s"[$marker] "}${a.toString}")
-  }
-
-  trait MMToImmutable[A, B] extends mutable.Map[A, mutable.Set[B]] {
-    self =>
-    def toImmutable = {
-      self.map { case (k, v) => k -> v.toSet }.toMap
-    }
   }
 
   abstract sealed class LogLevel(val level: Int) {
@@ -168,52 +152,52 @@ package object pony {
     def immutableView = t.toSeq
   }
 
-  implicit class RichTraversable[T](val t: Traversable[T]) extends AnyVal {
+  implicit class RichIterable[T](val t: Iterable[T]) extends AnyVal {
     def headAssert = {
       assert(t.size == 1)
       t.head
     }
   }
 
-  implicit class RichTraversableOnce[T](val t: TraversableOnce[T]) extends AnyVal {
+  implicit class RichIterableOnce[T](val t: IterableOnce[T]) extends AnyVal {
 
     def minByOpt[C](cmp: T => C)(implicit cmp2: Ordering[C]) = {
-      if (t.isEmpty) {
+      if (t.iterator.isEmpty) {
         None
       } else {
-        Some(t.minBy(cmp))
+        Some(t.iterator.minBy(cmp))
       }
     }
 
     def maxOpt(implicit cmp2: Ordering[T]) = {
-      if (t.isEmpty) None else t.max.toSome
+      if (t.iterator.isEmpty) None else t.iterator.max.toSome
     }
 
     def minOpt(implicit cmp2: Ordering[T]) = {
-      if (t.isEmpty) None else t.min.toSome
+      if (t.iterator.isEmpty) None else t.iterator.min.toSome
     }
 
     def maxByOpt[C](cmp: T => C)(implicit cmp2: Ordering[C]) = {
-      if (t.isEmpty) {
+      if (t.iterator.isEmpty) {
         None
       } else {
-        Some(t.maxBy(cmp))
+        Some(t.iterator.maxBy(cmp))
       }
     }
 
     def minByOptFiltered[C](cmp: T => C)(check: C => Boolean)(implicit cmp2: Ordering[C]) = {
-      if (t.isEmpty) {
+      if (t.iterator.isEmpty) {
         None
       } else {
-        Some(t.minBy(cmp)).filter(e => check(cmp(e)))
+        Some(t.iterator.minBy(cmp)).filter(e => check(cmp(e)))
       }
     }
 
     def maxByOptFiltered[C](cmp: T => C)(check: C => Boolean)(implicit cmp2: Ordering[C]) = {
-      if (t.isEmpty) {
+      if (t.iterator.isEmpty) {
         None
       } else {
-        Some(t.maxBy(cmp)).filter(e => check(cmp(e)))
+        Some(t.iterator.maxBy(cmp)).filter(e => check(cmp(e)))
       }
     }
   }
@@ -261,19 +245,19 @@ package object pony {
       scala.util.NotGiven[T <:< IterableOnce[?]]
   ): ToOneElemList[T] = new ToOneElemList(t)
 
-  implicit class RichClass[T](val c: Class[_ <: T]) extends AnyVal {
-    def >=(other: Class[_]) = c.isAssignableFrom(other)
+  implicit class RichClass[T](val c: Class[? <: T]) extends AnyVal {
+    def >=(other: Class[?]) = c.isAssignableFrom(other)
 
-    def <=(other: Class[_]) = other.isAssignableFrom(c)
+    def <=(other: Class[?]) = other.isAssignableFrom(c)
 
     def className = {
       val lastDot = c.getName.lastIndexOf('.')
-      val last$ = c.getName.lastIndexOf('$')
-      c.getName.drop((lastDot max last$) + 1)
+      val lastDollar = c.getName.lastIndexOf('$')
+      c.getName.drop((lastDot max lastDollar) + 1)
     }
   }
 
-  implicit class RichUnitClass[T <: WrapsUnit](val c: Class[_ <: T]) extends AnyVal {
+  implicit class RichUnitClass[T <: WrapsUnit](val c: Class[? <: T]) extends AnyVal {
     def toUnitType = TypeMapping.unitTypeOf(c)
   }
 
@@ -312,7 +296,7 @@ package object pony {
 
   implicit def unwrap[T](lv: LazyVal[T]): T = lv.get
 
-  implicit def unwrap[T](f: FutureIterator[_, T]): Option[T] = f.mostRecent
+  implicit def unwrap[T](f: FutureIterator[?, T]): Option[T] = f.mostRecent
 
   implicit class RichAny[T](val any: T) extends AnyVal {
     def nullSafe[R](f: T => R) = if (any != null) Some(f(any)) else None

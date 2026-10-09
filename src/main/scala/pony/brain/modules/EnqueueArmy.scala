@@ -5,7 +5,7 @@ package modules
 class EnqueueArmy(universe: Universe)
   extends OrderlessAIModule[UnitFactory](universe) with UnitRequestHelper {
 
-  type Ratio = (Class[_ <: Mobile], Double)
+  type Ratio = (Class[? <: Mobile], Double)
   type RequestOrder = Seq[Ratio]
 
   private val myRequestPlan = oncePerTick {
@@ -90,7 +90,7 @@ class EnqueueArmy(universe: Universe)
     Percentages(percentagesWanted, percentagesExisting)
   }
 
-  case class Percentages(wanted: Map[Class[_ <: Mobile], Double],
-                         existing: Map[Class[_ <: Mobile], Double])
+  case class Percentages(wanted: Map[Class[? <: Mobile], Double],
+                         existing: Map[Class[? <: Mobile], Double])
 
 }

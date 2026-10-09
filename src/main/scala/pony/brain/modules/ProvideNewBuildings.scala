@@ -38,7 +38,7 @@ class ProvideNewBuildings(universe: Universe)
         })
       case Some(newJobFactory) =>
         BackgroundComputationResult
-        .result[WorkerUnit, ConstructBuilding[WorkerUnit, _ <: Building]](
+        .result[WorkerUnit, ConstructBuilding[WorkerUnit, ? <: Building]](
           myJobs = newJobFactory.toSeq,
           checkValidityNow = () => false,
           canCreateNow = () => !in.jobRequest.clearable && in.jobRequest.stillLocksResources &&
@@ -95,7 +95,7 @@ class ProvideNewBuildings(universe: Universe)
     }
   }
 
-  case class Data(worker: WorkerUnit, buildingType: Class[_ <: Building], mainBuildingwhere: MapTilePosition,
+  case class Data(worker: WorkerUnit, buildingType: Class[? <: Building], mainBuildingwhere: MapTilePosition,
                   helper: ConstructionSiteFinder,
                   jobRequest: BuildUnitRequest[Building]) {
     private val workerId = worker.nativeUnitId

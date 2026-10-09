@@ -1,7 +1,7 @@
 package pony
 package brain
 
-class TrainUnit[F <: UnitFactory, T <: Mobile](factory: F, trainType: Class[_ <: T], employer:
+class TrainUnit[F <: UnitFactory, T <: Mobile](factory: F, trainType: Class[? <: T], employer:
 Employer[F],
                                                funding: ResourceApprovalSuccess)
   extends UnitWithJob[F](employer, factory, Priority.Default) with JobHasFunding[F] with IssueOrderNTimes[F] with CreatesUnit[F] {

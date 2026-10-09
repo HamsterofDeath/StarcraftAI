@@ -5,12 +5,13 @@ import pony.Orders.Stop
 
 import scala.collection.mutable
 import scala.collection.mutable.{ArrayBuffer, ListBuffer}
+import scala.reflect.ClassTag
 
 class UnitManager(override val universe: Universe) extends HasUniverse {
-  private val reorganizeJobQueue          = ListBuffer.empty[CanAcceptUnitSwitch[_ <: WrapsUnit]]
-  private val unfulfilledRequestsThisTick = ArrayBuffer.empty[UnitJobRequest[_ <: WrapsUnit]]
+  private val reorganizeJobQueue          = ListBuffer.empty[CanAcceptUnitSwitch[? <: WrapsUnit]]
+  private val unfulfilledRequestsThisTick = ArrayBuffer.empty[UnitJobRequest[? <: WrapsUnit]]
   private val assignments                 = mutable.HashMap
-                                            .empty[WrapsUnit, UnitWithJob[_ <: WrapsUnit]]
+                                            .empty[WrapsUnit, UnitWithJob[? <: WrapsUnit]]
   private val allJobs                     = new JobsInTree
   private var unfulfilledRequestsLastTick = unfulfilledRequestsThisTick.toVector
 
@@ -31,24 +32,24 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
 
   def allJobsWithReleaseableResources = allJobsWithPotentialFunding.filter(_.canReleaseResources)
 
-  def allJobsWithPotentialFunding = assignments.values.collect { case f: JobHasFunding[_] => f }
+  def allJobsWithPotentialFunding = assignments.values.collect { case f: JobHasFunding[?] => f }
 
-  def existsOrPlanned(c: Class[_ <: WrapsUnit]) = {
+  def existsOrPlanned(c: Class[? <: WrapsUnit]) = {
     ownUnits.ownsByType(c) ||
     requestedToBuild.exists(e => c >= e.typeOfRequestedUnit) ||
     plannedToTrain.exists(e => c >= e.typeOfRequestedUnit)
   }
 
-  def countExistingAndPlanned(c: Class[_ <: WrapsUnit]) = {
+  def countExistingAndPlanned(c: Class[? <: WrapsUnit]) = {
     ownUnits.allByClass(c).size +
     requestedToBuild.count(e => c >= e.typeOfRequestedUnit) +
     plannedToTrain.count(e => c >= e.typeOfRequestedUnit)
   }
 
   def plannedToTrain = allUnfulfilled.iterator.map(_.request)
-                       .collect { case t: BuildUnitRequest[_] if t.isMobile => t }
+                       .collect { case t: BuildUnitRequest[?] if t.isMobile => t }
 
-  def existsAndDone(c: Class[_ <: WrapsUnit]) = {
+  def existsAndDone(c: Class[? <: WrapsUnit]) = {
     ownUnits.existsComplete(c)
   }
 
@@ -67,34 +68,34 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
     reorganizeJobQueue += anyJob
   }
 
-  def plannedToBuildByType[T <: Building : Manifest]: Int = {
-    val typeOfFactory = implicitly[Manifest[T]].runtimeClass.asInstanceOf[Class[_ <: T]]
+  def plannedToBuildByType[T <: Building : ClassTag]: Int = {
+    val typeOfFactory = implicitly[ClassTag[T]].runtimeClass.asInstanceOf[Class[? <: T]]
     unfulfilledByTargetType(typeOfFactory).size
   }
 
-  def plannedToBuildByClass(typeOfFactory: Class[_ <: Building]) = {
+  def plannedToBuildByClass(typeOfFactory: Class[? <: Building]) = {
     unfulfilledByTargetType(typeOfFactory)
   }
 
-  private def unfulfilledByTargetType[T <: WrapsUnit](targetType: Class[_ <: T]) = {
+  private def unfulfilledByTargetType[T <: WrapsUnit](targetType: Class[? <: T]) = {
     allUnfulfilled.iterator.map(_.request).collect {
-      case b: BuildUnitRequest[_] if b.typeOfRequestedUnit == targetType => b
+      case b: BuildUnitRequest[?] if b.typeOfRequestedUnit == targetType => b
     }
   }
 
   def allUnfulfilled = unfulfilledRequestsLastTick.toSet ++
                        unfulfilledRequestsThisTick.toSet
 
-  def requestedConstructions[T <: Building : Manifest] = {
-    val typeOfFactory = implicitly[Manifest[T]].runtimeClass.asInstanceOf[Class[_ <: T]]
+  def requestedConstructions[T <: Building : ClassTag] = {
+    val typeOfFactory = implicitly[ClassTag[T]].runtimeClass.asInstanceOf[Class[? <: T]]
     unfulfilledByTargetType(typeOfFactory)
   }
 
-  def constructionsInProgress[T <: Building : Manifest]: Seq[ConstructBuilding[WorkerUnit, T]] = {
-    constructionsInProgress(implicitly[Manifest[T]].runtimeClass.asInstanceOf[Class[_ <: T]])
+  def constructionsInProgress[T <: Building : ClassTag]: Seq[ConstructBuilding[WorkerUnit, T]] = {
+    constructionsInProgress(implicitly[ClassTag[T]].runtimeClass.asInstanceOf[Class[? <: T]])
   }
 
-  def constructionsInProgress[T <: Building](typeOfBuilding: Class[_ <: T]):
+  def constructionsInProgress[T <: Building](typeOfBuilding: Class[? <: T]):
   Seq[ConstructBuilding[WorkerUnit, T]] = {
     val byJob = allJobsByType[ConstructBuilding[WorkerUnit, Building]].collect {
       case cr: ConstructBuilding[WorkerUnit, Building]
@@ -119,31 +120,31 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
                                                           .supplyProvided()
     }.sum
     val byUnfulfilledRequest = allUnfulfilled.map(_.request).collect {
-      case b: BuildUnitRequest[_] => b.typeOfRequestedUnit.toUnitType.supplyProvided()
+      case b: BuildUnitRequest[?] => b.typeOfRequestedUnit.toUnitType.supplyProvided()
     }.sum
     byJob + byUnfulfilledRequest
   }
 
-  def allJobsByType[T <: UnitWithJob[_] : Manifest] = {
-    val wanted = implicitly[Manifest[T]].runtimeClass
+  def allJobsByType[T <: UnitWithJob[?] : ClassTag] = {
+    val wanted = implicitly[ClassTag[T]].runtimeClass
     assignments.valuesIterator.filter { job =>
       wanted >= job.getClass
     }.map {_.asInstanceOf[T]}.toVector
   }
 
-  def allJobsByUnitType[T <: WrapsUnit : Manifest] = selectJobs[T, UnitWithJob[T]](_ => true)
+  def allJobsByUnitType[T <: WrapsUnit : ClassTag] = selectJobs[T, UnitWithJob[T]](_ => true)
 
-  def selectJobs[U <: WrapsUnit : Manifest, T <: UnitWithJob[U]](f: T => Boolean) = {
-    val wanted = implicitly[Manifest[U]].runtimeClass
+  def selectJobs[U <: WrapsUnit : ClassTag, T <: UnitWithJob[U]](f: T => Boolean) = {
+    val wanted = implicitly[ClassTag[U]].runtimeClass
     assignments.valuesIterator.filter { job =>
       wanted.isInstance(job.unit) && f(job.asInstanceOf[T])
     }.map {_.asInstanceOf[T]}.toVector
   }
 
-  def failedToProvideByType[T <: WrapsUnit : Manifest] = {
-    val c = implicitly[Manifest[T]].runtimeClass
+  def failedToProvideByType[T <: WrapsUnit : ClassTag] = {
+    val c = implicitly[ClassTag[T]].runtimeClass
     failedToProvideFlat.collect {
-      case req: UnitRequest[_] if c >= req.typeOfRequestedUnit =>
+      case req: UnitRequest[?] if c >= req.typeOfRequestedUnit =>
         req.asInstanceOf[UnitRequest[T]]
     }
   }
@@ -275,23 +276,23 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
     allJobs.addBinding(employer, newJob)
   }
 
-  def allRequirementsFulfilled[T <: WrapsUnit](c: Class[_ <: T]) = {
+  def allRequirementsFulfilled[T <: WrapsUnit](c: Class[? <: T]) = {
     val (m, i, p, j) = findMissingRequirements[T](collection.immutable.Set(c))
     m.isEmpty && i.isEmpty && p.isEmpty && j.isEmpty
   }
 
-  def requirementsQueuedToBuild[T <: WrapsUnit](c: Class[_ <: T]) = {
+  def requirementsQueuedToBuild[T <: WrapsUnit](c: Class[? <: T]) = {
     val (_, i, p, j) = findMissingRequirements[T](collection.immutable.Set(c))
     (i.nonEmpty || j.nonEmpty) && p.isEmpty
   }
 
-  private def findMissingRequirements[T <: WrapsUnit](c: Set[Class[_ <: T]]) = {
+  private def findMissingRequirements[T <: WrapsUnit](c: Set[Class[? <: T]]) = {
     val mustHave = c.flatMap(race.techTree.requiredFor)
-    val m = mutable.Set.empty[Class[_ <: Building]]
-    val i = mutable.Set.empty[Class[_ <: Building]]
-    val p = mutable.Set.empty[Class[_ <: Building]]
-    val j = mutable.Set.empty[Class[_ <: Building]]
-    lazy val jobs = unitManager.allJobsByType[ConstructBuilding[_, _]]
+    val m = mutable.Set.empty[Class[? <: Building]]
+    val i = mutable.Set.empty[Class[? <: Building]]
+    val p = mutable.Set.empty[Class[? <: Building]]
+    val j = mutable.Set.empty[Class[? <: Building]]
+    lazy val jobs = unitManager.allJobsByType[ConstructBuilding[?, ?]]
 
     val missing = {
       mustHave.foreach { dependency =>
@@ -319,7 +320,7 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
     (m.toSet, i.toSet, p.toSet, j.toSet)
   }
 
-  def requestedToBuild(c: Class[_ <: Building]): Boolean = {
+  def requestedToBuild(c: Class[? <: Building]): Boolean = {
     requestedToBuild.exists { e =>
       c >= e.typeOfRequestedUnit
     }
@@ -327,23 +328,23 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
 
   def requestedToBuild = {
     allUnfulfilled.map(_.request).collect {
-      case b: BuildUnitRequest[_] if b.isBuilding => b
+      case b: BuildUnitRequest[?] if b.isBuilding => b
     }
   }
 
-  def requestWithoutTracking[T <: WrapsUnit : Manifest](req: UnitJobRequest[T],
+  def requestWithoutTracking[T <: WrapsUnit : ClassTag](req: UnitJobRequest[T],
                                                         forceInclude: Set[UnitWithJob[T]] = Set
                                                                                             .empty[UnitWithJob[T]]) = {
     collectCandidates(req, forceInclude).map(_.teamAsCanHireInfo.details).getOrElse(Set.empty)
   }
 
-  private def collectCandidates[T <: WrapsUnit : Manifest](req: UnitJobRequest[T],
+  private def collectCandidates[T <: WrapsUnit : ClassTag](req: UnitJobRequest[T],
                                                            forceInclude: Set[UnitWithJob[T]] = Set
                                                                                                .empty[UnitWithJob[T]]) = {
     new UnitCollector[T](req, universe).collect_!(forceInclude)
   }
 
-  def request[T <: WrapsUnit : Manifest](req: UnitJobRequest[T],
+  def request[T <: WrapsUnit : ClassTag](req: UnitJobRequest[T],
                                          buildIfNoneAvailable: Boolean = true) = {
     if (req.request.amount == 0) {
       new FailedPreHiringResult[T]
@@ -386,11 +387,11 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
     }
   }
 
-  def allOfEmployerAndType[T <: WrapsUnit](employer: Employer[T], unitType: Class[_ <: T]) = {
+  def allOfEmployerAndType[T <: WrapsUnit](employer: Employer[T], unitType: Class[? <: T]) = {
     allJobs.jobsOf(employer, unitType)
   }
 
-  def allNotOfEmployerButType[T <: WrapsUnit](employer: Employer[T], unitType: Class[_ <: T]) = {
+  def allNotOfEmployerButType[T <: WrapsUnit](employer: Employer[T], unitType: Class[? <: T]) = {
     allJobs.employers.asInstanceOf[collection.Set[Employer[T]]]
     .iterator
     .filter(_ != employer)

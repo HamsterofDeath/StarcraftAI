@@ -1,7 +1,9 @@
 package pony
 package brain
 
-class HelperAIModule[T <: WrapsUnit : Manifest](universe: Universe)
+import scala.reflect.ClassTag
+
+class HelperAIModule[T <: WrapsUnit : ClassTag](universe: Universe)
   extends OrderlessAIModule[T](universe) {
   override def onTick_!(): Unit = {}
 }

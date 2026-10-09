@@ -96,7 +96,7 @@ class AiDebugRenderer(override val universe: Universe) extends AIPlugIn with Has
       debugString += {
 
         val missingUnits = unitManager.failedToProvideFlat.groupBy(_.typeOfRequestedUnit)
-                           .mapValues(_.size)
+                           .view.mapValues(_.size)
         val formatted = missingUnits
                         .map { case (unitClass, howMany) => s"${unitClass.className}/$howMany" }
         s"Type/missing: ${formatted.toList.sorted.mkString(", ")}"
@@ -132,7 +132,7 @@ class AiDebugRenderer(override val universe: Universe) extends AIPlugIn with Has
         .sortBy(c => trackedUnits(c).alive)
         .takeRight(10)
         .sortBy(_.className).map { c =>
-          val casted = c.asInstanceOf[Class[_ <: Mobile]]
+          val casted = c.asInstanceOf[Class[? <: Mobile]]
           val priority = {
             val value = plan.get(casted) match {
               case op@Some(newValue) =>
@@ -158,7 +158,7 @@ class AiDebugRenderer(override val universe: Universe) extends AIPlugIn with Has
         .sortBy(c => trackedUnits(c).alive)
         .takeRight(10)
         .sortBy(_.className).map { c =>
-          val casted = c.asInstanceOf[Class[_ <: Building]]
+          val casted = c.asInstanceOf[Class[? <: Building]]
           val info = ratiosForProducers.find(_._1.typeOfFactory == casted)
           val wanted = info.map(_._1.format).getOrElse("?")
           val existing = info.map(_._2).getOrElse(0).toString

@@ -37,8 +37,8 @@ case class MapTilePosition(x: Int, y: Int) extends HasXY {
   def asMapPosition = MapPosition(x * tileSize, y * tileSize)
 
   def randomized(shuffle: Int) = {
-    val xRand = math.random * shuffle - shuffle * 0.5
-    val yRand = math.random * shuffle - shuffle * 0.5
+    val xRand = math.random() * shuffle - shuffle * 0.5
+    val yRand = math.random() * shuffle - shuffle * 0.5
     movedBy(xRand.toInt, yRand.toInt)
   }
 
@@ -78,15 +78,15 @@ object MapTilePosition {
     override def apply(t: (Int, Int)) = new Position(t._1, t._2)
   }
 
-  def averageOpt(ps: TraversableOnce[MapTilePosition]) = {
-    if (ps.isEmpty) None else Some(average(ps))
+  def averageOpt(ps: IterableOnce[MapTilePosition]) = {
+    if (ps.iterator.isEmpty) None else Some(average(ps))
   }
 
-  def average(ps: TraversableOnce[MapTilePosition]) = {
+  def average(ps: IterableOnce[MapTilePosition]) = {
     var size = 0
-    ps.foldLeft(MapTilePosition.zero)((acc, e) => {
+    ps.iterator.foldLeft(MapTilePosition.zero)((acc, e) => {
       size += 1
-      acc movedBy e
+      acc.movedBy(e)
     }) / size
   }
 

@@ -2,6 +2,8 @@ package pony
 package brain
 package modules
 
+import scala.compiletime.uninitialized
+
 trait AlternativeBuildingSpot {
   def init_!(): Unit
   def isEmpty = !shouldUse
@@ -40,7 +42,7 @@ object AlternativeBuildingSpot {
   def fromExpensive[X](initOnMainThread: => X)
                       (evalPosition: (X) => Option[MapTilePosition]): AlternativeBuildingSpot = new
       AlternativeBuildingSpot {
-    private var initPackage: X = _
+    private var initPackage: X = uninitialized
 
     override def init_!(): Unit = {
       initPackage = initOnMainThread

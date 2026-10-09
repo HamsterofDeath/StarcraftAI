@@ -1,6 +1,7 @@
 package pony
 
 import scala.collection.mutable.ArrayBuffer
+import scala.compiletime.uninitialized
 
 trait AIAPI {
   private val plugins = ArrayBuffer.empty[AIPlugIn]
@@ -103,7 +104,7 @@ trait AIAPIEventDispatcher extends AIAPI {
 
 trait AIPlugIn {
   private var active                = true
-  private var myWorld: DefaultWorld = _
+  private var myWorld: DefaultWorld = uninitialized
 
   def debugger = lazyWorld.debugger
   def queueOrder(order: UnitOrder): Unit = {

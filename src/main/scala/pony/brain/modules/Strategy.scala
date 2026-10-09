@@ -2,12 +2,14 @@ package pony
 package brain
 package modules
 
+import scala.reflect.ClassTag
+
 object Strategy {
 
   trait LongTermStrategy extends HasUniverse {
     val timingHelpers = new TimingHelpers
 
-    def hasZeroOf[T <: Building : Manifest] = ownUnits.allByType[T].isEmpty
+    def hasZeroOf[T <: Building : ClassTag] = ownUnits.allByType[T].isEmpty
 
     def name: String
 
@@ -15,8 +17,8 @@ object Strategy {
 
     def suggestNextExpansion: Option[ResourceArea]
     def suggestUpgrades: Seq[UpgradeToResearch]
-    def suggestUnits: Seq[IdealUnitRatio[_ <: Mobile]]
-    def suggestProducers: Seq[IdealProducerCount[_ <: UnitFactory]]
+    def suggestUnits: Seq[IdealUnitRatio[? <: Mobile]]
+    def suggestProducers: Seq[IdealProducerCount[? <: UnitFactory]]
     def suggestAddons: Seq[AddonToAdd] = Nil
     def determineScore: Int
 
@@ -120,7 +122,7 @@ object Strategy {
     def isActive = active
   }
 
-  case class AddonToAdd(addon: Class[_ <: Addon], requestNewBuildings: Boolean)
+  case class AddonToAdd(addon: Class[? <: Addon], requestNewBuildings: Boolean)
                        (active: => Boolean) {
     def isActive = active
   }
@@ -355,7 +357,7 @@ object Strategy {
 
     override def name = "Heavy air"
 
-    override def suggestUnits: List[IdealUnitRatio[_ <: Mobile]] = {
+    override def suggestUnits: List[IdealUnitRatio[? <: Mobile]] = {
       IdealUnitRatio(classOf[ScienceVessel], 3)(timingHelpers.phase.isAnyTime) ::
       IdealUnitRatio(classOf[Battlecruiser], 10)(timingHelpers.phase.isAnyTime) ::
       super.suggestUnits.toList

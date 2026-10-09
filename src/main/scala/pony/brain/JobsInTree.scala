@@ -4,10 +4,10 @@ package brain
 import scala.collection.mutable
 
 class JobsInTree {
-  private val flat       = multiMap[Employer[_ <: WrapsUnit], UnitWithJob[_ <: WrapsUnit]]
-  private val indexBy    = mutable.HashSet.empty[JobIndex[_ <: WrapsUnit]]
+  private val flat       = multiMap[Employer[? <: WrapsUnit], UnitWithJob[? <: WrapsUnit]]
+  private val indexBy    = mutable.HashSet.empty[JobIndex[? <: WrapsUnit]]
   private val byEmployer = mutable.HashMap
-                           .empty[JobIndex[_ <: WrapsUnit], JobsByClass[_ <: WrapsUnit]]
+                           .empty[JobIndex[? <: WrapsUnit], JobsByClass[? <: WrapsUnit]]
 
   def allNotOfEmployer[T <: WrapsUnit](employer: Employer[T]) = {
     allFlat.filter(_._1 != employer).flatMap(_._2)
@@ -15,7 +15,7 @@ class JobsInTree {
 
   def allFlat = flat
 
-  def jobsOf[T <: WrapsUnit](employer: Employer[T], unitType: Class[_ <: T]) = {
+  def jobsOf[T <: WrapsUnit](employer: Employer[T], unitType: Class[? <: T]) = {
     val key = JobIndex(employer, unitType)
 
     val node = getTyped[T](key)
@@ -36,7 +36,7 @@ class JobsInTree {
     allFlat.getOrElse(e, Set.empty).asInstanceOf[collection.Set[UnitWithJob[T]]]
   }
 
-  def getTyped[T <: WrapsUnit](c: JobIndex[_ <: WrapsUnit]): JobsByClass[T] = {
+  def getTyped[T <: WrapsUnit](c: JobIndex[? <: WrapsUnit]): JobsByClass[T] = {
     byEmployer.getOrElseUpdate(c, new JobsByClass[T]).asInstanceOf[JobsByClass[T]]
   }
 

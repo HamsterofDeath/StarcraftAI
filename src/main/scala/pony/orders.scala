@@ -5,9 +5,10 @@ import pony.Upgrades.{SinglePointMagicSpell, SingleTargetMagicSpell}
 
 import scala.collection.mutable.ArrayBuffer
 import scala.util.Try
+import scala.compiletime.uninitialized
 
 abstract class UnitOrder {
-  private var myGame: Game      = _
+  private var myGame: Game      = uninitialized
   private var locks             = 0
   private var forceAllowRepeats = false
 
@@ -168,7 +169,7 @@ object Orders {
     override def renderDebug(renderer: Renderer): Unit = {}
   }
 
-  case class ConstructAddon(basis: CanBuildAddons, builtWhat: Class[_ <: Addon]) extends UnitOrder {
+  case class ConstructAddon(basis: CanBuildAddons, builtWhat: Class[? <: Addon]) extends UnitOrder {
     assert(Try(builtWhat.toUnitType).isSuccess)
 
     override def myUnit: WrapsUnit = basis
@@ -182,7 +183,7 @@ object Orders {
     }
   }
 
-  case class ConstructBuilding(myUnit: WorkerUnit, buildingType: Class[_ <: Building],
+  case class ConstructBuilding(myUnit: WorkerUnit, buildingType: Class[? <: Building],
                                where: MapTilePosition)
     extends UnitOrder {
     val area = {
@@ -205,7 +206,7 @@ object Orders {
     }
   }
 
-  case class Train(myUnit: UnitFactory, trainType: Class[_ <: Mobile]) extends UnitOrder {
+  case class Train(myUnit: UnitFactory, trainType: Class[? <: Mobile]) extends UnitOrder {
     override def issueOrderToGame(): Unit = {
       myUnit.nativeUnit.train(trainType.toUnitType)
     }

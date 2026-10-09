@@ -18,7 +18,7 @@ trait CanBuildAddons extends Building {
     myAddonArea.upperLeft == addon.tilePosition
   }
   def addonArea = myAddonArea.get
-  def canBuildAddon(addon: Class[_ <: Addon]) = race.techTree.canBuildAddon(getClass, addon)
+  def canBuildAddon(addon: Class[? <: Addon]) = race.techTree.canBuildAddon(getClass, addon)
   def isBuildingAddon = Option(nativeUnit.getAddon).exists(_.getRemainingBuildTime > 0)
 
   def hasCompleteAddon = Option(nativeUnit.getAddon).exists(_.getRemainingBuildTime == 0)

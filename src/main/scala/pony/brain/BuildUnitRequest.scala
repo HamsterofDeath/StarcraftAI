@@ -3,7 +3,7 @@ package brain
 
 import pony.brain.modules.AlternativeBuildingSpot
 
-case class BuildUnitRequest[T <: WrapsUnit](universe: Universe, typeOfRequestedUnit: Class[_ <: T],
+case class BuildUnitRequest[T <: WrapsUnit](universe: Universe, typeOfRequestedUnit: Class[? <: T],
                                             amount: Int,
                                             funding: ResourceApproval,
                                             override val priority: Priority,

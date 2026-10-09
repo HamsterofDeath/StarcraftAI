@@ -288,7 +288,7 @@ class MutableGrid2D(cols: Int, rows: Int, bitSet: mutable.BitSet,
     AreaHelper.freeAreaSize(anyContained, on)
   }
 
-  def anyFree = allFree.toStream.headOption
+  def anyFree = allFree.iterator.nextOption()
 
   override def areas = {
     error(s"Check this!!!", doIt = true)

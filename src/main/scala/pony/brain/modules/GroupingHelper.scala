@@ -15,25 +15,25 @@ object GroupingHelper {
     UnitGroup(members, group.center)
   }
 
-  def groupThese[T <: WrapsUnit](seq: TraversableOnce[T], universe: Universe) = {
+  def groupThese[T <: WrapsUnit](seq: IterableOnce[T], universe: Universe) = {
     val helper = new GroupingHelper(universe.mapLayers.rawWalkableMap.guaranteeImmutability, seq,
       universe.allUnits)
     BWFuture(Option(helper.evaluateUnitGroups))
   }
 
-  def groupTheseNow[T <: WrapsUnit](seq: TraversableOnce[T], universe: Universe) = {
+  def groupTheseNow[T <: WrapsUnit](seq: IterableOnce[T], universe: Universe) = {
     val helper = new GroupingHelper(universe.mapLayers.rawWalkableMap.guaranteeImmutability, seq,
       universe.allUnits)
     helper.evaluateUnitGroups
   }
 
-  def groupTheseNow[T <: WrapsUnit](seq: TraversableOnce[T], map: Grid2D, allUnits: AllUnits) = {
+  def groupTheseNow[T <: WrapsUnit](seq: IterableOnce[T], map: Grid2D, allUnits: AllUnits) = {
     val helper = new GroupingHelper(map.guaranteeImmutability, seq, allUnits)
     helper.evaluateUnitGroups
   }
 }
 
-class GroupingHelper[T <: WrapsUnit](val map: Grid2D, seq: TraversableOnce[T], source: AllUnits) {
+class GroupingHelper[T <: WrapsUnit](val map: Grid2D, seq: IterableOnce[T], source: AllUnits) {
   private val immutable: Vector[(Int, MapTilePosition)] = seq.iterator.map { u => (u.nativeUnitId, u.centerTile) }.toVector
 
   /**

@@ -18,7 +18,7 @@ class ProvideNewUnits(universe: Universe) extends OrderlessAIModule[UnitFactory]
           unitManager.request(builderOf) match {
             case producer: ExactlyOneSuccess[UnitFactory] =>
               unitManager.jobOf(producer.onlyOne) match {
-                case t: CreatesUnit[_] =>
+                case t: CreatesUnit[?] =>
                   req.clearableInNextTick_!()
                   skipRemaining = true
                 case _ =>

@@ -6,6 +6,8 @@ import java.lang.reflect.{InvocationHandler, Method, Proxy}
 import pony.brain._
 import pony.brain.modules._
 
+import scala.reflect.ClassTag
+
 class TerranCampaignTest extends Specification with MustMatchers {
   def is = s2"""
     Attack starts at inclusive count and live resource thresholds $thresholds
@@ -135,7 +137,7 @@ class TerranCampaignTest extends Specification with MustMatchers {
     m.select(MapTilePosition(0, 0)) === Some(MapTilePosition(30, 20))
   }
   def initializationOrder = {
-    val uninitialized = Proxy.newProxyInstance(classOf[Universe].getClassLoader, Array[Class[_]](classOf[Universe]),
+    val uninitialized = Proxy.newProxyInstance(classOf[Universe].getClassLoader, Array[Class[?]](classOf[Universe]),
       new InvocationHandler {
         override def invoke(proxy: AnyRef, method: Method, arguments: Array[AnyRef]): AnyRef =
           throw new IllegalStateException("World dependency accessed before initialization: " + method.getName)
@@ -164,7 +166,7 @@ class TerranCampaignTest extends Specification with MustMatchers {
     (group.size, group.survivingMembers) === (3, Vector.empty)
   }
   def partialGroup = {
-    val survivor = Proxy.newProxyInstance(classOf[WrapsUnit].getClassLoader, Array[Class[_]](classOf[WrapsUnit]),
+    val survivor = Proxy.newProxyInstance(classOf[WrapsUnit].getClassLoader, Array[Class[?]](classOf[WrapsUnit]),
       new InvocationHandler {
         override def invoke(proxy: AnyRef, method: Method, arguments: Array[AnyRef]): AnyRef =
           if (method.getName == "nativeUnitId") Int.box(2) else throw new UnsupportedOperationException(method.getName)
@@ -461,7 +463,7 @@ class TerranCampaignTest extends Specification with MustMatchers {
   }
   def bunkerCacheLifecycle = {
     var frame = 0
-    val universe = Proxy.newProxyInstance(classOf[Universe].getClassLoader, Array[Class[_]](classOf[Universe]),
+    val universe = Proxy.newProxyInstance(classOf[Universe].getClassLoader, Array[Class[?]](classOf[Universe]),
       new InvocationHandler {
         override def invoke(proxy: AnyRef, method: Method, arguments: Array[AnyRef]): AnyRef = method.getName match {
           case "register_$bang" => null
@@ -521,7 +523,7 @@ class TerranCampaignTest extends Specification with MustMatchers {
   def producerFundingLifecycle = {
     var ledger: ResourceManager = null
     var manager: UnitManager = null
-    val universe = Proxy.newProxyInstance(classOf[Universe].getClassLoader, Array[Class[_]](classOf[Universe]),
+    val universe = Proxy.newProxyInstance(classOf[Universe].getClassLoader, Array[Class[?]](classOf[Universe]),
       new InvocationHandler {
         override def invoke(proxy: AnyRef, method: Method, arguments: Array[AnyRef]): AnyRef = method.getName match {
           case "register_$bang" => null
@@ -551,10 +553,10 @@ class TerranCampaignTest extends Specification with MustMatchers {
       }
     }
     var producer = "jobbed"
-    val pending = scala.collection.mutable.ArrayBuffer.empty[UnitJobRequest[_]]
+    val pending = scala.collection.mutable.ArrayBuffer.empty[UnitJobRequest[?]]
     manager = new UnitManager(universe) {
-      override def request[T <: WrapsUnit : Manifest](req: UnitJobRequest[T], buildIfNoneAvailable: Boolean): PreHiringResult[T] = {
-        val barracks = Set[Class[_ <: Building]](classOf[Barracks])
+      override def request[T <: WrapsUnit : ClassTag](req: UnitJobRequest[T], buildIfNoneAvailable: Boolean): PreHiringResult[T] = {
+        val barracks = Set[Class[? <: Building]](classOf[Barracks])
         producer match {
           case "jobbed" => new MissingRequirementResult[T](Set.empty, Set.empty, Set.empty, barracks)
           case "incomplete" => new MissingRequirementResult[T](Set.empty, barracks, Set.empty, Set.empty)
@@ -564,9 +566,9 @@ class TerranCampaignTest extends Specification with MustMatchers {
     }
     val owner = new Employer[Mobile](universe)
     val module = new HelperAIModule[UnitFactory](universe) with UnitRequestHelper {
-      override protected def mobileCost[T <: Mobile](kind: Class[_ <: T], priority: Priority) =
+      override protected def mobileCost[T <: Mobile](kind: Class[? <: T], priority: Priority) =
         ResourceRequests(Seq(MineralsRequest(50), SupplyRequest(2)), priority, kind)
-      override protected def mobileRequest[T <: Mobile](kind: Class[_ <: T], proof: ResourceApprovalSuccess, priority: Priority) = {
+      override protected def mobileRequest[T <: Mobile](kind: Class[? <: T], proof: ResourceApprovalSuccess, priority: Priority) = {
         val request = BuildUnitRequest[Mobile](this.universe, kind, 1, proof, priority, AlternativeBuildingSpot.useDefault)
         request.persistant_!()
         UnitJobRequest[Mobile](request, owner, priority)
@@ -632,7 +634,7 @@ class TerranCampaignTest extends Specification with MustMatchers {
   }
   def cancelledConstruction = {
     var ledger: ResourceManager = null
-    val universe = Proxy.newProxyInstance(classOf[Universe].getClassLoader, Array[Class[_]](classOf[Universe]),
+    val universe = Proxy.newProxyInstance(classOf[Universe].getClassLoader, Array[Class[?]](classOf[Universe]),
       new InvocationHandler {
         override def invoke(proxy: AnyRef, method: Method, arguments: Array[AnyRef]): AnyRef = method.getName match {
           case "register_$bang" => null
@@ -665,7 +667,7 @@ class TerranCampaignTest extends Specification with MustMatchers {
     import scala.concurrent.{Await, Future}
     import scala.concurrent.duration._
     var ledger: ResourceManager = null
-    val universe = Proxy.newProxyInstance(classOf[Universe].getClassLoader, Array[Class[_]](classOf[Universe]),
+    val universe = Proxy.newProxyInstance(classOf[Universe].getClassLoader, Array[Class[?]](classOf[Universe]),
       new InvocationHandler {
         override def invoke(proxy: AnyRef, method: Method, arguments: Array[AnyRef]): AnyRef = method.getName match {
           case "register_$bang" => null
@@ -679,7 +681,7 @@ class TerranCampaignTest extends Specification with MustMatchers {
       override def unlock_!(proof: ResourceApprovalSuccess): Unit = { released += 1 }
     }
     val nativeThread = Thread.currentThread()
-    val worker = Proxy.newProxyInstance(classOf[WorkerUnit].getClassLoader, Array[Class[_]](classOf[WorkerUnit]),
+    val worker = Proxy.newProxyInstance(classOf[WorkerUnit].getClassLoader, Array[Class[?]](classOf[WorkerUnit]),
       new InvocationHandler {
         override def invoke(proxy: AnyRef, method: Method, arguments: Array[AnyRef]): AnyRef = method.getName match {
           case "nativeUnitId" => require(Thread.currentThread() == nativeThread); Int.box(274)
@@ -696,7 +698,7 @@ class TerranCampaignTest extends Specification with MustMatchers {
     val input = new module.Data(worker, classOf[Bunker], MapTilePosition(64, 118), null, request)
     val (diagnostic, result) = Await.result(Future {
       input.toString -> module.evaluateNextOrders(input)
-    }(scala.concurrent.ExecutionContext.Implicits.global), 5.seconds)
+    }(using scala.concurrent.ExecutionContext.Implicits.global), 5.seconds)
     result.afterComputation(); request.dispose()
     (diagnostic, result.jobs.isEmpty, released) ===
       ("ConstructionData(worker=274, building=Bunker, home=(64,118))", true, 1)

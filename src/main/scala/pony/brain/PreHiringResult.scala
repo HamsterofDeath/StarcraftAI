@@ -7,10 +7,10 @@ trait PreHiringResult[T <: WrapsUnit] {
                                   plannedMissingRequirements.nonEmpty ||
                                   jobbedMissingRequirements.nonEmpty
 
-  def notExistingMissingRequiments: Set[Class[_ <: Building]] = Set.empty
-  def inProgressMissingRequirements: Set[Class[_ <: Building]] = Set.empty
-  def plannedMissingRequirements: Set[Class[_ <: Building]] = Set.empty
-  def jobbedMissingRequirements: Set[Class[_ <: Building]] = Set.empty
+  def notExistingMissingRequiments: Set[Class[? <: Building]] = Set.empty
+  def inProgressMissingRequirements: Set[Class[? <: Building]] = Set.empty
+  def plannedMissingRequirements: Set[Class[? <: Building]] = Set.empty
+  def jobbedMissingRequirements: Set[Class[? <: Building]] = Set.empty
   def success: Boolean
   def canHire: CanHireInfo[T]
   def units = canHire.details

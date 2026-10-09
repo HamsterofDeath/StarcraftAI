@@ -1,9 +1,11 @@
 package pony
 package brain
 
-abstract class AIModule[T <: WrapsUnit : Manifest](override val universe: Universe)
+import scala.reflect.ClassTag
+
+abstract class AIModule[T <: WrapsUnit : ClassTag](override val universe: Universe)
   extends Employer[T](universe) with HasUniverse {
-  def ordersForTick: Traversable[UnitOrder]
+  def ordersForTick: Iterable[UnitOrder]
 
   def onNth: Int = 1
 
@@ -13,7 +15,7 @@ abstract class AIModule[T <: WrapsUnit : Manifest](override val universe: Univer
 }
 
 object AIModule {
-  def noop[T <: WrapsUnit : Manifest](universe: Universe) = new AIModule[T](universe) {
-    override def ordersForTick: Traversable[UnitOrder] = Nil
+  def noop[T <: WrapsUnit : ClassTag](universe: Universe) = new AIModule[T](universe) {
+    override def ordersForTick: Iterable[UnitOrder] = Nil
   }
 }

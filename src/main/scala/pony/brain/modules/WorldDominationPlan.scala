@@ -226,7 +226,7 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
       .findPaths(currentCenter, targetOfAttack.where)
     }
 
-    private val migration = pathToFollow.map(_.map(_.toMigration(universe)))
+    private val migration = pathToFollow.map(_.map(_.toMigration(using universe)))
 
     private val myTargetReachedPercentage = oncePer(Primes.prime11) {
       val reachedTargetPoint = migration.result.map { migration =>

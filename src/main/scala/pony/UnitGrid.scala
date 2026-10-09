@@ -3,6 +3,7 @@ package pony
 import pony.brain.{HasUniverse, Universe}
 
 import scala.collection.mutable
+import scala.reflect.ClassTag
 
 class UnitGrid(override val universe: Universe) extends HasUniverse {
   val own   = new ViewOnGrid(this, false)
@@ -58,7 +59,7 @@ class UnitGrid(override val universe: Universe) extends HasUniverse {
 
   }
 
-  def allInRangeOf[T <: Mobile : Manifest](position: MapTilePosition, radius: Int,
+  def allInRangeOf[T <: Mobile : ClassTag](position: MapTilePosition, radius: Int,
                                            friendly: Boolean,
                                            customFilter: T => Boolean = (_: T) => true):
   Iterable[T] = {
@@ -81,7 +82,7 @@ class UnitGrid(override val universe: Universe) extends HasUniverse {
 
     new Iterable[T] {
       override def iterator: Iterator[T] = {
-        val filter = implicitly[Manifest[T]].runtimeClass
+        val filter = implicitly[ClassTag[T]].runtimeClass
         (fromX until toX).iterator.flatMap { x =>
           (fromY until toY).iterator.filter(y => dstSqr(x, y) <= radSqr).flatMap { y =>
             val mobiles = onWhat(x)(y)

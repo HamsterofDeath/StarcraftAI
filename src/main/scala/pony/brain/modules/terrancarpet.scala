@@ -102,7 +102,7 @@ class CarpetSpread(universe: Universe) extends OrderlessAIModule[Mobile](univers
     val units = ownUnits.allMobilesWithWeapons.filter(m => m.isInGame && !m.isBeingCreated &&
       (m.isInstanceOf[Tank] || m.isInstanceOf[Vulture] || m.isInstanceOf[Goliath]))
       .groupBy(_.nativeUnitId).values.map(_.head).toVector.sortBy(_.nativeUnitId)
-    assignments.retain((id, post) => posts.contains(post) && units.exists(_.nativeUnitId == id))
+    assignments.filterInPlace((id, post) => posts.contains(post) && units.exists(_.nativeUnitId == id))
     val counts = mutable.Map.empty[(MapTilePosition, Int), Int]
     assignments.foreach { case (id, post) =>
       units.find(_.nativeUnitId == id).foreach(u => counts((post, kind(u))) = counts.getOrElse((post, kind(u)), 0) + 1)

@@ -6,7 +6,7 @@ import scala.collection.mutable
 
 trait TechTree {
   lazy val requiredBy = {
-    val result = multiMap[Class[_ <: WrapsUnit], Class[_ <: WrapsUnit]]
+    val result = multiMap[Class[? <: WrapsUnit], Class[? <: WrapsUnit]]
     dependsOn.foreach { case (target, needs) =>
       needs.foreach { c =>
         result.addBinding(c, target)
@@ -14,27 +14,27 @@ trait TechTree {
     }
     result.toImmutable
   }
-  protected val builtBy  : Map[Class[_ <: WrapsUnit], Class[_ <: WrapsUnit]]
-  protected val dependsOn: Map[Class[_ <: WrapsUnit], Set[_ <: Class[_ <: Building]]]
-  protected val upgrades : Map[Upgrade, Class[_ <: Upgrader]]
+  protected val builtBy  : Map[Class[? <: WrapsUnit], Class[? <: WrapsUnit]]
+  protected val dependsOn: Map[Class[? <: WrapsUnit], Set[? <: Class[? <: Building]]]
+  protected val upgrades : Map[Upgrade, Class[? <: Upgrader]]
   private val requirementsCache = mutable.HashMap
-                                  .empty[Class[_ <: WrapsUnit], Set[Class[_ <: Building]]]
-  def mainBuildingOf(addon: Class[_ <: Addon]) = {
-    builtBy(addon).asInstanceOf[Class[_ <: CanBuildAddons]]
+                                  .empty[Class[? <: WrapsUnit], Set[Class[? <: Building]]]
+  def mainBuildingOf(addon: Class[? <: Addon]) = {
+    builtBy(addon).asInstanceOf[Class[? <: CanBuildAddons]]
   }
   def upgraderFor(upgrade: Upgrade) = upgrades(upgrade)
 
-  def canBuild(factory: Class[_ <: UnitFactory], mobile: Class[_ <: Mobile]) = {
+  def canBuild(factory: Class[? <: UnitFactory], mobile: Class[? <: Mobile]) = {
     builtBy(mobile) == factory
   }
-  def canUpgrade(u: Class[_ <: Upgrader], up: Upgrade) = upgrades(up) == u
-  def canBuildAddon(main: Class[_ <: CanBuildAddons], addon: Class[_ <: Addon]) = {
+  def canUpgrade(u: Class[? <: Upgrader], up: Upgrade) = upgrades(up) == u
+  def canBuildAddon(main: Class[? <: CanBuildAddons], addon: Class[? <: Addon]) = {
     builtBy(addon) == main
   }
-  def requiredFor[T <: WrapsUnit](what: Class[_ <: T]) = {
+  def requiredFor[T <: WrapsUnit](what: Class[? <: T]) = {
     requirementsCache.getOrElseUpdate(what, {
-      val all = mutable.Set.empty[Class[_ <: Building]]
-      var head = mutable.Set.empty[Class[_ <: Building]] ++= dependsOn.getOrElse(what, Set.empty)
+      val all = mutable.Set.empty[Class[? <: Building]]
+      var head = mutable.Set.empty[Class[? <: Building]] ++= dependsOn.getOrElse(what, Set.empty)
       while (head.nonEmpty) {
         all ++= head
         head = head.flatMap(e => dependsOn.getOrElse(e, Set.empty))
@@ -46,7 +46,7 @@ trait TechTree {
 
 class TerranTechTree extends TechTree {
 
-  override protected val upgrades: Map[Upgrade, Class[_ <: Upgrader]] = Map(
+  override protected val upgrades: Map[Upgrade, Class[? <: Upgrader]] = Map(
     Upgrades.Terran.GoliathRange -> classOf[MachineShop],
     Upgrades.Terran.CruiserGun -> classOf[PhysicsLab],
     Upgrades.Terran.CruiserEnergy -> classOf[PhysicsLab],
@@ -76,7 +76,7 @@ class TerranTechTree extends TechTree {
 
   )
 
-  override protected val builtBy: Map[Class[_ <: WrapsUnit], Class[_ <: Building]] = Map(
+  override protected val builtBy: Map[Class[? <: WrapsUnit], Class[? <: Building]] = Map(
     classOf[Comsat] -> classOf[CommandCenter],
     classOf[NuclearSilo] -> classOf[CommandCenter],
     classOf[Dropship] -> classOf[Starport],
@@ -97,10 +97,10 @@ class TerranTechTree extends TechTree {
     classOf[ScienceVessel] -> classOf[Starport]
   )
 
-  override protected val dependsOn: Map[Class[_ <: WrapsUnit], Set[_ <: Class[_ <: Building]]] = {
+  override protected val dependsOn: Map[Class[? <: WrapsUnit], Set[? <: Class[? <: Building]]] = {
     val inferred = builtBy.map { case (k, v) => k -> Set(v) }.toList
 
-    val additional: Map[Class[_ <: WrapsUnit], Set[_ <: Class[_ <: Building]]] = Map(
+    val additional: Map[Class[? <: WrapsUnit], Set[? <: Class[? <: Building]]] = Map(
       classOf[Factory] -> classOf[Barracks].toSet,
       classOf[Comsat] -> Set(classOf[CommandCenter], classOf[Academy]),
       classOf[Starport] -> classOf[Factory].toSet,
@@ -131,7 +131,7 @@ sealed trait SCRace {
   assert(isTerran ^ isZerg ^ isProtoss)
 
   def techTree: TechTree
-  def specialize[T](unitType: Class[_ <: T]) = {
+  def specialize[T](unitType: Class[? <: T]) = {
     (if (classOf[WorkerUnit] >= unitType) {
       workerClass
     } else if (classOf[ResourceGatherPoint] >= unitType) {
@@ -145,11 +145,11 @@ sealed trait SCRace {
     } else
       unitType).asInstanceOf[Class[T]]
   }
-  def resourceDepositClass: Class[_ <: MainBuilding]
-  def workerClass: Class[_ <: WorkerUnit]
-  def transporterClass: Class[_ <: TransporterUnit]
-  def supplyClass: Class[_ <: SupplyProvider]
-  def detectorBuildingClass: Class[_ <: DetectorBuilding]
+  def resourceDepositClass: Class[? <: MainBuilding]
+  def workerClass: Class[? <: WorkerUnit]
+  def transporterClass: Class[? <: TransporterUnit]
+  def supplyClass: Class[? <: SupplyProvider]
+  def detectorBuildingClass: Class[? <: DetectorBuilding]
 }
 
 object SCRace {

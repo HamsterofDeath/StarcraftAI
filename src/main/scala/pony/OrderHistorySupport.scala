@@ -8,6 +8,7 @@ import pony.brain._
 import scala.jdk.CollectionConverters._
 import scala.collection.immutable.HashMap
 import scala.collection.mutable.ListBuffer
+import scala.compiletime.uninitialized
 
 trait OrderHistorySupport extends WrapsUnit {
   private val history    = ListBuffer.empty[HistoryElement]
@@ -28,8 +29,8 @@ trait OrderHistorySupport extends WrapsUnit {
 
   def unitHistory = history.reverseIterator
 
-  case class HistoryElement(order: Order, target: APIUnit, job: UnitWithJob[_ <: WrapsUnit]) {
-    private var issuedOrder: UnitOrder = _
+  case class HistoryElement(order: Order, target: APIUnit, job: UnitWithJob[? <: WrapsUnit]) {
+    private var issuedOrder: UnitOrder = uninitialized
 
     def trackOrder_!(issuedOrder: UnitOrder): Unit = {
       this.issuedOrder = issuedOrder

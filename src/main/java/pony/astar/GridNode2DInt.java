@@ -14,9 +14,10 @@ import java.util.List;
  * @author HamsterofDeath Created 29.02.2008 @ 20:25:50
  */
 public abstract class GridNode2DInt extends Node<GridNode2DInt> {
+    private static final long serialVersionUID = 0L;
     private final int m_x;
     private final int m_y;
-    private List<GridNode2DInt> m_nodes = new ArrayList<GridNode2DInt>(8);
+    private final ArrayList<GridNode2DInt> m_nodes = new ArrayList<GridNode2DInt>(8);
 
     public GridNode2DInt(final int p_x, final int p_y) {
         this.m_x = p_x;

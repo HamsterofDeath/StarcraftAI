@@ -11,7 +11,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
     new EvalSafeInput
   }
 
-  type AreaFromCircle = FutureIterator[TraversableOnce[Circle], Grid2D]
+  type AreaFromCircle = FutureIterator[IterableOnce[Circle], Grid2D]
   private val rawMapWalk        = world.map.walkableGrid
   private val empty             = world.map.walkableGrid.emptySameSize(false)
                                   .guaranteeImmutability
@@ -40,9 +40,9 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   private val withEverythingBlockingBuildable = register(evalEverythingBlockingBuildable)
   private val withEverythingBlockingWalkable  = register(evalEverythingBlockingWalkable)
 
-  private val cpuHeavy = ArrayBuffer.empty[FutureIterator[_, Grid2D]]
+  private val cpuHeavy = ArrayBuffer.empty[FutureIterator[?, Grid2D]]
 
-  implicit class RichFuture(val f: FutureIterator[_, Grid2D]) {
+  implicit class RichFuture(val f: FutureIterator[?, Grid2D]) {
     def registeredAs(name: String) = {
       cpuHeavy += f.named(name)
       f.setupRecalcHint(Primes.prime43)
@@ -260,7 +260,7 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
     evalOnlyUnitsAsync(ownUnits.allByType[Building].filterNot(b => b.isFloating || b.isInstanceOf[DetectorBuilding]), 8)
   }
 
-  private def evalOnlyUnitsAsync(units: => TraversableOnce[StaticallyPositioned], growBy: Int) = {
+  private def evalOnlyUnitsAsync(units: => IterableOnce[StaticallyPositioned], growBy: Int) = {
     def areas = units.iterator.map(_.area)
     FutureIterator.feed(areas.toVector).produceAsync { unitAreas =>
       val ret = emptyCopy
@@ -277,11 +277,11 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   private def evalOnlyBlockedForMainBuildings = evalOnlyBlockedResourceAreas(
     ownUnits.allByType[Resource])
 
-  private def evalOnlyBlockedResourceAreas(units: => TraversableOnce[Resource]) = {
-    def areas = units.map(_.blockingAreaForMainBuilding)
+  private def evalOnlyBlockedResourceAreas(units: => IterableOnce[Resource]) = {
+    def areas = units.iterator.map(_.blockingAreaForMainBuilding)
     FutureIterator.feed(areas).produceAsync { in =>
       val ret = emptyCopy
-      in.foreach { area =>
+      in.iterator.foreach { area =>
         ret.block_!(area)
       }
       ret.guaranteeImmutability
@@ -290,9 +290,9 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
 
   private def evalPotentialAddonLocations = evalOnlyAddonAreas(ownUnits.allByType[CanBuildAddons].filterNot(_.isFloating))
 
-  private def evalOnlyAddonAreas(units: TraversableOnce[CanBuildAddons]) = {
+  private def evalOnlyAddonAreas(units: IterableOnce[CanBuildAddons]) = {
     val ret = emptyCopy
-    units.foreach { b =>
+    units.iterator.foreach { b =>
       ret.block_!(b.addonArea)
     }
     ret
@@ -309,9 +309,9 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
 
   private def evalOnlyMines = evalOnlyMobileUnits(ownUnits.allByType[SpiderMine])
 
-  private def evalOnlyMobileUnits(units: TraversableOnce[GroundUnit]) = {
+  private def evalOnlyMobileUnits(units: IterableOnce[GroundUnit]) = {
     val ret = emptyCopy
-    units.foreach { b =>
+    units.iterator.foreach { b =>
       ret.block_!(b.currentTile)
     }
     ret
@@ -321,9 +321,9 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
     ownUnits.allByType[MineralPatch].filter(_.remaining > 0))
                                   .or_!(evalOnlyUnits(ownUnits.allByType[Geysir]))
 
-  private def evalOnlyUnits(units: TraversableOnce[StaticallyPositioned]) = {
+  private def evalOnlyUnits(units: IterableOnce[StaticallyPositioned]) = {
     val ret = emptyCopy
-    units.foreach { b =>
+    units.iterator.foreach { b =>
       val by = b.area
       ret.block_!(by)
     }
@@ -365,14 +365,14 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
     universe.ownUnits.allDetectors.map(_.detectionArea)
   }
 
-  private def areaOfCircles(trav: => TraversableOnce[Circle]): AreaFromCircle = {
+  private def areaOfCircles(trav: => IterableOnce[Circle]): AreaFromCircle = {
     areaOfCircles(block = true)(trav)
   }
 
-  private def areaOfCircles(block: Boolean)(trav: => TraversableOnce[Circle]): AreaFromCircle = {
+  private def areaOfCircles(block: Boolean)(trav: => IterableOnce[Circle]): AreaFromCircle = {
     FutureIterator.feed(trav).produceAsync { in =>
       val base = if (block) emptyCopy.mutableCopy else emptyCopy.mutableCopy.invertedMutable
-      for (circle <- in; tile <- circle.asTiles) {
+      for (circle <- in.iterator; tile <- circle.asTiles) {
         if (block) {
           base.block_!(tile)
         } else {

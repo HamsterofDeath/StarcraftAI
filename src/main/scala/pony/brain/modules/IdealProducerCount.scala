@@ -2,7 +2,7 @@ package pony
 package brain
 package modules
 
-case class IdealProducerCount[T <: UnitFactory](typeOfFactory: Class[_ <: UnitFactory],
+case class IdealProducerCount[T <: UnitFactory](typeOfFactory: Class[? <: UnitFactory],
                                                 maximumSustainable: Int)
                                                (active: => Boolean,
                                                 highPriority: => Boolean = false) {

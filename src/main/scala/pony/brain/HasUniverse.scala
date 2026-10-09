@@ -1,10 +1,12 @@
 package pony
 package brain
 
+import scala.reflect.ClassTag
+
 trait HasUniverse extends HasLazyVals {
   def race = forces.myself.scRace
   def plugins = universe.plugins
-  def pluginByType[T: Manifest] = universe.pluginByType[T]
+  def pluginByType[T: ClassTag] = universe.pluginByType[T]
   def pathfinders = universe.pathfinders
   def ferryManager = universe.ferryManager
   def unitGrid = universe.unitGrid
@@ -27,20 +29,17 @@ trait HasUniverse extends HasLazyVals {
   def forces = universe.forces
 
   def mapNth[T](prime: PrimeNumber, orElse: T, condition: Boolean = true)(body: => T): T = {
-    ifNth(prime) {
-      if (condition) {
-        return body
-      }
-    }
-    orElse
+    if (condition && isNth(prime)) body else orElse
   }
 
   def ifNth(prime: PrimeNumber, firstTime: Option[PrimeNumber] = None)(u: => Unit) = {
-    val execute = currentTick % prime.i == 0 ||
-                  firstTime.exists(e => currentTick % e.i == 0)
-    if (execute) {
+    if (isNth(prime, firstTime)) {
       u
     }
+  }
+
+  private def isNth(prime: PrimeNumber, firstTime: Option[PrimeNumber] = None) = {
+    currentTick % prime.i == 0 || firstTime.exists(e => currentTick % e.i == 0)
   }
 
   protected implicit def implicitUniverse: Universe = universe

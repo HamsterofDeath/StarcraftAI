@@ -39,7 +39,7 @@ trait PathfindingSupport[T <: Mobile] extends JobOrSubJob[T] {
     def newPathRequired(where: MapTilePosition): Unit = {
       trace(s"Unit $unit needs paths to $where")
       val pf = pathfinders.safeFor(unit)
-      val task = pf.findPath(unit.currentTile, where).imap(_.toMigration(universe))
+      val task = pf.findPath(unit.currentTile, where).imap(_.toMigration(using universe))
       myPath = task
     }
     // must return noop instead of nil to cause a waiting behaviour

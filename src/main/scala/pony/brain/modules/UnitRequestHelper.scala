@@ -8,13 +8,13 @@ trait UnitRequestHelper extends AIModule[UnitFactory] {
   private val buildingHelper = new HelperAIModule[WorkerUnit](universe) with BuildingRequestHelper
   private val addonHelper    = new HelperAIModule[CanBuildAddons](universe) with AddonRequestHelper
 
-  protected def mobileCost[T <: Mobile](mobileType: Class[_ <: T], priority: Priority) =
+  protected def mobileCost[T <: Mobile](mobileType: Class[? <: T], priority: Priority) =
     ResourceRequests.forUnit(race, mobileType, priority)
-  protected def mobileRequest[T <: Mobile](mobileType: Class[_ <: T], funding: ResourceApprovalSuccess,
+  protected def mobileRequest[T <: Mobile](mobileType: Class[? <: T], funding: ResourceApprovalSuccess,
                                            priority: Priority) =
     UnitJobRequest.newOfType(universe, mobileEmployer, mobileType, funding, priority = priority)
 
-  def requestUnit[T <: Mobile](mobileType: Class[_ <: T], takeCareOfDependencies: Boolean,
+  def requestUnit[T <: Mobile](mobileType: Class[? <: T], takeCareOfDependencies: Boolean,
                                priority: Priority = Priority.Default) = {
     val req = mobileCost(mobileType, priority)
     var ok = false
@@ -33,7 +33,7 @@ trait UnitRequestHelper extends AIModule[UnitFactory] {
               def isAddon = classOf[Addon] >= requirement
               trace(s"Planning to build $requirement because it is required for $mobileType")
               if (isAddon) {
-                addonHelper.requestAddon(requirement.asInstanceOf[Class[_ <: Addon]])
+                addonHelper.requestAddon(requirement.asInstanceOf[Class[? <: Addon]])
               } else {
                 buildingHelper.requestBuilding(requirement, takeCareOfDependencies = false)
               }

@@ -3,7 +3,7 @@ package brain
 
 class ConstructAddon[W <: CanBuildAddons, A <: Addon](employer: Employer[W],
                                                       basis: W,
-                                                      what: Class[_ <: A],
+                                                      what: Class[? <: A],
                                                       funding: ResourceApproval)
   extends UnitWithJob[W](employer, basis, Priority.Addon) with JobHasFunding[W] with CreatesUnit[W] with IssueOrderNTimes[W] {
   assert(!basis.isBuildingAddon)

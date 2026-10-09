@@ -12,13 +12,13 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
   private val resourceAssignmentInfos = mutable.HashMap.empty[ResourceApproval, HasFunding]
   private val resourceHistory         = ArrayBuffer.empty[MinsGas]
   private val empty                       = Resources(0, 0, Supplies(0, 0))
-  private val locked                      = ArrayBuffer.empty[LockedResources[_ <: WrapsUnit]]
-  private val lockedWithoutFunds          = ArrayBuffer.empty[LockedResources[_ <: WrapsUnit]]
+  private val locked                      = ArrayBuffer.empty[LockedResources[? <: WrapsUnit]]
+  private val lockedWithoutFunds          = ArrayBuffer.empty[LockedResources[? <: WrapsUnit]]
   private val lockedSums                  = LazyVal.from(calcLockedSums)
   private val failedToProvideThisTick     = ArrayBuffer.empty[ResourceRequests]
   private var myResources                 = empty
   private var failedToProvideLastTick     = Vector.empty[ResourceRequests]
-  private val lastResortGarbageCollection = mutable.HashSet.empty[(JobHasFunding[_], Int)]
+  private val lastResortGarbageCollection = mutable.HashSet.empty[(JobHasFunding[?], Int)]
 
   override def onTick_!() = {
     super.onTick_!()
@@ -31,7 +31,7 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
     }
 
     val obsolete = resourceAssignmentInfos.values
-                   .collect { case j: JobHasFunding[_] if j.failedOrObsolete => j }
+                   .collect { case j: JobHasFunding[?] if j.failedOrObsolete => j }
 
     val newObsolete = obsolete.filterNot(e => lastResortGarbageCollection.exists(_._1 == e))
     lastResortGarbageCollection ++= newObsolete.map(e => e -> currentTick)
@@ -135,7 +135,7 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
         if (lock) lock_!(requests, Some(ret), employer)
         ret
       } else {
-        val mightGatherEnough = myResources.asSum canCoverCost requests.sum
+        val mightGatherEnough = myResources.asSum.canCoverCost(requests.sum)
         if (mightGatherEnough) {
           val freeableResources = {
             // check if enough resources could be unlocked
@@ -145,7 +145,7 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
                                 (e.reqs.priority, -e.reqs.sum.mineralGasSum)
                               }
             val abortableJobs = unitManager.allJobsWithReleaseableResources
-            val used = mutable.HashSet.empty[JobHasFunding[_]]
+            val used = mutable.HashSet.empty[JobHasFunding[?]]
             unlockOrder.flatMap { locked =>
               val ret = abortableJobs.iterator
                         .filter(!used(_))
@@ -157,7 +157,7 @@ class ResourceManager(override val universe: Universe) extends HasUniverse {
 
           var freed = ResourceRequestSum(0, 0, 0)
           val available = unlockedResources.asSum
-          def needsMore = !((freed + available) canCoverCost requests.sum)
+          def needsMore = !((freed + available).canCoverCost(requests.sum))
           val requiredToFree = freeableResources.takeWhile { case (job, singleLocked) =>
             val stillNeedsMore = needsMore
             if (stillNeedsMore) {

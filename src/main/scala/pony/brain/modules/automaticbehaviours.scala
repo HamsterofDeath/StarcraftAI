@@ -7,8 +7,9 @@ import pony.Upgrades.Terran._
 
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
+import scala.reflect.ClassTag
 
-abstract class DefaultBehaviour[T <: WrapsUnit : Manifest](override val universe: Universe)
+abstract class DefaultBehaviour[T <: WrapsUnit : ClassTag](override val universe: Universe)
   extends HasUniverse {
 
   private val asEmployer      = new Employer[T](universe)
@@ -47,7 +48,7 @@ abstract class DefaultBehaviour[T <: WrapsUnit : Manifest](override val universe
   }
 
   def canControl(u: WrapsUnit) = {
-    implicitly[Manifest[T]].runtimeClass.isInstance(u) && !u.isInstanceOf[AutoPilot]
+    implicitly[ClassTag[T]].runtimeClass.isInstance(u) && !u.isInstanceOf[AutoPilot]
   }
 
   def assumeSafe(unit: WrapsUnit): T = unit.asInstanceOf[T]
@@ -237,7 +238,7 @@ object Terran {
 
             val future = FutureIterator.feed(feed).produceAsync { in =>
               in.pathfinder.findPathNow(in.transporterWhere, in.pickupTarget.where)
-              .map(_.toMigration(this.universe))
+              .map(_.toMigration(using this.universe))
             }.named("Pathfinding")
             MaybePath(future)
           })
@@ -520,7 +521,7 @@ object Terran {
 
   }
 
-  abstract class AvoidSpecificAreas[T <: Mobile : Manifest](universe: Universe)
+  abstract class AvoidSpecificAreas[T <: Mobile : ClassTag](universe: Universe)
     extends DefaultBehaviour[T](universe) {
     self =>
 
@@ -1065,7 +1066,7 @@ object Terran {
             this.universe.pluginByType[RunTerranCampaign].isReservedDefender(this.unit)) {
             Nil
           } else {
-            helper.allInsideNonBlacklisted.toStream.headOption.map { where =>
+            helper.allInsideNonBlacklisted.iterator.nextOption().map { where =>
               ignore += this.unit
               helper.blacklisted(where)
               Orders.AttackMove(this.unit, where)
@@ -1324,7 +1325,7 @@ object Terran {
         FutureIterator
         .feed((scout.currentTile, remainingToCheck.head, pathfinder))
         .produceAsync { case (from, to, pathfinder) =>
-          pathfinder.findUnclampedPathNow(from, to).map(_.toMigration(universe))
+          pathfinder.findUnclampedPathNow(from, to).map(_.toMigration(using universe))
         }.named("Single scout plan")
       }
 
@@ -1478,7 +1479,7 @@ object Terran {
       def onTick_!(): Unit = {
         if (race.isTerran && !universe.pluginByType[RunTerranCampaign].scoutingAllowed) return
         val oldSize = scouts.size
-        scouts.retain { (_, v) => v.valid }
+        scouts.filterInPlace { (_, v) => v.valid }
         if (oldSize != scouts.size) {
           coveredRightNow.invalidate()
         }
@@ -1569,7 +1570,7 @@ object Terran {
     override protected def wrapBase(t: SupportUnit) = ???
   }
 
-  class OneTimeUnitSpellCast[C <: HasSingleTargetSpells : Manifest, T <: Mobile : Manifest]
+  class OneTimeUnitSpellCast[C <: HasSingleTargetSpells : ClassTag, T <: Mobile : ClassTag]
   (universe: Universe,
    spell:
    SingleTargetSpell[C, T])
@@ -1885,7 +1886,7 @@ class FocusFireOrganizer(override val universe: Universe) extends HasUniverse {
 }
 
 object NonConflictingSpellTargets {
-  def forSpell[T <: HasSingleTargetSpells, M <: Mobile : Manifest](spell:
+  def forSpell[T <: HasSingleTargetSpells, M <: Mobile : ClassTag](spell:
                                                                    SingleTargetSpell[T, M],
                                                                    universe: Universe) = {
 
@@ -1896,7 +1897,7 @@ object NonConflictingSpellTargets {
   }
 }
 
-class NonConflictingTargets[T <: WrapsUnit : Manifest, M <: Mobile : Manifest]
+class NonConflictingTargets[T <: WrapsUnit : ClassTag, M <: Mobile : ClassTag]
 (override val universe: Universe, rateTarget: T => PriorityChain, validTargetTest: T => Boolean,
  subAccept: (M, T) => Boolean, subRate: (M, T) => PriorityChain, own: Boolean,
  allowReplacements: Boolean) extends HasUniverse {
@@ -1998,7 +1999,7 @@ class NonConflictingTargets[T <: WrapsUnit : Manifest, M <: Mobile : Manifest]
   private def targetOf(m: M) = assignments(m)
 }
 
-class NonConflictingSpellTargets[T <: HasSingleTargetSpells, M <: Mobile : Manifest]
+class NonConflictingSpellTargets[T <: HasSingleTargetSpells, M <: Mobile : ClassTag]
 (spell: SingleTargetSpell[T, M], targetConstraint: PartialFunction[Mobile, M],
  keepLocked: M => Boolean, override val universe: Universe)
   extends HasUniverse {

@@ -20,7 +20,7 @@ class MigrationPath(follow: Paths, override val universe: Universe)
 
   override def onTick_!() = {
     super.onTick_!()
-    remaining.retain { case (unit, path) =>
+    remaining.filterInPlace { case (unit, path) =>
       unit.isInGame && path.nonEmpty
     }
   }

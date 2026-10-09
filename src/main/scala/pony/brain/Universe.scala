@@ -5,9 +5,11 @@ import pony.brain.modules.Strategy.Strategies
 import pony.brain.modules.{FerryManager, WorldDominationPlan}
 
 import scala.collection.mutable.ArrayBuffer
+import scala.compiletime.uninitialized
+import scala.reflect.ClassTag
 
 object Universe {
-  var mainThread: Thread = _
+  var mainThread: Thread = uninitialized
 }
 
 trait Universe extends HasLazyVals {
@@ -15,10 +17,10 @@ trait Universe extends HasLazyVals {
 
   Universe.mainThread = Thread.currentThread()
 
-  def plugins: List[AIModule[_ <: WrapsUnit]]
+  def plugins: List[AIModule[? <: WrapsUnit]]
 
-  def pluginByType[T: Manifest] = {
-    plugins.find(_.getClass == implicitly[Manifest[T]].runtimeClass)
+  def pluginByType[T: ClassTag] = {
+    plugins.find(_.getClass == implicitly[ClassTag[T]].runtimeClass)
     .get
     .asInstanceOf[T]
   }
@@ -74,6 +76,6 @@ trait Universe extends HasLazyVals {
     afterTickListeners -= listener
   }
 
-  private def evalRace = (ownUnits.allMobiles.iterator ++ ownUnits.allBuildings.iterator).next
+  private def evalRace = (ownUnits.allMobiles.iterator ++ ownUnits.allBuildings.iterator).next()
                          .mySCRace
 }

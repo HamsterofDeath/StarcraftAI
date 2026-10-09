@@ -5,6 +5,7 @@ import pony.brain.modules.Strategy.Strategies
 import pony.brain.modules._
 
 import scala.jdk.CollectionConverters._
+import scala.reflect.ClassTag
 
 class TwilightSparkle(world: DefaultWorld) {
   self =>
@@ -119,8 +120,8 @@ class TwilightSparkle(world: DefaultWorld) {
 
   def plugins = aiModules
 
-  def pluginByType[T <: AIModule[_] : Manifest] = {
-    val c = implicitly[Manifest[T]].runtimeClass
+  def pluginByType[T <: AIModule[?] : ClassTag] = {
+    val c = implicitly[ClassTag[T]].runtimeClass
     aiModules.find(e => c >= e.getClass).get.asInstanceOf[T]
   }
 

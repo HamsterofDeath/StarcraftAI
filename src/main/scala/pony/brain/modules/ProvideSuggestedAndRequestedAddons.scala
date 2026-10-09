@@ -42,7 +42,7 @@ class ProvideSuggestedAndRequestedAddons(universe: Universe)
 
   }
 
-  private def canBuildMoreOf(addon: Class[_ <: Addon]) = {
+  private def canBuildMoreOf(addon: Class[? <: Addon]) = {
     val existing = ownUnits.allByClass(addon)
     if (existing.isEmpty) {
       true

@@ -15,8 +15,8 @@ trait HasLazyVals extends IsTicked {
 
   case class Key(private val id: Int)
 
-  private      val lazyVals              = ArrayBuffer.empty[LazyVal[_]]
-  private lazy val lockedGroupedLazyVals = mutable.HashMap.empty[Key, ArrayBuffer[LazyVal[_]]]
+  private      val lazyVals              = ArrayBuffer.empty[LazyVal[?]]
+  private lazy val lockedGroupedLazyVals = mutable.HashMap.empty[Key, ArrayBuffer[LazyVal[?]]]
 
   def explicitly[T](key: Key, t: => T, synchronize: Boolean = false) = {
     val newLazyVal = {

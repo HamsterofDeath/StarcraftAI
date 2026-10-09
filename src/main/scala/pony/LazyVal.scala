@@ -1,11 +1,13 @@
 package pony
 
+import scala.compiletime.uninitialized
+
 class LazyVal[T](gen: => T, onValueChange: Option[() => Unit] = None) extends Serializable {
   protected def allowMultiRead = false
   private   val creationThread = Thread.currentThread()
   private   var locked         = false
   protected var evaluated      = false
-  protected var value: T       = _
+  protected var value: T       = uninitialized
 
   def lockValueForever(): Unit = {
     locked = true

@@ -1,10 +1,10 @@
 package pony
 package brain
 
-class MissingRequirementResult[T <: WrapsUnit](needs: Set[Class[_ <: Building]],
-                                               incomplete: Set[Class[_ <: Building]],
-                                               planned: Set[Class[_ <: Building]],
-                                               jobbed: Set[Class[_ <: Building]])
+class MissingRequirementResult[T <: WrapsUnit](needs: Set[Class[? <: Building]],
+                                               incomplete: Set[Class[? <: Building]],
+                                               planned: Set[Class[? <: Building]],
+                                               jobbed: Set[Class[? <: Building]])
   extends PreHiringResult[T] {
   def success = false
 

@@ -8,6 +8,7 @@ import pony.brain._
 import scala.jdk.CollectionConverters._
 import scala.collection.immutable.HashMap
 import scala.collection.mutable.ListBuffer
+import scala.compiletime.uninitialized
 
 trait WrapsUnit extends HasUniverse with AfterTickListener {
 
@@ -38,7 +39,7 @@ trait WrapsUnit extends HasUniverse with AfterTickListener {
   private var morphed              = false
   private var inGame               = true
   private var creationTick         = -1
-  private var myUniverse: Universe = _
+  private var myUniverse: Universe = uninitialized
 
   private val myExists = oncePerTick {
     nativeUnit.exists()

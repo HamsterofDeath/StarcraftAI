@@ -4,9 +4,9 @@ package modules
 
 trait BuildingRequestHelper extends AIModule[WorkerUnit] {
   private val buildingEmployer = new Employer[Building](universe)
-  protected def onBuildingRequested(request: BuildUnitRequest[_ <: Building]): Unit = {}
+  protected def onBuildingRequested(request: BuildUnitRequest[? <: Building]): Unit = {}
 
-  def requestBuilding[T <: Building](buildingType: Class[_ <: T],
+  def requestBuilding[T <: Building](buildingType: Class[? <: T],
                                      takeCareOfDependencies: Boolean = false,
                                      saveMoneyIfPoor: Boolean = false,
                                      customBuildingPosition: AlternativeBuildingSpot =

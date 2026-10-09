@@ -2,7 +2,7 @@ package pony
 package brain
 
 trait Orderless[T <: WrapsUnit] extends AIModule[T] {
-  override def ordersForTick: Traversable[UnitOrder] = {
+  override def ordersForTick: Iterable[UnitOrder] = {
     onTick_!()
     Nil
   }

@@ -5,9 +5,10 @@ import pony.brain.UnitRequest.CherryPickers
 import pony.brain.modules.Strategy
 
 import scala.collection.mutable
+import scala.reflect.ClassTag
 
-class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W,
-                                                                   buildingType: Class[_ <: B],
+class ConstructBuilding[W <: WorkerUnit : ClassTag, B <: Building](worker: W,
+                                                                   buildingType: Class[? <: B],
                                                                    employer: Employer[W],
                                                                    val buildWhere: MapTilePosition,
                                                                    funding: ResourceApprovalSuccess,
@@ -219,7 +220,7 @@ class ConstructBuilding[W <: WorkerUnit : Manifest, B <: Building](worker: W,
 
   override protected def ferryDropTarget = area.centerTile.toSome
 
-  private class ClosestPaths(source: Traversable[Path]) {
+  private class ClosestPaths(source: Iterable[Path]) {
     private val cache = mutable.HashMap.empty[MapTilePosition, Double]
 
     def closestPathFrom(here: MapTilePosition) = {

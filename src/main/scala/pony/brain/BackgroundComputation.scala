@@ -3,7 +3,7 @@ package brain
 
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, Future}
-import scala.reflect.ManifestFactory
+import scala.reflect.ClassTag
 
 trait BackgroundComputation[T <: WrapsUnit] extends AIModule[T] {
   type ComputationInput
@@ -13,7 +13,7 @@ trait BackgroundComputation[T <: WrapsUnit] extends AIModule[T] {
   private var currentResult          = Option.empty[BackgroundComputationResult[T]]
   private var waitingForBackgroundOp = false
 
-  override def ordersForTick: Traversable[UnitOrder] = {
+  override def ordersForTick: Iterable[UnitOrder] = {
     currentResult.filter(_.repeatOrderIssue) match {
       // reuse current computation result as long as it is valid
       case Some(result) => result.orders
@@ -34,8 +34,8 @@ trait BackgroundComputation[T <: WrapsUnit] extends AIModule[T] {
             case switch: CanAcceptUnitSwitch[T] =>
               // time has passed, pick a new unit for this job if possible
               val req = switch.asRequest
-              implicit val summonedManifest: Manifest[T] =
-                ManifestFactory.classType(switch.unit.getClass)
+              implicit val summonedClassTag: ClassTag[T] =
+                ClassTag(switch.unit.getClass)
               val candidates = {
                 def recycle = {
                   Set(switch: UnitWithJob[T])

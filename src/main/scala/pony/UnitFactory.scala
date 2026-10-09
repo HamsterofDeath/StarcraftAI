@@ -10,7 +10,7 @@ import scala.collection.immutable.HashMap
 import scala.collection.mutable.ListBuffer
 
 trait UnitFactory extends Building with Controllable {
-  def canBuild[T <: Mobile](typeOfUnit: Class[_ <: T]) = {
+  def canBuild[T <: Mobile](typeOfUnit: Class[? <: T]) = {
     race.techTree.canBuild(getClass, typeOfUnit)
   }
 

@@ -8,18 +8,19 @@ import pony.brain._
 import scala.jdk.CollectionConverters._
 import scala.collection.immutable.HashMap
 import scala.collection.mutable.ListBuffer
+import scala.reflect.ClassTag
 
 object UnitWrapper {
 
-  private def lift[T <: WrapsUnit : Manifest] = {
-    val c = implicitly[Manifest[T]].runtimeClass.asInstanceOf[Class[_ <: T]]
+  private def lift[T <: WrapsUnit : ClassTag] = {
+    val c = implicitly[ClassTag[T]].runtimeClass.asInstanceOf[Class[? <: T]]
     val constructor = c.getConstructor(classOf[APIUnit])
 
     ((anyUnit: APIUnit) => constructor.newInstance(anyUnit)) -> c
 
   }
 
-  private val mappingRules: Map[UnitType, (APIUnit => WrapsUnit, Class[_ <: WrapsUnit])] =
+  private val mappingRules: Map[UnitType, (APIUnit => WrapsUnit, Class[? <: WrapsUnit])] =
     HashMap(
       UnitType.Resource_Vespene_Geyser -> lift[VespeneGeysir],
       UnitType.Terran_Supply_Depot -> lift[SupplyDepot],

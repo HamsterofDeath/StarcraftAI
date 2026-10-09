@@ -24,7 +24,7 @@ object PriorityChain {
           0
         }
       }
-      Ordering.comparatorToOrdering(cmp)
+      Ordering.comparatorToOrdering(using cmp)
     }
     Ordering.by(_.data)
   }

@@ -35,7 +35,7 @@ object Upgrades {
   }
 
   trait SingleTargetMagicSpell extends Upgrade with IsTech {
-    val canCastOn: Class[_ <: Mobile]
+    val canCastOn: Class[? <: Mobile]
 
     def asNativeTech = nativeType match {
       case Right(tt) => tt

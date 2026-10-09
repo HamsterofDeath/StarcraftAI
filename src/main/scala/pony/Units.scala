@@ -5,15 +5,16 @@ import pony.brain.{HasUniverse, Universe}
 
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
+import scala.reflect.ClassTag
 
 class Units(game: Game, hostile: Boolean, override val universe: Universe) extends HasUniverse {
-  private val killListeners      = mutable.HashMap.empty[Int, OnKillListener[_]]
+  private val killListeners      = mutable.HashMap.empty[Int, OnKillListener[?]]
   private val killListenersOnAll = mutable.ArrayBuffer.empty[WrapsUnit => Unit]
   private val newUnitListeners   = mutable.ArrayBuffer.empty[WrapsUnit => Unit]
   private val fresh              = ArrayBuffer.empty[WrapsUnit]
   private val graveyard          = mutable.HashMap.empty[Int, WrapsUnit]
-  private val classIndexes       = mutable.HashSet.empty[Class[_]]
-  private val preparedByClass    = multiMap[Class[_], WrapsUnit]
+  private val classIndexes       = mutable.HashSet.empty[Class[?]]
+  private val preparedByClass    = multiMap[Class[?], WrapsUnit]
   private val nativeIdToUnit     = mutable.HashMap.empty[Int, WrapsUnit]
 
   private var initial            = true
@@ -106,18 +107,18 @@ class Units(game: Game, hostile: Boolean, override val universe: Universe) exten
 
   def allAddons = allByType[Addon]
 
-  def existsIncomplete(c: Class[_ <: WrapsUnit]) = allByClass(c).exists(_.isBeingCreated)
+  def existsIncomplete(c: Class[? <: WrapsUnit]) = allByClass(c).exists(_.isBeingCreated)
 
-  def existsComplete(c: Class[_ <: WrapsUnit]) = allByClass(c).exists(!_.isBeingCreated)
+  def existsComplete(c: Class[? <: WrapsUnit]) = allByClass(c).exists(!_.isBeingCreated)
 
-  def ownsByType(c: Class[_ <: WrapsUnit]) = {
+  def ownsByType(c: Class[? <: WrapsUnit]) = {
     nativeIdToUnit.values.exists(c.isInstance)
   }
 
   def geysirs = allByType[Geysir]
 
-  def allByType[T <: WrapsUnit : Manifest] = {
-    val lookFor = implicitly[Manifest[T]].runtimeClass.asInstanceOf[Class[T]]
+  def allByType[T <: WrapsUnit : ClassTag] = {
+    val lookFor = implicitly[ClassTag[T]].runtimeClass.asInstanceOf[Class[T]]
     allByClass(lookFor)
   }
 
@@ -138,8 +139,8 @@ class Units(game: Game, hostile: Boolean, override val universe: Universe) exten
 
   import scala.jdk.CollectionConverters._
 
-  def firstByType[T: Manifest]: Option[T] = {
-    val lookFor = implicitly[Manifest[T]].runtimeClass
+  def firstByType[T: ClassTag]: Option[T] = {
+    val lookFor = implicitly[ClassTag[T]].runtimeClass
     inFaction.find(lookFor.isInstance).map(_.asInstanceOf[T])
   }
 

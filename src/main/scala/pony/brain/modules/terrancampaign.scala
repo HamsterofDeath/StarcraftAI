@@ -144,7 +144,7 @@ class EnemyCampaignMemory {
              visibleTile: MapTilePosition => Boolean): Unit = {
     visible.foreach(b => remembered.put(b.id, b))
     val visibleIds = visible.map(_.id).toSet
-    remembered.retain { (id, building) =>
+    remembered.filterInPlace { (id, building) =>
       !observedDestroyed(id) && (visibleIds(id) || !building.footprint.forall(visibleTile))
     }
     selected = selected.filter(t => buildings.exists(_.tile.distanceToIsLess(t, 12)))
