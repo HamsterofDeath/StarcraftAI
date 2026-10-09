@@ -34,17 +34,28 @@ class AutoCamera(override val universe: Universe) extends AIPlugIn with HasUnive
       val native = nativeGame.getScreenPosition
       val screen = (native.getX, native.getY)
       val moved = previousScreen.exists(_ != screen)
-      if (moved && frame - lastCommandFrame > commandLagFrames) holdUntil = frame + manualHoldFrames
+      if (moved && frame - lastCommandFrame > commandLagFrames) {
+        if (frame >= holdUntil) NativeMatchEvidence.trace("camera-manual-hold", s"screen=$screen frames=$manualHoldFrames")
+        holdUntil = frame + manualHoldFrames
+      }
       if (moved) stalledCommands = 0
       else if (lastCommandFrame == frame - 1) stalledCommands += 1
       previousScreen = Some(screen)
 
-      if (frame % scanFrames == 0) director.consider(frame, candidates)
+      if (frame % scanFrames == 0) {
+        val before = director.focus
+        director.consider(frame, candidates).filterNot(before.contains).foreach { focus =>
+          if (!before.exists(old => old.reason == focus.reason && old.tile.distanceTo(focus.tile) <= 12)) {
+            NativeMatchEvidence.trace("camera-shot", s"reason=${focus.reason} tile=${focus.tile} score=${focus.score}")
+          }
+        }
+      }
 
       if (frame >= holdUntil) director.focus.foreach { focus =>
         val target = CameraPan.screenFor(focus.tile, nativeGame.mapWidth(), nativeGame.mapHeight())
         if (stalledCommands > commandLagFrames) {
           // the engine keeps refusing this position, for example at a map edge it clamps differently
+          NativeMatchEvidence.trace("camera-unreachable", s"target=$target screen=$screen")
           unreachable = Some(target)
           stalledCommands = 0
         }
