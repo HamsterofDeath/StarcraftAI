@@ -177,8 +177,15 @@ class TerranBunkerDefense(universe: Universe)
           ) && depots.forall(d =>
             nativeGame.hasPath(d.center.toNative, site.center.toNative)
           )
+          // Behind the mineral line (farther from the depot than every patch) a builder has to squeeze past the mining
+          // workers and usually stalls; such sites are no candidates.
+          def behindMinerals(site: Area) = depots.exists { d =>
+            val reach = patches.map(_.centerTile.distanceSquaredTo(d.centerTile)).maxOption.getOrElse(0)
+            site.centerTile.distanceSquaredTo(d.centerTile) > reach
+          }
           val candidates = finder.bunkerSites(field, workTiles)
             .filterNot(a => blockedSites(a.upperLeft))
+            .filterNot(behindMinerals)
             // a site a worker already failed to reach (or one overlapping it) is no candidate either
             .filterNot(a =>
               unitManager.unreachableSites.exists(u =>

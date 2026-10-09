@@ -20,9 +20,9 @@ object NativeMatchEvidence {
     * headless run show why workers cannot reach a site.
     */
   def traceStartArea(game: Game, radiusX: Int = 22, radiusY: Int = 16): Unit = {
-    val start   = game.self().getStartLocation
-    val (w, h)  = (game.mapWidth, game.mapHeight)
-    val marks   = scala.collection.mutable.HashMap.empty[(Int, Int), Char]
+    val start                              = game.self().getStartLocation
+    val (w, h)                             = (game.mapWidth, game.mapHeight)
+    val marks                              = scala.collection.mutable.HashMap.empty[(Int, Int), Char]
     def mark(u: bwapi.Unit, c: Char): Unit = {
       val t = u.getTilePosition
       for (dx <- 0 until u.getType.tileWidth; dy <- 0 until u.getType.tileHeight) marks((t.x + dx, t.y + dy)) = c
@@ -36,7 +36,8 @@ object NativeMatchEvidence {
       val row = (x0 to x1).map { x =>
         marks.getOrElse(
           (x, y), {
-            val walkable = (for (wx <- 0 until 4; wy <- 0 until 4) yield game.isWalkable(x * 4 + wx, y * 4 + wy)).count(identity)
+            val walkable =
+              (for (wx <- 0 until 4; wy <- 0 until 4) yield game.isWalkable(x * 4 + wx, y * 4 + wy)).count(identity)
             if (walkable == 0) '#'
             else if (walkable < 16) '~'
             else if (game.isBuildable(x, y)) '.'
