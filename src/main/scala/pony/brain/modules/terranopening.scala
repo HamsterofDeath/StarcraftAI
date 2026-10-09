@@ -42,7 +42,7 @@ class TerranEconomicOpening(universe: Universe)
         !bases.isCovered(a) && fieldUseful(a) &&
           mapLayers.slightlyDangerousAsBlocked.free(a.nearbyFreeTile) &&
           unitGrid.enemy.allInRange[Mobile](a.nearbyFreeTile, 12).isEmpty &&
-          mapLayers.rawWalkableMap.areInSameWalkableArea(homeTile, a.nearbyFreeTile) &&
+          mapLayers.freeWalkableIgnoringMobiles.areInSameWalkableArea(homeTile, a.nearbyFreeTile) &&
           strategicMap.defenseLineOf(a.nearbyFreeTile).isDefined
       }
       .toVector.sortBy(a => (a.nearbyFreeTile.distanceSquaredTo(homeTile), a.uniqueId))
@@ -154,13 +154,20 @@ class TerranEconomicOpening(universe: Universe)
     private var chooseAttempts = 0
     private def safe(area: ResourceArea) = !bases.isCovered(area) && fieldUseful(area) &&
       mapLayers.slightlyDangerousAsBlocked.free(area.nearbyFreeTile) &&
-      unitGrid.enemy.allInRange[Mobile](area.nearbyFreeTile, 12).isEmpty &&
-      mapLayers.rawWalkableMap.areInSameWalkableArea(home, area.nearbyFreeTile)
+      unitGrid.enemy.allInRange[Mobile](area.nearbyFreeTile, 12).isEmpty
     private def chooseDestination(): Unit = {
       returningHome = false
+      // Prefer a field the current workers can still walk to, so the existing workforce keeps
+      // mining. Terrain-only walkability ignores our own wall, so use the buildings-aware view:
+      // after the wall stands, home workers cannot leave the base on foot at all. If nothing is
+      // walkable, any safe field still works, because the relocated depot trains local miners.
+      val walkable = mapLayers.freeWalkableIgnoringMobiles
+      def walkableFromHere(area: ResourceArea) =
+        walkable.areInSameWalkableArea(home, area.nearbyFreeTile)
       destination = strategicMap.resources.filter(safe)
         .filter(a => strategicMap.defenseLineOf(a.nearbyFreeTile).isDefined).toVector
-        .sortBy(a => (a.nearbyFreeTile.distanceSquaredTo(home), a.uniqueId))
+        .sortBy(a => (if (walkableFromHere(a)) 0 else 1,
+          a.nearbyFreeTile.distanceSquaredTo(home), a.uniqueId))
         .iterator.flatMap { area => new ConstructionSiteFinder(this.universe).forResourceArea(area).find.map(area -> _) }
         .take(1).toList.headOption
       if (destination.isEmpty && depot.isFloating) {

@@ -470,8 +470,17 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule[WrapsUni
       Micro.MiningOrganization.onTick()
       val missing = idealNumberOfWorkers - teamSize
       if (missing > 0) {
+        // Only hire workers that can actually walk to this field. A worker hired across a sealed
+        // choke (our own wall) strands itself in a FAIL loop and occupies a team slot forever, so
+        // the base would never ask for or receive local miners. Leaving the request unfulfilled
+        // instead makes ProvideNewUnits train the missing worker here.
+        val walkable = mapLayers.freeWalkableIgnoringMobiles
+        val fieldAnchor = base.resourceArea.map(_.nearbyFreeTile)
         val result = this.universe.unitManager
-                     .request(UnitJobRequest.idleOfType(emp, classOf[WorkerUnit], missing))
+                     .request(UnitJobRequest.idleOfType(emp, classOf[WorkerUnit], missing)
+                              .withOnlyAccepting { worker =>
+                                fieldAnchor.exists(tile => walkable.areInSameWalkableArea(worker.currentTile, tile))
+                              })
         if (this.universe.currentTick < 3000)
           NativeMatchEvidence.trace("mining-hire",
             s"missing=$missing team=$teamSize result=${result.getClass.getSimpleName} units=${result.units.size}")
