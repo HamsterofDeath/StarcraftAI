@@ -61,9 +61,12 @@ class NonConflictingTargets[T <: WrapsUnit: ClassTag, M <: Mobile: ClassTag](
             newSuggestion
           case None =>
             if (allowReplacements) {
+              // a locked target may have become invalid since (a Comsat whose position turned unknown made the
+              // repair acceptance throw in game 2 on 85e02a3)
               val bestToReplace =
                 locks
                   .iterator
+                  .filter(validTarget)
                   .filter(subAccept(m, _))
                   .maxByOpt(subRate(m, _))
 

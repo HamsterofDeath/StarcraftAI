@@ -19,6 +19,15 @@ class FerryManager(override val universe: Universe) extends HasUniverse {
   }
 
   private val ferryPlans = mutable.HashMap.empty[TransporterUnit, FerryPlan]
+  // units whose last ferry request found no ferry, and when
+  private val unserved = mutable.HashMap.empty[Int, Int]
+
+  /** Units whose ferry request in the last two seconds found no ferry free. */
+  def waitingForFerry: Int = {
+    val now = currentTick
+    unserved.filterInPlace((_, at) => now - at < 48)
+    unserved.size
+  }
 
   private val employer = new Employer[TransporterUnit](universe)
 
@@ -256,6 +265,7 @@ class FerryManager(override val universe: Universe) extends HasUniverse {
         }
       }.orElse(newPlan)
     }
+    if (job.isEmpty) unserved(forWhat.nativeUnitId) = currentTick else unserved.remove(forWhat.nativeUnitId)
     job
   }
 
