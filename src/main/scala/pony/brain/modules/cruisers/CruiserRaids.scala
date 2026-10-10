@@ -223,9 +223,13 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
   private var templarNear = false
 
   /** The hurt as the game reports them, the bot's cached health in brackets, and their orders. */
+  // where each cruiser waiting for repair is and what its order aims at: in a game on 8210eb8 three of them stood for
+  // twelve minutes at 1 to 24 hit points on AttackUnit and FireYamatoGun, away from the berth
   private def hurtDetail = cruisers.filter(c => repairing(c.nativeUnitId)).take(6).map { c =>
-    s"${c.nativeUnitId}:${c.nativeUnit.getHitPoints}[${(c.percentageHPOk * 100).round}]:${c.nativeUnit.getOrder}" +
-      s":${unitManager.jobOf(c).getClass.getSimpleName}"
+    val n      = c.nativeUnit
+    val aiming = Option(n.getOrderTarget).map(t => s"${t.getType.toString.replaceAll("^[A-Za-z]+_", "")}#${t.getID}")
+    s"${c.nativeUnitId}:${n.getHitPoints}[${(c.percentageHPOk * 100).round}]@${c.currentTile}:${n.getOrder}" +
+      s">${aiming.getOrElse("-")}:${unitManager.jobOf(c).getClass.getSimpleName}"
   }.mkString(",")
 
   /** What the crew is busy with: each order and its target's type, counted. */

@@ -40,10 +40,11 @@ private[pony] object CruiserTactics {
 
   /**
     * At least RaidSize fit cruisers and two thirds of the fleet: the hurt are mended before the fleet sets out. A big
-    * fleet attacks as one group, so it waits for four fifths.
+    * fleet attacks as one group, so it waits for four fifths, unless BigFleet are fit already: in a game on 8210eb8
+    * eleven fit of fourteen waited for three that were never mended.
     */
   def startsRaid(fit: Int, fleet: Int) =
-    fit >= RaidSize && (if (fleet >= BigFleet) fit * 5 >= fleet * 4 else fit * 3 >= fleet * 2)
+    fit >= RaidSize && (fit >= BigFleet || (if (fleet >= BigFleet) fit * 5 >= fleet * 4 else fit * 3 >= fleet * 2))
 
   /** From this many cruisers on the fleet attacks as one group. */
   val BigFleet = 9

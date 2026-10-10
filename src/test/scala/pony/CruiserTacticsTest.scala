@@ -33,6 +33,8 @@ class CruiserTacticsTest extends Specification with MustMatchers {
       (startsRaid(3, 3) must beTrue) and
       (startsRaid(3, 8) must beFalse) and
       (startsRaid(6, 8) must beTrue) and
+      (startsRaid(11, 14) must beTrue) and
+      (startsRaid(8, 14) must beFalse) and
       (endsRaid(Seq(1.0)) must beTrue) and
       (endsRaid(Seq(0.5, 0.55)) must beTrue) and
       (endsRaid(Seq(0.6, 0.7)) must beFalse)
