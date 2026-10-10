@@ -40,7 +40,8 @@ class TerranSealedCruisers(universe: Universe) extends DefaultTerranCampaign(uni
   override def suggestProducers = {
     val scale = spendScale
     IdealProducerCount(classOf[Barracks], 1)(true) ::
-      IdealProducerCount(classOf[Factory], 1)(true) ::
+      // one factory for tanks and the first Vultures; a mineral bank adds more for Vultures
+      IdealProducerCount(classOf[Factory], 1 + scale / 3)(true) ::
       IdealProducerCount(classOf[Starport], (bases.finishedBases.size max 1) + 1 + scale / 2 min 6)(true) :: Nil
   }
 
@@ -58,7 +59,9 @@ class TerranSealedCruisers(universe: Universe) extends DefaultTerranCampaign(uni
       IdealUnitRatio(classOf[Battlecruiser], 12 + scale * 2)(
         worldDominationPlan.cruisersInRepair == 0 || resources.unlockedResources.gas >= 450
       ) ::
-      IdealUnitRatio(classOf[Vulture], scale)(scale > 0 && fewer[Vulture](8)) ::
+      // gas buys cruisers and every base has one geyser: game 1 of the batch on 3f2d8e9 banked 11,000 minerals and
+      // 400 gas with eight Vultures, so the bank buys up to 24 Vultures for posts and mine runs
+      IdealUnitRatio(classOf[Vulture], scale)(scale > 0 && fewer[Vulture](8 + scale * 2)) ::
       // detectors for the fleet: cloaked units are hunted with the cruisers, not by guessing comsat sweeps
       IdealUnitRatio(classOf[ScienceVessel], 2)(
         fewer[ScienceVessel](2) && unitManager.existsAndDone(classOf[ScienceFacility])

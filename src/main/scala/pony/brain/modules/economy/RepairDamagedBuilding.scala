@@ -14,9 +14,11 @@ class RepairDamagedBuilding(universe: Universe) extends DefaultBehaviour[SCV](un
   private val helper = new NonConflictingTargets[TerranBuilding, SCV](
     universe = universe,
     rateTarget = m => PriorityChain(m.percentageHPOk),
-    // a building BWAPI cannot place (an addon of a lifted factory reports an unknown position) has no ground to reach
+    // a building BWAPI cannot place (an addon of a lifted factory or command center reports an unknown position,
+    // tile 1000,1002, which isInsideOfGame lets through) has no ground to reach
     validTargetTest = t =>
-      t.isInGame && t.tilePosition.isInsideOfGame && t.isDamaged && !t.isFloating &&
+      t.isInGame && t.tilePosition.isInsideOfGame && universe.mapLayers.rawWalkableMap.areaOf(t.centerTile).isDefined &&
+        t.isDamaged && !t.isFloating &&
         !universe.pluginByType[WallWithDepots].demolishing(t.nativeUnitId),
     subAccept = (m, t) => !t.isFloating && m.currentArea.contains(t.areaOnMap),
     subRate = (m, t) => PriorityChain(-m.currentTile.distanceSquaredTo(t.centerTile)),
