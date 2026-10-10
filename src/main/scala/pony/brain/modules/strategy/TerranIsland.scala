@@ -3,6 +3,13 @@ package brain
 package modules
 package strategy
 
+import pony.brain.modules.production.{IdealProducerCount, IdealUnitRatio}
+import pony.tech.Upgrades
+import pony.units.{
+  Barracks, Battlecruiser, Dropship, Factory, Ghost, Goliath, Marine, Medic, ScienceVessel, Starport, Tank, Vulture,
+  Wraith
+}
+
 /** Air control for island starts: starports scale with rich bases, Wraiths lead. */
 class TerranIsland(override val universe: Universe) extends LongTermStrategy with TerranDefaults {
 

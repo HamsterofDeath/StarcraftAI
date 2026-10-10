@@ -1,7 +1,16 @@
 package pony
 
+import pony.combat.{HasSinglePointMagicSpell, HasSingleTargetSpells, MobileRangeWeapon}
+import pony.geometry.{Area, MapTilePosition, Size}
+import pony.render.Renderer
+import pony.tech.Upgrade
+import pony.units.{
+  Addon, Building, Bunker, CanBuildAddons, CanDie, CommandCenter, Comsat, GroundUnit, MainBuilding, Marine, Mechanic,
+  MineralPatch, Mobile, Resource, SCV, TerranBuilding, TransporterUnit, UnitFactory, Upgrader, WorkerUnit, WrapsUnit
+}
+
 import bwapi.{Color, TechType}
-import pony.Upgrades.{SinglePointMagicSpell, SingleTargetMagicSpell}
+import pony.tech.Upgrades.{SinglePointMagicSpell, SingleTargetMagicSpell}
 
 import scala.util.Try
 

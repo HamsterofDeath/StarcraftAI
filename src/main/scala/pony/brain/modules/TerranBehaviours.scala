@@ -2,6 +2,20 @@ package pony
 package brain
 package modules
 
+import pony.brain.modules.bunkers.EnterDefensiveBunker
+import pony.brain.modules.campaign.{GoToInitialPosition, MigrateTowardsPosition, ScoutMap}
+import pony.brain.modules.cruisers.{CruiserRaids, EscortWithVessels, YamatoSnipe}
+import pony.brain.modules.economy.{DeliverResources, RepairDamagedBuilding, RepairDamagedUnit}
+import pony.brain.modules.ferry.TransportGroundUnits
+import pony.brain.modules.micro.{
+  BlindEnemies, CloakSelfGhost, CloakSelfWraith, Dance, DodgeStorms, EmpShockwave, FocusFire, HelpNearUnits,
+  IrradiateUnit, MoveAwayFromDangerousSpotOnAir, MoveAwayFromDangerousSpotOnGround, RangedMicro, SetupMineField,
+  ShieldUnit, SiegeUnsiegeSelf, StimSelf, StopMechanic, UseComsat
+}
+import pony.brain.modules.production.{ContinueInterruptedConstruction, MoveAwayFromConstructionSite, PreventBlockades}
+import pony.brain.modules.wall.HoldWallPosts
+import pony.units.WrapsUnit
+
 object TerranBehaviours {
   def allBehaviours(universe: Universe): Seq[DefaultBehaviour[WrapsUnit]] = {
     val allOfThem =

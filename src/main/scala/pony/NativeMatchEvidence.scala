@@ -1,5 +1,7 @@
 package pony
 
+import pony.terrain.MapPlan
+
 import java.io.{File, PrintWriter}
 import bwapi.Game
 import scala.jdk.CollectionConverters._
@@ -129,7 +131,7 @@ object NativeMatchEvidence {
       "{\"id\":" + p.getID + ",\"name\":" + quoted(p.getName) + ",\"race\":" + quoted(p.getRace.toString) +
         ",\"type\":" + quoted(p.getType.toString) + "}"
     }.mkString("[", ",", "]")
-    val config = pony.brain.modules.TerranCampaignConfig.load()
+    val config = pony.brain.modules.campaign.TerranCampaignConfig.load()
     // BWAPI exposes end-state flags after the game closes. Acceptance uses samples taken during play.
     val completeMap = vision.completeMapDuringPlay
     try output.println(

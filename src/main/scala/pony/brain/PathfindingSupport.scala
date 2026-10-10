@@ -1,6 +1,13 @@
 package pony
 package brain
 
+import pony.brain.jobs.JobOrSubJob
+import pony.geometry.MapTilePosition
+import pony.pathing.MigrationPath
+import pony.render.Renderer
+import pony.units.{AirUnit, GroundUnit, Mobile}
+import pony.util.BWFuture
+
 trait PathfindingSupport[T <: Mobile] extends JobOrSubJob[T] {
 
   private val needsPath = oncePer(Primes.prime23) {

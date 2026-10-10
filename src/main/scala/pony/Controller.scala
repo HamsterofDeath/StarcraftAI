@@ -1,5 +1,7 @@
 package pony
 
+import pony.terrain.MapPlan
+
 import bwapi.{BWClient, BWClientConfiguration, BWEventListener, Position, Unit => NUnit}
 
 /**

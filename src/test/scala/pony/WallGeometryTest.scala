@@ -2,7 +2,7 @@ package pony
 
 import org.specs2._
 import org.specs2.matcher.MustMatchers
-import pony.brain.modules.WallGeometry._
+import pony.brain.modules.wall.WallGeometry._
 
 class WallGeometryTest extends Specification with MustMatchers {
 

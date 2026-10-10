@@ -1,6 +1,9 @@
 package pony
 package brain
 
+import pony.brain.jobs.JobOrSubJob
+import pony.units.WrapsUnit
+
 abstract class SingleUnitBehaviour[+T <: WrapsUnit](val unit: T, meta: SingleUnitBehaviourMeta)
     extends JobOrSubJob[T] {
   def isNoopTask = false

@@ -3,6 +3,10 @@ package brain
 package modules
 package strategy
 
+import pony.brain.modules.production.{IdealProducerCount, IdealUnitRatio}
+import pony.tech.Upgrades
+import pony.units.{Barracks, Battlecruiser, Factory, ScienceVessel, Starport}
+
 /** Seal the land approach with Supply Depots and fly straight to battlecruisers. */
 class TerranSkyWall(universe: Universe) extends DefaultTerranCampaign(universe) {
   override def name = "Sky wall"

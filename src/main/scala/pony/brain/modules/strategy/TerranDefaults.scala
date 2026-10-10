@@ -3,6 +3,8 @@ package brain
 package modules
 package strategy
 
+import pony.units.{Academy, Comsat, ControlTower, Factory, MachineShop, Starport, TransporterUnit}
+
 /** Addons, anti-cloak timing and the classic richest-reachable-field expansion choice shared by Terran strategies. */
 trait TerranDefaults extends LongTermStrategy {
 

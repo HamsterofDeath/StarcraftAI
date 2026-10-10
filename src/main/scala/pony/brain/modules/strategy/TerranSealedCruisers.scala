@@ -3,6 +3,13 @@ package brain
 package modules
 package strategy
 
+import pony.brain.modules.production.{IdealProducerCount, IdealUnitRatio}
+import pony.tech.Upgrades
+import pony.units.{
+  Barracks, Battlecruiser, Dropship, Factory, MachineShop, Marine, PhysicsLab, ScienceFacility, ScienceVessel, Starport,
+  Tank, Vulture, WrapsUnit
+}
+
 /**
   * The main stays sealed behind its ramp wall for the whole game. Dropships carry SCVs to the outer fields and back,
   * a few Marines and two sieged tanks hold the ramp, and Battlecruisers raid the enemy, flying home to a repair crew

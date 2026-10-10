@@ -1,6 +1,9 @@
 package pony
 package brain
 
+import pony.terrain.ResourceArea
+import pony.units.MainBuilding
+
 import scala.collection.mutable.ArrayBuffer
 
 class Bases(world: DefaultWorld, override val universe: Universe) extends HasUniverse {

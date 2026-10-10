@@ -1,0 +1,52 @@
+package pony
+package brain
+package modules
+package wall
+
+import pony.geometry.MapTilePosition
+
+/** Where the wall's defenders stand, kept free of the game. Tiles are fractional; the caller snaps them to free ones. */
+private[pony] object WallPosts {
+  enum Role {
+    case Infantry, Vulture, Tank
+  }
+
+  /** Above the ranged micro and the siege decisions: the post decides unless the unit is hit or the enemy is inside. */
+  val PostPriority = SecondPriority(0.92)
+
+  val ReplanFrames = 24 * 120
+  val MineRunEvery = 24 * 120
+
+  /**
+    * Rows behind the wall, in tiles from its centre: infantry close enough to shoot over it, Vultures a step back,
+    * tanks out of reach of a Dragoon with its range upgrade (six tiles) standing at the wall's far side, yet within
+    * their twelve-tile siege range of the ground in front of it.
+    */
+  val InfantryDepth = 3.0
+  val VultureDepth  = 4.5
+  val TankDepth     = 8.5
+  val ApproachDepth = 4.0
+
+  final case class Layout(posts: Map[Role, Vector[(Double, Double)]], approach: Vector[(Double, Double)])
+
+  /** Posts behind the wall (towards `inside`) and mine spots in front of it, spread along the wall. */
+  def layout(wall: Seq[MapTilePosition], inside: MapTilePosition): Layout = {
+    val cx                                       = wall.map(_.x).sum.toDouble / wall.size
+    val cy                                       = wall.map(_.y).sum.toDouble / wall.size
+    val (dx0, dy0)                               = (inside.x - cx, inside.y - cy)
+    val length                                   = math.max(1e-6, math.hypot(dx0, dy0))
+    val (dx, dy)                                 = (dx0 / length, dy0 / length)
+    val (px, py)                                 = (-dy, dx)
+    def row(depth: Double, offsets: Seq[Double]) =
+      offsets.map(o => (cx + dx * depth + px * o, cy + dy * depth + py * o)).toVector
+    Layout(
+      Map(
+        Role.Infantry ->
+          (row(InfantryDepth, Seq(0, -1.5, 1.5, -3, 3)) ++ row(InfantryDepth + 1.5, Seq(-0.75, 0.75, -2.25, 2.25))),
+        Role.Vulture -> row(VultureDepth, Seq(-0.75, 0.75, -2.25, 2.25, -3.75, 3.75, 0, -1.5)),
+        Role.Tank    -> row(TankDepth, Seq(0, -2.5, 2.5, -5, 5))
+      ),
+      row(-ApproachDepth, Seq(0, -2.5, 2.5))
+    )
+  }
+}

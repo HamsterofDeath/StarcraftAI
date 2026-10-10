@@ -1,8 +1,10 @@
 package pony
 
+import pony.geometry.MapTilePosition
+
 import org.specs2._
 import org.specs2.matcher.MustMatchers
-import pony.brain.modules.FieldRepair._
+import pony.brain.modules.cruisers.FieldRepair._
 
 class FieldRepairTest extends Specification with MustMatchers {
 

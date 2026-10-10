@@ -1,6 +1,9 @@
 package pony
 package brain
 
+import pony.brain.jobs.UnitWithJob
+import pony.units.WrapsUnit
+
 trait BackgroundComputationResult[T <: WrapsUnit] {
 
   def jobs: Iterable[UnitWithJob[T]]

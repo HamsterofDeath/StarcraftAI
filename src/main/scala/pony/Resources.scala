@@ -1,6 +1,6 @@
 package pony
 
-import pony.brain.{ResourceRequestSum, Supplies}
+import pony.brain.budget.{ResourceRequestSum, Supplies}
 
 case class Resources(minerals: Int, gas: Int, supply: Supplies) {
   val asSum = ResourceRequestSum(minerals, gas, supply.available)

@@ -1,7 +1,9 @@
 package pony
 
-import pony.AttackPriorities.Highest
-import pony.brain.modules.ProvideExpansions
+import pony.units.WrapsUnit
+
+import pony.combat.AttackPriorities.Highest
+import pony.brain.modules.economy.ProvideExpansions
 import pony.brain.{HasUniverse, Universe}
 
 import scala.util.{Failure, Success, Try}

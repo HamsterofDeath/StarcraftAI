@@ -1,5 +1,8 @@
 package pony
 
+import pony.render.Renderer
+import pony.units.{OrderHistorySupport, WrapsUnit}
+
 import bwapi.Game
 
 import scala.compiletime.uninitialized

@@ -1,6 +1,8 @@
 package pony
 package brain
 
+import pony.units.WrapsUnit
+
 import java.util
 
 import bwapi.{Player, UnitType}

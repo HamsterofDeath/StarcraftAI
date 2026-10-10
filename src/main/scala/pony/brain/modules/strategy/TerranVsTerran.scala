@@ -3,6 +3,12 @@ package brain
 package modules
 package strategy
 
+import pony.brain.modules.production.{IdealProducerCount, IdealUnitRatio}
+import pony.tech.Upgrades
+import pony.units.{
+  Barracks, Dropship, Factory, Ghost, Goliath, Marine, Medic, ScienceVessel, Starport, Tank, Vulture, Wraith
+}
+
 class TerranVsTerran(override val universe: Universe) extends LongTermStrategy with TerranDefaults {
   override def name = "TvT"
 

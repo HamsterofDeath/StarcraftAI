@@ -2,7 +2,7 @@ package pony
 
 import org.specs2._
 import org.specs2.matcher.MustMatchers
-import pony.BlindChoice._
+import pony.combat.BlindChoice._
 
 class BlindChoiceTest extends Specification with MustMatchers {
 

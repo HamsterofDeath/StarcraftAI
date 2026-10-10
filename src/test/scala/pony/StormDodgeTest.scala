@@ -2,7 +2,7 @@ package pony
 
 import org.specs2._
 import org.specs2.matcher.MustMatchers
-import pony.brain.modules.StormDodge._
+import pony.brain.modules.micro.StormDodge._
 
 class StormDodgeTest extends Specification with MustMatchers {
 

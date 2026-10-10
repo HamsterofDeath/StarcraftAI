@@ -1,5 +1,31 @@
 package pony
 
+import pony.brain.budget.{
+  HasFunding, MineralsRequest, ResourceApproval, ResourceApprovalId, ResourceApprovalSuccess, ResourceManager,
+  ResourceRequestSum, ResourceRequests, SupplyRequest
+}
+import pony.brain.jobs.{ConstructionTravelProgress, Employer, UnitManager, UnitWithJob}
+import pony.brain.modules.bunkers.{
+  BunkerBoardingRetry, BunkerCoverage, BunkerGarrison, BunkerMarineQuota, BunkerRepairAdmission, BunkerRepairState,
+  BunkerWorkerRoutes, TerranBunkerDefense
+}
+import pony.brain.modules.campaign.{
+  CampaignDefenseControl, CarpetPosts, DefenseField, DefenseFighter, EnemyCampaignMemory, Group, ObservedEnemyBuilding,
+  RaidResponse, ScoutPointPairs, TerranCampaignConfig, TerranDefenseRoster
+}
+import pony.brain.modules.economy.{
+  LocalMineralMining, MineralFieldStaffing, MiningFieldStatus, TerranEconomicProgress, WorkerProductionQuota
+}
+import pony.brain.modules.micro.HuntSweep
+import pony.brain.modules.production.{AlternativeBuildingSpot, ProvideNewBuildings, UnitRequestHelper}
+import pony.brain.modules.wall.DepotRelocation
+import pony.brain.requests.{
+  BuildUnitRequest, FailedPreHiringResult, MissingRequirementResult, PreHiringResult, UnitJobRequest
+}
+import pony.geometry.{Area, Grid2D, MapPosition, MapTilePosition, Size}
+import pony.terrain.{BunkerSitePlacement, ResourceDepotPlacement}
+import pony.units.{AllUnits, Barracks, Building, Bunker, Marine, Mobile, UnitFactory, Units, WorkerUnit, WrapsUnit}
+
 import org.specs2.Specification
 import org.specs2.matcher.MustMatchers
 import java.lang.reflect.{InvocationHandler, Method, Proxy}
@@ -228,7 +254,7 @@ class TerranCampaignTest extends Specification with MustMatchers {
     ) === (false, false, false, false, true)
   }
   def moreFields = {
-    import pony.brain.modules.ExpansionChoice.wantedFields
+    import pony.brain.modules.economy.ExpansionChoice.wantedFields
     (
       wantedFields(2, 1, allSaturated = true, max = 5),
       wantedFields(2, 2, allSaturated = false, max = 5),
@@ -239,7 +265,7 @@ class TerranCampaignTest extends Specification with MustMatchers {
   }
 
   def expansionSites = {
-    import pony.brain.modules.ExpansionSite._
+    import pony.brain.modules.economy.ExpansionSite._
     // our start at the bottom, the enemy at the top; field 3 is closest to the main but on the enemy's half
     val far    = Candidate(1, 10, 100, defenseLine = false)
     val near   = Candidate(2, 80, 96, defenseLine = false)
@@ -250,7 +276,7 @@ class TerranCampaignTest extends Specification with MustMatchers {
   }
 
   def preferNewDepot = {
-    import pony.brain.modules.ExpansionChoice._
+    import pony.brain.modules.economy.ExpansionChoice._
     (
       decide(0, Nil, Seq(5), newUnderWay = false, affordable = true),
       decide(1, Seq(9), Seq(5), newUnderWay = false, affordable = true),

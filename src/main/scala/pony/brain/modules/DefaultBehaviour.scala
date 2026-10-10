@@ -2,6 +2,10 @@ package pony
 package brain
 package modules
 
+import pony.brain.jobs.Employer
+import pony.render.Renderer
+import pony.units.{AutoPilot, WrapsUnit}
+
 import scala.collection.mutable
 import scala.reflect.ClassTag
 

@@ -1,5 +1,11 @@
 package pony
 
+import pony.render.{
+  AiDebugRenderer, AutoCamera, BlockedBuildingSpotsRenderer, BuildableRenderer, ChokePointRenderer,
+  MineralDebugRenderer, PathDebugRenderer, UnitDebugRenderer, UnitIdRenderer, UnitJobRenderer,
+  UnitSecondLevelJobRenderer, WalkableRenderer
+}
+
 class ConcoctedAI(override val world: DefaultWorld) extends AIAPI with AIAPIEventDispatcher
 
 object ConcoctedAI {

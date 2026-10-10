@@ -1,3 +1,0 @@
-package pony
-
-trait Floating

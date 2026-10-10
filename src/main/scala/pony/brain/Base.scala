@@ -1,6 +1,10 @@
 package pony
 package brain
 
+import pony.terrain.ResourceArea
+import pony.units.MainBuilding
+import pony.util.BWFuture
+
 case class Base(mainBuilding: MainBuilding) {
 
   def world = mainBuilding.world

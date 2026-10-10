@@ -3,6 +3,12 @@ package brain
 package modules
 package strategy
 
+import pony.brain.budget.ResourceRequests
+import pony.brain.modules.campaign.TerranCampaignConfig
+import pony.brain.modules.production.{IdealProducerCount, IdealUnitRatio}
+import pony.tech.Upgrades
+import pony.units.{Barracks, Bunker, Factory, Goliath, MachineShop, MainBuilding, Marine, Medic, Tank, Vulture}
+
 /** The default Terran campaign: bunkered mineral fields, a spare home Command Center, then a massed army attack. */
 class DefaultTerranCampaign(override val universe: Universe) extends LongTermStrategy with TerranDefaults {
   private val config = TerranCampaignConfig.load()

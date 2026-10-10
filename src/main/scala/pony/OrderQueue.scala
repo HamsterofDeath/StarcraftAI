@@ -1,5 +1,7 @@
 package pony
 
+import pony.units.WrapsUnit
+
 import bwapi.Game
 
 import scala.collection.mutable.ArrayBuffer

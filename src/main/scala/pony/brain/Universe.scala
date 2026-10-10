@@ -1,8 +1,14 @@
 package pony
 package brain
 
+import pony.brain.budget.ResourceManager
+import pony.brain.jobs.UnitManager
+import pony.terrain.{MapLayers, StrategicMap}
+import pony.units.{AllUnits, UnitGrid, Units, WrapsUnit}
+
 import pony.brain.modules.strategy.StrategySelector
-import pony.brain.modules.{FerryManager, WorldDominationPlan}
+import pony.brain.modules.ferry.FerryManager
+import pony.brain.modules.campaign.WorldDominationPlan
 
 import scala.collection.mutable.ArrayBuffer
 import scala.compiletime.uninitialized

@@ -3,6 +3,10 @@ package brain
 package modules
 package strategy
 
+import pony.brain.modules.production.IdealUnitRatio
+import pony.tech.Upgrades
+import pony.units.{Battlecruiser, Mobile, ScienceVessel}
+
 /** Air control with Battlecruisers and Science Vessels once the bases are rich. */
 class TerranIslandRich(universe: Universe) extends TerranIsland(universe) with TerranDefaults {
 

@@ -1,6 +1,10 @@
 package pony
 package brain
 
+import pony.brain.jobs.UnitWithJob
+import pony.brain.requests.CanAcceptUnitSwitch
+import pony.units.WrapsUnit
+
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.reflect.ClassTag

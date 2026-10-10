@@ -2,6 +2,8 @@ package pony
 package brain
 package modules
 
+import pony.units.Mobile
+
 import scala.reflect.ClassTag
 
 class ReallyReallyLazy(universe: Universe) extends DefaultBehaviour[Mobile](universe) {

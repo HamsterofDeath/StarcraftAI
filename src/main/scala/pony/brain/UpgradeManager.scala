@@ -1,6 +1,9 @@
 package pony
 package brain
 
+import pony.tech.{Upgrade, Upgrades}
+import pony.units.WrapsUnit
+
 import bwapi.{TechType, UpgradeType}
 
 import scala.collection.mutable

@@ -1,6 +1,8 @@
 package pony
 package brain
 
+import pony.util.{LazyVal, SynchronizedLazyVal}
+
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 

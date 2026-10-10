@@ -1,10 +1,13 @@
 package pony
 
+import pony.geometry.{Grid2D, MapTilePosition}
+import pony.units.{GroundUnit, TransporterUnit}
+
 import java.lang.reflect.{InvocationHandler, Method, Proxy}
 
 import org.specs2.Specification
 import org.specs2.matcher.MustMatchers
-import pony.brain.modules.FerryPlan
+import pony.brain.modules.ferry.FerryPlan
 
 class FerryPlanTest extends Specification with MustMatchers {
   def is =

@@ -1,8 +1,10 @@
 package pony
 
+import pony.geometry.MapTilePosition
+
 import org.specs2._
 import org.specs2.matcher.MustMatchers
-import pony.brain.modules.WallPosts._
+import pony.brain.modules.wall.WallPosts._
 
 class WallPostsTest extends Specification with MustMatchers {
 

@@ -1,8 +1,10 @@
 package pony
 
+import pony.geometry.MapTilePosition
+
 import org.specs2._
 import org.specs2.matcher.MustMatchers
-import pony.brain.modules.CruiserTactics._
+import pony.brain.modules.cruisers.CruiserTactics._
 
 class CruiserTacticsTest extends Specification with MustMatchers {
 

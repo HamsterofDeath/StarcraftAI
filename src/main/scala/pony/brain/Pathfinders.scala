@@ -1,6 +1,9 @@
 package pony
 package brain
 
+import pony.pathing.PathFinder
+import pony.units.{AirUnit, GroundUnit, Mobile}
+
 trait Pathfinders {
   def ground: PathFinder
   def groundSafe: PathFinder

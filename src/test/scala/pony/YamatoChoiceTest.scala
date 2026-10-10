@@ -2,7 +2,7 @@ package pony
 
 import org.specs2._
 import org.specs2.matcher.MustMatchers
-import pony.brain.modules.YamatoChoice._
+import pony.brain.modules.cruisers.YamatoChoice._
 
 class YamatoChoiceTest extends Specification with MustMatchers {
 

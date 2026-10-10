@@ -3,6 +3,11 @@ package brain
 package modules
 package strategy
 
+import pony.brain.modules.production.{IdealProducerCount, IdealUnitRatio}
+import pony.brain.modules.wall.WallWithDepots
+import pony.tech.Upgrades
+import pony.units.{Barracks, Factory, Goliath, Marine, Tank, Vulture}
+
 /** Depot wall, tanks behind it, then flying factories and a mine-backed tank carpet. */
 class TerranCarpet(universe: Universe) extends DefaultTerranCampaign(universe) {
   override def name = "Carpet"

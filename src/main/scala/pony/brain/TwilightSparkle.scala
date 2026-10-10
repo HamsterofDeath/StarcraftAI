@@ -1,6 +1,26 @@
 package pony
 package brain
 
+import pony.brain.budget.ResourceManager
+import pony.brain.jobs.{JobReAssignments, UnitManager}
+import pony.brain.modules.bunkers.{BunkerStimCycle, TerranBunkerDefense}
+import pony.brain.modules.campaign.{
+  CarpetSpread, EnemyArmyEstimate, HandleDefenses, RunTerranCampaign, WorldDominationPlan
+}
+import pony.brain.modules.economy.{ManageMiningAtBases, ManageMiningAtGeysirs, ProvideExpansions, ProvideSpareSCVs}
+import pony.brain.modules.ferry.FerryManager
+import pony.brain.modules.micro.TankBoxes
+import pony.brain.modules.production.{
+  EnqueueArmy, EnqueueFactories, FlyFactoriesToNatural, ProvideNewBuildings, ProvideNewSupply, ProvideNewUnits,
+  ProvideSuggestedAndRequestedAddons, ProvideUpgrades, SetupAntiCloakDefenses
+}
+import pony.brain.modules.wall.WallWithDepots
+import pony.pathing.PathFinder
+import pony.render.Renderer
+import pony.terrain.MapLayers
+import pony.units.{StaticallyPositioned, UnitGrid, Units, WrapsUnit}
+import pony.util.LazyVal
+
 import pony.brain.modules.strategy.StrategySelector
 import pony.brain.modules._
 

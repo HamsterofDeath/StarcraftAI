@@ -3,6 +3,10 @@ package brain
 package modules
 package strategy
 
+import pony.brain.modules.production.{IdealProducerCount, IdealUnitRatio}
+import pony.tech.Upgrades
+import pony.units.{Barracks, Firebat, Marine, Medic}
+
 /** Maximum-offense infantry: barracks only, every infantry upgrade, no bunkers at home. */
 class TerranInfantryPush(universe: Universe) extends DefaultTerranCampaign(universe) {
   override def name = "Infantry push"

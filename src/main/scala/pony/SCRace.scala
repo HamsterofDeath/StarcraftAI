@@ -1,5 +1,11 @@
 package pony
 
+import pony.tech.{TechTree, TerranTechTree}
+import pony.units.{
+  CommandCenter, DetectorBuilding, Drone, Dropship, Hive, MainBuilding, MissileTurret, Nexus, Overlord, PhotonCannon,
+  Probe, Pylon, ResourceGatherPoint, SCV, Shuttle, SporeColony, SupplyDepot, SupplyProvider, TransporterUnit, WorkerUnit
+}
+
 import bwapi.Race
 
 sealed trait SCRace {

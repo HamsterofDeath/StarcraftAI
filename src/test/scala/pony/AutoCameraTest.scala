@@ -1,5 +1,8 @@
 package pony
 
+import pony.geometry.MapTilePosition
+import pony.render.{AutoCameraDirector, CameraFocus, CameraPan}
+
 import org.specs2._
 import org.specs2.matcher.MustMatchers
 

@@ -1,6 +1,10 @@
 package pony
 package brain
 
+import pony.brain.jobs.Employer
+import pony.render.Renderer
+import pony.units.WrapsUnit
+
 import scala.reflect.ClassTag
 
 abstract class AIModule[T <: WrapsUnit: ClassTag](override val universe: Universe)

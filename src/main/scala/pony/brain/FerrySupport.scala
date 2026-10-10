@@ -1,6 +1,10 @@
 package pony
 package brain
 
+import pony.brain.jobs.JobOrSubJob
+import pony.geometry.MapTilePosition
+import pony.units.GroundUnit
+
 trait FerrySupport[T <: GroundUnit] extends JobOrSubJob[T] {
 
   override def higherPriorityOrder: Seq[UnitOrder] = {

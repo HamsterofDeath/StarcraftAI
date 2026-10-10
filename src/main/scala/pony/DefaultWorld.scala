@@ -1,7 +1,11 @@
 package pony
 
+import pony.terrain.{AnalyzedMap, ResourceAnalyzer, StrategicMap}
+import pony.units.AllUnits
+
 import bwapi.Game
-import pony.brain.{Supplies, Universe}
+import pony.brain.budget.Supplies
+import pony.brain.Universe
 
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer

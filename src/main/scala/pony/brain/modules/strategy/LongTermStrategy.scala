@@ -3,6 +3,10 @@ package brain
 package modules
 package strategy
 
+import pony.brain.modules.production.{IdealProducerCount, IdealUnitRatio}
+import pony.terrain.ResourceArea
+import pony.units.{Building, Mobile, UnitFactory}
+
 import scala.reflect.ClassTag
 
 /**

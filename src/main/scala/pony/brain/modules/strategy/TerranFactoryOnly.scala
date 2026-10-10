@@ -3,6 +3,10 @@ package brain
 package modules
 package strategy
 
+import pony.brain.modules.production.{IdealProducerCount, IdealUnitRatio}
+import pony.tech.Upgrades
+import pony.units.{Factory, Goliath, Tank, Vulture}
+
 /** No infantry at all: everything comes from the factory, with vehicle upgrades. */
 class TerranFactoryOnly(universe: Universe) extends DefaultTerranCampaign(universe) {
   override def name = "Factory only"

@@ -1,5 +1,7 @@
 package pony
 
+import pony.render.Renderer
+
 import bwapi.{Color, Game}
 
 class Debugger(game: Game, world: DefaultWorld) {

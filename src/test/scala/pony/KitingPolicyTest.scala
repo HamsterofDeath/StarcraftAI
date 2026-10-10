@@ -2,7 +2,7 @@ package pony
 
 import org.specs2._
 import org.specs2.matcher.MustMatchers
-import pony.brain.modules.KitingPolicy._
+import pony.brain.modules.micro.KitingPolicy._
 
 class KitingPolicyTest extends Specification with MustMatchers {
 

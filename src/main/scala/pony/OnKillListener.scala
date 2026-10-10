@@ -1,5 +1,7 @@
 package pony
 
+import pony.units.WrapsUnit
+
 object OnKillListener {
   def on[T <: WrapsUnit, X](unit: T, doThis: () => X) = new OnKillListener[T](unit) {
     override def onKill(t: T): Unit = {

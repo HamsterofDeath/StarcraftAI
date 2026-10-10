@@ -2,7 +2,7 @@ package pony
 
 import org.specs2._
 import org.specs2.matcher.MustMatchers
-import pony.brain.modules.BunkerStim._
+import pony.brain.modules.bunkers.BunkerStim._
 
 class BunkerStimTest extends Specification with MustMatchers {
 

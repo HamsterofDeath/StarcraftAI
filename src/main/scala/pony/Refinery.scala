@@ -1,5 +1,0 @@
-package pony
-
-import bwapi.{Unit => APIUnit, _}
-
-class Refinery(unit: APIUnit) extends AnyUnit(unit) with GasProvider with TerranBuilding

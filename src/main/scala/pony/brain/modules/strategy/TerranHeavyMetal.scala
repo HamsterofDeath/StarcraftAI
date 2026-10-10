@@ -3,6 +3,10 @@ package brain
 package modules
 package strategy
 
+import pony.brain.modules.production.{IdealProducerCount, IdealUnitRatio}
+import pony.tech.Upgrades
+import pony.units.{Barracks, Battlecruiser, Factory, Goliath, MachineShop, Marine, Starport, Tank, Vulture}
+
 /**
   * Heavy metal: a mech army of Siege Tanks and Goliaths with armory upgrades, behind the default campaign's bunkered
   * fields, joined by Battlecruisers once two bases stand. A few Marines crew the bunkers and a few Vultures lay mines.

@@ -2,6 +2,10 @@ package pony
 package brain
 package modules
 
+import pony.brain.jobs.BusyDoingSomething
+import pony.render.Renderer
+import pony.units.WrapsUnit
+
 import scala.collection.mutable
 
 class DefaultBehaviours(universe: Universe) extends OrderlessAIModule[WrapsUnit](universe) {

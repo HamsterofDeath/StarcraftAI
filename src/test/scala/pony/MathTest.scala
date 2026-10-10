@@ -1,5 +1,7 @@
 package pony
 
+import pony.geometry.{GeometryHelpers, MapTilePosition}
+
 import org.specs2._
 import org.specs2.matcher.MustMatchers
 

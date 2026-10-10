@@ -1,8 +1,10 @@
 package pony
 
+import pony.geometry.MapTilePosition
+
 import org.specs2._
 import org.specs2.matcher.MustMatchers
-import pony.brain.modules.ScanChoice._
+import pony.brain.modules.micro.ScanChoice._
 
 class ScanChoiceTest extends Specification with MustMatchers {
 

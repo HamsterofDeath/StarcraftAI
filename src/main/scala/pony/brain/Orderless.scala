@@ -1,6 +1,8 @@
 package pony
 package brain
 
+import pony.units.WrapsUnit
+
 trait Orderless[T <: WrapsUnit] extends AIModule[T] {
   override def ordersForTick: Iterable[UnitOrder] = {
     onTick_!()

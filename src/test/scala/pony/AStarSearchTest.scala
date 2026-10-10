@@ -1,5 +1,8 @@
 package pony
 
+import pony.geometry.{Grid2D, MapTilePosition}
+import pony.pathing.PathFinder
+
 import org.specs2._
 import org.specs2.matcher.MustMatchers
 import pony.astar.{AStarSearch, GridNode2DInt, Heuristics}

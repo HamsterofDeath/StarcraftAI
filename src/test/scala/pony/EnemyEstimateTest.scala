@@ -2,7 +2,7 @@ package pony
 
 import org.specs2._
 import org.specs2.matcher.MustMatchers
-import pony.brain.modules.EnemyEstimate._
+import pony.brain.modules.campaign.EnemyEstimate._
 
 class EnemyEstimateTest extends Specification with MustMatchers {
 

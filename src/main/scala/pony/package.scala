@@ -1,3 +1,6 @@
+import pony.units.{TypeMapping, WrapsUnit}
+import pony.util.{FutureIterator, LazyVal, MultiMap}
+
 import java.math.RoundingMode
 import java.text.DecimalFormat
 
