@@ -8,7 +8,7 @@ import scala.jdk.CollectionConverters._
 /**
   * Science Vessels drop EMP Shockwave where it drains the most: shields and energy of the enemy inside the blast,
   * energy weighted higher (a caster's spells cost more than shields), less what it drains of our own units, since
-  * EMP spares nobody. Weights from -Dtwailight.empWeights=shields,energy (1,3 by default).
+  * EMP spares nobody. Weights from -Dtwailight.empWeights=shields,energy (1,0 by default).
   */
 class EmpShockwave(universe: Universe) extends DefaultBehaviour[ScienceVessel](universe) {
   import EmpChoice._

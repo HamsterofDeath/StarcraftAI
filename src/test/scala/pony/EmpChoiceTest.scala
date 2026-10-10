@@ -8,7 +8,8 @@ class EmpChoiceTest extends Specification with MustMatchers {
 
   def is =
     s2"""
-       |Energy counts three times as much as shields by default $energyWeighs
+       |By default shields count and energy does not: the Archon's shields come first $shieldsFirst
+       |Energy weighted three times draws the blast onto the Templar $energyWeighs
        |A blast that would drain our own casters loses their worth $ownLoss
        |A blast below the minimum is not worth the energy $tooLittle
        |Weights read as shields,energy $parse
@@ -19,9 +20,13 @@ class EmpChoiceTest extends Specification with MustMatchers {
   private val templar = Blip(400, 100, 40, 150, enemy = true)
   private val vessel  = Blip(420, 100, 0, 200, enemy = false)
 
-  def energyWeighs = best(Seq(archon, templar), Seq(archon, templar), 64, DefaultWeights).map(_._1) === Some(templar)
+  private val energyThrice = (1.0, 3.0)
 
-  def ownLoss = best(Seq(archon, templar), Seq(archon, templar, vessel), 64, DefaultWeights).map(_._1) === Some(archon)
+  def shieldsFirst = best(Seq(archon, templar), Seq(archon, templar), 64, DefaultWeights).map(_._1) === Some(archon)
+
+  def energyWeighs = best(Seq(archon, templar), Seq(archon, templar), 64, energyThrice).map(_._1) === Some(templar)
+
+  def ownLoss = best(Seq(archon, templar), Seq(archon, templar, vessel), 64, energyThrice).map(_._1) === Some(archon)
 
   def tooLittle = best(Seq(templar), Seq(templar.copy(shields = 0, energy = 20)), 64, DefaultWeights) must beNone
 

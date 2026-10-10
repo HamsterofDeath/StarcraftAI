@@ -8,8 +8,11 @@ private[pony] object EmpChoice {
   /** A unit as the blast sees it: where it stands, its shields and energy, and whose it is. */
   final case class Blip(x: Double, y: Double, shields: Double, energy: Double, enemy: Boolean)
 
-  /** Shields count once, energy three times: what casters lose weighs more than what shields regrow. */
-  val DefaultWeights = (1.0, 3.0)
+  /**
+    * Shields only. Energy counted three times (or alone) drew the blasts onto spread-out High Templar instead of the
+    * Archons' 350 shields: 2 and 0 wins in 10 mixed-start games against 6 for shields only.
+    */
+  val DefaultWeights = (1.0, 0.0)
 
   /** Below this a blast is not worth its hundred energy. */
   val MinScore = 150.0
