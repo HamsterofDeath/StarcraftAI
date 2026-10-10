@@ -49,7 +49,7 @@ object KitingPolicy {
   }
 
   object FocusMode {
-    def parse(name: String): FocusMode = values.find(_.toString.equalsIgnoreCase(name)).getOrElse(Weakest)
+    def parse(name: String): FocusMode = values.find(_.toString.equalsIgnoreCase(name)).getOrElse(Threat)
   }
 
   /** `range` is the centre distance at which the shooter's shot lands; `firing` means its attack is under way. */

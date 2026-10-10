@@ -28,7 +28,7 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
 
   private val shootByStopping = sys.props.get("twailight.kiteShot").contains("stop")
   private val traceDecisions  = sys.props.get("twailight.traceKite").contains("true")
-  private val focusMode       = sys.props.get("twailight.focusFire").map(FocusMode.parse).getOrElse(FocusMode.Weakest)
+  private val focusMode       = sys.props.get("twailight.focusFire").map(FocusMode.parse).getOrElse(FocusMode.Threat)
   private val leadFrames      = sys.props.get("twailight.kiteLead").flatMap(_.toIntOption).filter(_ >= 0).getOrElse(4)
   private val speedRatio      =
     sys.props.get("twailight.kiteSpeedRatio").flatMap(_.toDoubleOption).filter(_ > 0).getOrElse(1.25)

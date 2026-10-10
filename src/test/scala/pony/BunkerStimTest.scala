@@ -21,14 +21,12 @@ class BunkerStimTest extends Specification with MustMatchers {
 
   def allAtOnce = toUnload(Seq(fresh, fresh2, stimmed), fighting = false, someoneOutside = false) === Seq(1, 2)
 
-  def oneAtATime =
-    (toUnload(Seq(fresh, fresh2), fighting = true, someoneOutside = false) === Seq(1)) and
-      (toUnload(Seq(fresh, fresh2), fighting = true, someoneOutside = true) === Nil)
+  def oneAtATime = (toUnload(Seq(fresh, fresh2), fighting = true, someoneOutside = false) === Seq(1)) and
+    (toUnload(Seq(fresh, fresh2), fighting = true, someoneOutside = true) === Nil)
 
   def staysIn = toUnload(Seq(stimmed, hurt), fighting = false, someoneOutside = false) === Nil
 
-  def onTheWay =
-    (stimsOnTheWay(threatened = true, stimTimer = 0, hitPoints = 40) must beTrue) and
-      (stimsOnTheWay(threatened = false, stimTimer = 0, hitPoints = 40) must beFalse) and
-      (stimsOnTheWay(threatened = true, stimTimer = 15, hitPoints = 40) must beFalse)
+  def onTheWay = (stimsOnTheWay(threatened = true, stimTimer = 0, hitPoints = 40) must beTrue) and
+    (stimsOnTheWay(threatened = false, stimTimer = 0, hitPoints = 40) must beFalse) and
+    (stimsOnTheWay(threatened = true, stimTimer = 15, hitPoints = 40) must beFalse)
 }

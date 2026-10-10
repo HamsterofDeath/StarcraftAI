@@ -13,7 +13,7 @@ import scala.jdk.CollectionConverters._
 class BunkerStimCycle(universe: Universe) extends OrderlessAIModule[Bunker](universe) {
   import BunkerStim._
 
-  private val lastUnload = mutable.HashMap.empty[Int, Int]
+  private val lastUnload    = mutable.HashMap.empty[Int, Int]
   private var threatenedIds = Set.empty[Int]
 
   /** Whether enemies close in on this bunker while stim is researched. */
