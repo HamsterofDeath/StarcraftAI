@@ -131,6 +131,9 @@ object Controller {
           if (sys.props.get("twailight.traceMap").contains("true"))
             NativeMatchEvidence.traceStartArea(clientRef.getGame)
           clientRef.getGame.enableFlag(bwapi.Flag.UserInput)
+          // calibration only: the bot sees everything, and the game reports the enemy's real income and spending
+          if (sys.props.get("twailight.completeMap").contains("true"))
+            clientRef.getGame.enableFlag(bwapi.Flag.CompleteMapInformation)
           val w = DefaultWorld.spawn(clientRef.getGame)
           world = Some(w)
           ai = Some(aiGenerator(w))

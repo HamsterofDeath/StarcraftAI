@@ -56,9 +56,13 @@ class EnemyArmyEstimate(universe: Universe) extends OrderlessAIModule[WrapsUnit]
     if (now / ReportFrames != lastReport) {
       lastReport = now / ReportFrames
       val e = estimate(now)
-      // what the game reports about the enemy, for checking the bound only: zeros while the enemy is inaccessible
+      // what the game reports about the enemy, for checking the bound only: zeros while the enemy is inaccessible,
+      // the real figures with -Dtwailight.completeMap=true (gathered/spent/supply/unit score/army value now)
       val truth = nativeGame.enemies().asScala.map { p =>
-        s"${p.gatheredMinerals + p.gatheredGas}/${p.spentMinerals + p.spentGas}/${p.supplyUsed}/${p.getUnitScore}"
+        val army = p.getUnits.asScala.iterator.map(_.getType)
+          .filter(t => !t.isBuilding && !t.isWorker && t.canAttack).map(value).sum
+        s"${p.gatheredMinerals + p.gatheredGas}/${p.spentMinerals + p.spentGas}/${p.supplyUsed}/${p.getUnitScore}/" +
+          army.round
       }.mkString(",")
       NativeMatchEvidence.trace(
         "enemy-estimate",
