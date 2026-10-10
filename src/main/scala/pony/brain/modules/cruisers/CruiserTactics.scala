@@ -87,18 +87,19 @@ private[pony] object CruiserTactics {
   def crewSize(cruisers: Int) = if (cruisers == 0) 0 else (2 + cruisers / 2) min 10
 
   /**
-    * The nearest known enemy base that is no start location (an expansion is defended least), else the nearest
-    * unvisited site where the enemy likely expanded, else the nearest base, else the nearest enemy building, else the
-    * nearest enemy start not yet found empty.
+    * A known enemy base that is no start location (an expansion is defended least), else an unvisited site where the
+    * enemy likely expanded, else a base, else an enemy building, else an enemy start not yet found empty. Within each,
+    * the one with the least enemy army seen near it lately (strike where their army is not), then the nearest.
     */
   def choose(
       enemyBases: Seq[MapTilePosition],
       likelyExpansions: Seq[MapTilePosition],
       enemyBuildings: Seq[MapTilePosition],
       enemyStarts: Seq[MapTilePosition],
-      home: MapTilePosition
+      home: MapTilePosition,
+      armyNear: MapTilePosition => Double = _ => 0.0
   ): Option[MapTilePosition] = {
-    def nearest(tiles: Seq[MapTilePosition]) = tiles.minByOpt(_.distanceSquaredTo(home))
+    def nearest(tiles: Seq[MapTilePosition]) = tiles.minByOpt(t => (armyNear(t), t.distanceSquaredTo(home)))
     val expansions                           = enemyBases.filterNot(b => enemyStarts.exists(_.distanceToIsLess(b, 8)))
     nearest(expansions).orElse(nearest(likelyExpansions)).orElse(nearest(enemyBases))
       .orElse(nearest(enemyBuildings)).orElse(nearest(enemyStarts))

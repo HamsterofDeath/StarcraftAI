@@ -18,6 +18,7 @@ class CruiserTacticsTest extends Specification with MustMatchers {
        |A raid is gathered once every cruiser is near the centre $gathering
        |Only a cruiser ahead of the group waits for it $stragglers
        |Known expansions come first, then likely expansion sites, the main, a lone building, a start $targets
+       |Among expansions the one without enemy army seen near it comes first, even when farther $whereTheArmyIsNot
        """.stripMargin
 
   def repairHysteresis = (needsRepair(0.39, repairing = false) must beTrue) and
@@ -72,5 +73,15 @@ class CruiserTacticsTest extends Specification with MustMatchers {
       choose(Nil, Nil, Seq(pylon), Seq(enemyMain), home),
       choose(Nil, Nil, Nil, Seq(enemyMain), home)
     ) === (Some(natural), Some(site), Some(enemyMain), Some(pylon), Some(enemyMain))
+  }
+
+  def whereTheArmyIsNot = {
+    val home   = MapTilePosition(30, 7)
+    val near   = MapTilePosition(40, 60)
+    val far    = MapTilePosition(80, 100)
+    val start  = MapTilePosition(64, 118)
+    val guards = (t: MapTilePosition) => if (t == near) 1200.0 else 0.0
+    (choose(Seq(near, far), Nil, Seq(near, far), Seq(start), home) === Some(near)) and
+      (choose(Seq(near, far), Nil, Seq(near, far), Seq(start), home, guards) === Some(far))
   }
 }

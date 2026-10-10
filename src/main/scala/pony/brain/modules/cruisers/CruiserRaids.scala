@@ -231,8 +231,10 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
         allStarts.exists(s => c.distanceSquaredTo(s) < c.distanceSquaredTo(ours)) &&
         !allStarts.exists(_.distanceToIsLess(c, 8))
       }.filterNot(swept)
-      def pick = choose(known.filter(_.base).map(_.tile), likely, known.map(_.tile), starts, home)
-        .orElse(fields.filterNot(swept).minByOpt(_.distanceSquaredTo(home)))
+      val estimate = universe.pluginByType[EnemyArmyEstimate]
+      def pick     =
+        choose(known.filter(_.base).map(_.tile), likely, known.map(_.tile), starts, home, estimate.armyNear)
+          .orElse(fields.filterNot(swept).minByOpt(_.distanceSquaredTo(home)))
       // all swept and still no enemy found: sweep again, the enemy may have built somewhere since
       target = pick.orElse {
         if (swept.isEmpty) None

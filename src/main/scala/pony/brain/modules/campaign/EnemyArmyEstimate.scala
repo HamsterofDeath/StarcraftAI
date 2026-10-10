@@ -86,6 +86,9 @@ class EnemyArmyEstimate(universe: Universe) extends OrderlessAIModule[WrapsUnit]
       now - at < RecentFrames && awayFrom.forall(_.distanceToIsMore(tile, FarTiles))
     }.map(_._3).sum
 
+  /** Army value seen within the last half minute no farther than `FarTiles` from `tile`. */
+  def armyNear(tile: MapTilePosition): Double = seenArmy() - seenArmy(awayFrom = Some(tile))
+
   /** The most enemy army that can stand at `tile` now: the bound less what was just seen elsewhere. */
   def maxArmyAt(tile: MapTilePosition): Double = math.max(0.0, estimate().upper - seenArmy(awayFrom = Some(tile)))
 }
