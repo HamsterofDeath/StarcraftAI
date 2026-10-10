@@ -14,13 +14,12 @@ class WallPostsTest extends Specification with MustMatchers {
        """.stripMargin
 
   /** A wall along y = 10 from x = 40 to 46; the main lies south of it. */
-  private val wall   = (40 to 46).map(x => MapTilePosition(x, 10))
+  private val wall    = (40 to 46).map(x => MapTilePosition(x, 10))
   private val planned = layout(wall, MapTilePosition(43, 30))
 
-  def depths =
-    (planned.posts(Role.Infantry).head._2 must beCloseTo(13.0, 0.01)) and
-      (planned.posts(Role.Tank).head._2 must beCloseTo(18.5, 0.01)) and
-      (planned.approach.head._2 must beCloseTo(6.0, 0.01))
+  def depths = (planned.posts(Role.Infantry).head._2 must beCloseTo(13.0, 0.01)) and
+    (planned.posts(Role.Tank).head._2 must beCloseTo(18.5, 0.01)) and
+    (planned.approach.head._2 must beCloseTo(6.0, 0.01))
 
   // a Dragoon with its range upgrade reaches six tiles from the wall's far side (y = 9); a sieged tank twelve
   def tankRange = {

@@ -16,13 +16,13 @@ import scala.collection.mutable
 class HoldWallPosts(universe: Universe) extends DefaultBehaviour[Mobile](universe) {
   import WallPosts._
 
-  private val assigned = mutable.HashMap.empty[Int, MapTilePosition]
-  private var posts    = Map.empty[Role, Vector[MapTilePosition]]
-  private var approach = Vector.empty[MapTilePosition]
-  private var homeTile = Option.empty[MapTilePosition]
-  private var plannedAt = -1
+  private val assigned    = mutable.HashMap.empty[Int, MapTilePosition]
+  private var posts       = Map.empty[Role, Vector[MapTilePosition]]
+  private var approach    = Vector.empty[MapTilePosition]
+  private var homeTile    = Option.empty[MapTilePosition]
+  private var plannedAt   = -1
   private var enemyInside = false
-  private val miners = new Employer[Vulture](universe)
+  private val miners      = new Employer[Vulture](universe)
   private var lastMineRun = -MineRunEvery
 
   override def priority = PostPriority
@@ -54,11 +54,11 @@ class HoldWallPosts(universe: Universe) extends DefaultBehaviour[Mobile](univers
     val wall = universe.pluginByType[WallWithDepots].footprintTiles
     if (wall.nonEmpty) {
       plannedAt = currentTick
-      val cc     = main.mainBuilding.centerTile
+      val cc = main.mainBuilding.centerTile
       homeTile = Some(cc)
-      val layout = WallPosts.layout(wall, cc)
-      val taken  = mutable.HashSet.empty[MapTilePosition]
-      val grid   = mapLayers.freeWalkableIgnoringMobiles
+      val layout                                         = WallPosts.layout(wall, cc)
+      val taken                                          = mutable.HashSet.empty[MapTilePosition]
+      val grid                                           = mapLayers.freeWalkableIgnoringMobiles
       def snap(p: (Double, Double), wantInside: Boolean) = {
         val tile = MapTilePosition.shared(p._1.round.toInt max 0, p._2.round.toInt max 0)
         (Iterator(tile) ++ grid.spiralAround(tile, 4).iterator).find { t =>
@@ -100,7 +100,10 @@ class HoldWallPosts(universe: Universe) extends DefaultBehaviour[Mobile](univers
         lastMineRun = currentTick
         assigned -= v.nativeUnitId
         miners.assignJob_!(new MineWallApproach(v, approach, home, miners))
-        NativeMatchEvidence.trace("wall-mine-run", s"vulture=${v.nativeUnitId} spots=${approach.mkString(",")} laid=$laid")
+        NativeMatchEvidence.trace(
+          "wall-mine-run",
+          s"vulture=${v.nativeUnitId} spots=${approach.mkString(",")} laid=$laid"
+        )
       }
     }
   }
@@ -141,11 +144,11 @@ private[pony] class MineWallApproach(
     home: MapTilePosition,
     owner: Employer[Vulture]
 ) extends UnitWithJob[Vulture](owner, vulture, Priority.Supply) with FerrySupport[Vulture] {
-  private var left     = spots
+  private var left      = spots
   private val startedAt = currentTick
-  private def outside  = ferryManager.wallSide(vulture.currentTile).contains(false)
-  private def back     = ferryManager.wallSide(vulture.currentTile).contains(true)
-  private def laying   = left.nonEmpty && vulture.spiderMineCount > 0
+  private def outside   = ferryManager.wallSide(vulture.currentTile).contains(false)
+  private def back      = ferryManager.wallSide(vulture.currentTile).contains(true)
+  private def laying    = left.nonEmpty && vulture.spiderMineCount > 0
 
   override def shortDebugString = "Mine the wall approach"
   override def everyNth         = 11
@@ -161,7 +164,8 @@ private[pony] class MineWallApproach(
     if (laying && outside) {
       val spot = left.head
       if (vulture.currentTile.distanceToIsLess(spot, 2) || !vulture.canCastNow(SpiderMines)) left = left.tail
-      if (vulture.canCastNow(SpiderMines)) left.headOption.orElse(Some(spot)).map(t => vulture.toOrder(SpiderMines, t)).toSeq
+      if (vulture.canCastNow(SpiderMines))
+        left.headOption.orElse(Some(spot)).map(t => vulture.toOrder(SpiderMines, t)).toSeq
       else Nil
     } else Nil
   }
@@ -176,8 +180,8 @@ private[pony] object WallPosts {
   /** Above the ranged micro and the siege decisions: the post decides unless the unit is hit or the enemy is inside. */
   val PostPriority = SecondPriority(0.92)
 
-  val ReplanFrames  = 24 * 120
-  val MineRunEvery  = 24 * 90
+  val ReplanFrames = 24 * 120
+  val MineRunEvery = 24 * 90
 
   /**
     * Rows behind the wall, in tiles from its centre: infantry close enough to shoot over it, Vultures a step back,
@@ -193,19 +197,20 @@ private[pony] object WallPosts {
 
   /** Posts behind the wall (towards `inside`) and mine spots in front of it, spread along the wall. */
   def layout(wall: Seq[MapTilePosition], inside: MapTilePosition): Layout = {
-    val cx     = wall.map(_.x).sum.toDouble / wall.size
-    val cy     = wall.map(_.y).sum.toDouble / wall.size
-    val (dx0, dy0) = (inside.x - cx, inside.y - cy)
-    val length = math.max(1e-6, math.hypot(dx0, dy0))
-    val (dx, dy) = (dx0 / length, dy0 / length)
-    val (px, py) = (-dy, dx)
+    val cx                                       = wall.map(_.x).sum.toDouble / wall.size
+    val cy                                       = wall.map(_.y).sum.toDouble / wall.size
+    val (dx0, dy0)                               = (inside.x - cx, inside.y - cy)
+    val length                                   = math.max(1e-6, math.hypot(dx0, dy0))
+    val (dx, dy)                                 = (dx0 / length, dy0 / length)
+    val (px, py)                                 = (-dy, dx)
     def row(depth: Double, offsets: Seq[Double]) =
       offsets.map(o => (cx + dx * depth + px * o, cy + dy * depth + py * o)).toVector
     Layout(
       Map(
-        Role.Infantry -> (row(InfantryDepth, Seq(0, -1.5, 1.5, -3, 3)) ++ row(InfantryDepth + 1.5, Seq(-0.75, 0.75, -2.25, 2.25))),
-        Role.Vulture  -> row(VultureDepth, Seq(-0.75, 0.75, -2.25, 2.25, -3.75, 3.75, 0, -1.5)),
-        Role.Tank     -> row(TankDepth, Seq(0, -2.5, 2.5, -5, 5))
+        Role.Infantry ->
+          (row(InfantryDepth, Seq(0, -1.5, 1.5, -3, 3)) ++ row(InfantryDepth + 1.5, Seq(-0.75, 0.75, -2.25, 2.25))),
+        Role.Vulture -> row(VultureDepth, Seq(-0.75, 0.75, -2.25, 2.25, -3.75, 3.75, 0, -1.5)),
+        Role.Tank    -> row(TankDepth, Seq(0, -2.5, 2.5, -5, 5))
       ),
       row(-ApproachDepth, Seq(0, -2.5, 2.5))
     )

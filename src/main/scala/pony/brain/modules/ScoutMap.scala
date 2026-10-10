@@ -154,13 +154,11 @@ class ScoutMap(universe: Universe) extends DefaultBehaviour[ArmedMobile](univers
               !e.isInstanceOf[WorkerUnit] && !e.isInstanceOf[SupportUnit] && !e.isInstanceOf[TransporterUnit]
           )
           .filterNot(universe.pluginByType[RunTerranCampaign].isReservedDefender)
-          .map { e =>
-            ScoutingCandidate(
-              e.nativeUnitId,
-              e.initialNativeType.topSpeed(),
-              e.currentArea.get,
-              e.currentTile
-            )
+          // a unit just set down by a dropship or on a cliff edge may stand in no walkable area: it scouts later
+          .flatMap { e =>
+            e.currentArea.map { area =>
+              ScoutingCandidate(e.nativeUnitId, e.initialNativeType.topSpeed(), area, e.currentTile)
+            }
           }
       }
 
