@@ -16,17 +16,18 @@ import scala.jdk.CollectionConverters._
 class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](universe) {
   import CruiserTactics._
 
-  private val crew       = new Employer[SCV](universe)
-  private val repairing  = mutable.HashSet.empty[Int]
-  private var raiders    = Set.empty[Int]
-  private var target     = Option.empty[MapTilePosition]
-  private val swept      = mutable.HashSet.empty[MapTilePosition]
-  private var myBerth    = Option.empty[MapTilePosition]
-  private var gathering  = false
-  private var gatherAt   = 0
-  private var bigGroup   = false
-  private var centre     = Option.empty[MapTilePosition]
-  private var lastStatus = -1
+  private val crew         = new Employer[SCV](universe)
+  private val repairing    = mutable.HashSet.empty[Int]
+  private var raiders      = Set.empty[Int]
+  private var target       = Option.empty[MapTilePosition]
+  private val swept        = mutable.HashSet.empty[MapTilePosition]
+  private var myBerth      = Option.empty[MapTilePosition]
+  private var gathering    = false
+  private var gatherAt     = 0
+  private var bigGroup     = false
+  private var centre       = Option.empty[MapTilePosition]
+  private var lastStatus   = -1
+  private var starvedSince = Option.empty[Int]
 
   private def active = race.isTerran && strategy.current.raidsWithCruisers
 
@@ -55,8 +56,13 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
     }
     val fleet  = cruisers
     val health = fleet.map(c => c.nativeUnitId -> c.percentageHPOk).toMap
-    // without a crew nobody mends the cruisers: waiting for repairs would keep the fleet home for good
-    val canMend = unitManager.allJobsByType[RepairCrewDuty].exists(j => !j.failedOrObsolete && !j.isFinished)
+    // Without a crew nobody mends the cruisers, and repairs cost minerals and gas: a bank empty of either for two
+    // minutes stops them too. Waiting for repairs that never come would keep the fleet home for good.
+    val player = nativeGame.self()
+    if (player.minerals >= 50 && player.gas >= 50) starvedSince = None
+    else if (starvedSince.isEmpty) starvedSince = Some(currentTick)
+    val canMend = unitManager.allJobsByType[RepairCrewDuty].exists(j => !j.failedOrObsolete && !j.isFinished) &&
+      starvedSince.forall(currentTick - _ < StarvedFrames)
     repairing.filterInPlace(health.contains)
     if (!canMend) repairing.clear()
     else health.foreach { (id, hp) =>
@@ -238,6 +244,9 @@ private[pony] object CruiserTactics {
   val BerthDistance = 6
 
   val RetreatPriority = SecondPriority(0.95)
+
+  /** A bank this long without 50 minerals or 50 gas can no longer pay for repairs. */
+  val StarvedFrames = 24 * 120
 
   def needsRepair(health: Double, repairing: Boolean) = health < (if (repairing) FitFrom else RetreatBelow)
 
