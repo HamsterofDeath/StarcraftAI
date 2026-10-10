@@ -15,15 +15,15 @@ class FieldRepairTest extends Specification with MustMatchers {
 
   private val here = MapTilePosition(50, 50)
 
-  def holds = stationary(Seq(0 -> here, 120 -> MapTilePosition(51, 50), 240 -> MapTilePosition(52, 51)), 240) must beTrue
+  def holds = stationary(Seq(0 -> here, 120 -> MapTilePosition(51, 50), 240 -> MapTilePosition(52, 51)), 240) must
+    beTrue
 
   def moves =
     (stationary(Seq(0 -> here, 120 -> MapTilePosition(56, 50), 240 -> MapTilePosition(60, 50)), 240) must beFalse) and
       (stationary(Seq(100 -> here, 240 -> here), 240) must beFalse)
 
-  def wantedRule =
-    (wanted(stationary = true, hurt = 2, enemyGroundNear = false) must beTrue) and
-      (wanted(stationary = true, hurt = 1, enemyGroundNear = false) must beFalse) and
-      (wanted(stationary = true, hurt = 3, enemyGroundNear = true) must beFalse) and
-      (wanted(stationary = false, hurt = 3, enemyGroundNear = false) must beFalse)
+  def wantedRule = (wanted(stationary = true, hurt = 2, enemyGroundNear = false) must beTrue) and
+    (wanted(stationary = true, hurt = 1, enemyGroundNear = false) must beFalse) and
+    (wanted(stationary = true, hurt = 3, enemyGroundNear = true) must beFalse) and
+    (wanted(stationary = false, hurt = 3, enemyGroundNear = false) must beFalse)
 }

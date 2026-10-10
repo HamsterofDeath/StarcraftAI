@@ -38,9 +38,9 @@ private[pony] class FieldCrewDuty(
       mending = mending.filter(near).orElse(ownUnits.allByType[Battlecruiser].filter(near).minByOpt(_.percentageHPOk))
       mending.map(c => Orders.RepairUnit(worker, c)).toSeq
     // on foot when no wall stands between: the ferry logic above takes over otherwise
-    case Some(field) if worker.onGround => Seq(Orders.MoveToTile(worker, field))
+    case Some(field) if worker.onGround     => Seq(Orders.MoveToTile(worker, field))
     case None if worker.onGround && !atHome => Seq(Orders.MoveToTile(worker, home))
-    case _ => Nil
+    case _                                  => Nil
   }
 }
 

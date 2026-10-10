@@ -13,15 +13,33 @@ import scala.jdk.CollectionConverters._
 class EmpShockwave(universe: Universe) extends DefaultBehaviour[ScienceVessel](universe) {
   import EmpChoice._
 
-  private val claimed = mutable.ArrayBuffer.empty[(Int, Int, Int)]
-  private val weights = sys.props.get("twailight.empWeights").flatMap(parseWeights).getOrElse(DefaultWeights)
+  private val claimed   = mutable.ArrayBuffer.empty[(Int, Int, Int)]
+  private val firstSeen = mutable.HashMap.empty[Int, Int]
+  private val weights   = sys.props.get("twailight.empWeights").flatMap(parseWeights).getOrElse(DefaultWeights)
 
   override def priority = SecondPriority.Max
 
   override def onTick_!(): Unit = {
     super.onTick_!()
     claimed.filterInPlace((_, _, at) => currentTick - at < ClaimFrames)
+    val self = nativeGame.self()
+    nativeGame.getAllUnits.asScala.iterator.filter(u =>
+      u.getPlayer.isEnemy(self) && u.isVisible && u.getType.isSpellcaster
+    )
+      .foreach(u => firstSeen.getOrElseUpdate(u.getID, currentTick))
   }
+
+  /**
+    * The game hides enemy energy: a caster starts with 50 and regains about 0.033 a frame, so it has at most this much
+    * since we first saw it, up to its maximum.
+    */
+  private def energyOf(u: bwapi.Unit, self: bwapi.Player) =
+    if (!u.getPlayer.isEnemy(self)) {
+      // our own energy matters only where a spell needs it: a cruiser's only with the Yamato gun
+      val useless = u.getType == bwapi.UnitType.Terran_Battlecruiser && !self.hasResearched(bwapi.TechType.Yamato_Gun)
+      if (useless) 0.0 else u.getEnergy.toDouble
+    } else if (!u.getType.isSpellcaster) 0.0
+    else EnemyEnergy.estimate(currentTick - firstSeen.getOrElse(u.getID, currentTick), u.getType.maxEnergy)
 
   override protected def wrapBase(unit: ScienceVessel) = new SingleUnitBehaviour[ScienceVessel](unit, meta) {
     override def describeShort = "EMP"
@@ -40,7 +58,7 @@ class EmpShockwave(universe: Universe) extends DefaultBehaviour[ScienceVessel](u
         val self                = nativeGame.self()
         val around              = native.getUnitsInRadius((reach + radius).toInt).asScala.toVector.filter(_.isVisible)
         def blip(u: bwapi.Unit) =
-          Blip(u.getX.toDouble, u.getY.toDouble, u.getShields.toDouble, u.getEnergy.toDouble, u.getPlayer.isEnemy(self))
+          Blip(u.getX.toDouble, u.getY.toDouble, u.getShields.toDouble, energyOf(u, self), u.getPlayer.isEnemy(self))
         val blips   = around.filter(u => u.getPlayer.isEnemy(self) || u.getPlayer == self).map(blip)
         val centres = blips.filter(_.enemy).filter(b => math.hypot(b.x - native.getX, b.y - native.getY) <= reach)
           .filterNot(c => claimed.exists((x, y, _) => math.hypot(c.x - x, c.y - y) < radius))
@@ -56,6 +74,14 @@ class EmpShockwave(universe: Universe) extends DefaultBehaviour[ScienceVessel](u
       }
     }
   }
+}
+
+/** What an enemy caster has at most, the game hiding enemy energy. */
+private[pony] object EnemyEnergy {
+  val Start    = 50.0
+  val PerFrame = 0.033
+
+  def estimate(framesSinceSeen: Int, max: Int): Double = math.min(max.toDouble, Start + PerFrame * framesSinceSeen)
 }
 
 /** Where an EMP drains the most, kept free of the game; pixels. */

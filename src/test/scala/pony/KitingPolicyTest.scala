@@ -36,6 +36,7 @@ class KitingPolicyTest extends Specification with MustMatchers {
        |Focus fire for kills takes the enemy killed in the fewest shots $focusKills
        |Focus fire against threat takes the most damage per shot needed, the nearer the more $focusThreat
        |Focus fire for damage takes the enemy losing the most per shot $focusDamage
+       |Focus fire against threat finishes an enemy one or two shots from death $focusFinishes
        """.stripMargin
 
   private val open: Point => Boolean = p => p.x >= 0 && p.y >= 0 && p.x < 2048 && p.y < 2048
@@ -72,6 +73,12 @@ class KitingPolicyTest extends Specification with MustMatchers {
   def focusThreat = target(shooter(), Seq(shieldy, fragile), mode = FocusMode.Threat).id === 12
 
   def focusDamage = target(shooter(), Seq(shieldy, fragile), mode = FocusMode.Damage).id === 11
+
+  def focusFinishes = {
+    val dying = zealot(13, 1100, 1024, 160).copy(focus = FocusFacts(shots = 1.5, shotDamage = 10, dps = 0.2))
+    val fresh = zealot(14, 1100, 1030, 160).copy(focus = FocusFacts(shots = 2.5, shotDamage = 10, dps = 0.6))
+    target(shooter(), Seq(fresh, dying), mode = FocusMode.Threat).id === 13
+  }
 
   def free = decide(shooter(), Nil, open) === Free
 

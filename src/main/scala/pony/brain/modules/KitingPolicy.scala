@@ -151,6 +151,10 @@ object KitingPolicy {
     else Hold
   }
 
+  /** Under threat focus fire, an enemy this few shots from death counts this much more: kills end its damage. */
+  val FinishingShots = 2.0
+  val FinishingBonus = 2.0
+
   /** Pixels a unit keeps between itself and the reach of static defence while it stays out. */
   val StandOff = 24.0
 
@@ -193,13 +197,17 @@ object KitingPolicy {
       // shots still needed once the damage already committed this frame lands
       def shotsLeft(t: Threat) =
         if (t.focus.shots <= 0) left(t) else math.max(0.5, t.focus.shots * left(t) / math.max(1, t.durability))
-      def distance(t: Threat)  = me.at.distanceTo(t.at)
-      def closeness(t: Threat) = 1.0 / (1.0 + math.max(0.0, distance(t) - t.reach) / 64.0)
+      def distance(t: Threat) = me.at.distanceTo(t.at)
+      // nearness counts, but less than finishing: games with mixed armies showed threat spreading its damage
+      def closeness(t: Threat) = 1.0 / (1.0 + math.max(0.0, distance(t) - t.reach) / 128.0)
+      def finishing(t: Threat) = if (shotsLeft(t) <= FinishingShots) FinishingBonus else 1.0
       mode match {
         case FocusMode.Weakest => pool.minBy(t => (left(t), distance(t)))
         case FocusMode.Kills   => pool.minBy(t => (shotsLeft(t), distance(t)))
         case FocusMode.Threat  =>
-          pool.maxBy(t => ((t.focus.dps * closeness(t) * 1000 + t.focus.worth) / shotsLeft(t), -distance(t)))
+          pool.maxBy(t =>
+            ((t.focus.dps * closeness(t) * 1000 + t.focus.worth) * finishing(t) / shotsLeft(t), -distance(t))
+          )
         case FocusMode.Damage => pool.maxBy(t => (t.focus.shotDamage, -shotsLeft(t)))
       }
     } else threats.minBy(t => me.at.distanceTo(t.at))
