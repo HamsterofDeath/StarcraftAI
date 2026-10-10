@@ -91,8 +91,8 @@ private[pony] object EnemyEstimate {
   val RampFrames = 24 * 60 * 6
 
   /** An expansion may have run this long before we saw it, but not before the third minute. */
-  val ExpansionLead      = 24 * 60 * 3
-  val EarliestExpansion  = 24 * 60 * 3
+  val ExpansionLead     = 24 * 60 * 3
+  val EarliestExpansion = 24 * 60 * 3
 
   /** Workers a full income needs per base, and what they cost. */
   val WorkersPerBase = 19
@@ -123,7 +123,7 @@ private[pony] object EnemyEstimate {
 
   /** What a base earns in `frames`: rising from a fifth to the full rate over RampFrames, then steady. */
   def income(frames: Int, rate: Double): Double = {
-    val ramp = math.min(frames, RampFrames).toDouble
+    val ramp   = math.min(frames, RampFrames).toDouble
     val rising = ramp * rate * (0.2 + 0.4 * ramp / RampFrames)
     rising + math.max(0, frames - RampFrames) * rate
   }

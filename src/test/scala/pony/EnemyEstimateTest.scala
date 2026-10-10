@@ -13,10 +13,9 @@ class EnemyEstimateTest extends Specification with MustMatchers {
        |More bases mean more income and more workers $moreBases
        """.stripMargin
 
-  def ramp =
-    (income(0, 1.0) === 0.0) and
-      (income(RampFrames, 1.0) must beCloseTo(RampFrames * 0.6, 0.01)) and
-      (income(RampFrames + 1000, 1.0) - income(RampFrames, 1.0) must beCloseTo(1000.0, 0.01))
+  def ramp = (income(0, 1.0) === 0.0) and
+    (income(RampFrames, 1.0) must beCloseTo(RampFrames * 0.6, 0.01)) and
+    (income(RampFrames + 1000, 1.0) - income(RampFrames, 1.0) must beCloseTo(1000.0, 0.01))
 
   def bound = {
     val now  = RampFrames * 2

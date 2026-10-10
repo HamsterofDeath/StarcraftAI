@@ -31,6 +31,9 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
   private var centre       = Option.empty[MapTilePosition]
   private var lastStatus   = -1
   private var starvedSince = Option.empty[Int]
+  private val trail        = mutable.Queue.empty[(Int, MapTilePosition)]
+  private var fieldSpot    = Option.empty[MapTilePosition]
+  private val fieldCrew    = new Employer[SCV](universe)
 
   private def active = race.isTerran && strategy.current.raidsWithCruisers
 
@@ -131,6 +134,7 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
         )
       }
     }
+    updateFieldCrew(health)
     worldDominationPlan.raidingFleet = fleet.filter(c => raiders(c.nativeUnitId)).toSet
     templarNear = raiders.nonEmpty && {
       val raiding = fleet.filter(c => raiders(c.nativeUnitId)).map(_.currentTile)
@@ -239,6 +243,51 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
       t.airWeapon != bwapi.WeaponType.None || t == bwapi.UnitType.Protoss_Carrier
     )
       .map(t => t.mineralPrice + t.gasPrice).sum
+  }
+
+  /**
+    * A raid holding still away from enemy ground fighters, with enough cruisers hurt, calls a field crew to the spot
+    * under it; the spot stays while the raid holds still, and the crew goes home when it is gone.
+    */
+  private def updateFieldCrew(health: Map[Int, Double]): Unit = {
+    centre.filter(_ => raiders.nonEmpty && !gathering) match {
+      case Some(c) =>
+        trail += currentTick -> c
+        while (trail.headOption.exists(_._1 < currentTick - 2 * FieldRepair.StationaryFrames)) trail.dequeue()
+      case None => trail.clear()
+    }
+    val enemyGround = centre.exists(c =>
+      unitGrid.enemy.allInRange[Mobile](c, FieldRepair.SafeTiles).exists(e =>
+        !e.nativeUnit.isFlying && !e.isHarmlessNow && !e.isInstanceOf[WorkerUnit]
+      )
+    )
+    val holding = raiders.nonEmpty && FieldRepair.stationary(trail.toSeq, currentTick) && !enemyGround
+    val hurt    = raiders.count(id => health.get(id).exists(_ < FieldRepair.HurtBelow))
+    val before  = fieldSpot
+    fieldSpot =
+      if (!holding) None
+      else fieldSpot.orElse {
+        if (FieldRepair.wanted(stationary = true, hurt, enemyGround))
+          centre.flatMap(mapLayers.freeWalkableTiles.nearestFree)
+        else None
+      }
+    if (before != fieldSpot)
+      NativeMatchEvidence.trace("field-spot", s"spot=$fieldSpot hurt=$hurt raiders=${raiders.size}")
+    for (spot <- fieldSpot; home <- berth) {
+      val employed = unitManager.allJobsByType[FieldCrewDuty].count(j => !j.failedOrObsolete && !j.isFinished)
+      if (employed < FieldRepair.CrewSize) {
+        val request =
+          UnitJobRequest.idleOfType(fieldCrew, classOf[SCV], FieldRepair.CrewSize - employed, Priority.Supply)
+            .withOnlyAccepting { w =>
+              val job = unitManager.jobOf(w)
+              w.onGround && (job.isIdle || job.isInstanceOf[GatherMineralsAtSinglePatch])
+            }.withRequest(_.withCherryPicker_!(UnitRequest.CherryPickers.cherryPickWorkerByDistance[SCV](spot)()))
+        unitManager.request(request, buildIfNoneAvailable = false).units.foreach { w =>
+          fieldCrew.assignJob_!(new FieldCrewDuty(w, () => fieldSpot, home, fieldCrew))
+          NativeMatchEvidence.trace("field-crew", s"scv=${w.nativeUnitId} spot=$spot")
+        }
+      }
+    }
   }
 
   private def hireCrew(cruiserCount: Int): Unit = berth.foreach { home =>
