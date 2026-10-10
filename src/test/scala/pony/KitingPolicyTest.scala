@@ -33,6 +33,9 @@ class KitingPolicyTest extends Specification with MustMatchers {
        |A reloading flyer backs off over a cliff from ground enemies that would catch it $flyerOverCliff
        |Without unwalkable ground nearby a reloading flyer holds against faster ground enemies $flyerHoldsInTheOpen
        |A ground shooter never retreats onto unwalkable ground $groundShooterIgnoresCliffs
+       |Focus fire for kills takes the enemy killed in the fewest shots $focusKills
+       |Focus fire against threat takes the most damage per shot needed, the nearer the more $focusThreat
+       |Focus fire for damage takes the enemy losing the most per shot $focusDamage
        """.stripMargin
 
   private val open: Point => Boolean = p => p.x >= 0 && p.y >= 0 && p.x < 2048 && p.y < 2048
@@ -60,6 +63,15 @@ class KitingPolicyTest extends Specification with MustMatchers {
 
   def groundShooterIgnoresCliffs =
     decide(cruiser(20).copy(flying = false), Seq(dragoon), open, groundWalkable = cliffWest) === Hold
+
+  private val shieldy = zealot(11, 1100, 1024, 160).copy(focus = FocusFacts(shots = 10, shotDamage = 20, dps = 0.3))
+  private val fragile = zealot(12, 1110, 1024, 200).copy(focus = FocusFacts(shots = 6, shotDamage = 10, dps = 0.6))
+
+  def focusKills = target(shooter(), Seq(shieldy, fragile), mode = FocusMode.Kills).id === 12
+
+  def focusThreat = target(shooter(), Seq(shieldy, fragile), mode = FocusMode.Threat).id === 12
+
+  def focusDamage = target(shooter(), Seq(shieldy, fragile), mode = FocusMode.Damage).id === 11
 
   def free = decide(shooter(), Nil, open) === Free
 

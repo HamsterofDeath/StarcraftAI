@@ -25,10 +25,10 @@ class EscortWithVessels(universe: Universe) extends DefaultBehaviour[ScienceVess
     hidden =
       if (!active) Vector.empty
       else {
-        val self     = nativeGame.self()
-        val all      = nativeGame.getAllUnits.asScala.toVector
+        val self                = nativeGame.self()
+        val all                 = nativeGame.getAllUnits.asScala.toVector
         def tile(u: bwapi.Unit) = MapTilePosition(u.getTilePosition.getX, u.getTilePosition.getY)
-        val shooters = all.filter(u =>
+        val shooters            = all.filter(u =>
           u.getPlayer == self && u.isCompleted && !u.getType.isWorker &&
             (u.getType.groundWeapon != bwapi.WeaponType.None || u.getType.airWeapon != bwapi.WeaponType.None)
         ).map(tile)

@@ -27,8 +27,30 @@ object KitingPolicy {
       reach: Double,
       speed: Double,
       aimsAtMe: Boolean = false,
-      ground: Boolean = false
+      ground: Boolean = false,
+      focus: FocusFacts = FocusFacts()
   )
+
+  /**
+    * What the focus-fire modes weigh, from the shooter's point of view; zeros where unknown. `shots`: shots it needs to
+    * kill the enemy, shields taking full damage and hit points the damage its type and the enemy's size and armor let
+    * through; `shotDamage`: what its next shot takes off; `dps`: damage per frame the enemy deals to it; `worth`: the
+    * enemy's value, casters with energy and cloakers raised, spent casters lowered.
+    */
+  final case class FocusFacts(shots: Double = 0, shotDamage: Double = 0, dps: Double = 0, worth: Double = 0)
+
+  /**
+    * How a ready weapon picks among enemies in range: the one with the least durability left (the old rule), the one
+    * killed in the fewest shots (most kills), the one dealing the most damage per shot it takes to kill, nearer ones
+    * counting more (least damage taken), or the one taking the most damage per shot (most damage dealt).
+    */
+  enum FocusMode {
+    case Weakest, Kills, Threat, Damage
+  }
+
+  object FocusMode {
+    def parse(name: String): FocusMode = values.find(_.toString.equalsIgnoreCase(name)).getOrElse(Weakest)
+  }
 
   /** `range` is the centre distance at which the shooter's shot lands; `firing` means its attack is under way. */
   final case class Shooter(
@@ -82,13 +104,14 @@ object KitingPolicy {
       committed: Map[Int, Double] = Map.empty,
       speedRatio: Double = 1.25,
       dance: Dance = Dance.Aimed,
-      groundWalkable: Point => Boolean = _ => true
+      groundWalkable: Point => Boolean = _ => true,
+      mode: FocusMode = FocusMode.Weakest
   ): Decision = {
     val runFrom = outranged(me, threats, speedRatio)
     val melee   = threats.filter(t => t.reach > 0 && t.reach <= MeleeReach && !runFrom.contains(t))
     // static defence that hits the shooter wherever the shooter can hit it
     val turrets       = threats.filter(t => t.speed == 0 && t.reach > 0 && t.reach >= me.range)
-    lazy val focus    = target(me, threats, committed)
+    lazy val focus    = target(me, threats, committed, mode)
     def arrival       = math.max(0.0, me.at.distanceTo(focus.at) - me.range) / math.max(me.speed, 0.1)
     def insideTurrets = turrets.exists(t => gap(me.at, t) < StandOff)
     // ground units that can hit a flyer and would reach it before its reload ends
@@ -101,9 +124,9 @@ object KitingPolicy {
     if (threats.isEmpty) Free
     // the attack animation runs until the shot is released; once the reload has started the unit may move again
     else if (me.firing && me.cooldown == 0) Hold
-    else if (me.cooldown == 0) Shoot(target(me, threats, committed).id)
+    else if (me.cooldown == 0) Shoot(target(me, threats, committed, mode).id)
     else if (me.cooldown <= lead && threats.exists(t => me.at.distanceTo(t.at) <= me.range))
-      Shoot(target(me, threats, committed).id)
+      Shoot(target(me, threats, committed, mode).id)
     // static defence: come back from outside its reach just in time to fire on arrival
     else if (focus.speed == 0 && focus.reach >= me.range && me.cooldown <= lead + arrival) Shoot(focus.id)
     // fire, go back: the unit it shoots at leaves its reach, so it has to switch to another unit
@@ -113,7 +136,12 @@ object KitingPolicy {
     else if (overCliff.isDefined) Retreat(overCliff.get)
     // kite: clearly faster and longer-ranged, so stepping out of reach costs nothing
     else if (runFrom.exists(t => gap(me.at, t) <= t.speed * (me.cooldown + SafetyFrames))) {
-      retreatPoint(me, runFrom, walkable, step).map(Retreat(_)).getOrElse(Shoot(target(me, threats, committed).id))
+      retreatPoint(
+        me,
+        runFrom,
+        walkable,
+        step
+      ).map(Retreat(_)).getOrElse(Shoot(target(me, threats, committed, mode).id))
     }
     // maximum damage: too slow to kite, so only the unit in melee contact gives way and drags its attacker along
     else if (melee.exists(t => gap(me.at, t) <= ContactSlack))
@@ -151,12 +179,29 @@ object KitingPolicy {
     * shooters already committed this frame, skipping enemies whose committed damage already kills them; without an
     * enemy in range, the closest one.
     */
-  def target(me: Shooter, threats: Seq[Threat], committed: Map[Int, Double] = Map.empty): Threat = {
+  def target(
+      me: Shooter,
+      threats: Seq[Threat],
+      committed: Map[Int, Double] = Map.empty,
+      mode: FocusMode = FocusMode.Weakest
+  ): Threat = {
     val inRange         = threats.filter(t => me.at.distanceTo(t.at) <= me.range)
     def left(t: Threat) = t.durability - committed.getOrElse(t.id, 0.0)
     if (inRange.nonEmpty) {
       val notDoomed = inRange.filter(left(_) > 0)
-      (if (notDoomed.nonEmpty) notDoomed else inRange).minBy(t => (left(t), me.at.distanceTo(t.at)))
+      val pool      = if (notDoomed.nonEmpty) notDoomed else inRange
+      // shots still needed once the damage already committed this frame lands
+      def shotsLeft(t: Threat) =
+        if (t.focus.shots <= 0) left(t) else math.max(0.5, t.focus.shots * left(t) / math.max(1, t.durability))
+      def distance(t: Threat)  = me.at.distanceTo(t.at)
+      def closeness(t: Threat) = 1.0 / (1.0 + math.max(0.0, distance(t) - t.reach) / 64.0)
+      mode match {
+        case FocusMode.Weakest => pool.minBy(t => (left(t), distance(t)))
+        case FocusMode.Kills   => pool.minBy(t => (shotsLeft(t), distance(t)))
+        case FocusMode.Threat  =>
+          pool.maxBy(t => ((t.focus.dps * closeness(t) * 1000 + t.focus.worth) / shotsLeft(t), -distance(t)))
+        case FocusMode.Damage => pool.maxBy(t => (t.focus.shotDamage, -shotsLeft(t)))
+      }
     } else threats.minBy(t => me.at.distanceTo(t.at))
   }
 

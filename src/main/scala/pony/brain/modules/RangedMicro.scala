@@ -28,6 +28,7 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
 
   private val shootByStopping = sys.props.get("twailight.kiteShot").contains("stop")
   private val traceDecisions  = sys.props.get("twailight.traceKite").contains("true")
+  private val focusMode       = sys.props.get("twailight.focusFire").map(FocusMode.parse).getOrElse(FocusMode.Weakest)
   private val leadFrames      = sys.props.get("twailight.kiteLead").flatMap(_.toIntOption).filter(_ >= 0).getOrElse(4)
   private val speedRatio      =
     sys.props.get("twailight.kiteSpeedRatio").flatMap(_.toDoubleOption).filter(_ > 0).getOrElse(1.25)
@@ -83,7 +84,8 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
           committed = committed.toMap,
           speedRatio = speedRatio,
           dance = dance,
-          groundWalkable = terrainWalkable
+          groundWalkable = terrainWalkable,
+          mode = focusMode
         )
       decision match {
         case Shoot(id) =>
@@ -190,9 +192,51 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
         reach,
         if (kind.isBuilding) 0.0 else native.getPlayer.topSpeed(kind),
         aims(native.getTarget) || aims(native.getOrderTarget),
-        !native.isFlying && !kind.isBuilding
+        !native.isFlying && !kind.isBuilding,
+        if (focusMode == FocusMode.Weakest) FocusFacts() else focusFacts(me.nativeUnit, native)
       )
     }.toVector
+  }
+
+  /** What one shot of `shooter` does to `enemy` and what `enemy` does to `shooter`, as the focus-fire modes weigh it. */
+  private def focusFacts(shooter: bwapi.Unit, enemy: bwapi.Unit) = {
+    val mine   = weaponAgainst(shooter.getType, enemy.isFlying)
+    val theirs = weaponAgainst(enemy.getType, shooter.isFlying)
+    // shields take a hit in full; hit points what the damage type lets through against the size, less armor
+    def hit(weapon: WeaponType, by: bwapi.Player, on: bwapi.Unit, armor: Int) =
+      math.max(0.5, by.damage(weapon) * sizeShare(weapon.damageType, on.getType.size) - armor) * weapon.damageFactor
+    val onShields = math.max(
+      0.5,
+      shooter.getPlayer.damage(mine) - enemy.getPlayer.getUpgradeLevel(bwapi.UpgradeType.Protoss_Plasma_Shields)
+    ) *
+      mine.damageFactor
+    val onHull     = hit(mine, shooter.getPlayer, enemy, enemy.getPlayer.armor(enemy.getType))
+    val shots      = enemy.getShields / onShields + enemy.getHitPoints / onHull
+    val shotDamage = if (enemy.getShields > 0) onShields else onHull
+    val dps        =
+      if (theirs == WeaponType.None) 0.0
+      else hit(theirs, enemy.getPlayer, shooter, shooter.getPlayer.armor(shooter.getType)) /
+        math.max(1, theirs.damageCooldown)
+    val kind  = enemy.getType
+    val value = kind.mineralPrice + kind.gasPrice
+    // a caster with energy for its spell is worth killing first, one without much less; cloakers hide others
+    val worth = kind match {
+      case bwapi.UnitType.Protoss_High_Templar => if (enemy.getEnergy >= 75) value + 300.0 else value * 0.2
+      case bwapi.UnitType.Protoss_Arbiter      => value + 200.0
+      case bwapi.UnitType.Zerg_Defiler | bwapi.UnitType.Terran_Science_Vessel | bwapi.UnitType.Zerg_Queen =>
+        if (enemy.getEnergy >= 75) value + 200.0 else value * 0.5
+      case bwapi.UnitType.Protoss_Dark_Templar | bwapi.UnitType.Terran_Ghost => value + 100.0
+      case _                                                                 => value.toDouble
+    }
+    FocusFacts(shots, shotDamage, dps, worth)
+  }
+
+  private def sizeShare(damage: bwapi.DamageType, size: bwapi.UnitSizeType) = (damage, size) match {
+    case (bwapi.DamageType.Concussive, bwapi.UnitSizeType.Medium) => 0.5
+    case (bwapi.DamageType.Concussive, bwapi.UnitSizeType.Large)  => 0.25
+    case (bwapi.DamageType.Explosive, bwapi.UnitSizeType.Small)   => 0.5
+    case (bwapi.DamageType.Explosive, bwapi.UnitSizeType.Medium)  => 0.75
+    case _                                                        => 1.0
   }
 
   private def insideMap(p: Point) = {
