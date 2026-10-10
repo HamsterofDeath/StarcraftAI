@@ -135,9 +135,17 @@ abstract class UnitWithJob[T <: WrapsUnit](
 
   private val inactive = Set(Order.PlayerGuard)
 
+  /** A unit waiting behind a sealed wall for its ferry stands still on purpose. */
+  private def heldByFerry: Boolean = this match {
+    case f: FerrySupport[?] => f.waitsForFerry
+    case _                  => false
+  }
+
   def jobHasFailedWithoutDeath: Boolean = {
     unit match {
-      case ohs: OrderHistorySupport if !isNoopJob => {
+      // game 1 on 5add217 hired miners across the wall about 700 times in 20 minutes: each waited for its ferry in
+      // PlayerGuard, failed after 24 frames and was hired again, so no ferry plan ever formed and nobody mined
+      case ohs: OrderHistorySupport if !isNoopJob && !heldByFerry => {
         // Only count frames this job was responsible for: stale history from earlier jobs
         // (or from before the hire) must not fail a fresh job before it can command its unit.
         val ownRecent              = ohs.unitHistory.take(24).takeWhile(e => e.job eq this).toVector
