@@ -286,6 +286,15 @@ object Orders {
     }
   }
 
+  /** A spell on any unit, a building included (the Yamato gun). */
+  case class UseTechOnUnit(myUnit: Mobile, target: bwapi.Unit, tech: TechType) extends UnitOrder {
+    override def issueOrderToGame(): Unit = {
+      myUnit.nativeUnit.useTech(tech, target)
+    }
+
+    override def renderDebug(renderer: Renderer): Unit = {}
+  }
+
   /** Stay put, still firing at whatever comes in range. */
   case class HoldPosition(myUnit: Mobile) extends UnitOrder {
     override def issueOrderToGame(): Unit = {

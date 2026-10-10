@@ -30,6 +30,10 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
   /** How many cruisers wait to be repaired (CruiserRaids). */
   var cruisersInRepair = 0
 
+  /** The centre of the raiding cruisers, and where hurt ones are repaired (CruiserRaids); escorts follow them. */
+  var cruiserRaidCentre = Option.empty[MapTilePosition]
+  var cruiserBerth      = Option.empty[MapTilePosition]
+
   /** Whether the raid on our bases is big enough to call the army, and the cruisers, home. */
   def recallsArmy                                      = baseDefense.pressure && baseDefense.recallsCampaign
   def requestBaseDefense(where: MapTilePosition): Unit = {

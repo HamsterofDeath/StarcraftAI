@@ -51,14 +51,21 @@ class TerranSealedCruisers(universe: Universe) extends DefaultTerranCampaign(uni
       IdealUnitRatio(classOf[Battlecruiser], 12 + scale * 2)(
         worldDominationPlan.cruisersInRepair == 0 || resources.unlockedResources.gas >= 450
       ) ::
-      IdealUnitRatio(classOf[Vulture], scale)(scale > 0 && fewer[Vulture](8)) :: Nil
+      IdealUnitRatio(classOf[Vulture], scale)(scale > 0 && fewer[Vulture](8)) ::
+      // detectors for the fleet: cloaked units are hunted with the cruisers, not by guessing comsat sweeps
+      IdealUnitRatio(classOf[ScienceVessel], 2)(
+        fewer[ScienceVessel](2) && unitManager.existsAndDone(classOf[ScienceFacility])
+      ) :: Nil
   }
 
   override def suggestUpgrades =
     UpgradeToResearch(Upgrades.Terran.TankSiegeMode)(unitManager.existsAndDone(classOf[MachineShop])) ::
       UpgradeToResearch(Upgrades.Terran.ShipWeapons)(unitManager.existsAndDone(classOf[Battlecruiser])) ::
       UpgradeToResearch(Upgrades.Terran.ShipArmor)(unitManager.existsAndDone(classOf[Battlecruiser])) ::
-      UpgradeToResearch(Upgrades.Terran.SpiderMines)(spendScale > 0) :: Nil
+      UpgradeToResearch(Upgrades.Terran.SpiderMines)(spendScale > 0) ::
+      UpgradeToResearch(Upgrades.Terran.CruiserGun)(unitManager.existsAndDone(classOf[Battlecruiser])) ::
+      UpgradeToResearch(Upgrades.Terran.CruiserEnergy)(ownUnits.allByType[Battlecruiser].size >= 6) ::
+      UpgradeToResearch(Upgrades.Terran.Irradiate)(ownUnits.allByType[ScienceVessel].nonEmpty) :: Nil
 }
 
 final class TerranSealedCruisersPlugin

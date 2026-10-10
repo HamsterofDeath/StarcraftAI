@@ -132,6 +132,8 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
     }
     worldDominationPlan.raidingFleet = fleet.filter(c => raiders(c.nativeUnitId)).toSet
     worldDominationPlan.cruisersInRepair = repairing.size
+    worldDominationPlan.cruiserRaidCentre = if (raiders.nonEmpty) centre else None
+    worldDominationPlan.cruiserBerth = berth
     hireCrew(fleet.size)
     if (fleet.nonEmpty && currentTick / 720 != lastStatus) {
       lastStatus = currentTick / 720

@@ -14,6 +14,8 @@ object TerranBehaviours {
         new IrradiateUnit(universe) ::
         new BlindEnemies(universe) ::
         new CruiserRaids(universe) ::
+        new YamatoSnipe(universe) ::
+        new EscortWithVessels(universe) ::
         new HoldWallPosts(universe) ::
         new CloakSelfGhost(universe) ::
         new GoToInitialPosition(universe) ::
