@@ -65,7 +65,8 @@ class TerranSealedCruisers(universe: Universe) extends DefaultTerranCampaign(uni
       UpgradeToResearch(Upgrades.Terran.SpiderMines)(spendScale > 0) ::
       UpgradeToResearch(Upgrades.Terran.CruiserGun)(unitManager.existsAndDone(classOf[Battlecruiser])) ::
       UpgradeToResearch(Upgrades.Terran.CruiserEnergy)(ownUnits.allByType[Battlecruiser].size >= 6) ::
-      UpgradeToResearch(Upgrades.Terran.Irradiate)(ownUnits.allByType[ScienceVessel].nonEmpty) :: Nil
+      UpgradeToResearch(Upgrades.Terran.Irradiate)(ownUnits.allByType[ScienceVessel].nonEmpty) ::
+      UpgradeToResearch(Upgrades.Terran.EMP)(ownUnits.allByType[ScienceVessel].nonEmpty) :: Nil
 }
 
 final class TerranSealedCruisersPlugin

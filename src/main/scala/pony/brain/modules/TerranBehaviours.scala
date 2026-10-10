@@ -17,6 +17,7 @@ object TerranBehaviours {
         new DodgeStorms(universe) ::
         new YamatoSnipe(universe) ::
         new EscortWithVessels(universe) ::
+        new EmpShockwave(universe) ::
         new HoldWallPosts(universe) ::
         new CloakSelfGhost(universe) ::
         new GoToInitialPosition(universe) ::

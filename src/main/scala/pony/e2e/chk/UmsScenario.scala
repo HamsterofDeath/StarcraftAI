@@ -17,13 +17,30 @@ final case class UmsScenario(
     units: Seq[MapUnit],
     locations: Seq[Location],
     triggers: Seq[Trigger],
-    groundTiles: Seq[Int]
+    groundTiles: Seq[Int],
+    // (player, tech id) researched from the start, for example (0, 2) for EMP Shockwave
+    researched: Seq[(Int, Int)] = Nil
 ) {
   // BWAPI names saved replays after the map title, and StarCraft keeps only 31 characters of it
   require(
     name.length <= 31 && !name.exists("\\/:*?\"<>|".contains(_)),
     s"Map title '$name' must fit 31 characters and be usable in a file name"
   )
+
+  /**
+    * PTEx: per player 44 techs available, then researched, then the global defaults (both), then per player whether
+    * it follows the defaults. A researched tech is marked available and researched and leaves the defaults.
+    */
+  private def researchedTech(ptex: Array[Byte]): Array[Byte] = {
+    val out = ptex.clone()
+    researched.foreach { (player, tech) =>
+      val i = player * 44 + tech
+      out(i) = 1
+      out(12 * 44 + i) = 1
+      out(2 * 12 * 44 + 2 * 44 + i) = 0
+    }
+    out
+  }
 
   def build(template: ChkFile): ChkFile = {
     val strings             = Vector(name, description, "Bot", "Opponent", "Anywhere") ++ locations.map(_.name)
@@ -45,7 +62,7 @@ final case class UmsScenario(
       "UNIx",
       "UPGx",
       "TECx"
-    ).map(n => n -> template(n))
+    ).map(n => n -> (if (n == "PTEx") researchedTech(template(n)) else template(n)))
     val tiles = mtxm
     ChkFile(copied ++ Vector(
       "OWNR" -> owners,

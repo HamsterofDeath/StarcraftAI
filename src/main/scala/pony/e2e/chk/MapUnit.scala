@@ -28,6 +28,7 @@ object MapUnit {
   val SiegeTank     = 5
   val Scv           = 7
   val Wraith        = 8
+  val ScienceVessel = 9
   val Battlecruiser = 12
   val Firebat       = 32
   val Medic         = 34

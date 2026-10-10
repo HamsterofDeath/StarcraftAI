@@ -41,6 +41,8 @@ object GenerateE2EMaps {
   val Cruiser = Side(MapUnit.Battlecruiser, "battlecruiser", "bcr", UmsScenario.Terran, 400, 300)
   val Scout   = Side(MapUnit.Scout, "scout", "sco", UmsScenario.Protoss, 275, 125)
   val Archon  = Side(MapUnit.Archon, "archon", "arc", UmsScenario.Protoss, 100, 300)
+  val Vessel  = Side(MapUnit.ScienceVessel, "vessel", "ves", UmsScenario.Terran, 100, 225)
+  val Templar = Side(MapUnit.HighTemplar, "templar", "tem", UmsScenario.Protoss, 50, 150)
 
   /** Resources each side fields in a pure-versus-pure matchup. */
   val MatchupBudget = 1200
@@ -73,7 +75,8 @@ object GenerateE2EMaps {
       ours: Seq[(Side, Int)],
       theirs: Seq[(Side, Int)],
       brawl: Boolean = false,
-      timeoutSeconds: Int = 300
+      timeoutSeconds: Int = 300,
+      researched: Seq[(Int, Int)] = Nil
   ): UmsScenario = {
     def blocks(groups: Seq[(Side, Int)], owner: Int, x: Int) = groups.zipWithIndex.flatMap { case ((side, count), i) =>
       block(side.unitId, owner, count, if (owner == 0) x - 3 * i else x + 3 * i)
@@ -101,7 +104,8 @@ object GenerateE2EMaps {
         (if (brawl) mingled else blocks(ours, 0, 14) ++ blocks(theirs, 1, 50)),
       locations = Seq(Location.aroundTile(BotArea, "Bot area", 12, 32, 4)),
       triggers = opponentAttacks ++ botResult(timeoutSeconds),
-      groundTiles = BadlandsDirt
+      groundTiles = BadlandsDirt,
+      researched = researched
     )
   }
 
@@ -251,7 +255,26 @@ object GenerateE2EMaps {
     )
   }.toMap
 
-  val All: Map[String, UmsScenario] = VultureScaling ++ TerranVsProtoss ++ TerranVsCannons ++ FocusFire
+  /** Tech ids in the PTEx section. */
+  val EmpShockwave = 2
+  val PsionicStorm = 19
+
+  /**
+    * Science Vessels with EMP and full energy, two Battlecruisers to finish the job, against Archons (all shields) and
+    * High Templar with Psionic Storm (shields and energy): where the blasts go shows what the EMP weights prefer, and
+    * the storms test the dodging. Charging and brawling.
+    */
+  val Emp: Map[String, UmsScenario] = {
+    val ours   = Seq(Vessel -> 2, Cruiser -> 2)
+    val theirs = Seq(Archon -> 2, Templar -> 4)
+    val tech   = Seq(0 -> EmpShockwave, 1 -> PsionicStorm)
+    Seq(
+      mixedFileName(ours, theirs)               -> mixed(ours, theirs, researched = tech),
+      mixedFileName(ours, theirs, brawl = true) -> mixed(ours, theirs, brawl = true, researched = tech)
+    ).toMap
+  }
+
+  val All: Map[String, UmsScenario] = VultureScaling ++ TerranVsProtoss ++ TerranVsCannons ++ FocusFire ++ Emp
 
   private def opponentAttacks = Seq(
     Trigger(

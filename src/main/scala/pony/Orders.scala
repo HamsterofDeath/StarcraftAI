@@ -295,6 +295,15 @@ object Orders {
     override def renderDebug(renderer: Renderer): Unit = {}
   }
 
+  /** A spell on a spot, in pixels (EMP Shockwave). */
+  case class UseTechAt(myUnit: Mobile, x: Int, y: Int, tech: TechType) extends UnitOrder {
+    override def issueOrderToGame(): Unit = {
+      myUnit.nativeUnit.useTech(tech, new bwapi.Position(x, y))
+    }
+
+    override def renderDebug(renderer: Renderer): Unit = {}
+  }
+
   /** Stay put, still firing at whatever comes in range. */
   case class HoldPosition(myUnit: Mobile) extends UnitOrder {
     override def issueOrderToGame(): Unit = {
