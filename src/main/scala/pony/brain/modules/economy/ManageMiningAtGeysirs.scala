@@ -42,7 +42,7 @@ class ManageMiningAtGeysirs(universe: Universe)
       .isOnIsland(base.mainBuilding.tilePosition)
       .ifElse(8, 14)
     private var refinery    = Option.empty[Refinery]
-    private var lastRequest = Int.MinValue
+    private var lastRequest = Option.empty[Int]
 
     override def toString = s"GetGas@${geysir.tilePosition}"
 
@@ -59,7 +59,7 @@ class ManageMiningAtGeysirs(universe: Universe)
           // home and waiting to fly out asked for its field's refinery 300 times, its builder never able to start it
           if (
             ownUnits.allByType[WorkerUnit].size >= workerCountBeforeWantingGas && base.atField &&
-            currentTick - lastRequest >= RetryFrames
+            mayRequest(currentTick, lastRequest)
           ) {
             def requestExists = unitManager.requestedConstructions[Refinery]
               .exists(_.customPosition.predefined.contains(geysir.tilePosition))
@@ -78,7 +78,7 @@ class ManageMiningAtGeysirs(universe: Universe)
             if (!requestExists && !jobExists && findAndRememberRefinery().isEmpty) {
               val where = AlternativeBuildingSpot.fromPreset(geysir.tilePosition)
               requestBuilding(classOf[Refinery], customBuildingPosition = where)
-              lastRequest = currentTick
+              lastRequest = Some(currentTick)
               NativeMatchEvidence.trace(
                 "refinery-request",
                 s"geysir=${geysir.tilePosition} base=${base.mainBuilding.tilePosition} workers=${ownUnits.allByType[WorkerUnit].size}"
@@ -209,4 +209,6 @@ private[pony] object ManageMiningAtGeysirs {
 
   /** A geyser's refinery is requested at most once in this many frames. */
   val RetryFrames = 24 * 60
+
+  def mayRequest(now: Int, last: Option[Int]) = last.forall(now - _ >= RetryFrames)
 }
