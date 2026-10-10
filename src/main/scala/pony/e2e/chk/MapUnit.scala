@@ -34,6 +34,8 @@ object MapUnit {
   val Zergling      = 37
   val Zealot        = 65
   val Dragoon       = 66
+  val Corsair       = 60
+  val HighTemplar   = 67
   val Archon        = 68
   val Scout         = 70
   val Reaver        = 83

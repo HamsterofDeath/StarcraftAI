@@ -38,6 +38,9 @@ object GenerateE2EMaps {
   val Dragoon = Side(MapUnit.Dragoon, "dragoon", "drg", UmsScenario.Protoss, 125, 50)
   val Scv     = Side(MapUnit.Scv, "scv", "scv", UmsScenario.Terran, 50, 0)
   val Medic   = Side(MapUnit.Medic, "medic", "med", UmsScenario.Terran, 50, 25)
+  val Cruiser = Side(MapUnit.Battlecruiser, "battlecruiser", "bcr", UmsScenario.Terran, 400, 300)
+  val Scout   = Side(MapUnit.Scout, "scout", "sco", UmsScenario.Protoss, 275, 125)
+  val Archon  = Side(MapUnit.Archon, "archon", "arc", UmsScenario.Protoss, 100, 300)
 
   /** Resources each side fields in a pure-versus-pure matchup. */
   val MatchupBudget = 1200
@@ -61,6 +64,52 @@ object GenerateE2EMaps {
     triggers = opponentAttacks ++ botResult(timeoutSeconds),
     groundTiles = BadlandsDirt
   )
+
+  /**
+    * Mixed armies: each group of the bot's and the computer's in its own block of columns, 40 tiles apart. The
+    * computer attacks; the bot must kill every enemy within `timeoutSeconds` of game time.
+    */
+  def mixed(
+      ours: Seq[(Side, Int)],
+      theirs: Seq[(Side, Int)],
+      brawl: Boolean = false,
+      timeoutSeconds: Int = 300
+  ): UmsScenario = {
+    def blocks(groups: Seq[(Side, Int)], owner: Int, x: Int) = groups.zipWithIndex.flatMap { case ((side, count), i) =>
+      block(side.unitId, owner, count, if (owner == 0) x - 3 * i else x + 3 * i)
+    }
+    // a brawl: both armies' units alternate on one grid in the middle of the map, a tile and a half apart
+    def mingled = {
+      def each(groups: Seq[(Side, Int)], owner: Int) =
+        groups.flatMap((side, count) => Seq.fill(count)(side.unitId -> owner))
+      val a       = each(ours, 0)
+      val b       = each(theirs, 1)
+      val all     = a.zipAll(b, (-1, -1), (-1, -1)).flatMap((x, y) => Seq(x, y)).filter(_._1 >= 0)
+      val columns = 8
+      all.zipWithIndex.map { case ((unitId, owner), i) =>
+        MapUnit(unitId, owner, (28 + i % columns) * 48 + 16, (28 + i / columns) * 48 + 16)
+      }
+    }
+    UmsScenario(
+      name = s"e2e ${mixedFileName(ours, theirs, brawl)}",
+      description = s"Bot (player 1) must kill the mixed army within $timeoutSeconds seconds.",
+      widthTiles = 64,
+      heightTiles = 64,
+      botRace = ours.head._1.race,
+      opponentRace = theirs.head._1.race,
+      units = Seq(MapUnit.atTile(MapUnit.StartLocation, 0, 4, 32), MapUnit.atTile(MapUnit.StartLocation, 1, 60, 32)) ++
+        (if (brawl) mingled else blocks(ours, 0, 14) ++ blocks(theirs, 1, 50)),
+      locations = Seq(Location.aroundTile(BotArea, "Bot area", 12, 32, 4)),
+      triggers = opponentAttacks ++ botResult(timeoutSeconds),
+      groundTiles = BadlandsDirt
+    )
+  }
+
+  def mixedFileName(ours: Seq[(Side, Int)], theirs: Seq[(Side, Int)], brawl: Boolean = false): String = {
+    val name = (if (brawl) "x" else "") + (ours ++ theirs).map((s, n) => s"${s.code}$n").mkString("-")
+    require(name.length <= MaxFileNameLength, s"Map file name '$name' is longer than $MaxFileNameLength characters")
+    name
+  }
 
   /** Columns of up to six units, a tile and a half apart, centred on row 32 around column `x`. */
   private def block(unitId: Int, owner: Int, count: Int, x: Int) = (0 until count).map { i =>
@@ -183,7 +232,26 @@ object GenerateE2EMaps {
         cannonFileName(ours, n, 2, support) -> cannons(ours, n, 2, support)
       }
 
-  val All: Map[String, UmsScenario] = VultureScaling ++ TerranVsProtoss ++ TerranVsCannons
+  /**
+    * Mixed armies to compare focus-fire modes: Terran infantry and mech against Gateway armies and shield-heavy
+    * Archons, Battlecruisers against ground (Dragoons), air (Scouts) and both; charging and brawling.
+    */
+  val FocusFire: Map[String, UmsScenario] = Seq(
+    Seq(Marine -> 12, Medic -> 3) -> Seq(Zealot -> 4, Dragoon -> 4),
+    Seq(Goliath -> 5, Tank -> 2)  -> Seq(Zealot -> 4, Dragoon -> 4),
+    Seq(Marine -> 12, Medic -> 3) -> Seq(Archon -> 2, Zealot -> 2),
+    Seq(Cruiser -> 3)             -> Seq(Dragoon -> 6),
+    Seq(Cruiser -> 3)             -> Seq(Scout -> 4),
+    Seq(Cruiser -> 3)             -> Seq(Dragoon -> 4, Scout -> 2)
+  ).flatMap { (ours, theirs) =>
+    // each matchup twice: the armies charge into each other, and they start mingled in one brawl
+    Seq(
+      mixedFileName(ours, theirs)               -> mixed(ours, theirs),
+      mixedFileName(ours, theirs, brawl = true) -> mixed(ours, theirs, brawl = true)
+    )
+  }.toMap
+
+  val All: Map[String, UmsScenario] = VultureScaling ++ TerranVsProtoss ++ TerranVsCannons ++ FocusFire
 
   private def opponentAttacks = Seq(
     Trigger(
