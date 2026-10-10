@@ -131,6 +131,13 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
       }
     }
     worldDominationPlan.raidingFleet = fleet.filter(c => raiders(c.nativeUnitId)).toSet
+    templarNear = raiders.nonEmpty && {
+      val raiding = fleet.filter(c => raiders(c.nativeUnitId)).map(_.currentTile)
+      enemies.allByType[Mobile].exists(e =>
+        e.isInGame && e.nativeUnit.isVisible && e.nativeUnit.getType == bwapi.UnitType.Protoss_High_Templar &&
+          raiding.exists(_.distanceToIsLess(e.currentTile, TemplarSight))
+      )
+    }
     worldDominationPlan.cruisersInRepair = repairing.size
     worldDominationPlan.cruiserRaidCentre = if (raiders.nonEmpty) centre else None
     worldDominationPlan.cruiserBerth = berth
@@ -148,6 +155,31 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
       )
     }
   }
+
+  /**
+    * With a High Templar in sight of the raid the cruisers spread, a storm catching one at most; otherwise they stack.
+    * A raider closer than `StackSpacing` to another steps away from them.
+    */
+  private def spaceOut(me: Battlecruiser): Option[MapTilePosition] =
+    if (!templarNear || !raiders(me.nativeUnitId)) None
+    else {
+      val others = cruisers.filter(c => raiders(c.nativeUnitId) && c.nativeUnitId != me.nativeUnitId)
+        .map(_.currentTile).filter(t => !t.distanceToIsMore(me.currentTile, SpreadTiles - 1))
+      if (others.isEmpty) None
+      else {
+        val (ox, oy) = (others.map(_.x).sum.toDouble / others.size, others.map(_.y).sum.toDouble / others.size)
+        val (dx, dy) = (me.currentTile.x - ox, me.currentTile.y - oy)
+        val length   = math.hypot(dx, dy)
+        val (ux, uy) = if (length < 0.1) (1.0, 0.0) else (dx / length, dy / length)
+        val grid     = mapLayers.rawWalkableMap
+        Some(MapTilePosition.shared(
+          (me.currentTile.x + ux * SpreadTiles).round.toInt.max(0).min(grid.cols - 1),
+          (me.currentTile.y + uy * SpreadTiles).round.toInt.max(0).min(grid.rows - 1)
+        ))
+      }
+    }
+
+  private var templarNear = false
 
   /** The hurt as the game reports them, the bot's cached health in brackets, and their orders. */
   private def hurtDetail = cruisers.filter(c => repairing(c.nativeUnitId)).take(6).map { c =>
@@ -228,8 +260,12 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
   override protected def wrapBase(unit: Battlecruiser) = new SingleUnitBehaviour[Battlecruiser](unit, meta) {
     override def describeShort = "Cruiser raid"
 
-    // a hurt cruiser leaves the fight: above the ranged micro that would keep it shooting
-    override def priority = if (repairing(this.unit.nativeUnitId)) RetreatPriority else super.priority
+    // a hurt cruiser leaves the fight, and one crowding its neighbours under storm threat steps aside: both above the
+    // ranged micro that would keep it shooting
+    override def priority =
+      if (repairing(this.unit.nativeUnitId)) RetreatPriority
+      else if (spaceOut(this.unit).isDefined) SpacingPriority
+      else super.priority
 
     override protected def toOrder(what: Objective) = {
       val me = this.unit
@@ -239,6 +275,7 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
       else if (repairing(id)) berth.map { b =>
         if (me.currentTile.distanceToIsMore(b, 2)) Orders.MoveToTile(me, b) else Orders.HoldPosition(me)
       }.toList
+      else if (raiders(id) && spaceOut(me).isDefined) spaceOut(me).map(Orders.MoveToTile(me, _)).toList
       else if (raiders(id)) {
         // gathering, or ahead of the others: meet them first, so the raid arrives as one
         // only for a while: raiders stuck far behind would hold the leaders back for good
@@ -269,6 +306,15 @@ private[pony] object CruiserTactics {
   val BerthDistance = 6
 
   val RetreatPriority = SecondPriority(0.95)
+
+  /** Stepping apart under storm threat outranks the ranged micro but not a hurt cruiser's retreat. */
+  val SpacingPriority = SecondPriority(0.94)
+
+  /** Tiles between spread cruisers: a storm covers three, so two tiles apart it catches one or two at most. */
+  val SpreadTiles = 2
+
+  /** A High Templar this close to a raider spreads the raid; storm range is nine tiles. */
+  val TemplarSight = 12
 
   /** A bank this long without 50 minerals or 50 gas can no longer pay for repairs. */
   val StarvedFrames = 24 * 120

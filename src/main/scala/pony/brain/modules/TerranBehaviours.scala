@@ -14,6 +14,7 @@ object TerranBehaviours {
         new IrradiateUnit(universe) ::
         new BlindEnemies(universe) ::
         new CruiserRaids(universe) ::
+        new DodgeStorms(universe) ::
         new YamatoSnipe(universe) ::
         new EscortWithVessels(universe) ::
         new HoldWallPosts(universe) ::
