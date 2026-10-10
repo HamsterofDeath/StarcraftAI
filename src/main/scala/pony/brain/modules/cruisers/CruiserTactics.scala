@@ -54,9 +54,13 @@ private[pony] object CruiserTactics {
   /** Tiles around the raid's centre in which enemy anti-air counts against it. */
   val RaidSight = 12
 
-  /** A raid hits and runs: it leaves once the anti-air near it outweighs it by this much; a big group stays longer. */
-  val RunRatio      = 0.8
-  val GroupRunRatio = 1.5
+  /**
+    * A raid hits and runs: it leaves once the anti-air near it reaches this share of its own value; a big group stays
+    * longer. Cruisers are dear for what they fight: by the square law three of them (2,100) only break even with about
+    * six Dragoons (1,050), and at 0.8 raids fought on until worn (game 1 on e643b1b ended seven of eight raids worn).
+    */
+  val RunRatio      = 0.45
+  val GroupRunRatio = 0.8
 
   def outnumbered(antiAir: Int, strength: Double, bigGroup: Boolean) =
     antiAir > strength * (if (bigGroup) GroupRunRatio else RunRatio)
@@ -71,11 +75,11 @@ private[pony] object CruiserTactics {
     seen.collect { case (antiAir, at) if now - at < DefenceMemory => antiAir }.getOrElse(0)
 
   /**
-    * A raid sets out against at most this share of its strength in remembered anti-air, a big group against as much as
-    * itself; else the fleet waits and grows. Below the run ratios, since a raid gets hurt before it runs.
+    * A raid sets out against at most this share of its strength in remembered anti-air; else the fleet waits and grows.
+    * Below the run ratios, since a raid gets hurt before it runs.
     */
-  val StartRatio      = 0.5
-  val GroupStartRatio = 1.0
+  val StartRatio      = 0.3
+  val GroupStartRatio = 0.6
 
   def strongEnough(fit: Int, defence: Int, bigGroup: Boolean) =
     defence <= fit * CruiserValue * (if (bigGroup) GroupStartRatio else StartRatio)

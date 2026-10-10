@@ -14,7 +14,7 @@ class CruiserTacticsTest extends Specification with MustMatchers {
        |A raid needs three fit cruisers and two thirds of the fleet, and ends worn down or below two $raidStartAndEnd
        |The crew grows with the fleet from two to ten SCVs $crew
        |A big fleet attacks as one group of four fifths $bigFleet
-       |A raid runs from anti-air outweighing it, a big group only from a clearly stronger one $hitAndRun
+       |A raid runs from anti-air worth under half its own value, a big group only from more $hitAndRun
        |A raid is gathered once every cruiser is near the centre $gathering
        |Only a cruiser ahead of the group waits for it $stragglers
        |Known expansions come first, then likely expansion sites, the main, a lone building, a start $targets
@@ -42,10 +42,10 @@ class CruiserTacticsTest extends Specification with MustMatchers {
     (startsRaid(6, 9) must beFalse) and
     (startsRaid(8, 9) must beTrue)
 
-  def hitAndRun = (outnumbered(1000, 2100, bigGroup = false) must beFalse) and
-    (outnumbered(1800, 2100, bigGroup = false) must beTrue) and
-    (outnumbered(1800, 2100, bigGroup = true) must beFalse) and
-    (outnumbered(3200, 2100, bigGroup = true) must beTrue)
+  def hitAndRun = (outnumbered(900, 2100, bigGroup = false) must beFalse) and
+    (outnumbered(1000, 2100, bigGroup = false) must beTrue) and
+    (outnumbered(1000, 2100, bigGroup = true) must beFalse) and
+    (outnumbered(1800, 2100, bigGroup = true) must beTrue)
 
   def gathering = {
     val centre = MapTilePosition(50, 50)
@@ -79,10 +79,9 @@ class CruiserTacticsTest extends Specification with MustMatchers {
   def defence =
     (remembered(Some((1500, 1000)), 1000 + DefenceMemory - 1) === 1500) and
       (remembered(Some((1500, 1000)), 1000 + DefenceMemory) === 0) and
-      (strongEnough(3, 1500, bigGroup = false) must beFalse) and
-      (strongEnough(4, 1500, bigGroup = false) must beFalse) and
-      (strongEnough(5, 1500, bigGroup = false) must beTrue) and
-      (strongEnough(3, 1500, bigGroup = true) must beTrue) and
+      (strongEnough(3, 700, bigGroup = false) must beFalse) and
+      (strongEnough(4, 700, bigGroup = false) must beTrue) and
+      (strongEnough(3, 700, bigGroup = true) must beTrue) and
       (strongEnough(3, 0, bigGroup = false) must beTrue)
 
   def whereTheArmyIsNot = {
