@@ -107,7 +107,7 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule[WrapsUni
       val naturals = {
         universe.bases
           .finishedBases
-          .filterNot(_.mainBuilding.isFloating)
+          .filter(b => !b.mainBuilding.isFloating && b.atField)
           .groupBy(_.resourceArea).values.map(_.minBy(_.mainBuilding.nativeUnitId)).toVector
           .filterNot(e => gatheringJobs.exists(_.covers(e)))
           .flatMap { base =>
@@ -148,7 +148,7 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule[WrapsUni
     emp =>
 
     private val boundField = base.resourceArea.map(_.uniqueId)
-    def attachedToBase     = base.mainBuilding.isInGame && !base.mainBuilding.isFloating &&
+    def attachedToBase     = base.mainBuilding.isInGame && !base.mainBuilding.isFloating && base.atField &&
       base.resourceArea.map(_.uniqueId) == boundField
     def permittedStaffing = MineralFieldStaffing.permitted(
       strategy.current.runsTerranCampaign,

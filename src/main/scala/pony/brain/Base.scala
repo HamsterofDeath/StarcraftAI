@@ -16,6 +16,13 @@ case class Base(mainBuilding: MainBuilding) {
       }
   }
 
+  /**
+    * Whether the depot stands at its field. The field is merely the nearest one, so a depot built at home to fly out
+    * later is bound to a field far away: in game 1 on 156cb30 one such depot sent miners and refinery builders into the
+    * wall for 40 minutes.
+    */
+  def atField = resourceArea.exists(a => !mainBuilding.centerTile.distanceToIsMore(a.center, Base.FieldReach))
+
   // Bind resource geometry on the native callback thread before the alternative-path future starts.
   // The current field remains dynamic so a lifted depot can later rebind after landing.
   private val initialResourceArea = resourceArea
@@ -67,4 +74,10 @@ case class Base(mainBuilding: MainBuilding) {
   )
 
   override def toString: String = s"Base@$mainBuilding"
+}
+
+object Base {
+
+  /** Tiles between a depot and its field's centre within which it mines the field. */
+  val FieldReach = 12
 }

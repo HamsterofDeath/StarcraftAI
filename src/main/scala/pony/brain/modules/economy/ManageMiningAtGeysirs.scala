@@ -14,11 +14,13 @@ import scala.collection.mutable.ArrayBuffer
 
 class ManageMiningAtGeysirs(universe: Universe)
     extends OrderlessAIModule[WorkerUnit](universe) with BuildingRequestHelper {
+  import ManageMiningAtGeysirs._
+
   private val gatheringJobs = ArrayBuffer.empty[ManageMiningAtGeysir]
   def workerCapacity        = gatheringJobs.filter(_.keep).map(_.idealWorkerCount).sum
 
   override def onTick_!(): Unit = {
-    val unattended = unitManager.bases.finishedBases.filterNot(_.mainBuilding.isFloating)
+    val unattended = unitManager.bases.finishedBases.filter(b => !b.mainBuilding.isFloating && b.atField)
       .filter(base => !gatheringJobs.exists(_.covers(base)))
     unattended.foreach { base =>
       base.myGeysirs.filterNot(g => gatheringJobs.exists(_.targetGeysir == g)).map { geysir =>
@@ -39,11 +41,12 @@ class ManageMiningAtGeysirs(universe: Universe)
     private val workerCountBeforeWantingGas = this.universe.mapLayers
       .isOnIsland(base.mainBuilding.tilePosition)
       .ifElse(8, 14)
-    private var refinery = Option.empty[Refinery]
+    private var refinery    = Option.empty[Refinery]
+    private var lastRequest = Int.MinValue
 
     override def toString = s"GetGas@${geysir.tilePosition}"
 
-    def keep = geysir.isInGame && base.mainBuilding.isInGame && !base.mainBuilding.isFloating &&
+    def keep = geysir.isInGame && base.mainBuilding.isInGame && !base.mainBuilding.isFloating && base.atField &&
       base.myGeysirs.contains(geysir)
     def releaseMiners(): Unit = unitManager.allJobsByUnitType[WorkerUnit].filter(_.employer == this).foreach(_.fail_!())
 
@@ -52,7 +55,12 @@ class ManageMiningAtGeysirs(universe: Universe)
       refinery = refinery.filter(_.isInGame)
       refinery match {
         case None =>
-          if (ownUnits.allByType[WorkerUnit].size >= workerCountBeforeWantingGas) {
+          // only where the depot stands at the field, and a minute between tries: in game 1 on 156cb30 a depot built at
+          // home and waiting to fly out asked for its field's refinery 300 times, its builder never able to start it
+          if (
+            ownUnits.allByType[WorkerUnit].size >= workerCountBeforeWantingGas && base.atField &&
+            currentTick - lastRequest >= RetryFrames
+          ) {
             def requestExists = unitManager.requestedConstructions[Refinery]
               .exists(_.customPosition.predefined.contains(geysir.tilePosition))
             def jobExists = unitManager.constructionsInProgress[Refinery]
@@ -70,6 +78,7 @@ class ManageMiningAtGeysirs(universe: Universe)
             if (!requestExists && !jobExists && findAndRememberRefinery().isEmpty) {
               val where = AlternativeBuildingSpot.fromPreset(geysir.tilePosition)
               requestBuilding(classOf[Refinery], customBuildingPosition = where)
+              lastRequest = currentTick
               NativeMatchEvidence.trace(
                 "refinery-request",
                 s"geysir=${geysir.tilePosition} base=${base.mainBuilding.tilePosition} workers=${ownUnits.allByType[WorkerUnit].size}"
@@ -194,4 +203,10 @@ class ManageMiningAtGeysirs(universe: Universe)
 
   }
 
+}
+
+private[pony] object ManageMiningAtGeysirs {
+
+  /** A geyser's refinery is requested at most once in this many frames. */
+  val RetryFrames = 24 * 60
 }
