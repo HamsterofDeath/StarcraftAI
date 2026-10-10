@@ -155,6 +155,9 @@ object KitingPolicy {
   val FinishingShots = 2.0
   val FinishingBonus = 2.0
 
+  /** Under threat focus fire, enemies within this many pixels of hitting the shooter all count as equally near. */
+  val NearSlack = 96.0
+
   /** Pixels a unit keeps between itself and the reach of static defence while it stays out. */
   val StandOff = 24.0
 
@@ -198,8 +201,9 @@ object KitingPolicy {
       def shotsLeft(t: Threat) =
         if (t.focus.shots <= 0) left(t) else math.max(0.5, t.focus.shots * left(t) / math.max(1, t.durability))
       def distance(t: Threat) = me.at.distanceTo(t.at)
-      // nearness counts, but less than finishing: games with mixed armies showed threat spreading its damage
-      def closeness(t: Threat) = 1.0 / (1.0 + math.max(0.0, distance(t) - t.reach) / 128.0)
+      // nearness counts, but less than finishing, and everything about to hit counts as near: in mixed armies each
+      // shooter ranked its own neighbour first, so the group spread its damage instead of finishing units
+      def closeness(t: Threat) = 1.0 / (1.0 + math.max(0.0, distance(t) - t.reach - NearSlack) / 128.0)
       def finishing(t: Threat) = if (shotsLeft(t) <= FinishingShots) FinishingBonus else 1.0
       mode match {
         case FocusMode.Weakest => pool.minBy(t => (left(t), distance(t)))
