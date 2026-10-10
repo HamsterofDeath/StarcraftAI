@@ -134,6 +134,9 @@ class FerryManager(override val universe: Universe) extends HasUniverse {
 
   def sealing = sealedSplit.isDefined
 
+  /** Behind the sealed wall (true), beyond it (false), or neither: a pocket, or no wall sealing. */
+  def wallSide(tile: MapTilePosition): Option[Boolean] = sealedSplit.flatMap(_.side(tile))
+
   /** Whether the sealed wall stands between two tiles of the main's terrain area. */
   def sealedApart(a: MapTilePosition, b: MapTilePosition) = sealedSplit.exists { split =>
     split.mainArea.inBounds(a) && split.mainArea.inBounds(b) && split.mainArea.free(a) && split.mainArea.free(b) && {

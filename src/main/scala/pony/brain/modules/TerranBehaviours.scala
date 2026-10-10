@@ -14,6 +14,7 @@ object TerranBehaviours {
         new IrradiateUnit(universe) ::
         new BlindEnemies(universe) ::
         new CruiserRaids(universe) ::
+        new HoldWallPosts(universe) ::
         new CloakSelfGhost(universe) ::
         new GoToInitialPosition(universe) ::
         new CloakSelfWraith(universe) ::
