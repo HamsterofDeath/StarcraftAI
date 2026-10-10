@@ -34,7 +34,9 @@ class CruiserTacticsTest extends Specification with MustMatchers {
 
   def crew = (crewSize(0), crewSize(1), crewSize(4), crewSize(30)) === (0, 2, 4, 10)
 
-  def bigFleet = (startsRaid(7, 12) must beFalse) and (startsRaid(10, 12) must beTrue)
+  def bigFleet = (startsRaid(7, 12) must beFalse) and (startsRaid(10, 12) must beTrue) and
+    (startsRaid(6, 9) must beFalse) and
+    (startsRaid(8, 9) must beTrue)
 
   def hitAndRun = (outnumbered(1000, 2100, bigGroup = false) must beFalse) and
     (outnumbered(1800, 2100, bigGroup = false) must beTrue) and

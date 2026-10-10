@@ -13,6 +13,8 @@ param(
  [ValidateRange(1, 300)][int]$StartupSeconds = 25,
  # Watch the game rendered (2x window, 3x speed) instead of running it headless at full speed.
  [switch]$Headed,
+ # Milliseconds per frame for a rendered game: 21 for twice the 42 ms 'Fastest' speed; the launcher's 14 by default.
+ [ValidateRange(-1, 500)][int]$LocalSpeedMs = -1,
  # Passed on as -BotProperties, for example traceKite=true.
  [string[]]$BotProperties = @()
 )
@@ -24,6 +26,7 @@ $runName = 'game-' + $Strategy + '-' + (Get-Date).ToString('yyyyMMdd-HHmmss')
 $launch = @{ Runtime = $Runtime; Java = $Java; RunName = $runName; SourceCommit = $SourceCommit
              Repository = $Repository; Strategy = $Strategy; BotProperties = $BotProperties; HeapMb = 384 }
 if (-not $Headed) { $launch.Headless = $true }
+if ($LocalSpeedMs -ge 0) { $launch.LocalSpeedMs = $LocalSpeedMs }
 $started = Get-Date
 $receipt = & $launcher @launch | ConvertFrom-Json
 $run = Join-Path $Repository ('target/native-runs/' + $runName)

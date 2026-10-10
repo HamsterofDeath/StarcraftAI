@@ -281,7 +281,7 @@ private[pony] object CruiserTactics {
     fit >= RaidSize && (if (fleet >= BigFleet) fit * 5 >= fleet * 4 else fit * 3 >= fleet * 2)
 
   /** From this many cruisers on the fleet attacks as one group. */
-  val BigFleet = 10
+  val BigFleet = 9
 
   /** Minerals and gas of one cruiser, the measure of a raid's strength (times its health). */
   val CruiserValue = 700
