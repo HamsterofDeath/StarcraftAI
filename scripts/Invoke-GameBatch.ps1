@@ -12,6 +12,8 @@ param(
  [ValidateRange(1, 100)][int]$Games = 1,
  # Upper bound in real minutes per game.
  [ValidateRange(1, 120)][int]$TimeoutMinutes = 25,
+ # A game without new bot output this long is stuck; late games run slower, so more than a single game's default.
+ [ValidateRange(1, 300)][int]$StallSeconds = 20,
  # Watch the games rendered; -LocalSpeedMs 21 plays them at twice the 'Fastest' speed.
  [switch]$Headed,
  [ValidateRange(-1, 500)][int]$LocalSpeedMs = -1,
@@ -61,11 +63,15 @@ $rows = foreach ($n in 1..$Games) {
   Stop-Leftovers
   $before = @(Get-ChildItem -LiteralPath $runs -Directory -Filter "game-$Strategy-*" -ErrorAction SilentlyContinue).Name
   $game = @{ Runtime = $Runtime; Java = $Java; SourceCommit = $Commit; Repository = $RunCheckout
-             Strategy = $Strategy; TimeoutMinutes = $TimeoutMinutes; BotProperties = $BotProperties }
+             Strategy = $Strategy; TimeoutMinutes = $TimeoutMinutes; StallSeconds = $StallSeconds
+             BotProperties = $BotProperties }
   if ($Headed) { $game.Headed = $true }
   if ($LocalSpeedMs -ge 0) { $game.LocalSpeedMs = $LocalSpeedMs }
-  $outcome = (& (Join-Path $RunCheckout 'scripts/Run-NativeGame.ps1') @game 2>&1 | ForEach-Object { "$_" } |
-    Select-Object -First 1)
+  # the whole report, not just its head: cutting the pipeline short would skip the runner's own cleanup
+  $report = @(& (Join-Path $RunCheckout 'scripts/Run-NativeGame.ps1') @game 2>&1 | ForEach-Object { "$_" })
+  $outcome = ($report | Where-Object { $_ -match ' after \d* frames ' } | Select-Object -First 1)
+  $stopped = ($report | Where-Object { $_ -match '^Stopped: ' } | Select-Object -First 1)
+  if ($stopped) { $outcome = $outcome + '; ' + ($stopped -replace ' [(]see .*', '') }
   Stop-Leftovers
   $run = Get-ChildItem -LiteralPath $runs -Directory -Filter "game-$Strategy-*" |
     Where-Object { $before -notcontains $_.Name } | Sort-Object Name | Select-Object -Last 1
