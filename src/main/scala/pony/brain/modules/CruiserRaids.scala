@@ -24,6 +24,9 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
   private var myBerth      = Option.empty[MapTilePosition]
   private var gathering    = false
   private var gatherAt     = 0
+  private var gatheredAt   = 0
+  private var closest      = Double.MaxValue
+  private var progressAt   = 0
   private var bigGroup     = false
   private var centre       = Option.empty[MapTilePosition]
   private var lastStatus   = -1
@@ -80,7 +83,23 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
       gathering && centre.forall(c => gathered(members.map(_.currentTile), c) || currentTick - gatherAt > GatherFrames)
     ) {
       gathering = false
+      gatheredAt = currentTick
       NativeMatchEvidence.trace("raid-gathered", s"raiders=${members.size} at=$centre frames=${currentTick - gatherAt}")
+    }
+    // a raid that comes no nearer its target for two minutes, with nobody there, gives the target up
+    for (c <- centre; t <- target if raiders.nonEmpty && !gathering) {
+      val distance = math.sqrt(c.distanceSquaredTo(t).toDouble)
+      if (distance + ProgressTiles <= closest) {
+        closest = distance
+        progressAt = currentTick
+      } else if (currentTick - progressAt > StallFrames && !members.exists(m => m.currentTile.distanceToIsLess(t, 6))) {
+        NativeMatchEvidence.trace("raid-stuck", s"target=$t centre=$c raiders=${members.size}")
+        swept += t
+        target = None
+        closest = Double.MaxValue
+        progressAt = currentTick
+        updateTarget(fleet)
+      }
     }
     if (raiders.nonEmpty) {
       val worn       = if (canMend) endsRaid(raiders.toSeq.map(health)) else raiders.size < 2
@@ -103,6 +122,8 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
         bigGroup = health.size >= BigFleet
         gathering = true
         gatherAt = currentTick
+        closest = Double.MaxValue
+        progressAt = currentTick
         NativeMatchEvidence.trace(
           "raid-start",
           s"raiders=${fit.size} target=${target.get} fleet=${fleet.size} group=$bigGroup"
@@ -218,7 +239,9 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
       }.toList
       else if (raiders(id)) {
         // gathering, or ahead of the others: meet them first, so the raid arrives as one
-        val meet = centre.filter(c => gathering || target.exists(t => waitsForGroup(me.currentTile, c, t)))
+        // only for a while: raiders stuck far behind would hold the leaders back for good
+        val cohesive = currentTick - gatheredAt < CohesionFrames
+        val meet = centre.filter(c => gathering || cohesive && target.exists(t => waitsForGroup(me.currentTile, c, t)))
         meet.orElse(target).map(Orders.AttackMove(me, _)).toList
       } else if (worldDominationPlan.baseDefenseActive) Nil
       else berth.filter(me.currentTile.distanceToIsMore(_, 8)).map(Orders.AttackMove(me, _)).toList
@@ -279,6 +302,13 @@ private[pony] object CruiserTactics {
 
   def gathered(raiders: Seq[MapTilePosition], centre: MapTilePosition) =
     raiders.forall(r => !r.distanceToIsMore(centre, GatherRadius))
+
+  /** For this long after gathering the leaders wait for the group; then everyone flies straight at the target. */
+  val CohesionFrames = 24 * 90
+
+  /** A raid whose centre gains less than ProgressTiles on its target in StallFrames gives the target up. */
+  val ProgressTiles = 3
+  val StallFrames   = 24 * 120
 
   /** A raider more than StrayRadius tiles from the centre, on the target's side of it, waits for the others. */
   val StrayRadius = 8
