@@ -17,6 +17,9 @@ trait FerrySupport[T <: GroundUnit] extends JobOrSubJob[T] {
           case _ if unit.loaded =>
             // do nothing while in transporter
             Orders.NoUpdate(unit).toList
+          case None if ferryManager.sealing =>
+            // behind a sealed wall the way leads into the wall: keep doing what it does until a ferry is assigned
+            Orders.NoUpdate(unit).toList
           case None =>
             // go to some hopefully near point and wait for ferry
             Orders.MoveToTile(unit, to).toList

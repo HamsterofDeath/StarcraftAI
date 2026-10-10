@@ -2,6 +2,8 @@ package pony
 package brain
 package modules
 
+import scala.jdk.CollectionConverters._
+
 class ProvideNewUnits(universe: Universe) extends OrderlessAIModule[UnitFactory](universe) {
   self =>
 
@@ -17,10 +19,17 @@ class ProvideNewUnits(universe: Universe) extends OrderlessAIModule[UnitFactory]
         val wantedAmount  = req.amount
         var skipRemaining = false
         (1 to wantedAmount).iterator.takeWhile(_ => !skipRemaining) foreach { _ =>
-          val builderOf = req.trainNear.fold(UnitJobRequest.builderOf(typeFixed, self)) { near =>
+          // a unit that needs its producer's add-on (a Battlecruiser its Starport's Control Tower) goes only to one
+          // that has it: another refuses the order, gives up after 25 frames and may be picked again
+          val nativeType            = TypeMapping.unitTypeOf(typeFixed)
+          val needsAddon            = nativeType.requiredUnits.asScala.keys.exists(_.isAddon)
+          def ready(f: UnitFactory) = !needsAddon || f.nativeUnit.canTrain(nativeType)
+          val builderOf             = req.trainNear.fold(
+            UnitJobRequest.builderOf(typeFixed, self).withRequest(_.withFilter_!(ready))
+          ) { near =>
             // a worker for one base comes from that base: one trained elsewhere may never walk there
             UnitJobRequest.builderOf(typeFixed, self).withRequest(
-              _.withFilter_!(f => !ferryManager.sealedApart(f.tilePosition, near))
+              _.withFilter_!(f => ready(f) && !ferryManager.sealedApart(f.tilePosition, near))
                 .withCherryPicker_!(job => PriorityChain(job.unit.tilePosition.distanceSquaredTo(near).toDouble))
             )
           }

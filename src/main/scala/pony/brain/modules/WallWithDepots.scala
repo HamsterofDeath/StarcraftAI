@@ -149,7 +149,8 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
       mapLayers.rawWalkableMap.free(t) &&
       mapLayers.freeTilesForConstruction.free(t) &&
       mapLayers.blockedByBuildingTiles.free(t) &&
-      mapLayers.blockedByPlannedBuildings.free(t)
+      mapLayers.blockedByPlannedBuildings.free(t) &&
+      mapLayers.blockedByPotentialAddons.free(t)
     }
   }
 

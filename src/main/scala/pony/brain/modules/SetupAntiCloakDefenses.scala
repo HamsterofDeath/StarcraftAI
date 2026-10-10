@@ -78,10 +78,16 @@ class SetupAntiCloakDefenses(universe: Universe)
           analyzed.prepareNextIfDone()
         } else {
           bestBuildingLocation.foreach { where =>
+            // the spot was found up to fifteen seconds ago: an add-on slot or a building may have claimed it since
+            val spot = Area(where, Size(2, 2))
             requestBuilding(
               targetBuildingType,
               takeCareOfDependencies = true,
-              customBuildingPosition = AlternativeBuildingSpot.fromPreset(where)
+              customBuildingPosition = AlternativeBuildingSpot.fromValidatedPreset(where)(
+                mapLayers.freeTilesForConstruction.free(spot.upperLeft, spot.sizeOfArea) &&
+                  mapLayers.blockedByPotentialAddons.free(spot.upperLeft, spot.sizeOfArea) &&
+                  mapLayers.blockedByPlannedBuildings.free(spot.upperLeft, spot.sizeOfArea)
+              )
             )
           }
         }

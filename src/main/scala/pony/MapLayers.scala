@@ -27,6 +27,9 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
     lazyVal
   }
 
+  /** Slots of add-on buildings still being built, taken on the main thread: layers may be evaluated by planners. */
+  @volatile private var plannedAddonSlots = Vector.empty[Area]
+
   private val justBuildings                   = register(evalOnlyBuildings)
   private val justMines                       = register(evalOnlyMines)
   private val justMineralsAndGas              = register(evalOnlyResources)
@@ -242,6 +245,10 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   private def update(): Unit = {
     if (lastUpdatePerformedInTick != universe.currentTick) {
       lastUpdatePerformedInTick = universe.currentTick
+      plannedAddonSlots = unitManager.constructionsInProgress[Building].iterator
+        .filter(job => classOf[CanBuildAddons].isAssignableFrom(job.typeOfBuilding))
+        .map(job => Area(job.area.lowerRight.movedBy(1, -1), Size(2, 2)))
+        .toVector
 
       invalidate(mapKey)
 
@@ -288,8 +295,13 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
     }
   }
 
-  private def evalPotentialAddonLocations =
-    evalOnlyAddonAreas(ownUnits.allByType[CanBuildAddons].filterNot(_.isFloating))
+  // Planned add-on buildings keep their slot free as well: a turret placed there before the Science Facility stood
+  // blocked its Physics Lab, and with it every Battlecruiser of the game.
+  private def evalPotentialAddonLocations = {
+    val ret = evalOnlyAddonAreas(ownUnits.allByType[CanBuildAddons].filterNot(_.isFloating))
+    plannedAddonSlots.foreach(ret.block_!)
+    ret
+  }
 
   private def evalOnlyAddonAreas(units: IterableOnce[CanBuildAddons]) = {
     val ret = emptyCopy
