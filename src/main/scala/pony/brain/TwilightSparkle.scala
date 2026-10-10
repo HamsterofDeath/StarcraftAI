@@ -75,6 +75,7 @@ class TwilightSparkle(world: DefaultWorld) {
     new ProvideSuggestedAndRequestedAddons(universe),
     new HandleDefenses(universe),
     new TerranBunkerDefense(universe),
+    new BunkerStimCycle(universe),
     new WallWithDepots(universe),
     new CarpetSpread(universe),
     new TankBoxes(universe),

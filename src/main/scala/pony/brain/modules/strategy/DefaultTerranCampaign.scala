@@ -56,6 +56,8 @@ class DefaultTerranCampaign(override val universe: Universe) extends LongTermStr
       UpgradeToResearch(Upgrades.Terran.VehicleArmor)(bases.finishedBases.size >= 2) ::
       UpgradeToResearch(Upgrades.Terran.GoliathRange)(bases.finishedBases.size >= 2) ::
       UpgradeToResearch(Upgrades.Terran.MedicFlare)(bases.finishedBases.size >= 2) ::
+      // bunkered Marines step out, stim and go back in when enemies come (BunkerStimCycle)
+      UpgradeToResearch(Upgrades.Terran.InfantryCooldown)(ownUnits.allByType[Bunker].nonEmpty) ::
       UpgradeToResearch(Upgrades.Terran.MedicEnergy)(bases.finishedBases.size >= 3) :: Nil
 }
 

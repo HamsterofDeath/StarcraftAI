@@ -14,7 +14,16 @@ class EnterDefensiveBunker(universe: Universe) extends DefaultBehaviour[Marine](
       if (this.unit.nativeUnit.isLoaded) Orders.NoUpdate(this.unit).toList
       else this.universe.pluginByType[TerranBunkerDefense].bunkerFor(this.unit).map { b =>
         val heading = Option(this.unit.nativeUnit.getOrderTarget).exists(_.getID == b.nativeUnitId)
-        if (retry.issue(currentTick, this.unit.currentTile, false, heading, this.unit.nativeUnit.isMoving))
+        val native  = this.unit.nativeUnit
+        // out of a threatened bunker to stim (BunkerStimCycle): stim first, then straight back in
+        if (
+          BunkerStim.stimsOnTheWay(
+            this.universe.pluginByType[BunkerStimCycle].threatened(b.nativeUnitId),
+            native.getStimTimer,
+            native.getHitPoints
+          )
+        ) Orders.TechOnSelf(this.unit, Upgrades.Terran.InfantryCooldown)
+        else if (retry.issue(currentTick, this.unit.currentTile, false, heading, native.isMoving))
           Orders.EnterBunker(this.unit, b)
         else Orders.NoUpdate(this.unit)
       }.toList

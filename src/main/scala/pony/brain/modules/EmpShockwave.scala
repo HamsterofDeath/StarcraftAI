@@ -35,10 +35,10 @@ class EmpShockwave(universe: Universe) extends DefaultBehaviour[ScienceVessel](u
       if (native.getOrder == bwapi.Order.CastEMPShockwave) List(Orders.NoUpdate(me))
       else if (native.getEnergy < tech.energyCost) Nil
       else {
-        val radius = tech.getWeapon.outerSplashRadius.toDouble
-        val reach  = nativeGame.self().weaponMaxRange(tech.getWeapon).toDouble
-        val self   = nativeGame.self()
-        val around = native.getUnitsInRadius((reach + radius).toInt).asScala.toVector.filter(_.isVisible)
+        val radius              = tech.getWeapon.outerSplashRadius.toDouble
+        val reach               = nativeGame.self().weaponMaxRange(tech.getWeapon).toDouble
+        val self                = nativeGame.self()
+        val around              = native.getUnitsInRadius((reach + radius).toInt).asScala.toVector.filter(_.isVisible)
         def blip(u: bwapi.Unit) =
           Blip(u.getX.toDouble, u.getY.toDouble, u.getShields.toDouble, u.getEnergy.toDouble, u.getPlayer.isEnemy(self))
         val blips   = around.filter(u => u.getPlayer.isEnemy(self) || u.getPlayer == self).map(blip)
