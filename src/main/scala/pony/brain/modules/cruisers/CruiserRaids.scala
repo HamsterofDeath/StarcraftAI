@@ -41,8 +41,11 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
   private var lastStatus   = -1
   private var starvedSince = Option.empty[Int]
   private val trail        = mutable.Queue.empty[(Int, MapTilePosition)]
-  private var fieldSpot    = Option.empty[MapTilePosition]
-  private val fieldCrew    = new Employer[SCV](universe)
+  // the most anti-air a raid met at each target, and when: the next raid there must be strong enough for it
+  private val defended    = mutable.HashMap.empty[MapTilePosition, (Int, Int)]
+  private var peakAntiAir = 0
+  private var fieldSpot   = Option.empty[MapTilePosition]
+  private val fieldCrew   = new Employer[SCV](universe)
 
   private def active = race.isTerran && strategy.current.raidsWithCruisers
 
@@ -118,7 +121,9 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
       val antiAir    = centre.map(antiAirAround).getOrElse(0)
       val strength   = members.map(m => CruiserValue * health(m.nativeUnitId)).sum
       val overpowerd = !gathering && outnumbered(antiAir, strength, bigGroup)
+      if (!gathering) peakAntiAir = peakAntiAir max antiAir
       if (worn || overpowerd || target.isEmpty || worldDominationPlan.recallsArmy) {
+        target.foreach(t => defended(t) = (peakAntiAir, currentTick))
         NativeMatchEvidence.trace(
           "raid-end",
           s"raiders=${raiders.size} worn=$worn outnumbered=$overpowerd antiAir=$antiAir strength=${strength.round} " +
@@ -128,10 +133,13 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
         raiders = Set.empty
       }
     } else if (!worldDominationPlan.recallsArmy) {
-      val fit = health.collect { case (id, hp) if !repairing(id) && (hp >= FitFrom || !canMend) => id }.toSet
-      if (startsRaid(fit.size, health.size) && target.isDefined) {
+      val fit     = health.collect { case (id, hp) if !repairing(id) && (hp >= FitFrom || !canMend) => id }.toSet
+      val group   = health.size >= BigFleet
+      val defence = target.map(defenceAt).getOrElse(0)
+      if (startsRaid(fit.size, health.size) && target.isDefined && strongEnough(fit.size, defence, group)) {
         raiders = fit
-        bigGroup = health.size >= BigFleet
+        bigGroup = group
+        peakAntiAir = 0
         gathering = true
         gatherAt = currentTick
         closest = Double.MaxValue
@@ -139,7 +147,8 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
         NativeMatchEvidence.trace(
           "raid-start",
           s"raiders=${fit.size} target=${target.get} fleet=${fleet.size} group=$bigGroup " +
-            s"strength=${fit.size * CruiserValue} enemyAtMost=${universe.pluginByType[EnemyArmyEstimate].maxArmyAt(target.get).round}"
+            s"strength=${fit.size * CruiserValue} defence=$defence " +
+            s"enemyAtMost=${universe.pluginByType[EnemyArmyEstimate].maxArmyAt(target.get).round}"
         )
       }
     }
@@ -207,6 +216,9 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
     s"${w.getOrder}>${Option(w.getOrderTarget).map(_.getType.toString.stripPrefix("Terran_")).getOrElse("-")}"
   }.groupBy(identity).map((k, v) => s"$k*${v.size}").mkString(",")
 
+  /** The anti-air the last raid at this target met, while that is recent enough to count. */
+  private def defenceAt(t: MapTilePosition) = remembered(defended.get(t), currentTick)
+
   /** Keeps the raid's target while enemy buildings stand there; a start location found empty is swept off the list. */
   private def updateTarget(fleet: collection.Set[Battlecruiser]): Unit = {
     val known = universe.pluginByType[RunTerranCampaign].enemyBuildings
@@ -232,9 +244,15 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
         !allStarts.exists(_.distanceToIsLess(c, 8))
       }.filterNot(swept)
       val estimate = universe.pluginByType[EnemyArmyEstimate]
-      def pick     =
-        choose(known.filter(_.base).map(_.tile), likely, known.map(_.tile), starts, home, estimate.armyNear)
-          .orElse(fields.filterNot(swept).minByOpt(_.distanceSquaredTo(home)))
+      def pick     = choose(
+        known.filter(_.base).map(_.tile),
+        likely,
+        known.map(_.tile),
+        starts,
+        home,
+        t => estimate.armyNear(t) + defenceAt(t)
+      )
+        .orElse(fields.filterNot(swept).minByOpt(_.distanceSquaredTo(home)))
       // all swept and still no enemy found: sweep again, the enemy may have built somewhere since
       target = pick.orElse {
         if (swept.isEmpty) None

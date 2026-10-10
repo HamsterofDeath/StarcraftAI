@@ -61,6 +61,25 @@ private[pony] object CruiserTactics {
   def outnumbered(antiAir: Int, strength: Double, bigGroup: Boolean) =
     antiAir > strength * (if (bigGroup) GroupRunRatio else RunRatio)
 
+  /**
+    * The anti-air a raid met at a target counts against the next raid there for this long: in game 1 on 1f86417 raids
+    * of three went back to the same base seven times, meeting up to 1,500 of anti-air, until one cruiser was left.
+    */
+  val DefenceMemory = 24 * 60 * 4
+
+  def remembered(seen: Option[(Int, Int)], now: Int): Int =
+    seen.collect { case (antiAir, at) if now - at < DefenceMemory => antiAir }.getOrElse(0)
+
+  /**
+    * A raid sets out against at most this share of its strength in remembered anti-air, a big group against as much as
+    * itself; else the fleet waits and grows. Below the run ratios, since a raid gets hurt before it runs.
+    */
+  val StartRatio      = 0.5
+  val GroupStartRatio = 1.0
+
+  def strongEnough(fit: Int, defence: Int, bigGroup: Boolean) =
+    defence <= fit * CruiserValue * (if (bigGroup) GroupStartRatio else StartRatio)
+
   /** Gathered once every raider is this close to the centre, or after GatherFrames at the latest. */
   val GatherRadius = 6
   val GatherFrames = 24 * 30

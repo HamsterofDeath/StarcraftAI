@@ -19,6 +19,7 @@ class CruiserTacticsTest extends Specification with MustMatchers {
        |Only a cruiser ahead of the group waits for it $stragglers
        |Known expansions come first, then likely expansion sites, the main, a lone building, a start $targets
        |Among expansions the one without enemy army seen near it comes first, even when farther $whereTheArmyIsNot
+       |A raid waits until it can stand the anti-air met at its target in the last four minutes $defence
        """.stripMargin
 
   def repairHysteresis = (needsRepair(0.39, repairing = false) must beTrue) and
@@ -74,6 +75,15 @@ class CruiserTacticsTest extends Specification with MustMatchers {
       choose(Nil, Nil, Nil, Seq(enemyMain), home)
     ) === (Some(natural), Some(site), Some(enemyMain), Some(pylon), Some(enemyMain))
   }
+
+  def defence =
+    (remembered(Some((1500, 1000)), 1000 + DefenceMemory - 1) === 1500) and
+      (remembered(Some((1500, 1000)), 1000 + DefenceMemory) === 0) and
+      (strongEnough(3, 1500, bigGroup = false) must beFalse) and
+      (strongEnough(4, 1500, bigGroup = false) must beFalse) and
+      (strongEnough(5, 1500, bigGroup = false) must beTrue) and
+      (strongEnough(3, 1500, bigGroup = true) must beTrue) and
+      (strongEnough(3, 0, bigGroup = false) must beTrue)
 
   def whereTheArmyIsNot = {
     val home   = MapTilePosition(30, 7)
