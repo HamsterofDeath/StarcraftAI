@@ -47,4 +47,10 @@ trait LongTermStrategy extends HasUniverse {
 
   /** No more workers are trained beyond this many: the rest of the supply belongs to the army. */
   def maxWorkers: Int = 75
+
+  /**
+    * A gas-hungry army: a mineral bank buys another field (and its geyser) although the held ones are not fully
+    * staffed, up to this many fields beyond the configured maximum.
+    */
+  def extraFieldsForGas: Int = 0
 }

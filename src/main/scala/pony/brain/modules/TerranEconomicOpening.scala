@@ -66,11 +66,13 @@ class TerranEconomicOpening(universe: Universe)
       // Fields count as held while healthy, so the next command center is under way before one runs dry.
       val heldRichFields = landed.flatMap(fieldOf).filter(fieldHealthy).map(_.uniqueId).distinct
       val heldStates     = mining.fieldStates.filter(s => heldRichFields.contains(s.id))
+      val forGas         = strategy.current.extraFieldsForGas
+      val bankFull       = forGas > 0 && resources.unlockedResources.minerals > 1500
       val wanted         = ExpansionChoice.wantedFields(
         cfg.requiredFields,
         heldRichFields.size,
-        heldStates.nonEmpty && heldStates.forall(_.saturated),
-        cfg.maxFields
+        heldStates.nonEmpty && heldStates.forall(_.saturated) || bankFull,
+        cfg.maxFields + forGas
       )
       val deficit                        = wanted - heldRichFields.size
       val economyMoving                  = mining.startingFieldSaturated || mining.secondBaseEstablished

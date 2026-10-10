@@ -104,6 +104,7 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
       }
     }
     worldDominationPlan.raidingFleet = fleet.filter(c => raiders(c.nativeUnitId)).toSet
+    worldDominationPlan.cruisersInRepair = repairing.size
     hireCrew(fleet.size)
     if (fleet.nonEmpty && currentTick / 720 != lastStatus) {
       lastStatus = currentTick / 720
@@ -121,7 +122,8 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
 
   /** The hurt as the game reports them, the bot's cached health in brackets, and their orders. */
   private def hurtDetail = cruisers.filter(c => repairing(c.nativeUnitId)).take(6).map { c =>
-    s"${c.nativeUnitId}:${c.nativeUnit.getHitPoints}[${(c.percentageHPOk * 100).round}]:${c.nativeUnit.getOrder}"
+    s"${c.nativeUnitId}:${c.nativeUnit.getHitPoints}[${(c.percentageHPOk * 100).round}]:${c.nativeUnit.getOrder}" +
+      s":${unitManager.jobOf(c).getClass.getSimpleName}"
   }.mkString(",")
 
   /** What the crew is busy with: each order and its target's type, counted. */

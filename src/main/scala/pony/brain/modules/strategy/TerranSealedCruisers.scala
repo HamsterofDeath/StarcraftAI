@@ -25,6 +25,9 @@ class TerranSealedCruisers(universe: Universe) extends DefaultTerranCampaign(uni
   // a cruiser takes six supply: game 82 sat at 191 supply with 125 SCVs and room for ten cruisers
   override def maxWorkers = 60
 
+  // cruisers live on gas and every field has one geyser: idle minerals buy fields
+  override def extraFieldsForGas = 3
+
   private def fewer[T <: WrapsUnit: scala.reflect.ClassTag](than: Int) = ownUnits.allByType[T].size < than
 
   override def suggestProducers = {
@@ -44,7 +47,10 @@ class TerranSealedCruisers(universe: Universe) extends DefaultTerranCampaign(uni
     IdealUnitRatio(classOf[Marine], 6)(fewer[Marine](6)) ::
       IdealUnitRatio(classOf[Tank], 2)(fewer[Tank](2)) ::
       IdealUnitRatio(classOf[Dropship], 3)(fewer[Dropship](3) && unitManager.existsAndDone(classOf[Starport])) ::
-      IdealUnitRatio(classOf[Battlecruiser], 12 + scale * 2)(true) ::
+      // a repair costs less than a new cruiser: while hurt ones wait, a low gas bank goes to the crew
+      IdealUnitRatio(classOf[Battlecruiser], 12 + scale * 2)(
+        worldDominationPlan.cruisersInRepair == 0 || resources.unlockedResources.gas >= 450
+      ) ::
       IdealUnitRatio(classOf[Vulture], scale)(scale > 0 && fewer[Vulture](8)) :: Nil
   }
 

@@ -27,6 +27,9 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
   /** The cruisers out on a raid (CruiserRaids); a raid weighs like the campaign army when home is attacked. */
   var raidingFleet = Set.empty[Mobile]
 
+  /** How many cruisers wait to be repaired (CruiserRaids). */
+  var cruisersInRepair = 0
+
   /** Whether the raid on our bases is big enough to call the army, and the cruisers, home. */
   def recallsArmy                                      = baseDefense.pressure && baseDefense.recallsCampaign
   def requestBaseDefense(where: MapTilePosition): Unit = {
