@@ -126,7 +126,8 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
         progressAt = currentTick
         NativeMatchEvidence.trace(
           "raid-start",
-          s"raiders=${fit.size} target=${target.get} fleet=${fleet.size} group=$bigGroup"
+          s"raiders=${fit.size} target=${target.get} fleet=${fleet.size} group=$bigGroup " +
+            s"strength=${fit.size * CruiserValue} enemyAtMost=${universe.pluginByType[EnemyArmyEstimate].maxArmyAt(target.get).round}"
         )
       }
     }
