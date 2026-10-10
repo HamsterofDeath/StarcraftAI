@@ -41,7 +41,7 @@ class TerranEconomicOpening(universe: Universe)
     val enemyStarts = nativeGame.getStartLocations.asScala.toVector.filterNot(_ == own).map(t => (t.x, t.y))
     val main        = bases.mainBase.map(_.mainBuilding.tilePosition).fold(ourStart)(t => (t.x, t.y))
     val byId        = fields.map(a => a.uniqueId -> a).toMap
-    ExpansionSite.rank(
+    val ranked      = ExpansionSite.rank(
       fields.map { a =>
         val tile = a.nearbyFreeTile
         ExpansionSite.Candidate(a.uniqueId, tile.x, tile.y, strategicMap.defenseLineOf(tile).isDefined)
@@ -50,6 +50,9 @@ class TerranEconomicOpening(universe: Universe)
       ourStart,
       enemyStarts
     ).map(c => byId(c.id))
+    // a strategy living on gas takes the fields with a geyser first (game 1 on 3f2d8e9 held five command centers and
+    // two refineries), keeping the order otherwise
+    if (strategy.current.extraFieldsForGas > 0) ranked.sortBy(a => if (a.geysirs.isEmpty) 1 else 0) else ranked
   }
 
   /** The field the next depot will fly to: the best ranked safe, healthy one. */
