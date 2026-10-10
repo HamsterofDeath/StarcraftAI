@@ -94,10 +94,13 @@ class TerranEconomicOpening(universe: Universe)
         fieldOf(cc).exists(a => landed.count(o => o != cc && fieldOf(o).contains(a)) > 0)
       // A depot built at home shares the home field until it flies to its own; the home depot anchors defense and
       // only moves off its own exhausted field.
-      val fresh     = landed.filter(cc => cc != home.mainBuilding && sharedField(cc))
+      val fresh = landed.filter(cc => cc != home.mainBuilding && sharedField(cc))
+      // a sealed main keeps its depot: the wall, its posts and the ferry's sides all measure from it, and in game 1 on
+      // 3f2d8e9 the home depot flew off its exhausted field at minute 16 and the main counted as open from then on
       val exhausted = landed.filter(cc => fieldOf(cc).forall(a => !fieldUseful(a)))
-      val cost      = ResourceRequests.forUnit(race, classOf[CommandCenter])
-      val funds     = resources.unlockedResources
+        .filterNot(cc => strategy.current.sealsMain && cc == home.mainBuilding)
+      val cost  = ResourceRequests.forUnit(race, classOf[CommandCenter])
+      val funds = resources.unlockedResources
       // a depot still being built or flying to its field is under way as well
       val newUnderWay = unitManager.requestedToBuild(classOf[CommandCenter]) ||
         unitManager.constructionsInProgress[CommandCenter].nonEmpty ||
