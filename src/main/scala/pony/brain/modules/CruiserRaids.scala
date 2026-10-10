@@ -114,10 +114,21 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
           s"target=$target canMend=$canMend pressure=${worldDominationPlan.baseDefenseActive} " +
           s"recall=${worldDominationPlan.recallsArmy} atBerth=${fleet.count(c =>
               berth.exists(b => !c.currentTile.distanceToIsMore(b, 8))
-            )}"
+            )} " + s"hurt=$hurtDetail crew=$crewDetail"
       )
     }
   }
+
+  /** The hurt as the game reports them, the bot's cached health in brackets, and their orders. */
+  private def hurtDetail = cruisers.filter(c => repairing(c.nativeUnitId)).take(6).map { c =>
+    s"${c.nativeUnitId}:${c.nativeUnit.getHitPoints}[${(c.percentageHPOk * 100).round}]:${c.nativeUnit.getOrder}"
+  }.mkString(",")
+
+  /** What the crew is busy with: each order and its target's type, counted. */
+  private def crewDetail = unitManager.allJobsByType[RepairCrewDuty].filter(j => !j.failedOrObsolete).map { j =>
+    val w = j.unit.nativeUnit
+    s"${w.getOrder}>${Option(w.getOrderTarget).map(_.getType.toString.stripPrefix("Terran_")).getOrElse("-")}"
+  }.groupBy(identity).map((k, v) => s"$k*${v.size}").mkString(",")
 
   /** Keeps the raid's target while enemy buildings stand there; a start location found empty is swept off the list. */
   private def updateTarget(fleet: collection.Set[Battlecruiser]): Unit = {
