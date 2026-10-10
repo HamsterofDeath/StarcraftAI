@@ -44,8 +44,11 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
   // the most anti-air a raid met at each target, and when: the next raid there must be strong enough for it
   private val defended    = mutable.HashMap.empty[MapTilePosition, (Int, Int)]
   private var peakAntiAir = 0
-  private var fieldSpot   = Option.empty[MapTilePosition]
-  private val fieldCrew   = new Employer[SCV](universe)
+  // since when the raid has stood at its target without destroying anything, and how many enemies were destroyed then
+  private var lingerSince  = Option.empty[Int]
+  private var destroyedNow = 0
+  private var fieldSpot    = Option.empty[MapTilePosition]
+  private val fieldCrew    = new Employer[SCV](universe)
 
   private def active = race.isTerran && strategy.current.raidsWithCruisers
 
@@ -115,6 +118,21 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
         progressAt = currentTick
         updateTarget(fleet)
       }
+    }
+    // a raid at its target that destroys nothing for a while gives the target up: in the watched game on 4acedd3 the
+    // raid hovered at one spot from minute 48 on, the game long won, while a building it never reached kept it there
+    val destroyed = world.observedDestroyedEnemies.size
+    if (destroyed != destroyedNow) { destroyedNow = destroyed; lingerSince = None }
+    val atTarget = raiders.nonEmpty && !gathering &&
+      centre.zip(target).exists((c, t) => c.distanceToIsLess(t, LingerTiles))
+    if (!atTarget) lingerSince = None
+    else if (lingerSince.isEmpty) lingerSince = Some(currentTick)
+    for (since <- lingerSince; t <- target if currentTick - since > LingerFrames) {
+      NativeMatchEvidence.trace("raid-lingering", s"target=$t raiders=${raiders.size} frames=${currentTick - since}")
+      swept += t
+      target = None
+      lingerSince = None
+      updateTarget(fleet)
     }
     if (raiders.nonEmpty) {
       val worn       = if (canMend) endsRaid(raiders.toSeq.map(health)) else raiders.size < 2
@@ -228,6 +246,12 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
       if (!standing && seen) swept += t
       if (!standing && (seen || known.nonEmpty)) target = None
     }
+    // a target with buildings near it moves onto the nearest of them: an attack-move ends at its point, and a building
+    // nine tiles off stays out of the cruisers' reach
+    target = target.map { t =>
+      if (known.exists(_.tile == t)) t
+      else known.filter(_.tile.distanceToIsLess(t, 10)).minByOpt(_.tile.distanceSquaredTo(t)).map(_.tile).getOrElse(t)
+    }
     if (target.isEmpty) {
       val own       = nativeGame.self().getStartLocation
       val ours      = MapTilePosition(own.x, own.y)
@@ -244,10 +268,12 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
         !allStarts.exists(_.distanceToIsLess(c, 8))
       }.filterNot(swept)
       val estimate = universe.pluginByType[EnemyArmyEstimate]
-      def pick     = choose(
-        known.filter(_.base).map(_.tile),
+      // buildings at a target given up for lingering are left alone until everything has been swept
+      val left = known.filterNot(b => swept.exists(_.distanceToIsLess(b.tile, 10)))
+      def pick = choose(
+        left.filter(_.base).map(_.tile),
         likely,
-        known.map(_.tile),
+        left.map(_.tile),
         starts,
         home,
         t => estimate.armyNear(t) + defenceAt(t)

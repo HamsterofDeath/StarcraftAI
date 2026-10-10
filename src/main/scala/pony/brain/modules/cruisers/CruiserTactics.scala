@@ -94,6 +94,10 @@ private[pony] object CruiserTactics {
   /** For this long after gathering the leaders wait for the group; then everyone flies straight at the target. */
   val CohesionFrames = 24 * 90
 
+  /** A raid whose centre stays within LingerTiles of its target for LingerFrames, destroying nothing, gives it up. */
+  val LingerTiles  = 6
+  val LingerFrames = 24 * 90
+
   /** A raid whose centre gains less than ProgressTiles on its target in StallFrames gives the target up. */
   val ProgressTiles = 3
   val StallFrames   = 24 * 120
