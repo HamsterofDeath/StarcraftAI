@@ -378,7 +378,8 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
       if (!active || me.isBeingCreated) Nil
       // at the berth a hurt cruiser holds still for the crew: one that drifts off after other orders is never mended
       else if (repairing(id)) berth.map { b =>
-        if (me.currentTile.distanceToIsMore(b, 2)) Orders.MoveToTile(me, b) else Orders.HoldPosition(me)
+        // right over the berth, which is walkable: a cruiser holding two tiles off may hover where no SCV can stand
+        if (me.currentTile.distanceToIsMore(b, 1)) Orders.MoveToTile(me, b) else Orders.HoldPosition(me)
       }.toList
       else if (raiders(id) && spaceOut(me).isDefined) spaceOut(me).map(Orders.MoveToTile(me, _)).toList
       else if (raiders(id)) {

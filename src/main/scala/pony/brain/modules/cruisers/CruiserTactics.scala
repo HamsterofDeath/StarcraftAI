@@ -110,6 +110,12 @@ private[pony] object CruiserTactics {
 
   def endsRaid(health: Seq[Double]) = health.size < 2 || health.sum / health.size < WornBelow
 
+  /** A crew SCV whose cruiser gains no hit points for this long gives it up for CrewGiveUpFrames. */
+  val CrewStallFrames  = 24 * 6
+  val CrewGiveUpFrames = 24 * 30
+
+  def crewStalled(now: Int, lastGain: Int) = now - lastGain > CrewStallFrames
+
   /** Two to ten SCVs, one more for every two cruisers. */
   def crewSize(cruisers: Int) = if (cruisers == 0) 0 else (2 + cruisers / 2) min 10
 

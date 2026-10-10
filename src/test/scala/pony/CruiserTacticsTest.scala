@@ -20,6 +20,7 @@ class CruiserTacticsTest extends Specification with MustMatchers {
        |Known expansions come first, then likely expansion sites, the main, a lone building, a start $targets
        |Among expansions the one without enemy army seen near it comes first, even when farther $whereTheArmyIsNot
        |A raid waits until it can stand the anti-air met at its target in the last four minutes $defence
+       |A crew SCV gives a cruiser up once its hit points stop rising for six seconds $crewStall
        """.stripMargin
 
   def repairHysteresis = (needsRepair(0.39, repairing = false) must beTrue) and
@@ -75,6 +76,9 @@ class CruiserTacticsTest extends Specification with MustMatchers {
       choose(Nil, Nil, Nil, Seq(enemyMain), home)
     ) === (Some(natural), Some(site), Some(enemyMain), Some(pylon), Some(enemyMain))
   }
+
+  def crewStall = (crewStalled(1000 + CrewStallFrames, 1000) must beFalse) and
+    (crewStalled(1001 + CrewStallFrames, 1000) must beTrue)
 
   def defence =
     (remembered(Some((1500, 1000)), 1000 + DefenceMemory - 1) === 1500) and
