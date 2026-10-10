@@ -268,7 +268,11 @@ class ScoutMap(universe: Universe) extends DefaultBehaviour[ArmedMobile](univers
           )
         } else plans.take(allowed)
         chosen.groupBy(_.sc.id).foreach { case (id, unitPlans) =>
-          ownUnits.byId(id).foreach { stillLiving =>
+          // planned in the background: meanwhile a ground unit may have boarded a dropship, and has no path of its own
+          ownUnits.byId(id).filter {
+            case g: GroundUnit => g.onGround
+            case _             => true
+          }.foreach { stillLiving =>
             val ordered = unitPlans.flatMap(_.resourceAreaIdsInOrder).distinct
             ordered.headOption.foreach { start =>
               val resourceAreas = ordered.map(strategicMap.resourceAreaById)

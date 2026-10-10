@@ -42,7 +42,11 @@ trait AddonRequestHelper extends AIModule[CanBuildAddons] {
         resources.unlock_!(suc)
       } else {
         result.ifOne { one =>
-          assignJob_!(new ConstructAddon(self, one, addonType, suc))
+          // a building that has or builds an add-on cannot take another; its job would refuse to exist
+          if (one.isBuildingAddon || one.hasCompleteAddon || one.hasAddonAttached) {
+            trace(s"$one already has an add-on, unlocking resources")
+            resources.unlock_!(suc)
+          } else assignJob_!(new ConstructAddon(self, one, addonType, suc))
         }
       }
     }

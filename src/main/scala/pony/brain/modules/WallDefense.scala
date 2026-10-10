@@ -181,7 +181,7 @@ private[pony] object WallPosts {
   val PostPriority = SecondPriority(0.92)
 
   val ReplanFrames = 24 * 120
-  val MineRunEvery = 24 * 90
+  val MineRunEvery = 24 * 120
 
   /**
     * Rows behind the wall, in tiles from its centre: infantry close enough to shoot over it, Vultures a step back,
