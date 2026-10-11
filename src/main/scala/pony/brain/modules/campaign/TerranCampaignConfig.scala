@@ -69,7 +69,24 @@ object TerranCampaignConfig {
 
   /** Supply (in whole units) at which the army attacks whatever its size: more cannot be built. */
   val SupplyCappedAt = 180
-  def load()         = {
+
+  /**
+    * The army sets out only with this chance (BattleOdds) against the enemy army seen in the last KnownArmyFrames and
+    * the static defence seen at the target, and comes home from a fight once its chance against the enemies around it
+    * falls below RetreatChance; between the two it neither leaves nor comes back. Nearly maxed it attacks and stays
+    * regardless.
+    */
+  val LaunchChance    = 0.6
+  val RetreatChance   = 0.25
+  val KnownArmyFrames = 24 * 180
+
+  /** Tiles around the target whose static defence counts against a launch, and around the army in a fight. */
+  val TargetDefenceTiles = 12
+  val FightTiles         = 12
+
+  def launches(chance: Double, supplyCapped: Boolean) = supplyCapped || chance >= LaunchChance
+  def retreats(chance: Double, supplyCapped: Boolean) = !supplyCapped && chance < RetreatChance
+  def load()                                          = {
     def number(key: String, default: Int)      = sys.props.get("twailight." + key).map(_.toInt).getOrElse(default)
     def fraction(key: String, default: Double) = sys.props.get("twailight." + key).map(_.toDouble).getOrElse(default)
     TerranCampaignConfig(

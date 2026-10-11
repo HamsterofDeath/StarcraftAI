@@ -21,6 +21,7 @@ class EnemyArmyEstimate(universe: Universe) extends OrderlessAIModule[WrapsUnit]
   private val types      = mutable.HashMap.empty[Int, bwapi.UnitType]
   private val baseSince  = mutable.HashMap.empty[Int, Int]
   private val lastArmy   = mutable.HashMap.empty[Int, (MapTilePosition, Int, Double)]
+  private val defences   = mutable.HashMap.empty[Int, (MapTilePosition, bwapi.UnitType)]
   private var bestRate   = DefaultRatePerBase
   private var rateMark   = Option.empty[(Int, Int)]
   private var lastReport = -1
@@ -40,9 +41,10 @@ class EnemyArmyEstimate(universe: Universe) extends OrderlessAIModule[WrapsUnit]
         baseSince(u.getID) = if (main) 0 else math.max(EarliestExpansion, now - ExpansionLead)
       }
       if (!kind.isBuilding && !kind.isWorker && kind.canAttack) lastArmy(u.getID) = (tile, now, value(kind))
+      if (kind.isBuilding && (kind.canAttack || kind == bwapi.UnitType.Terran_Bunker)) defences(u.getID) = (tile, kind)
     }
     val destroyed = world.observedDestroyedEnemies
-    destroyed.foreach { id => baseSince.remove(id); lastArmy.remove(id) }
+    destroyed.foreach { id => baseSince.remove(id); lastArmy.remove(id); defences.remove(id) }
     // our income per mining base, the best seen over a game minute, stands for what a base of theirs earns at most
     val gathered = self.gatheredMinerals + self.gatheredGas
     val mining   = bases.allBases.count(b => b.mainBuilding.isInGame && !b.mainBuilding.isFloating)
@@ -92,6 +94,14 @@ class EnemyArmyEstimate(universe: Universe) extends OrderlessAIModule[WrapsUnit]
 
   /** Army value seen within the last half minute no farther than `FarTiles` from `tile`. */
   def armyNear(tile: MapTilePosition): Double = seenArmy() - seenArmy(awayFrom = Some(tile))
+
+  /** The enemy army seen in the last `frames`, by type; what was destroyed since is gone. */
+  def knownArmy(frames: Int): Vector[bwapi.UnitType] =
+    lastArmy.iterator.collect { case (id, (_, at, _)) if currentTick - at < frames => types(id) }.toVector
+
+  /** The armed buildings seen within `tiles` of `tile` and not known to be destroyed. */
+  def defenceNear(tile: MapTilePosition, tiles: Int): Vector[bwapi.UnitType] =
+    defences.values.collect { case (at, kind) if at.distanceToIsLess(tile, tiles) => kind }.toVector
 
   /** The most enemy army that can stand at `tile` now: the bound less what was just seen elsewhere. */
   def maxArmyAt(tile: MapTilePosition): Double = math.max(0.0, estimate().upper - seenArmy(awayFrom = Some(tile)))

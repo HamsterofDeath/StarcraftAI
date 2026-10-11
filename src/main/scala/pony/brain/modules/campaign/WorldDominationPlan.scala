@@ -6,6 +6,7 @@ package campaign
 import pony.brain.jobs.Employer
 import pony.brain.requests.UnitJobRequest
 import pony.geometry.MapTilePosition
+import pony.pathing.Formation
 import pony.render.Renderer
 import pony.units.{Medic, Mobile, SupportUnit, TransporterUnit, WorkerUnit, WrapsUnit}
 import pony.util.BWFuture
@@ -31,6 +32,9 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
     if (changed) NativeMatchEvidence.trace("base-defense-pressure", s"active=$active recall=$recallCampaign $detail")
   }
   def campaignForce: Set[Mobile] = attacks.iterator.filter(_.campaign).flatMap(_.force).toSet
+
+  /** Calls the campaign army home: its units fall back to their guard posts. */
+  def recallCampaign_!(): Unit = attacks.retain(a => !a.campaign)
 
   /** The cruisers out on a raid (CruiserRaids); a raid weighs like the campaign army when home is attacked. */
   var raidingFleet = Set.empty[Mobile]
@@ -298,10 +302,17 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
 
     def allReachedTargetArea = migration.result.exists(_.allCloseToDestination)
 
+    // a campaign attack marches in formation along its path, the long range leading
+    private var march = Option.empty[FormationMarch]
+
     override def onTick_!(): Unit = {
       super.onTick_!()
       currentForce = currentForce.filter(_.isInGame)
       migration.result.foreach(_.onTick_!())
+      if (campaign) migration.result.foreach { path =>
+        if (march.isEmpty) march = Some(new FormationMarch(new Formation.Route(path.route), universe))
+        march.foreach(_.update(currentForce))
+      }
     }
 
     def currentCenter = centerOfForce.get
@@ -314,15 +325,18 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
           // no path calculated yet
           StayInPosition(t)
         case Some(path) =>
-          def defaultCommand = {
-            path.nextFor(t) match {
-              case Some((targetTile, attackMove)) if attackMove =>
-                AttackToPosition(t, targetTile)
-              case Some((targetTile, attackMove)) =>
-                MoveToPosition(t, targetTile)
-              case None =>
-                if (campaign) AttackToPosition(t, targetOfAttack.where) else StayInPosition(t)
-            }
+          def defaultCommand = march match {
+            case Some(formation) =>
+              AttackToPosition(t, formation.destinationOf(t).getOrElse(targetOfAttack.where))
+            case None =>
+              path.nextFor(t) match {
+                case Some((targetTile, attackMove)) if attackMove =>
+                  AttackToPosition(t, targetTile)
+                case Some((targetTile, attackMove)) =>
+                  MoveToPosition(t, targetTile)
+                case None =>
+                  if (campaign) AttackToPosition(t, targetOfAttack.where) else StayInPosition(t)
+              }
           }
 
           t match {

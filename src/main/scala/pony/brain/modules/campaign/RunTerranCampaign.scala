@@ -7,8 +7,9 @@ import pony.brain.modules.bunkers.TerranBunkerDefense
 import pony.brain.modules.economy.ManageMiningAtBases
 import pony.brain.modules.micro.HuntSweep
 import pony.brain.modules.wall.WallWithDepots
+import pony.combat.{ArmedBuilding, BattleOdds}
 import pony.geometry.MapTilePosition
-import pony.units.{Mobile, SupportUnit, TransporterUnit, WorkerUnit, WrapsUnit}
+import pony.units.{Medic, Mobile, SupportUnit, TransporterUnit, WorkerUnit, WrapsUnit}
 
 import scala.jdk.CollectionConverters._
 
@@ -27,6 +28,7 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
   private var huntIndex         = 0
   private var huntTarget        = Option.empty[MapTilePosition]
   private var huntInitiated     = false
+  private var favourable        = true
   // Bunker crews hold the mineral lines; every other fighter keeps up the pressure unless field guards are configured.
   private val defenseRoster = new TerranDefenseRoster(config.fieldGuards)
   private val defenses      = oncePerTick {
@@ -97,12 +99,41 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
       armyValue >= config.armyMinerals + config.bankMinerals && armyGas >= config.armyGas + config.bankGas
     // Always keep pressure on: attack as soon as the army is big enough, without waiting for full bunker coverage or
     // a banked reserve, and always when supply is nearly maxed, because nothing more can be built anyway.
-    // ... as long as that supply holds an army: a base full of workers sends no handful of fighters to die
-    val supplyCapped = nativeGame.self().supplyUsed >= 2 * TerranCampaignConfig.SupplyCappedAt &&
-      troops.size >= config.minFighters
     operational && !worldDominationPlan.baseDefenseActive &&
-    (launched || overwhelming || supplyCapped || config.pressure(troops.size, armyValue, armyGas))
+    (launched || overwhelming || supplyCapped(troops) || config.pressure(troops.size, armyValue, armyGas))
   }
+
+  /** Nearly maxed, as long as that supply holds an army: a base full of workers sends no handful of fighters to die. */
+  private def supplyCapped(troops: Seq[Mobile]) =
+    nativeGame.self().supplyUsed >= 2 * TerranCampaignConfig.SupplyCappedAt && troops.size >= config.minFighters
+
+  /** The medics, who go along with every campaign attack. */
+  private def medics = ownUnits.allByType[Medic].iterator.filter(m => m.isInGame && !m.isBeingCreated)
+
+  /** The army's chance against the enemy army seen lately and the static defence seen at the target. */
+  private def launchChance(troops: Seq[Mobile], target: MapTilePosition) = {
+    val estimate = universe.pluginByType[EnemyArmyEstimate]
+    val known    = estimate.knownArmy(TerranCampaignConfig.KnownArmyFrames) ++
+      estimate.defenceNear(target, TerranCampaignConfig.TargetDefenceTiles)
+    val us = (troops.iterator ++ medics).map(m => BattleOdds.fighter(m.nativeUnit)).toVector
+    (BattleOdds.winChance(us, known.map(_ -> 1.0)), known)
+  }
+
+  /** The campaign army's chance against the visible enemies within FightTiles of any of it. */
+  private def fightChance(force: Set[Mobile]) = {
+    def armed(u: bwapi.Unit) = u.isVisible && (u.getType.canAttack || u.getType.isSpellcaster)
+    val near                 =
+      force.iterator.flatMap(m => unitGrid.enemy.allInRange[Mobile](m.currentTile, TerranCampaignConfig.FightTiles))
+        .filter(e => e.isInGame && !e.isInstanceOf[WorkerUnit]).map(_.nativeUnit).filter(armed)
+    val defence = enemies.allByType[ArmedBuilding].iterator.filter(b =>
+      b.isInGame && force.exists(_.currentTile.distanceToIsLess(b.centerTile, TerranCampaignConfig.FightTiles))
+    ).map(_.nativeUnit).filter(armed)
+    val them = (near ++ defence).toVector.distinctBy(_.getID).map(BattleOdds.fighter)
+    (BattleOdds.winChance(force.toVector.map(m => BattleOdds.fighter(m.nativeUnit)), them), them.map(_._1))
+  }
+
+  private def counted(types: Seq[bwapi.UnitType]) =
+    types.groupBy(_.toString.replaceAll("^[A-Za-z]+_", "")).map((k, v) => s"$k*${v.size}").toVector.sorted.mkString(",")
 
   def enemyLocated = memory.buildings.nonEmpty
 
@@ -197,6 +228,20 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
     val minerals = troops.map(_.nativeUnitType.mineralPrice).sum
     val gas      = troops.map(_.nativeUnitType.gasPrice).sum
     if (!worldDominationPlan.planningInProgress && worldDominationPlan.campaignForceSize == 0) launched = false
+    val capped = supplyCapped(troops)
+    // a campaign army clearly losing the fight it is in comes home, and stays home until the odds favour it again
+    val force = worldDominationPlan.campaignForce
+    if (force.nonEmpty) {
+      val (chance, them) = fightChance(force)
+      if (TerranCampaignConfig.retreats(chance, capped)) {
+        NativeMatchEvidence.trace(
+          "campaign-retreat",
+          s"chance=${"%.2f".format(chance)} army=${force.size} enemies=${counted(them)}"
+        )
+        worldDominationPlan.recallCampaign_!()
+        launched = false
+      }
+    }
     val ready = reconnaissanceAllowed
     if (ready && !wasReady) NativeMatchEvidence.trace(
       "offense-ready",
@@ -216,7 +261,15 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
       if (strategy.current.usesWallDefense && wall.complete && !wall.gateOpen) wall.openGate_!()
     }
     if (campaignLaunchEnabled) target.foreach { where =>
-      if (ready && !worldDominationPlan.planningInProgress) {
+      // the first launch at a target waits for the odds; reinforcements join the army out there regardless
+      val (chance, known) = if (launched) (1.0, Vector.empty) else launchChance(troops, where)
+      val odds            = TerranCampaignConfig.launches(chance, capped)
+      if (ready && odds != favourable) NativeMatchEvidence.trace(
+        "offense-odds",
+        s"launch=$odds chance=${"%.2f".format(chance)} fighters=${troops.size} known=${counted(known)}"
+      )
+      if (ready) favourable = odds
+      if (ready && odds && !worldDominationPlan.planningInProgress) {
         // a walled main lets the army out: one wall depot is demolished to open the gate
         val wall = universe.pluginByType[WallWithDepots]
         if (strategy.current.usesWallDefense && wall.complete && !wall.gateOpen) wall.openGate_!()
@@ -226,7 +279,7 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
           campaignCommitted = true
           NativeMatchEvidence.trace(
             if (launched) "reinforce" else "launch",
-            s"$where count=${troops.size} minerals=$minerals gas=$gas"
+            s"$where count=${troops.size} minerals=$minerals gas=$gas chance=${"%.2f".format(chance)}"
           )
           launched = true
         }

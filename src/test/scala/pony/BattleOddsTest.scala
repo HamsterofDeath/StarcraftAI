@@ -15,6 +15,7 @@ class BattleOddsTest extends Specification with MustMatchers {
        |A matchup the battery never saw falls back to the stats $statsFallback
        |More enemies or hurt fighters lower the chance; an empty side wins or loses outright $monotone
        |The margin is positive exactly when the chance is above one half $marginSign
+       |The campaign sets out from 0.6 and comes home below 0.25; nearly maxed it does both regardless $campaign
        """.stripMargin
 
   private def side(units: (UnitType, Int)*) = units.flatMap((t, n) => Seq.fill(n)(t -> 1.0))
@@ -28,8 +29,8 @@ class BattleOddsTest extends Specification with MustMatchers {
       (winChance(side(Terran_Battlecruiser -> 6), side(Protoss_Corsair -> 4, Protoss_Scout -> 3)) must
         beCloseTo(0.9939, 0.001)) and
       (winChance(
-        side(Terran_Siege_Tank_Tank_Mode -> 4, Terran_Goliath -> 6, Terran_Marine -> 12),
-        side(Protoss_Dragoon -> 8, Protoss_Zealot -> 6, Protoss_Archon -> 1)
+        side(Terran_Siege_Tank_Tank_Mode -> 4, Terran_Goliath -> 6, Terran_Marine  -> 12),
+        side(Protoss_Dragoon             -> 8, Protoss_Zealot -> 6, Protoss_Archon -> 1)
       ) must beCloseTo(0.6292, 0.001))
 
   def statsFallback =
@@ -48,18 +49,29 @@ class BattleOddsTest extends Specification with MustMatchers {
   def monotone = {
     val cruisers = side(Terran_Battlecruiser -> 3)
     val hurt     = cruisers.map((t, _) => t -> 0.5)
-    (winChance(cruisers, side(Protoss_Dragoon -> 5)) must beGreaterThan(winChance(cruisers, side(Protoss_Dragoon -> 6)))) and
+    (winChance(cruisers, side(Protoss_Dragoon -> 5)) must
+      beGreaterThan(winChance(cruisers, side(Protoss_Dragoon -> 6)))) and
       (winChance(hurt, side(Protoss_Dragoon -> 5)) must beLessThan(winChance(cruisers, side(Protoss_Dragoon -> 5)))) and
       (winChance(cruisers, Nil) === 1.0) and
       (winChance(Nil, side(Protoss_Zealot -> 1)) === 0.0) and
       (winChance(cruisers, side(Protoss_Interceptor -> 8)) === 1.0)
   }
 
+  def campaign = {
+    import pony.brain.modules.campaign.TerranCampaignConfig.{launches, retreats}
+    (launches(0.6, supplyCapped = false) must beTrue) and
+      (launches(0.59, supplyCapped = false) must beFalse) and
+      (launches(0.1, supplyCapped = true) must beTrue) and
+      (retreats(0.24, supplyCapped = false) must beTrue) and
+      (retreats(0.25, supplyCapped = false) must beFalse) and
+      (retreats(0.1, supplyCapped = true) must beFalse)
+  }
+
   def marginSign = {
     val armies = Seq(
       side(Terran_Marine -> 20, Terran_Medic -> 4) -> side(Protoss_Dragoon -> 6, Protoss_Zealot -> 4),
-      side(Terran_Battlecruiser -> 3) -> side(Protoss_Dragoon -> 8),
-      side(Terran_Vulture -> 6) -> side(Protoss_Zealot -> 6)
+      side(Terran_Battlecruiser -> 3)              -> side(Protoss_Dragoon -> 8),
+      side(Terran_Vulture -> 6)                    -> side(Protoss_Zealot -> 6)
     )
     armies.map((us, them) => (margin(us, them) > 0) === (winChance(us, them) > 0.5)).reduce(_ and _)
   }

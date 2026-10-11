@@ -293,15 +293,18 @@ def scala_table(path, sources, battles, prior, a, b, hp_us, hp_them, scale, bias
     bwapi = {code: [name for name, c in NAMES.items() if c == code] for code in TERRAN + PROTOSS}
 
     def pairs(attackers, targets, table):
-        return [f'    ({x}, {y}) -> {table[i][j]:.3f}' for i, p in enumerate(attackers) for j, q in enumerate(targets)
+        return [(f'({x}, {y})', f'{table[i][j]:.3f}') for i, p in enumerate(attackers) for j, q in enumerate(targets)
                 if table[i][j] > 0 for x in bwapi[p] for y in bwapi[q]]
 
-    dps = pairs(TERRAN, PROTOSS, a) + pairs(PROTOSS, TERRAN, b)
-    hp = [f'    {x} -> {h:.1f}' for codes, hps in [(TERRAN, hp_us), (PROTOSS, hp_them)] for c, h in zip(codes, hps)
-          for x in bwapi[c]]
+    def rows(entries):
+        """One entry a line, the arrows aligned as scalafmt aligns them."""
+        width = max(len(key) for key, _ in entries)
+        return ',\n'.join(f'    {key.ljust(width)} -> {value}' for key, value in entries)
+
+    dps_rows = rows(pairs(TERRAN, PROTOSS, a) + pairs(PROTOSS, TERRAN, b))
+    hp_rows = rows([(x, f'{h:.1f}') for codes, hps in [(TERRAN, hp_us), (PROTOSS, hp_them)]
+                    for c, h in zip(codes, hps) for x in bwapi[c]])
     source = ', '.join(sources)
-    dps_rows = ',\n'.join(dps)
-    hp_rows = ',\n'.join(hp)
     with open(path, 'w', encoding='utf-8', newline='\n') as fh:
         fh.write(f'''package pony
 package combat

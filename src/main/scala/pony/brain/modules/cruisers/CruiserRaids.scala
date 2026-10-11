@@ -309,11 +309,7 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
     val near = (enemies.allByType[Mobile].iterator ++ enemies.allByType[ArmedBuilding].iterator: Iterator[WrapsUnit])
       .filter(e => e.isInGame && e.nativeUnit.isVisible && e.currentTile.distanceToIsLess(at, RaidSight))
     near.map(_.nativeUnit).filter(u => BattleOdds.canHurt(u.getType, Seq(bwapi.UnitType.Terran_Battlecruiser)))
-      .map { u =>
-        val t     = u.getType
-        val whole = t.maxHitPoints + t.maxShields
-        t -> (if (whole <= 0) 1.0 else (u.getHitPoints + u.getShields).toDouble / whole)
-      }.toVector
+      .map(BattleOdds.fighter).toVector
   }
 
   /**

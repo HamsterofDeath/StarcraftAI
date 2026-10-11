@@ -47,6 +47,13 @@ object BattleOdds {
   /** Hit points and shields `t` stands for: as learned where the battery saw the type. */
   def durability(t: UnitType): Double = Durability.getOrElse(t, statsDurability(t))
 
+  /** A unit as a fighter: its type and its share of hit points and shields left. */
+  def fighter(u: bwapi.Unit): Fighter = {
+    val kind  = u.getType
+    val whole = kind.maxHitPoints + kind.maxShields
+    kind -> (if (whole <= 0) 1.0 else ((u.getHitPoints + u.getShields).toDouble / whole).min(1.0))
+  }
+
   /** Whether `attacker` can hurt any of `targets`. */
   def canHurt(attacker: UnitType, targets: Iterable[UnitType]): Boolean = targets.exists(dps(attacker, _) > 0)
 
