@@ -115,11 +115,19 @@ object NativeMatchEvidence {
       s"fighters=$fighters"
   }
 
-  /** Surviving units other than buildings and their summed hit points and shields, for micro scenarios. */
+  /**
+    * Surviving units other than buildings and their summed hit points and shields, for micro scenarios; in total and by
+    * type, which the battle battery learns from.
+    */
   private def forces(units: Iterable[bwapi.Unit]) = {
     val alive =
       units.filter(u => u.exists && !u.getType.isBuilding && u.getType != bwapi.UnitType.Special_Start_Location)
-    "{\"units\":" + alive.size + ",\"durability\":" + alive.iterator.map(u => u.getHitPoints + u.getShields).sum + "}"
+        .toVector
+    def summary(of: Vector[bwapi.Unit]) =
+      "{\"units\":" + of.size + ",\"durability\":" + of.iterator.map(u => u.getHitPoints + u.getShields).sum
+    val byType =
+      alive.groupBy(_.getType.toString).toVector.sortBy(_._1).map((t, of) => quoted(t) + ":" + summary(of) + "}")
+    summary(alive) + ",\"byType\":" + byType.mkString("{", ",", "}") + "}"
   }
 
   private def quoted(s: String) = "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\""

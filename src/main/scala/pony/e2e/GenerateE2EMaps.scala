@@ -14,9 +14,9 @@ object GenerateE2EMaps {
   /** Plain Badlands dirt, the most common ground of (2)Destination.scx. */
   val BadlandsDirt = Seq(0x0021, 0x0031, 0x0023, 0x0033, 0x0034, 0x0024, 0x0020, 0x0030)
 
-  private val BotArea     = 1
-  private val TurretArea  = 2
-  private val StagingArea = 3
+  private[e2e] val BotArea = 1
+  private val TurretArea   = 2
+  private val StagingArea  = 3
 
   /**
     * A unit type of a micro scenario: its UNIT id, its name, the three-letter code that map names use, its race and its
@@ -276,7 +276,7 @@ object GenerateE2EMaps {
 
   val All: Map[String, UmsScenario] = VultureScaling ++ TerranVsProtoss ++ TerranVsCannons ++ FocusFire ++ Emp
 
-  private def opponentAttacks = Seq(
+  private[e2e] def opponentAttacks = Seq(
     Trigger(
       Seq(1),
       Seq(Trigger.always),
@@ -287,7 +287,7 @@ object GenerateE2EMaps {
     )
   )
 
-  private def botResult(timeoutSeconds: Int) = Seq(
+  private[e2e] def botResult(timeoutSeconds: Int) = Seq(
     Trigger(Seq(0), Seq(Trigger.commandsAtMost(1, Trigger.Men, 0)), Seq(Trigger.victory)),
     Trigger(Seq(0), Seq(Trigger.commandsAtMost(0, Trigger.Men, 0)), Seq(Trigger.defeat)),
     Trigger(Seq(0), Seq(Trigger.elapsedSeconds(timeoutSeconds)), Seq(Trigger.defeat))
