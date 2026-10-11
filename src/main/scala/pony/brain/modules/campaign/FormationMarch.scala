@@ -81,9 +81,12 @@ class FormationMarch(target: MapTilePosition, override val universe: Universe) e
       def caughtUp(m: Mobile, distance: Double) =
         Formation.caughtUp(route.progressOf(m.currentTile), at - places(m.nativeUnitId)._1, distance)
       if (forming) {
-        // the army is who stands near the formation as it forms; whoever is further away catches up and joins
-        // the army once at its slot, without holding it up: reinforcements walk out of the base behind it
-        val near = apart.collect { case (m, d) if d <= GatherTiles => m.nativeUnitId }.toSet
+        // the army is who stands near the formation as it forms and has left our bases; whoever is further away
+        // catches up and joins the army once at its slot, without holding it up: reinforcements walk out of the base
+        // behind it, and units still behind our wall stood within GatherTiles and held the army up for good
+        val near = apart.collect {
+          case (m, d) if d <= GatherTiles && fromHome(m) >= HomeTiles => m.nativeUnitId
+        }.toSet
         joined = if (near.nonEmpty) near else fighters.map(_.nativeUnitId).toSet
         movedAt = currentTick
         NativeMatchEvidence.trace(
@@ -130,12 +133,13 @@ class FormationMarch(target: MapTilePosition, override val universe: Universe) e
 
   /**
     * Until half the army stands HomeTiles from all our bases every member attacks towards the target on its own; then
-    * the route is planned from the army's median member. A route that does not reach the target means no formation.
+    * the route is planned from the army's median member. A target among enemy buildings or in their fire lies off the
+    * safe ground the route is planned on; the route then ends where the safe ground does, nearest the target, and the
+    * target is only added when it is in sight of that end. A route that gets no nearer the target means no formation.
     */
   private def plan(fighters: Vector[Mobile]): Unit = planned match {
     case None =>
-      val homes = bases.allBases.map(_.mainBuilding.centerTile)
-      val away  = fighters.map(m => m -> homes.map(m.currentTile.distanceTo).minOption.getOrElse(Double.MaxValue))
+      val away = fighters.map(m => m -> fromHome(m))
       if (Formation.leftHome(away.map(_._2), HomeTiles)) {
         val from = away.sortBy(_._2).apply(away.size / 2)._1.currentTile
         planned = Some(universe.pathfinders.groundSafe.findPaths(from, target, 1))
@@ -148,14 +152,25 @@ class FormationMarch(target: MapTilePosition, override val universe: Universe) e
       }
     case Some(future) if future.isDone =>
       Try(future.result).toOption.flatten.flatMap(_.paths.headOption) match {
-        case Some(path) if path.solved && path.requestedTarget.distanceToIsLess(target, TargetTiles) =>
-          val corners = Formation.taut(path.waypoints :+ target, mapLayers.rawWalkableMap.connectedByLine)
+        case Some(path) if path.solved && path.waypoints.headOption.exists(nearer(path.requestedTarget, _)) =>
+          val walk    = mapLayers.rawWalkableMap
+          val end     = path.waypoints.last
+          val way     = if (walk.connectedByLine(end, target)) path.waypoints :+ target else path.waypoints
+          val corners = Formation.taut(way, walk.connectedByLine)
           marching = Some(new Formation.Route(corners))
         case other =>
           abandon(s"unrouted solved=${other.map(_.solved)} reaches=${other.map(_.requestedTarget)} target=$target")
       }
     case Some(_) => // still planning
   }
+
+  /** `end` lies at most half as far from the target as `start`. */
+  private def nearer(end: MapTilePosition, start: MapTilePosition) =
+    end.distanceTo(target) <= start.distanceTo(target) / 2
+
+  /** A member's distance to the nearest of our bases. */
+  private def fromHome(m: Mobile) =
+    bases.allBases.map(b => m.currentTile.distanceTo(b.mainBuilding.centerTile)).minOption.getOrElse(Double.MaxValue)
 
   private def abandon(why: String): Unit = {
     arrived = true
@@ -237,7 +252,4 @@ object FormationMarch {
     * on its own as without a formation; opening a depot wall by knocking a depot down took over a minute.
     */
   val LeaveFrames = 24 * 300
-
-  /** A planned route must end this close to the target. */
-  val TargetTiles = 12
 }
