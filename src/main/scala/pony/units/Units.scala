@@ -78,9 +78,12 @@ class Units(game: Game, hostile: Boolean, override val universe: Universe) exten
   /**
     * A unit of ours the enemy took over (Mind Control) is lost to us, the hostile side picks it up as theirs: in game 1
     * on 3c1dae4 two controlled cruisers stayed in our fleet for the rest of the game, counted as hurt, shooting at ours.
+    * A geyser the enemy builds on changes sides as well, but it is neutral ground that stays known as it always was.
     */
-  def renegade_!(u: bwapi.Unit): Unit =
-    if (ownAndNeutral && nativeIdToUnit.contains(u.getID) && forces.isEnemy(u)) dead_!(Seq(renegade("event")(u)))
+  def renegade_!(u: bwapi.Unit): Unit = if (ownAndNeutral && taken(u.getID)) dead_!(Seq(renegade("event")(u)))
+
+  private def taken(id: Int) =
+    nativeIdToUnit.get(id).exists(w => !w.isInstanceOf[Resource] && forces.isEnemy(w.nativeUnit))
 
   private def renegade(by: String)(u: bwapi.Unit): bwapi.Unit = {
     NativeMatchEvidence.trace("unit-renegade", s"unit=${u.getID} type=${u.getType} by=$by")
@@ -182,7 +185,7 @@ class Units(game: Game, hostile: Boolean, override val universe: Universe) exten
       }.toSeq
       dead_!(dead)
       if (ownAndNeutral)
-        dead_!(allRelevant.map(_.nativeUnit).filter(forces.isEnemy).map(renegade("sweep")).toSeq)
+        dead_!(allRelevant.map(_.nativeUnit).filter(u => taken(u.getID)).map(renegade("sweep")).toSeq)
     }
 
     val addThese = {
