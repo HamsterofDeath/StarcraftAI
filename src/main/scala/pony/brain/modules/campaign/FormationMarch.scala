@@ -78,8 +78,12 @@ class FormationMarch(target: MapTilePosition, override val universe: Universe) e
         fighters.map(m => m.nativeUnitId -> tileFor(m, Formation.slot(route, at, places(m.nativeUnitId)))).toMap
       val now                                   = tiles(at)
       val apart                                 = fighters.map(m => m -> m.currentTile.distanceTo(now(m.nativeUnitId)))
-      def caughtUp(m: Mobile, distance: Double) =
-        Formation.caughtUp(route.progressOf(m.currentTile), at - places(m.nativeUnitId)._1, distance)
+      def caughtUp(m: Mobile, distance: Double) = Formation.caughtUp(
+        route.progressOf(m.currentTile),
+        at - places(m.nativeUnitId)._1,
+        distance,
+        route.apart(m.currentTile)
+      )
       if (forming) {
         // the army is who stands near the formation as it forms and has left our bases; whoever is further away
         // catches up and joins the army once at its slot, without holding it up: reinforcements walk out of the base
@@ -135,7 +139,8 @@ class FormationMarch(target: MapTilePosition, override val universe: Universe) e
     * Until half the army stands HomeTiles from all our bases every member attacks towards the target on its own; then
     * the route is planned from the army's median member. A target among enemy buildings or in their fire lies off the
     * safe ground the route is planned on; the route then ends where the safe ground does, nearest the target, and the
-    * target is only added when it is in sight of that end. A route that gets no nearer the target means no formation.
+    * target is only added when it is in sight of that end. A route that gets no nearer the target means no formation;
+    * one ending half as far from it as it began dropped the formation of an army that already stood near the target.
     */
   private def plan(fighters: Vector[Mobile]): Unit = planned match {
     case None =>
@@ -164,9 +169,8 @@ class FormationMarch(target: MapTilePosition, override val universe: Universe) e
     case Some(_) => // still planning
   }
 
-  /** `end` lies at most half as far from the target as `start`. */
-  private def nearer(end: MapTilePosition, start: MapTilePosition) =
-    end.distanceTo(target) <= start.distanceTo(target) / 2
+  /** `end` lies nearer the target than `start`. */
+  private def nearer(end: MapTilePosition, start: MapTilePosition) = end.distanceTo(target) < start.distanceTo(target)
 
   /** A member's distance to the nearest of our bases. */
   private def fromHome(m: Mobile) =

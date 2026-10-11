@@ -30,6 +30,8 @@ class FormationTest extends Specification with MustMatchers {
       (corner.at(25)._1 === ((10.0, 10.0))) and
       (corner.progressOf(MapTilePosition(7, 2)) === 7.0) and
       (corner.progressOf(MapTilePosition(12, 6)) === 16.0) and
+      (corner.apart(MapTilePosition(12, 6)) === 2.0) and
+      (corner.apart(MapTilePosition(-3, -4)) === 5.0) and
       (new Route(Seq(MapTilePosition(3, 4))).at(2)._1 === ((3.0, 4.0)))
 
   def leaders = {
@@ -55,10 +57,11 @@ class FormationTest extends Specification with MustMatchers {
       (slot(east, 1, (6.0, 0.0)) === ((0.0, 0.0)))
   }
 
-  def caught = (caughtUp(progress = 2, slotProgress = 10, distance = 3) must beTrue) and
-    (caughtUp(progress = 7, slotProgress = 10, distance = 8) must beTrue) and
-    (caughtUp(progress = 15, slotProgress = 10, distance = 8) must beTrue) and
-    (caughtUp(progress = 6.5, slotProgress = 10, distance = 8) must beFalse)
+  def caught = (caughtUp(progress = 2, slotProgress = 10, distance = 3, apart = 0) must beTrue) and
+    (caughtUp(progress = 7, slotProgress = 10, distance = 8, apart = 2) must beTrue) and
+    (caughtUp(progress = 15, slotProgress = 10, distance = 8, apart = 2) must beTrue) and
+    (caughtUp(progress = 6.5, slotProgress = 10, distance = 8, apart = 2) must beFalse) and
+    (caughtUp(progress = 0, slotProgress = 2, distance = 95, apart = 94) must beFalse)
 
   def keepingUp = (keepsUp(Seq.fill(8)(true) ++ Seq.fill(2)(false)) must beTrue) and
     (keepsUp(Seq.fill(7)(true) ++ Seq.fill(3)(false)) must beFalse) and

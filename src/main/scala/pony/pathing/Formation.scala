@@ -18,6 +18,9 @@ private[pony] object Formation {
   val KeepUpShare   = 0.8
   val CohesionTiles = 3.0
 
+  /** Level with its slot counts only this close to the route: everything behind its start is level with its start. */
+  val StrayTiles = 10.0
+
   /** ...or once it has waited this long: a unit that cannot reach its slot must not hold the army forever. */
   val StallFrames = 24 * 20
 
@@ -50,8 +53,13 @@ private[pony] object Formation {
       }
 
     /** How far along the route lies the point of it nearest to `p`. */
-    def progressOf(p: MapTilePosition): Double =
-      if (corners.size < 2) 0.0
+    def progressOf(p: MapTilePosition): Double = nearest(p)._2
+
+    /** How far `p` lies from the route. */
+    def apart(p: MapTilePosition): Double = nearest(p)._1
+
+    private def nearest(p: MapTilePosition): (Double, Double) =
+      if (corners.size < 2) (corners.headOption.fold(0.0)(distance(_, (p.x.toDouble, p.y.toDouble))), 0.0)
       else {
         val (x, y) = (p.x.toDouble, p.y.toDouble)
         corners.indices.dropRight(1).map { i =>
@@ -62,7 +70,7 @@ private[pony] object Formation {
             else (((x - a._1) * (b._1 - a._1) + (y - a._2) * (b._2 - a._2)) / (segment * segment)).max(0.0).min(1.0)
           val on = (a._1 + (b._1 - a._1) * t, a._2 + (b._2 - a._2) * t)
           (distance(on, (x, y)), along(i) + segment * t)
-        }.minBy(_._1)._2
+        }.minBy(_._1)
       }
   }
 
@@ -93,11 +101,13 @@ private[pony] object Formation {
   }
 
   /**
-    * A member has caught up near its slot, or once it is no further back along the route than its slot: in a crowded
-    * base or at a choke the slot may have no room, and the army never waits for a unit ahead of its place.
+    * A member has caught up near its slot, or once it is no further back along the route than its slot and near the
+    * route (`apart` from it): in a crowded base or at a choke the slot may have no room, and the army never waits for a
+    * unit ahead of its place. Units still in our base 100 tiles behind the route's start counted as level with a front
+    * that had just formed, joined the army and then held it up.
     */
-  def caughtUp(progress: Double, slotProgress: Double, distance: Double) =
-    distance <= CohesionTiles || progress >= slotProgress - CohesionTiles
+  def caughtUp(progress: Double, slotProgress: Double, distance: Double, apart: Double) =
+    distance <= CohesionTiles || (progress >= slotProgress - CohesionTiles && apart <= StrayTiles)
 
   /** The front moves on once enough of the army has caught up. */
   def keepsUp(caught: Seq[Boolean]) = caught.nonEmpty && caught.count(identity) >= KeepUpShare * caught.size
