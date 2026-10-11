@@ -57,7 +57,8 @@ if (-not ($generated | Where-Object { $_ -match '^wrote \d+ battles' }) -or ($ge
   throw "Generating the battery on $Commit failed:`n$($generated -join "`n")"
 }
 $manifest = @{}
-Get-Content -LiteralPath (Join-Path $out 'manifest.json') -Raw | ConvertFrom-Json | ForEach-Object { $manifest[$_.id] = $_ }
+# Windows PowerShell passes a parsed JSON array on as one object; the parentheses unroll it
+(Get-Content -LiteralPath (Join-Path $out 'manifest.json') -Raw | ConvertFrom-Json) | ForEach-Object { $manifest[$_.id] = $_ }
 $ids = @($manifest.Keys | Sort-Object)
 if (-not $Dataset) { $Dataset = Join-Path $out 'battles.jsonl' }
 Set-Content -LiteralPath $Dataset -Value @() -Encoding ascii
