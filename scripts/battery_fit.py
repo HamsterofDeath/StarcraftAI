@@ -1,9 +1,9 @@
 """Fit battle-outcome predictors to a battle battery and compare them by cross-validation.
 
-Usage: python scripts/battery_fit.py battles.jsonl [more.jsonl ...] [--weights out.json]
+Usage: python scripts/battery_fit.py battles.jsonl [more.jsonl ...] [--weights out.json [--prior 0.5]]
 
 Each line of a battery (scripts/Invoke-Battery.ps1) holds both armies, the status and both sides' survivors by type.
-Four predictors of P(we win) are compared on the same folds; a standoff counts for the side that kept more of its
+Five predictors of P(we win) are compared on the same folds; a standoff counts for the side that kept more of its
 value:
   value      our army is worth more (minerals + 1.5 gas)
   lanchester Lanchester's square law from the unit stats: we win if our DPS times our hit points (both against the
@@ -11,6 +11,7 @@ value:
   learned    the same square law with every matchup's DPS and every type's durability learned from the battles,
              pulled towards the stats by a prior
   mlp        a small neural net on the log unit counts
+  hybrid     the net with the stats' square law as one more input, to learn only what the law gets wrong
 Besides P(win), the learned Lanchester and the net predict the margin: our army's surviving share of its value minus
 theirs, in [-1, 1].
 """
@@ -233,13 +234,30 @@ class Mlp:
         return p, m
 
 
+# how hard the learned square law is pulled towards the stats; the report has a row for each
+PRIORS = [0.1, 0.5, 2.0]
+
+
+class Hybrid(Mlp):
+    """The net with the square law of the stats as one more input: it only has to learn what the law gets wrong."""
+
+    @staticmethod
+    def features(ours, theirs):
+        return np.hstack([Mlp.features(ours, theirs), stats_strength(ours, theirs)[:, None] / 3])
+
+
+def stats_strength(ours, theirs):
+    """The square law from the unit stats alone; medics count as no fire."""
+    medics = np.array([[i == 'med'] * len(PROTOSS) for i in TERRAN])
+    return lanchester(ours, theirs, np.where(CAN_US & ~medics, PRIOR_US, 0.0), np.where(CAN_THEM, PRIOR_THEM, 0.0),
+                      HP_US, HP_THEM)
+
+
 def cross_validate(ours, theirs, win, margin, values, folds=5, seed=1):
     order = np.random.default_rng(seed).permutation(len(win))
     results = {name: {'p': np.zeros(len(win)), 'm': np.full(len(win), np.nan)}
-               for name in ['value', 'lanchester', 'learned', 'mlp']}
-    stats_z = lanchester(ours, theirs, np.where(CAN_US & ~np.array([[i == 'med'] * len(PROTOSS) for i in TERRAN]),
-                                                PRIOR_US, 0.0),
-                         np.where(CAN_THEM, PRIOR_THEM, 0.0), HP_US, HP_THEM)
+               for name in ['value', 'lanchester'] + [f'learned/{p}' for p in PRIORS] + ['mlp', 'hybrid']}
+    stats_z = stats_strength(ours, theirs)
     for k in range(folds):
         test = order[k::folds]
         train = np.setdiff1d(order, test)
@@ -248,15 +266,22 @@ def cross_validate(ours, theirs, win, margin, values, folds=5, seed=1):
             best = min((log_loss(sigmoid(s * z[train]), win[train]), s) for s in np.linspace(0.1, 10, 100))[1]
             results[name]['p'][test] = sigmoid(best * z[test])
         results['lanchester']['m'][test] = margin_of(stats_z[test])
-        learned = Learned().fit(ours[train], theirs[train], win[train])
-        results['learned']['p'][test], results['learned']['m'][test] = learned.predict(ours[test], theirs[test])
+        for prior in PRIORS:
+            learned = Learned(prior).fit(ours[train], theirs[train], win[train])
+            r = results[f'learned/{prior}']
+            r['p'][test], r['m'][test] = learned.predict(ours[test], theirs[test])
         mlp = Mlp().fit(ours[train], theirs[train], win[train], margin[train])
         results['mlp']['p'][test], results['mlp']['m'][test] = mlp.predict(ours[test], theirs[test])
+        hybrid = Hybrid().fit(ours[train], theirs[train], win[train], margin[train])
+        results['hybrid']['p'][test], results['hybrid']['m'][test] = hybrid.predict(ours[test], theirs[test])
     return results
 
 
 def main(args):
-    weights = None
+    weights, prior = None, 0.5
+    if '--prior' in args:
+        prior = float(args[args.index('--prior') + 1])
+        args = [a for i, a in enumerate(args) if a != '--prior' and (i == 0 or args[i - 1] != '--prior')]
     if '--weights' in args:
         weights = args[args.index('--weights') + 1]
         args = [a for a in args if a not in ('--weights', weights)]
@@ -272,7 +297,7 @@ def main(args):
         mae = float(np.nanmean(np.abs(r['m'] - margin))) if not np.all(np.isnan(r['m'])) else float('nan')
         print(f'{name:<11} {accuracy:>8.3f} {log_loss(r["p"], win):>8.3f} {brier:>6.3f} {mae:>10.3f}')
     if weights:
-        learned = Learned().fit(ours, theirs, win)
+        learned = Learned(prior).fit(ours, theirs, win)
         a, b, hp_us, hp_them, scale, bias = learned.unpack(learned.w)
         with open(weights, 'w', encoding='utf-8') as fh:
             json.dump({'terran': TERRAN, 'protoss': PROTOSS, 'ourDps': a.round(3).tolist(),
