@@ -7,7 +7,9 @@ import pony.brain.budget.ResourceRequests
 import pony.brain.modules.campaign.TerranCampaignConfig
 import pony.brain.modules.production.{IdealProducerCount, IdealUnitRatio}
 import pony.tech.Upgrades
-import pony.units.{Barracks, Bunker, Factory, Goliath, MachineShop, MainBuilding, Marine, Medic, Tank, Vulture}
+import pony.units.{
+  Barracks, Bunker, Factory, Goliath, MachineShop, MainBuilding, Marine, Medic, ScienceVessel, Tank, Vulture
+}
 
 /** The default Terran campaign: bunkered mineral fields, a spare home Command Center, then a massed army attack. */
 class DefaultTerranCampaign(override val universe: Universe) extends LongTermStrategy with TerranDefaults {
@@ -53,7 +55,12 @@ class DefaultTerranCampaign(override val universe: Universe) extends LongTermStr
       IdealUnitRatio(classOf[Tank], 6 + scale * 3)(true) ::
       IdealUnitRatio(classOf[Goliath], 2 + scale)(true) ::
       // medics blind the enemy army with Optical Flare (BlindEnemies) once the second base pays for them
-      IdealUnitRatio(classOf[Medic], 2 + scale)(bases.finishedBases.size >= 2) :: Nil
+      IdealUnitRatio(classOf[Medic], 2 + scale)(bases.finishedBases.size >= 2) ::
+      // science vessels march with the army and reveal what the scanner cannot reach (EscortWithVessels), late in the
+      // game once hidden enemies showed up or three bases pay for the starport, control tower and science facility
+      IdealUnitRatio(classOf[ScienceVessel], 1 + scale / 4)(
+        phase.isSinceLateMid && (cloakThreat || bases.finishedBases.size >= 3)
+      ) :: Nil
   }
 
   override def suggestUpgrades =
@@ -64,7 +71,9 @@ class DefaultTerranCampaign(override val universe: Universe) extends LongTermStr
       UpgradeToResearch(Upgrades.Terran.MedicFlare)(bases.finishedBases.size >= 2) ::
       // bunkered Marines step out, stim and go back in when enemies come (BunkerStimCycle)
       UpgradeToResearch(Upgrades.Terran.InfantryCooldown)(ownUnits.allByType[Bunker].nonEmpty) ::
-      UpgradeToResearch(Upgrades.Terran.MedicEnergy)(bases.finishedBases.size >= 3) :: Nil
+      UpgradeToResearch(Upgrades.Terran.MedicEnergy)(bases.finishedBases.size >= 3) ::
+      // the vessels strip the shields and energy of Protoss armies (EmpShockwave)
+      UpgradeToResearch(Upgrades.Terran.EMP)(ownUnits.allByType[ScienceVessel].nonEmpty) :: Nil
 }
 
 final class DefaultTerranCampaignPlugin

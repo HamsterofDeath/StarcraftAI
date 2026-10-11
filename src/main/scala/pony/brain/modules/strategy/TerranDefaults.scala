@@ -3,16 +3,26 @@ package brain
 package modules
 package strategy
 
+import pony.brain.modules.micro.WatchForCloak
 import pony.units.{Academy, Comsat, ControlTower, Factory, MachineShop, Starport, TransporterUnit}
 
 /** Addons, anti-cloak timing and the classic richest-reachable-field expansion choice shared by Terran strategies. */
 trait TerranDefaults extends LongTermStrategy {
 
-  override def buildAntiCloakNow = phase.isSinceMid
+  /** A hidden enemy has been seen or has hurt us (WatchForCloak). */
+  protected def cloakThreat = universe.pluginByType[WatchForCloak].threat
+
+  /**
+    * Turrets once a hidden enemy shows, else from the middle of the game; against Protoss from minute five. Dark
+    * templar came from six and a half minutes on, before the first turret, and killed at our wall and in the field.
+    */
+  override def buildAntiCloakNow = phase.isSinceMid || cloakThreat || universe.forces.isTvP && phase.isSinceEarlyMid
 
   override def suggestAddons: Seq[AddonToAdd] = {
+    // the scanner (and the academy it needs) once a hidden enemy shows, and against Protoss from minute four
     AddonToAdd(classOf[Comsat], requestNewBuildings = true)(
-      unitManager.existsAndDone(classOf[Academy]) || phase.isSinceEarlyMid
+      unitManager.existsAndDone(classOf[Academy]) || phase.isSinceEarlyMid || cloakThreat ||
+        universe.forces.isTvP && phase.isSinceVeryEarlyMid
     ) ::
       AddonToAdd(classOf[MachineShop], requestNewBuildings = false)(
         unitManager.existsAndDone(classOf[Factory])

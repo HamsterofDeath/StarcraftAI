@@ -7,7 +7,7 @@ import pony.brain.jobs.Employer
 import pony.brain.requests.UnitJobRequest
 import pony.geometry.MapTilePosition
 import pony.render.Renderer
-import pony.units.{Medic, Mobile, SupportUnit, TransporterUnit, WorkerUnit, WrapsUnit}
+import pony.units.{Medic, Mobile, ScienceVessel, SupportUnit, TransporterUnit, WorkerUnit, WrapsUnit}
 import pony.util.BWFuture
 
 import pony.combat.AttackPriorities.{AttackPriority, Highest, Lowest}
@@ -82,8 +82,8 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
     val employer         = new Employer[Mobile](universe)
     val busy             = attacks.flatMap(_.force).toSet
     def joins(m: Mobile) = !m.isBeingCreated && !busy(m) && (
-      // medics go along to heal and to blind the defenders; they stay among the fighters
-      m.isInstanceOf[Medic] ||
+      // medics go along to heal and to blind the defenders, science vessels to detect; they stay among the fighters
+      m.isInstanceOf[Medic] || m.isInstanceOf[ScienceVessel] ||
         expeditionIds(m.nativeUnitId) && m.isFigher && !m.isInstanceOf[WorkerUnit] &&
         !m.isInstanceOf[SupportUnit] && !m.isInstanceOf[TransporterUnit]
     )

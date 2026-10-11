@@ -26,6 +26,15 @@ private[pony] object ScanChoice {
   /** A visible enemy this close to a damaged unit of ours may have dealt the damage. */
   val VisibleCulpritRadius = 8
 
+  /** Our own sieged tanks splash this far from themselves, and our spider mines this far... */
+  val SiegeSplashTiles = 13
+  val MineSplashTiles  = 3
+
+  /** ...so damage there may be our own fire, not a hidden enemy. */
+  def ownFire(victim: MapTilePosition, sieged: Seq[MapTilePosition], mines: Seq[MapTilePosition]) =
+    sieged.exists(_.distanceToIsLess(victim, SiegeSplashTiles)) ||
+      mines.exists(_.distanceToIsLess(victim, MineSplashTiles))
+
   /**
     * The best place to sweep, if any: only where someone can shoot what the sweep reveals, never inside a sweep still
     * running; a hidden attacker before unexplained damage, unexplained damage before a hidden detector, more hunters

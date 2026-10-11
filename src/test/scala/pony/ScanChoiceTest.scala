@@ -14,6 +14,7 @@ class ScanChoiceTest extends Specification with MustMatchers {
        |A hidden attacker comes before unexplained damage, which comes before a hidden detector $order
        |A spot inside a sweep still running is not swept again $noRepeat
        |Among equals the spot with more hunters is swept $moreHunters
+       |Damage near our own sieged tanks or spider mines may be our own fire $ownSplash
        """.stripMargin
 
   private val here  = MapTilePosition(40, 40)
@@ -32,6 +33,12 @@ class ScanChoiceTest extends Specification with MustMatchers {
   def noRepeat =
     (choose(Seq(Candidate(here, Reason.HiddenAttacker, 3, "DT")), Seq(MapTilePosition(43, 42))) must beNone) and
       (choose(Seq(Candidate(here, Reason.HiddenAttacker, 3, "DT")), Seq(there)) must beSome)
+
+  def ownSplash = (ownFire(here, Seq(MapTilePosition(50, 40)), Nil) must beTrue) and
+    (ownFire(here, Seq(MapTilePosition(55, 40)), Nil) must beFalse) and
+    (ownFire(here, Nil, Seq(MapTilePosition(42, 41))) must beTrue) and
+    (ownFire(here, Nil, Seq(MapTilePosition(45, 40))) must beFalse) and
+    (ownFire(here, Nil, Nil) must beFalse)
 
   def moreHunters = choose(
     Seq(Candidate(here, Reason.UnseenDamage, 1, "SCV"), Candidate(there, Reason.UnseenDamage, 4, "Marine")),

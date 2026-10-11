@@ -9,7 +9,7 @@ import pony.brain.modules.campaign.{
 }
 import pony.brain.modules.economy.{ManageMiningAtBases, ManageMiningAtGeysirs, ProvideExpansions, ProvideSpareSCVs}
 import pony.brain.modules.ferry.FerryManager
-import pony.brain.modules.micro.TankBoxes
+import pony.brain.modules.micro.{TankBoxes, WatchForCloak}
 import pony.brain.modules.production.{
   EnqueueArmy, EnqueueFactories, FlyFactoriesToNatural, ProvideNewBuildings, ProvideNewSupply, ProvideNewUnits,
   ProvideSuggestedAndRequestedAddons, ProvideUpgrades, SetupAntiCloakDefenses
@@ -86,6 +86,8 @@ class TwilightSparkle(world: DefaultWorld) {
   // Failed hiring requests live two frames; satisfying them must not wait for a heavy tick.
   private val provideNewUnits = new ProvideNewUnits(universe)
   private val aiModules       = List(
+    // before the behaviours: the scanner sweeps where it saw hidden enemies this tick
+    new WatchForCloak(universe),
     new DefaultBehaviours(universe),
     new ManageMiningAtBases(universe),
     new ManageMiningAtGeysirs(universe),
