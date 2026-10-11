@@ -112,14 +112,9 @@ private[pony] object Formation {
       .takeWhile(_ < all.size).map(all).toVector
   }
 
-  /**
-    * How far along the route it first lies `tiles` away from every home. The army leaves its bases on its own pathing
-    * and forms there: between our own buildings the route squeezed through gaps only the small units fit, and the
-    * tanks, goliaths and vultures never reached their slots.
-    */
-  def departure(route: Route, homes: Seq[Point], tiles: Double) =
-    Iterator.iterate(0.0)(_ + 1).takeWhile(_ < route.length)
-      .find(s => homes.forall(distance(route.at(s)._1, _) >= tiles)).getOrElse(route.length)
+  /** Half the army stands `tiles` away from all our bases, by each member's distance to its nearest. */
+  def leftHome(distances: Seq[Double], tiles: Double) =
+    distances.nonEmpty && distances.sorted.apply(distances.size / 2) >= tiles
 
   /** Where a front forms around an army: its median member halfway down the formation. */
   def formingFront(progress: Seq[Double], depth: Double) =

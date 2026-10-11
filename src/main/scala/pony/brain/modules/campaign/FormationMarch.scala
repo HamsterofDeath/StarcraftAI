@@ -5,21 +5,27 @@ package campaign
 
 import pony.combat.ArmedBuilding
 import pony.geometry.MapTilePosition
-import pony.pathing.Formation
+import pony.pathing.{Formation, Paths}
 import pony.units.{GroundUnit, Mobile, SupportUnit, WorkerUnit}
+import pony.util.BWFuture
 
 import bwapi.{UnitType, WeaponType}
+
+import scala.util.Try
 
 /**
   * A campaign attack marching in formation along its path (Formation): the long range leads, the rest keep their
   * distance behind, and the front waits for the army. When an enemy comes within reach of a member the formation lets
   * go and every unit fights as it would without one; it forms again around the army once no enemy has been near for
   * ReformFrames, and lets go for good once the front reaches the target. Reinforcements take their slots too but hold
-  * nobody up until they have caught up. The army first leaves our bases on its own and forms where the route lies
-  * HomeTiles away from them (Formation.departure). In the games before it the army met at the edge of the enemy's
-  * defence and then charged one by one, the fastest first.
+  * nobody up until they have caught up. In the games before it the army met at the edge of the enemy's defence and
+  * then charged one by one, the fastest first.
+  *
+  * The army leaves our bases on its own and plans its route once half of it stands HomeTiles away from them: the
+  * attack's own path is planned at the launch, while the wall still seals the main, and so runs to the corner of the
+  * main nearest the target and on in a straight line through the cliffs.
   */
-class FormationMarch(route: Formation.Route, override val universe: Universe) extends HasUniverse {
+class FormationMarch(target: MapTilePosition, override val universe: Universe) extends HasUniverse {
   import FormationMarch._
 
   private var front     = Option.empty[Double]
@@ -33,10 +39,10 @@ class FormationMarch(route: Formation.Route, override val universe: Universe) ex
   private var joined    = Set.empty[Int]
   private var stalls    = 0
   private val since     = currentTick
-  private val departure =
-    Formation.departure(route, bases.allBases.map(b => b.mainBuilding.centerTile).map(t => (t.x, t.y)), HomeTiles)
-  private val staging  = onRoute(departure)
-  private var departed = false
+  private var planned   = Option.empty[BWFuture[Option[Paths]]]
+  private var marching  = Option.empty[Formation.Route]
+
+  private def route = marching.get
 
   /**
     * Where a member goes: its slot while the formation holds (a medic, without one, to the formation's middle), the
@@ -44,7 +50,6 @@ class FormationMarch(route: Formation.Route, override val universe: Universe) ex
     */
   def destinationOf(m: Mobile): Option[MapTilePosition] =
     if (slots.nonEmpty) slots.get(m.nativeUnitId).orElse(middle)
-    else if (!departed && !arrived) Some(staging)
     else fight.filter(_ => contactAt.exists(currentTick - _ < ReformFrames))
 
   def update(force: Iterable[Mobile]): Unit = if (!arrived && currentTick - updatedAt >= Interval) {
@@ -54,7 +59,6 @@ class FormationMarch(route: Formation.Route, override val universe: Universe) ex
   }
 
   private def march(fighters: Vector[Mobile]): Unit = {
-    if (!mapped) { mapped = true; traceMap(fighters) }
     val places = Formation.places(fighters.map(m => m.nativeUnitId -> reach(m)))
     val depth  = Formation.depth(places)
     contact(fighters).foreach { (kind, tile) =>
@@ -63,20 +67,10 @@ class FormationMarch(route: Formation.Route, override val universe: Universe) ex
       contactAt = Some(currentTick)
       fight = Some(tile)
       front = None
-      departed = true
     }
     if (contactAt.exists(currentTick - _ < ReformFrames)) slots = Map.empty
-    else if (!departed && !gathered(fighters)) {
-      slots = Map.empty
-      if (currentTick - since > GatherFrames) {
-        arrived = true
-        NativeMatchEvidence.trace(
-          "formation-abandon",
-          s"gathering at $staging members=${fighters.size} near=${fighters.count(near(_))}"
-        )
-      }
-    } else {
-      departed = true
+    else if (marching.isEmpty) plan(fighters)
+    else {
       val forming = front.isEmpty
       val at      =
         front.getOrElse(Formation.formingFront(fighters.map(m => route.progressOf(m.currentTile)), depth))
@@ -95,8 +89,7 @@ class FormationMarch(route: Formation.Route, override val universe: Universe) ex
         NativeMatchEvidence.trace(
           "formation-form",
           s"members=${fighters.size} army=${joined.size} depth=${depth.round} front=${at.round} " +
-            s"route=${route.length.round} depart=${departure.round} after=${currentTick - since} " +
-            s"via=${via.mkString(",")}"
+            s"route=${route.length.round} after=${currentTick - since} via=${via.mkString(",")}"
         )
       }
       joined ++= apart.collect { case (m, d) if caughtUp(m, d) => m.nativeUnitId }
@@ -121,14 +114,9 @@ class FormationMarch(route: Formation.Route, override val universe: Universe) ex
             s"behind=${behind.size} stalls=$stalls lagging=${lagging.mkString(",")}"
         )
       }
-      if (stalls >= Formation.GiveUpStalls) {
-        arrived = true
-        slots = Map.empty
-        NativeMatchEvidence.trace(
-          "formation-abandon",
-          s"front=${at.round} members=${fighters.size} army=${army.size} behind=${behind.size}"
-        )
-      } else if (next - depth / 2 >= route.length) {
+      if (stalls >= Formation.GiveUpStalls)
+        abandon(s"front=${at.round} members=${fighters.size} army=${army.size} behind=${behind.size}")
+      else if (next - depth / 2 >= route.length) {
         arrived = true
         slots = Map.empty
         NativeMatchEvidence.trace("formation-arrived", s"members=${fighters.size} route=${route.length.round}")
@@ -141,42 +129,34 @@ class FormationMarch(route: Formation.Route, override val universe: Universe) ex
   }
 
   /**
-    * DIAGNOSTIC, once per game: the ground around the start of the march. # cliff, B building, m resource, + route,
-    * S staging, and the members by their type's initial (T for tanks).
+    * Until half the army stands HomeTiles from all our bases every member attacks towards the target on its own; then
+    * the route is planned from the army's median member. A route that does not reach the target means no formation.
     */
-  private def traceMap(fighters: Seq[Mobile]): Unit = {
-    val start            = onRoute(0)
-    val (x0, y0, x1, y1) = (start.x - 24, start.y - 24, start.x + 24, start.y + 24)
-    val walk             = mapLayers.rawWalkableMap
-    val routed           = Iterator.iterate(0.0)(_ + 0.5).takeWhile(_ <= route.length).map(onRoute).toSet
-    val units            = fighters.map { m =>
-      val kind = m.nativeUnit.getType.toString.stripPrefix("Terran_")
-      m.currentTile -> (if (kind.startsWith("Siege")) 'T' else kind.head)
-    }.toMap
-    NativeMatchEvidence.trace("formation-map", s"x=$x0..$x1 y=$y0..$y1 staging=$staging")
-    (y0 to y1).foreach { y =>
-      val row = (x0 to x1).map { x =>
-        val t = MapTilePosition.shared(x, y)
-        if (!walk.inBounds(t)) ' '
-        else units.getOrElse(
-          t,
-          if (t == staging) 'S'
-          else if (!walk.free(t)) '#'
-          else if (!mapLayers.blockedByBuildingTiles.free(t)) 'B'
-          else if (!mapLayers.blockedByResources.free(t)) 'm'
-          else if (routed(t)) '+'
-          else '.'
-        )
-      }.mkString
-      NativeMatchEvidence.trace("formation-map", f"y=$y%03d $row")
-    }
+  private def plan(fighters: Vector[Mobile]): Unit = planned match {
+    case None =>
+      val homes = bases.allBases.map(_.mainBuilding.centerTile)
+      val away  = fighters.map(m => m -> homes.map(m.currentTile.distanceTo).minOption.getOrElse(Double.MaxValue))
+      if (Formation.leftHome(away.map(_._2), HomeTiles)) {
+        val from = away.sortBy(_._2).apply(away.size / 2)._1.currentTile
+        planned = Some(universe.pathfinders.groundSafe.findPaths(from, target, 1))
+      } else if (currentTick - since > LeaveFrames)
+        abandon(s"leaving members=${fighters.size} away=${away.count(_._2 >= HomeTiles)}")
+    case Some(future) if future.isDone =>
+      Try(future.result).toOption.flatten.flatMap(_.paths.headOption) match {
+        case Some(path) if path.solved && path.requestedTarget.distanceToIsLess(target, TargetTiles) =>
+          val corners = Formation.taut(path.waypoints :+ target, mapLayers.rawWalkableMap.connectedByLine)
+          marching = Some(new Formation.Route(corners))
+        case other =>
+          abandon(s"unrouted solved=${other.map(_.solved)} reaches=${other.map(_.requestedTarget)} target=$target")
+      }
+    case Some(_) => // still planning
   }
 
-  /** Half the army has reached the staging point, or gone past it along the route. */
-  private def gathered(fighters: Seq[Mobile]) = fighters.count(near) * 2 >= fighters.size
-
-  private def near(m: Mobile) =
-    m.currentTile.distanceToIsLess(staging, StagingTiles) || route.progressOf(m.currentTile) >= departure
+  private def abandon(why: String): Unit = {
+    arrived = true
+    slots = Map.empty
+    NativeMatchEvidence.trace("formation-abandon", why)
+  }
 
   /** The first visible enemy within reach of a member, if any. */
   private def contact(fighters: Seq[Mobile]) = {
@@ -232,9 +212,6 @@ class FormationMarch(route: Formation.Route, override val universe: Universe) ex
 
 object FormationMarch {
 
-  /** DIAGNOSTIC: the map around the first march is traced once per game. */
-  @volatile private var mapped = false
-
   /** Frames between two updates of the formation. */
   val Interval = 8
 
@@ -247,10 +224,12 @@ object FormationMarch {
   /** Members this far from their slots as the formation forms catch up instead of holding the army. */
   val GatherTiles = 20
 
-  /** The army forms this far from our bases, once half of it stands within StagingTiles of that point... */
-  val HomeTiles    = 20.0
-  val StagingTiles = 10
+  /** The route is planned once half the army stands this far from all our bases... */
+  val HomeTiles = 20.0
 
-  /** ...or attacks without a formation if it has not gathered there by then. */
-  val GatherFrames = 24 * 90
+  /** ...unless it takes longer than this to get there, and then there is no formation. */
+  val LeaveFrames = 24 * 90
+
+  /** A planned route must end this close to the target. */
+  val TargetTiles = 12
 }

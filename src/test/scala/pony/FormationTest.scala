@@ -16,7 +16,7 @@ class FormationTest extends Specification with MustMatchers {
        |A member has caught up near its slot or once level with it along the route $caught
        |The front moves on once four in five have caught up $keepingUp
        |A taut route goes straight to the furthest point in sight $tautRoute
-       |The army departs where the route first lies far enough from every home $departing
+       |The route is planned once half the army stands far enough from home $leaving
        |A front forms with the army's median member halfway down the formation $forming
        """.stripMargin
 
@@ -76,13 +76,10 @@ class FormationTest extends Specification with MustMatchers {
       (taut(Nil, sees) === Vector.empty)
   }
 
-  def departing = {
-    val east = new Route(Seq(MapTilePosition(0, 0), MapTilePosition(40, 0)))
-    (departure(east, Seq((0.0, 0.0)), 20) === 20.0) and
-      (departure(east, Seq((0.0, 0.0), (15.0, 0.0)), 10) === 25.0) and
-      (departure(east, Seq((100.0, 100.0)), 20) === 0.0) and
-      (departure(east, Seq((20.0, 0.0)), 30) === 40.0)
-  }
+  def leaving = (leftHome(Seq(5.0, 25.0, 30.0), 20) must beTrue) and
+    (leftHome(Seq(5.0, 10.0, 30.0), 20) must beFalse) and
+    (leftHome(Seq(5.0, 25.0), 20) must beTrue) and
+    (leftHome(Nil, 20) must beFalse)
 
   def forming = (formingFront(Seq(0.0, 1.0, 2.0, 10.0, 11.0), 6.0) === 5.0) and (formingFront(Nil, 6.0) === 6.0)
 }

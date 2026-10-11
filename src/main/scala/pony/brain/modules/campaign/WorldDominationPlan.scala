@@ -6,7 +6,6 @@ package campaign
 import pony.brain.jobs.Employer
 import pony.brain.requests.UnitJobRequest
 import pony.geometry.MapTilePosition
-import pony.pathing.Formation
 import pony.render.Renderer
 import pony.units.{Medic, Mobile, SupportUnit, TransporterUnit, WorkerUnit, WrapsUnit}
 import pony.util.BWFuture
@@ -318,11 +317,8 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
       super.onTick_!()
       currentForce = currentForce.filter(_.isInGame)
       migration.result.foreach(_.onTick_!())
-      if (campaign) migration.result.foreach { path =>
-        if (march.isEmpty) {
-          val route = Formation.taut(path.route, mapLayers.rawWalkableMap.connectedByLine)
-          march = Some(new FormationMarch(new Formation.Route(route), universe))
-        }
+      if (campaign) {
+        if (march.isEmpty) march = Some(new FormationMarch(targetOfAttack.where, universe))
         march.foreach(_.update(currentForce))
       }
     }

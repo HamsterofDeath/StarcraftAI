@@ -36,9 +36,6 @@ class MigrationPath(follow: Paths, override val universe: Universe)
 
   def safeDestination = follow.requestedTargetSafe
 
-  /** The first path's waypoints on to the target itself, the way a formation marches. */
-  def route = follow.paths.head.waypoints :+ follow.unsafeTarget
-
   def targetFormationTiles = helper.formationTiles
 
   def renderDebugPaths(renderer: Renderer): Unit = {
