@@ -139,8 +139,13 @@ class FormationMarch(target: MapTilePosition, override val universe: Universe) e
       if (Formation.leftHome(away.map(_._2), HomeTiles)) {
         val from = away.sortBy(_._2).apply(away.size / 2)._1.currentTile
         planned = Some(universe.pathfinders.groundSafe.findPaths(from, target, 1))
-      } else if (currentTick - since > LeaveFrames)
-        abandon(s"leaving members=${fighters.size} away=${away.count(_._2 >= HomeTiles)}")
+      } else if (currentTick - since > LeaveFrames) {
+        val median = away.map(_._2).sorted.apply(away.size / 2)
+        abandon(
+          s"leaving members=${fighters.size} away=${away.count(_._2 >= HomeTiles)} median=${median.round} " +
+            s"at=${away.sortBy(-_._2).take(4).map((m, d) => s"${m.currentTile}:${m.nativeUnit.getOrder}").mkString(",")}"
+        )
+      }
     case Some(future) if future.isDone =>
       Try(future.result).toOption.flatten.flatMap(_.paths.headOption) match {
         case Some(path) if path.solved && path.requestedTarget.distanceToIsLess(target, TargetTiles) =>
@@ -227,8 +232,11 @@ object FormationMarch {
   /** The route is planned once half the army stands this far from all our bases... */
   val HomeTiles = 20.0
 
-  /** ...unless it takes longer than this to get there, and then there is no formation. */
-  val LeaveFrames = 24 * 90
+  /**
+    * ...unless it takes longer than this to get there, and then there is no formation. Until then every member attacks
+    * on its own as without a formation; opening a depot wall by knocking a depot down took over a minute.
+    */
+  val LeaveFrames = 24 * 300
 
   /** A planned route must end this close to the target. */
   val TargetTiles = 12
