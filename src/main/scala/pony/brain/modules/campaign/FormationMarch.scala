@@ -73,7 +73,7 @@ class FormationMarch(route: Formation.Route, override val universe: Universe) ex
         NativeMatchEvidence.trace(
           "formation-form",
           s"members=${fighters.size} army=${joined.size} depth=${depth.round} front=${at.round} " +
-            s"route=${route.length.round}"
+            s"route=${route.length.round} via=${via.mkString(",")}"
         )
       }
       joined ++= apart.collect { case (m, d) if d <= Formation.CohesionTiles => m.nativeUnitId }
@@ -139,6 +139,10 @@ class FormationMarch(route: Formation.Route, override val universe: Universe) ex
       case _ => tile
     }
   }
+
+  /** The route every 16 tiles, for the traces. */
+  private def via = Iterator.iterate(0.0)(_ + 16).takeWhile(_ < route.length).map(onRoute).toVector :+
+    onRoute(route.length)
 
   private def onRoute(s: Double) = {
     val ((x, y), _) = route.at(s)

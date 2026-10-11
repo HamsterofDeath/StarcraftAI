@@ -103,7 +103,9 @@ class PreventBlockades(universe: Universe) extends DefaultBehaviour[Mobile](univ
 
     override def toOrder(what: Objective): Seq[UnitOrder] = {
       val layer = relevantLayer.get
-      unlockingPlan.flatMap { plan =>
+      // the campaign army only passes through: moving it aside broke its formation apart in every narrow spot
+      if (worldDominationPlan.attackOf(this.unit).exists(_.campaign)) Nil
+      else unlockingPlan.flatMap { plan =>
         plan.get(this.unit.nativeUnitId).map { Orders.MoveToTile(this.unit, _) }
       }.filter { command =>
         val near             = command.to.distanceToIsLess(this.unit.currentTile, 3)
