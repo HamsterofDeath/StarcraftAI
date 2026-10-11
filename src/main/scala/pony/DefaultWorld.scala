@@ -36,6 +36,7 @@ class DefaultWorld(game: Game) extends WorldListener with WorldEventDispatcher {
   val orderQueue               = new OrderQueue(game, debugger)
   private val removeQueueOwn   = ArrayBuffer.empty[bwapi.Unit]
   private val removeQueueEnemy = ArrayBuffer.empty[bwapi.Unit]
+  private val renegades        = ArrayBuffer.empty[bwapi.Unit]
   private val destroyedEnemies = mutable.Set.empty[Int]
   def observedDestroyedEnemies = destroyedEnemies.toSet
   private var ticks            = 0
@@ -64,10 +65,17 @@ class DefaultWorld(game: Game) extends WorldListener with WorldEventDispatcher {
     }
   }
 
+  override def onUnitRenegade(unit: bwapi.Unit): Unit = {
+    super.onUnitRenegade(unit)
+    renegades += unit
+  }
+
   def tick(): Unit = {
     myUniverse.ownUnits.dead_!(removeQueueOwn.toSeq)
     myUniverse.enemyUnits.dead_!(removeQueueEnemy.toSeq)
     removeQueueOwn.clear()
+    renegades.foreach(myUniverse.ownUnits.renegade_!)
+    renegades.clear()
     removeQueueEnemy.clear()
     myUniverse.ownUnits.tick()
     myUniverse.enemyUnits.tick()
