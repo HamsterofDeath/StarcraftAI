@@ -63,11 +63,24 @@ class FormationMarch(route: Formation.Route, override val universe: Universe) ex
       def tiles(at: Double) =
         fighters.map(m => m.nativeUnitId -> tileFor(m, Formation.slot(route, at, places(m.nativeUnitId)))).toMap
       val now     = tiles(at)
-      val keepUp  = Formation.keepsUp(fighters.map(m => m.currentTile.distanceTo(now(m.nativeUnitId))))
+      val apart   = fighters.map(m => m -> m.currentTile.distanceTo(now(m.nativeUnitId)))
+      val keepUp  = Formation.keepsUp(apart.map(_._2))
       val stalled = currentTick - movedAt > Formation.StallFrames
       val next    = if (keepUp || stalled) at + Formation.StepTiles else at
       if (next != at) movedAt = currentTick
-      if (stalled) NativeMatchEvidence.trace("formation-stall", s"front=${at.round} members=${fighters.size}")
+      if (stalled) {
+        // who holds the army up, and what they are doing instead
+        val lagging = apart.filter(_._2 > Formation.CohesionTiles).sortBy(-_._2).take(6).map { (m, d) =>
+          val n = m.nativeUnit
+          s"${m.nativeUnitId}:${n.getType.toString.replaceAll("^[A-Za-z]+_", "")}@${m.currentTile}" +
+            s">${now(m.nativeUnitId)}=${d.round}:${n.getOrder}:${unitManager.jobOf(m).getClass.getSimpleName}"
+        }
+        NativeMatchEvidence.trace(
+          "formation-stall",
+          s"front=${at.round} members=${fighters.size} behind=${apart.count(_._2 > Formation.CohesionTiles)} " +
+            s"lagging=${lagging.mkString(",")}"
+        )
+      }
       if (next - depth / 2 >= route.length) {
         arrived = true
         slots = Map.empty
