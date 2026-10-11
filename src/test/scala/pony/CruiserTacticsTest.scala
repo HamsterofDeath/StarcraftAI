@@ -6,6 +6,8 @@ import org.specs2._
 import org.specs2.matcher.MustMatchers
 import pony.brain.modules.cruisers.CruiserTactics._
 
+import bwapi.UnitType.{Protoss_Dragoon, Terran_Battlecruiser}
+
 class CruiserTacticsTest extends Specification with MustMatchers {
 
   def is =
@@ -14,7 +16,7 @@ class CruiserTacticsTest extends Specification with MustMatchers {
        |A raid needs three fit cruisers and two thirds of the fleet, and ends worn down or below two $raidStartAndEnd
        |The crew grows with the fleet from two to ten SCVs $crew
        |A big fleet attacks as one group of four fifths $bigFleet
-       |A raid runs from anti-air worth under half its own value, a big group only from more $hitAndRun
+       |A raid runs from anti-air it would beat only with less than the run chance, hurt raiders sooner $hitAndRun
        |A raid is gathered once every cruiser is near the centre $gathering
        |Only a cruiser ahead of the group waits for it $stragglers
        |Known expansions come first, then likely expansion sites, the main, a lone building, a start $targets
@@ -45,10 +47,14 @@ class CruiserTacticsTest extends Specification with MustMatchers {
     (startsRaid(6, 9) must beFalse) and
     (startsRaid(8, 9) must beTrue)
 
-  def hitAndRun = (outnumbered(900, 2100, bigGroup = false) must beFalse) and
-    (outnumbered(1000, 2100, bigGroup = false) must beTrue) and
-    (outnumbered(1000, 2100, bigGroup = true) must beFalse) and
-    (outnumbered(1800, 2100, bigGroup = true) must beTrue)
+  private def cruisers(n: Int, health: Double = 1.0) = Seq.fill(n)(Terran_Battlecruiser -> health)
+  private def dragoons(n: Int)                       = Seq.fill(n)(Protoss_Dragoon -> 1.0)
+
+  def hitAndRun = (outnumbered(cruisers(3), dragoons(6)) must beFalse) and
+    (outnumbered(cruisers(3), dragoons(7)) must beTrue) and
+    (outnumbered(cruisers(3, health = 0.7), dragoons(6)) must beTrue) and
+    (outnumbered(cruisers(9), dragoons(18)) must beFalse) and
+    (outnumbered(cruisers(3), Nil) must beFalse)
 
   def gathering = {
     val centre = MapTilePosition(50, 50)
@@ -83,12 +89,12 @@ class CruiserTacticsTest extends Specification with MustMatchers {
     (crewStalled(1001 + CrewStallFrames, 1000) must beTrue)
 
   def defence =
-    (remembered(Some((1500, 1000)), 1000 + DefenceMemory - 1) === 1500) and
-      (remembered(Some((1500, 1000)), 1000 + DefenceMemory) === 0) and
-      (strongEnough(3, 700, bigGroup = false) must beFalse) and
-      (strongEnough(4, 700, bigGroup = false) must beTrue) and
-      (strongEnough(3, 700, bigGroup = true) must beTrue) and
-      (strongEnough(3, 0, bigGroup = false) must beTrue)
+    (remembered(Some((1500, 1000)), 1000 + DefenceMemory - 1) === Some(1500)) and
+      (remembered(Some((1500, 1000)), 1000 + DefenceMemory) === None) and
+      (strongEnough(cruisers(3), Seq.fill(5)(Protoss_Dragoon)) must beTrue) and
+      (strongEnough(cruisers(3), Seq.fill(6)(Protoss_Dragoon)) must beFalse) and
+      (strongEnough(cruisers(4), Seq.fill(6)(Protoss_Dragoon)) must beTrue) and
+      (strongEnough(cruisers(3), Nil) must beTrue)
 
   def whereTheArmyIsNot = {
     val home   = MapTilePosition(30, 7)

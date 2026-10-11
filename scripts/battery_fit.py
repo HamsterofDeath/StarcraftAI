@@ -1,6 +1,7 @@
 """Fit battle-outcome predictors to a battle battery and compare them by cross-validation.
 
-Usage: python scripts/battery_fit.py battles.jsonl [more.jsonl ...] [--weights out.json [--prior 0.5]]
+Usage: python scripts/battery_fit.py battles.jsonl [more.jsonl ...] [--weights out.json] [--scala out.scala]
+                                     [--prior 0.5]
 
 Each line of a battery (scripts/Invoke-Battery.ps1) holds both armies, the status and both sides' survivors by type.
 Five predictors of P(we win) are compared on the same folds; a standoff counts for the side that kept more of its
@@ -14,6 +15,8 @@ value:
   hybrid     the net with the stats' square law as one more input, to learn only what the law gets wrong
 Besides P(win), the learned Lanchester and the net predict the margin: our army's surviving share of its value minus
 theirs, in [-1, 1].
+--weights writes the learned square law fitted to all battles as JSON, --scala as the table the bot plays with
+(src/main/scala/pony/combat/LearnedSquareLaw.scala).
 """
 import json
 import math
@@ -277,34 +280,90 @@ def cross_validate(ours, theirs, win, margin, values, folds=5, seed=1):
     return results
 
 
+def option(args, name):
+    """The value after `name` and the arguments without both, or None and the arguments unchanged."""
+    if name not in args:
+        return None, args
+    i = args.index(name)
+    return args[i + 1], args[:i] + args[i + 2:]
+
+
+def scala_table(path, sources, battles, prior, a, b, hp_us, hp_them, scale, bias):
+    """The learned square law as a Scala object; the bot's BattleOdds falls back to the stats for the rest."""
+    bwapi = {code: [name for name, c in NAMES.items() if c == code] for code in TERRAN + PROTOSS}
+
+    def pairs(attackers, targets, table):
+        return [f'    ({x}, {y}) -> {table[i][j]:.3f}' for i, p in enumerate(attackers) for j, q in enumerate(targets)
+                if table[i][j] > 0 for x in bwapi[p] for y in bwapi[q]]
+
+    dps = pairs(TERRAN, PROTOSS, a) + pairs(PROTOSS, TERRAN, b)
+    hp = [f'    {x} -> {h:.1f}' for codes, hps in [(TERRAN, hp_us), (PROTOSS, hp_them)] for c, h in zip(codes, hps)
+          for x in bwapi[c]]
+    source = ', '.join(sources)
+    dps_rows = ',\n'.join(dps)
+    hp_rows = ',\n'.join(hp)
+    with open(path, 'w', encoding='utf-8', newline='\n') as fh:
+        fh.write(f'''package pony
+package combat
+
+import bwapi.UnitType
+import bwapi.UnitType._
+
+/**
+  * The square law learned from {battles} battles of a battery ({source}) with prior {prior}, written by
+  * scripts/battery_fit.py --scala: regenerate it rather than edit it. Medics fire a small stand-in for their healing.
+  */
+private[combat] object LearnedSquareLaw {{
+  val Battles = {battles}
+  val Scale   = {scale:.4f}
+  val Bias    = {bias:.4f}
+
+  /** Damage a second of the first type against the second, after armor and size. */
+  val Dps: Map[(UnitType, UnitType), Double] = Map(
+{dps_rows}
+  )
+
+  /** The hit points and shields a type stands for. */
+  val Durability: Map[UnitType, Double] = Map(
+{hp_rows}
+  )
+}}
+''')
+
+
 def main(args):
-    weights, prior = None, 0.5
-    if '--prior' in args:
-        prior = float(args[args.index('--prior') + 1])
-        args = [a for i, a in enumerate(args) if a != '--prior' and (i == 0 or args[i - 1] != '--prior')]
-    if '--weights' in args:
-        weights = args[args.index('--weights') + 1]
-        args = [a for a in args if a not in ('--weights', weights)]
+    prior, args = option(args, '--prior')
+    prior = float(prior) if prior else 0.5
+    weights, args = option(args, '--weights')
+    scala, args = option(args, '--scala')
     battles = load(args)
     ours, theirs, win, margin, values = dataset(battles)
     standoffs = sum(1 for b in battles if standoff(b))
     print(f'{len(battles)} battles: {int(win.sum())} won, {standoffs} ended in a standoff at the time limit')
-    results = cross_validate(ours, theirs, win, margin, values)
-    print(f'{"predictor":<11} {"accuracy":>8} {"log loss":>8} {"brier":>6} {"margin MAE":>10}')
-    for name, r in results.items():
-        accuracy = float(np.mean((r['p'] > 0.5) == (win > 0.5)))
-        brier = float(np.mean((r['p'] - win) ** 2))
-        mae = float(np.nanmean(np.abs(r['m'] - margin))) if not np.all(np.isnan(r['m'])) else float('nan')
-        print(f'{name:<11} {accuracy:>8.3f} {log_loss(r["p"], win):>8.3f} {brier:>6.3f} {mae:>10.3f}')
-    if weights:
+    if not scala:
+        results = cross_validate(ours, theirs, win, margin, values)
+        print(f'{"predictor":<11} {"accuracy":>8} {"log loss":>8} {"brier":>6} {"margin MAE":>10}')
+        for name, r in results.items():
+            accuracy = float(np.mean((r['p'] > 0.5) == (win > 0.5)))
+            brier = float(np.mean((r['p'] - win) ** 2))
+            mae = float(np.nanmean(np.abs(r['m'] - margin))) if not np.all(np.isnan(r['m'])) else float('nan')
+            print(f'{name:<11} {accuracy:>8.3f} {log_loss(r["p"], win):>8.3f} {brier:>6.3f} {mae:>10.3f}')
+    if weights or scala:
         learned = Learned(prior).fit(ours, theirs, win)
         a, b, hp_us, hp_them, scale, bias = learned.unpack(learned.w)
-        with open(weights, 'w', encoding='utf-8') as fh:
-            json.dump({'terran': TERRAN, 'protoss': PROTOSS, 'ourDps': a.round(3).tolist(),
-                       'theirDps': b.round(3).tolist(), 'ourHp': hp_us.round(1).tolist(),
-                       'theirHp': hp_them.round(1).tolist(), 'scale': float(np.exp(scale)), 'bias': float(bias),
-                       'battles': len(battles)}, fh, indent=1)
-        print(f'learned square law written to {weights}')
+        if weights:
+            with open(weights, 'w', encoding='utf-8') as fh:
+                json.dump({'terran': TERRAN, 'protoss': PROTOSS, 'ourDps': a.round(3).tolist(),
+                           'theirDps': b.round(3).tolist(), 'ourHp': hp_us.round(1).tolist(),
+                           'theirHp': hp_them.round(1).tolist(), 'scale': float(np.exp(scale)), 'bias': float(bias),
+                           'battles': len(battles)}, fh, indent=1)
+            print(f'learned square law written to {weights}')
+        if scala:
+            seeds = sorted({b['seed'] for b in battles})
+            commits = sorted({b['commit'][:7] for b in battles})
+            sources = [f'seed {", ".join(map(str, seeds))}', f'bot {", ".join(commits)}']
+            scala_table(scala, sources, len(battles), prior, a, b, hp_us, hp_them, float(np.exp(scale)), float(bias))
+            print(f'learned square law written to {scala}')
 
 
 if __name__ == '__main__':

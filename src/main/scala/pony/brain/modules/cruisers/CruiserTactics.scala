@@ -3,6 +3,7 @@ package brain
 package modules
 package cruisers
 
+import pony.combat.BattleOdds
 import pony.geometry.MapTilePosition
 
 /** The fleet decisions of CruiserRaids, kept free of the game. */
@@ -49,22 +50,19 @@ private[pony] object CruiserTactics {
   /** From this many cruisers on the fleet attacks as one group. */
   val BigFleet = 9
 
-  /** Minerals and gas of one cruiser, the measure of a raid's strength (times its health). */
-  val CruiserValue = 700
-
   /** Tiles around the raid's centre in which enemy anti-air counts against it. */
   val RaidSight = 12
 
   /**
-    * A raid hits and runs: it leaves once the anti-air near it reaches this share of its own value; a big group stays
-    * longer. Cruisers are dear for what they fight: by the square law three of them (2,100) only break even with about
-    * six Dragoons (1,050), and at 0.8 raids fought on until worn (game 1 on e643b1b ended seven of eight raids worn).
+    * A raid hits and runs: it leaves once its chance against the anti-air near it (BattleOdds, every raider as hurt as
+    * it is) falls below this. Cruisers are dear for what they fight, so a raid leaves a fight it would still win: three
+    * whole cruisers stay against six Dragoons (0.88) and leave against seven. By minerals and gas, a raid left at 0.45
+    * of its value in anti-air, and at 0.8 raids fought on until worn (game 1 on e643b1b ended seven of eight worn).
     */
-  val RunRatio      = 0.45
-  val GroupRunRatio = 0.8
+  val RunChance = 0.85
 
-  def outnumbered(antiAir: Int, strength: Double, bigGroup: Boolean) =
-    antiAir > strength * (if (bigGroup) GroupRunRatio else RunRatio)
+  def outnumbered(raiders: Seq[BattleOdds.Fighter], antiAir: Seq[BattleOdds.Fighter]) =
+    antiAir.nonEmpty && BattleOdds.winChance(raiders, antiAir) < RunChance
 
   /**
     * The anti-air a raid met at a target counts against the next raid there for this long: in game 1 on 1f86417 raids
@@ -72,18 +70,17 @@ private[pony] object CruiserTactics {
     */
   val DefenceMemory = 24 * 60 * 4
 
-  def remembered(seen: Option[(Int, Int)], now: Int): Int =
-    seen.collect { case (antiAir, at) if now - at < DefenceMemory => antiAir }.getOrElse(0)
+  def remembered[A](seen: Option[(A, Int)], now: Int): Option[A] =
+    seen.collect { case (defence, at) if now - at < DefenceMemory => defence }
 
   /**
-    * A raid sets out against at most this share of its strength in remembered anti-air; else the fleet waits and grows.
-    * Below the run ratios, since a raid gets hurt before it runs.
+    * A raid sets out against the anti-air remembered at its target, whole again, only with this chance: three whole
+    * cruisers against five Dragoons (0.97), not six. Above the run chance, since a raid gets hurt before it runs.
     */
-  val StartRatio      = 0.3
-  val GroupStartRatio = 0.6
+  val StartChance = 0.95
 
-  def strongEnough(fit: Int, defence: Int, bigGroup: Boolean) =
-    defence <= fit * CruiserValue * (if (bigGroup) GroupStartRatio else StartRatio)
+  def strongEnough(raiders: Seq[BattleOdds.Fighter], defence: Seq[bwapi.UnitType]) =
+    BattleOdds.winChance(raiders, defence.map(_ -> 1.0)) >= StartChance
 
   /** Gathered once every raider is this close to the centre, or after GatherFrames at the latest. */
   val GatherRadius = 6

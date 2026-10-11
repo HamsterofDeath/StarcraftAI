@@ -7,7 +7,7 @@ import pony.brain.jobs.Employer
 import pony.brain.modules.campaign.{EnemyArmyEstimate, RunTerranCampaign}
 import pony.brain.modules.economy.GatherMineralsAtSinglePatch
 import pony.brain.requests.{UnitJobRequest, UnitRequest}
-import pony.combat.ArmedBuilding
+import pony.combat.{ArmedBuilding, BattleOdds}
 import pony.geometry.MapTilePosition
 import pony.units.{Battlecruiser, Mobile, SCV, WorkerUnit, WrapsUnit}
 
@@ -42,8 +42,9 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
   private var starvedSince = Option.empty[Int]
   private val trail        = mutable.Queue.empty[(Int, MapTilePosition)]
   // the most anti-air a raid met at each target, and when: the next raid there must be strong enough for it
-  private val defended    = mutable.HashMap.empty[MapTilePosition, (Int, Int)]
+  private val defended    = mutable.HashMap.empty[MapTilePosition, (Vector[bwapi.UnitType], Int)]
   private var peakAntiAir = 0
+  private var peakDefence = Vector.empty[bwapi.UnitType]
   // since when the raid has stood at its target without destroying anything, and how many enemies were destroyed then
   private var lingerSince  = Option.empty[Int]
   private var destroyedNow = 0
@@ -136,16 +137,21 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
     }
     if (raiders.nonEmpty) {
       val worn       = if (canMend) endsRaid(raiders.toSeq.map(health)) else raiders.size < 2
-      val antiAir    = centre.map(antiAirAround).getOrElse(0)
-      val strength   = members.map(m => CruiserValue * health(m.nativeUnitId)).sum
-      val overpowerd = !gathering && outnumbered(antiAir, strength, bigGroup)
-      if (!gathering) peakAntiAir = peakAntiAir max antiAir
+      val antiAir    = centre.map(antiAirAround).getOrElse(Vector.empty)
+      val raiding    = members.map(m => m.nativeUnit.getType -> health(m.nativeUnitId))
+      val overpowerd = !gathering && outnumbered(raiding, antiAir)
+      val value      = worth(antiAir.map(_._1))
+      if (!gathering && value > peakAntiAir) {
+        peakAntiAir = value
+        peakDefence = antiAir.map(_._1)
+      }
       if (worn || overpowerd || target.isEmpty || worldDominationPlan.recallsArmy) {
-        target.foreach(t => defended(t) = (peakAntiAir, currentTick))
+        target.foreach(t => defended(t) = (peakDefence, currentTick))
         NativeMatchEvidence.trace(
           "raid-end",
-          s"raiders=${raiders.size} worn=$worn outnumbered=$overpowerd antiAir=$antiAir strength=${strength.round} " +
-            s"group=$bigGroup target=$target recall=${worldDominationPlan.recallsArmy}"
+          s"raiders=${raiders.size} worn=$worn outnumbered=$overpowerd antiAir=$value " +
+            s"chance=${"%.2f".format(BattleOdds.winChance(raiding, antiAir))} group=$bigGroup target=$target " +
+            s"recall=${worldDominationPlan.recallsArmy}"
         )
         raiders.filter(id => health(id) < FitFrom).foreach(repairing += _)
         raiders = Set.empty
@@ -153,11 +159,13 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
     } else if (!worldDominationPlan.recallsArmy) {
       val fit     = health.collect { case (id, hp) if !repairing(id) && (hp >= FitFrom || !canMend) => id }.toSet
       val group   = health.size >= BigFleet
-      val defence = target.map(defenceAt).getOrElse(0)
-      if (startsRaid(fit.size, health.size) && target.isDefined && strongEnough(fit.size, defence, group)) {
+      val defence = target.flatMap(defenceAt).getOrElse(Vector.empty)
+      val party   = fit.toVector.map(id => bwapi.UnitType.Terran_Battlecruiser -> health(id))
+      if (startsRaid(fit.size, health.size) && target.isDefined && strongEnough(party, defence)) {
         raiders = fit
         bigGroup = group
         peakAntiAir = 0
+        peakDefence = Vector.empty
         gathering = true
         gatherAt = currentTick
         closest = Double.MaxValue
@@ -165,7 +173,7 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
         NativeMatchEvidence.trace(
           "raid-start",
           s"raiders=${fit.size} target=${target.get} fleet=${fleet.size} group=$bigGroup " +
-            s"strength=${fit.size * CruiserValue} defence=$defence " +
+            s"defence=${worth(defence)} chance=${"%.2f".format(BattleOdds.winChance(party, defence.map(_ -> 1.0)))} " +
             s"enemyAtMost=${universe.pluginByType[EnemyArmyEstimate].maxArmyAt(target.get).round}"
         )
       }
@@ -241,6 +249,8 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
   /** The anti-air the last raid at this target met, while that is recent enough to count. */
   private def defenceAt(t: MapTilePosition) = remembered(defended.get(t), currentTick)
 
+  private def worth(types: Seq[bwapi.UnitType]) = types.iterator.map(t => t.mineralPrice + t.gasPrice).sum
+
   /** Keeps the raid's target while enemy buildings stand there; a start location found empty is swept off the list. */
   private def updateTarget(fleet: collection.Set[Battlecruiser]): Unit = {
     val known = universe.pluginByType[RunTerranCampaign].enemyBuildings
@@ -280,7 +290,7 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
         left.map(_.tile),
         starts,
         home,
-        t => estimate.armyNear(t) + defenceAt(t)
+        t => estimate.armyNear(t) + defenceAt(t).map(worth).getOrElse(0)
       )
         .orElse(fields.filterNot(swept).minByOpt(_.distanceSquaredTo(home)))
       // all swept and still no enemy found: sweep again, the enemy may have built somewhere since
@@ -294,14 +304,16 @@ class CruiserRaids(universe: Universe) extends DefaultBehaviour[Battlecruiser](u
     }
   }
 
-  /** Minerals and gas of the visible enemies within sight of the raid that can shoot at air units. */
+  /** The visible enemies within sight of the raid that can shoot at cruisers, each with its share of health left. */
   private def antiAirAround(at: MapTilePosition) = {
     val near = (enemies.allByType[Mobile].iterator ++ enemies.allByType[ArmedBuilding].iterator: Iterator[WrapsUnit])
       .filter(e => e.isInGame && e.nativeUnit.isVisible && e.currentTile.distanceToIsLess(at, RaidSight))
-    near.map(_.nativeUnit.getType).filter(t =>
-      t.airWeapon != bwapi.WeaponType.None || t == bwapi.UnitType.Protoss_Carrier
-    )
-      .map(t => t.mineralPrice + t.gasPrice).sum
+    near.map(_.nativeUnit).filter(u => BattleOdds.canHurt(u.getType, Seq(bwapi.UnitType.Terran_Battlecruiser)))
+      .map { u =>
+        val t     = u.getType
+        val whole = t.maxHitPoints + t.maxShields
+        t -> (if (whole <= 0) 1.0 else (u.getHitPoints + u.getShields).toDouble / whole)
+      }.toVector
   }
 
   /**
