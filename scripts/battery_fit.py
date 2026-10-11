@@ -3,7 +3,8 @@
 Usage: python scripts/battery_fit.py battles.jsonl [more.jsonl ...] [--weights out.json]
 
 Each line of a battery (scripts/Invoke-Battery.ps1) holds both armies, the status and both sides' survivors by type.
-Four predictors of P(we win) are compared on the same folds:
+Four predictors of P(we win) are compared on the same folds; a standoff counts for the side that kept more of its
+value:
   value      our army is worth more (minerals + 1.5 gas)
   lanchester Lanchester's square law from the unit stats: we win if our DPS times our hit points (both against the
              other army's mix of air and ground, sizes and armor) beats theirs
@@ -86,12 +87,18 @@ def left_share(groups, left, types):
     return min(1.0, kept / total) if total else 0.0
 
 
+def standoff(b):
+    return b['status'] != 'win' and b['oursLeft']['units'] > 0 and b['theirsLeft']['units'] > 0
+
+
 def dataset(battles):
     ours = np.array([army_vector(b['ours'], TERRAN) for b in battles])
     theirs = np.array([army_vector(b['theirs'], PROTOSS) for b in battles])
-    win = np.array([1.0 if b['status'] == 'win' else 0.0 for b in battles])
     margin = np.array([left_share(b['ours'], b['oursLeft'], TERRAN) - left_share(b['theirs'], b['theirsLeft'], PROTOSS)
                        for b in battles])
+    # a standoff at the time limit (say vultures against a corsair: neither can hit the other) goes to the side that
+    # kept more of its army
+    win = np.array([1.0 if b['status'] == 'win' or standoff(b) and m > 0 else 0.0 for b, m in zip(battles, margin)])
     values = np.array([[b['oursValue'], b['theirsValue']] for b in battles])
     return ours, theirs, win, margin, values
 
@@ -255,8 +262,8 @@ def main(args):
         args = [a for a in args if a not in ('--weights', weights)]
     battles = load(args)
     ours, theirs, win, margin, values = dataset(battles)
-    timeouts = sum(1 for b in battles if b['status'] != 'win' and b['oursLeft']['units'] and b['theirsLeft']['units'])
-    print(f'{len(battles)} battles: {int(win.sum())} won, {timeouts} timed out with both sides standing')
+    standoffs = sum(1 for b in battles if standoff(b))
+    print(f'{len(battles)} battles: {int(win.sum())} won, {standoffs} ended in a standoff at the time limit')
     results = cross_validate(ours, theirs, win, margin, values)
     print(f'{"predictor":<11} {"accuracy":>8} {"log loss":>8} {"brier":>6} {"margin MAE":>10}')
     for name, r in results.items():
