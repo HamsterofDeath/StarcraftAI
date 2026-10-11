@@ -319,7 +319,10 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
       currentForce = currentForce.filter(_.isInGame)
       migration.result.foreach(_.onTick_!())
       if (campaign) migration.result.foreach { path =>
-        if (march.isEmpty) march = Some(new FormationMarch(new Formation.Route(path.route), universe))
+        if (march.isEmpty) {
+          val route = Formation.taut(path.route, mapLayers.rawWalkableMap.connectedByLine)
+          march = Some(new FormationMarch(new Formation.Route(route), universe))
+        }
         march.foreach(_.update(currentForce))
       }
     }

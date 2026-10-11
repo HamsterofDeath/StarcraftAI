@@ -14,12 +14,15 @@ private[pony] object Formation {
   /** Tiles the front moves at a time... */
   val StepTiles = 2.0
 
-  /** ...once this share of the army stands within CohesionTiles of its slot... */
+  /** ...once this share of the army has caught up with its slots (caughtUp)... */
   val KeepUpShare   = 0.8
   val CohesionTiles = 3.0
 
   /** ...or once it has waited this long: a unit that cannot reach its slot must not hold the army forever. */
   val StallFrames = 24 * 20
+
+  /** A formation that stalls this often in a row lets go, and the army attacks as it would without one. */
+  val GiveUpStalls = 3
 
   val RowWidth = 7
   val RowDepth = 1.5
@@ -89,9 +92,25 @@ private[pony] object Formation {
     (x + dy * place._2, y - dx * place._2)
   }
 
-  /** The front moves on once enough of the army stands near its slots. */
-  def keepsUp(distances: Seq[Double]) =
-    distances.nonEmpty && distances.count(_ <= CohesionTiles) >= KeepUpShare * distances.size
+  /**
+    * A member has caught up near its slot, or once it is no further back along the route than its slot: in a crowded
+    * base or at a choke the slot may have no room, and the army never waits for a unit ahead of its place.
+    */
+  def caughtUp(progress: Double, slotProgress: Double, distance: Double) =
+    distance <= CohesionTiles || progress >= slotProgress - CohesionTiles
+
+  /** The front moves on once enough of the army has caught up. */
+  def keepsUp(caught: Seq[Boolean]) = caught.nonEmpty && caught.count(identity) >= KeepUpShare * caught.size
+
+  /**
+    * The route pulled taut: from every point straight on to the furthest later point in sight. The path search left
+    * detours in it, one of them a dead end of 30 tiles in the main, and the front had to march them all.
+    */
+  def taut(points: Seq[MapTilePosition], sees: (MapTilePosition, MapTilePosition) => Boolean) = {
+    val all = points.toVector
+    Iterator.iterate(0)(i => (all.size - 1 until i by -1).find(j => sees(all(i), all(j))).getOrElse(i + 1))
+      .takeWhile(_ < all.size).map(all).toVector
+  }
 
   /** Where a front forms around an army: its median member halfway down the formation. */
   def formingFront(progress: Seq[Double], depth: Double) =

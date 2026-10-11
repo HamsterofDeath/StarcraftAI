@@ -30,6 +30,7 @@ class FormationMarch(route: Formation.Route, override val universe: Universe) ex
   private var fight     = Option.empty[MapTilePosition]
   private var middle    = Option.empty[MapTilePosition]
   private var joined    = Set.empty[Int]
+  private var stalls    = 0
 
   /**
     * Where a member goes: its slot while the formation holds (a medic, without one, to the formation's middle), the
@@ -62,8 +63,10 @@ class FormationMarch(route: Formation.Route, override val universe: Universe) ex
         front.getOrElse(Formation.formingFront(fighters.map(m => route.progressOf(m.currentTile)), depth))
       def tiles(at: Double) =
         fighters.map(m => m.nativeUnitId -> tileFor(m, Formation.slot(route, at, places(m.nativeUnitId)))).toMap
-      val now   = tiles(at)
-      val apart = fighters.map(m => m -> m.currentTile.distanceTo(now(m.nativeUnitId)))
+      val now                                   = tiles(at)
+      val apart                                 = fighters.map(m => m -> m.currentTile.distanceTo(now(m.nativeUnitId)))
+      def caughtUp(m: Mobile, distance: Double) =
+        Formation.caughtUp(route.progressOf(m.currentTile), at - places(m.nativeUnitId)._1, distance)
       if (forming) {
         // the army is who stands near the formation as it forms; whoever is further away catches up and joins
         // the army once at its slot, without holding it up: reinforcements walk out of the base behind it
@@ -76,15 +79,17 @@ class FormationMarch(route: Formation.Route, override val universe: Universe) ex
             s"route=${route.length.round} via=${via.mkString(",")}"
         )
       }
-      joined ++= apart.collect { case (m, d) if d <= Formation.CohesionTiles => m.nativeUnitId }
+      joined ++= apart.collect { case (m, d) if caughtUp(m, d) => m.nativeUnitId }
       val army    = apart.filter((m, _) => joined(m.nativeUnitId))
-      val keepUp  = Formation.keepsUp(army.map(_._2))
+      val behind  = army.filterNot((m, d) => caughtUp(m, d))
+      val keepUp  = Formation.keepsUp(army.map((m, d) => caughtUp(m, d)))
       val stalled = currentTick - movedAt > Formation.StallFrames
       val next    = if (keepUp || stalled) at + Formation.StepTiles else at
       if (next != at) movedAt = currentTick
+      if (keepUp) stalls = 0 else if (stalled) stalls += 1
       if (stalled) {
         // who holds the army up, and which behaviour orders them instead
-        val lagging = army.filter(_._2 > Formation.CohesionTiles).sortBy(-_._2).take(6).map { (m, d) =>
+        val lagging = behind.sortBy(-_._2).take(6).map { (m, d) =>
           val n  = m.nativeUnit
           val by = unitManager.jobOf(m).shortDebugString.stripPrefix("[BG] ").replace(',', ';')
           s"${m.nativeUnitId}:${n.getType.toString.replaceAll("^[A-Za-z]+_", "")}@${m.currentTile}" +
@@ -93,10 +98,17 @@ class FormationMarch(route: Formation.Route, override val universe: Universe) ex
         NativeMatchEvidence.trace(
           "formation-stall",
           s"front=${at.round} members=${fighters.size} army=${army.size} " +
-            s"behind=${army.count(_._2 > Formation.CohesionTiles)} lagging=${lagging.mkString(",")}"
+            s"behind=${behind.size} stalls=$stalls lagging=${lagging.mkString(",")}"
         )
       }
-      if (next - depth / 2 >= route.length) {
+      if (stalls >= Formation.GiveUpStalls) {
+        arrived = true
+        slots = Map.empty
+        NativeMatchEvidence.trace(
+          "formation-abandon",
+          s"front=${at.round} members=${fighters.size} army=${army.size} behind=${behind.size}"
+        )
+      } else if (next - depth / 2 >= route.length) {
         arrived = true
         slots = Map.empty
         NativeMatchEvidence.trace("formation-arrived", s"members=${fighters.size} route=${route.length.round}")

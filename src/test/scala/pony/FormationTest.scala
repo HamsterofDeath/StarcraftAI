@@ -13,7 +13,9 @@ class FormationTest extends Specification with MustMatchers {
        |A route is measured along its corners and held to its ends $route
        |The longest reach leads, the rest stand back by what they lack, side by side in rows of seven $leaders
        |A slot lies behind the front by its lag, to the left of the march when positive $slots
-       |The front moves on once four in five stand near their slots $keepingUp
+       |A member has caught up near its slot or once level with it along the route $caught
+       |The front moves on once four in five have caught up $keepingUp
+       |A taut route goes straight to the furthest point in sight $tautRoute
        |A front forms with the army's median member halfway down the formation $forming
        """.stripMargin
 
@@ -52,9 +54,26 @@ class FormationTest extends Specification with MustMatchers {
       (slot(east, 1, (6.0, 0.0)) === ((0.0, 0.0)))
   }
 
-  def keepingUp = (keepsUp(Seq.fill(8)(2.0) ++ Seq.fill(2)(9.0)) must beTrue) and
-    (keepsUp(Seq.fill(7)(3.0) ++ Seq.fill(3)(3.5)) must beFalse) and
+  def caught = (caughtUp(progress = 2, slotProgress = 10, distance = 3) must beTrue) and
+    (caughtUp(progress = 7, slotProgress = 10, distance = 8) must beTrue) and
+    (caughtUp(progress = 15, slotProgress = 10, distance = 8) must beTrue) and
+    (caughtUp(progress = 6.5, slotProgress = 10, distance = 8) must beFalse)
+
+  def keepingUp = (keepsUp(Seq.fill(8)(true) ++ Seq.fill(2)(false)) must beTrue) and
+    (keepsUp(Seq.fill(7)(true) ++ Seq.fill(3)(false)) must beFalse) and
     (keepsUp(Nil) must beFalse)
+
+  def tautRoute = {
+    // in sight along a row or a column only
+    def sees(a: MapTilePosition, b: MapTilePosition) = a.x == b.x || a.y == b.y
+    def tile(x: Int, y: Int)                         = MapTilePosition(x, y)
+    (taut(Seq(tile(0, 0), tile(4, 0), tile(4, 4), tile(4, 0), tile(8, 0)), sees) === Vector(tile(0, 0), tile(8, 0))) and
+      (taut(Seq(tile(0, 0), tile(4, 0), tile(8, 0), tile(8, 4), tile(8, 8), tile(4, 8)), sees) ===
+        Vector(tile(0, 0), tile(8, 0), tile(8, 8), tile(4, 8))) and
+      (taut(Seq(tile(0, 0), tile(3, 3), tile(5, 5)), (_, _) => false) ===
+        Vector(tile(0, 0), tile(3, 3), tile(5, 5))) and
+      (taut(Nil, sees) === Vector.empty)
+  }
 
   def forming = (formingFront(Seq(0.0, 1.0, 2.0, 10.0, 11.0), 6.0) === 5.0) and (formingFront(Nil, 6.0) === 6.0)
 }
