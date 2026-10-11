@@ -92,9 +92,14 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
     val available = unitManager.request(req, buildIfNoneAvailable = false).units.collect {
       case m: Mobile if joins(m) => m
     }.toVector.sortBy(_.nativeUnitId)
+    // the campaign is one army in one formation: reinforcements join the army that is out instead of marching alone
+    val army = attacks.filter(_.campaign).maxByOption(_.force.size)
     if (!available.exists(_.isFigher)) false
     else {
-      initiateAttack(where, available, Lowest, campaign = true)
+      army match {
+        case Some(out) => out.join(available)
+        case None      => initiateAttack(where, available, Lowest, campaign = true)
+      }
       true
     }
   }
@@ -184,11 +189,12 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
     val helper            = new GroupingHelper(universe.mapLayers.rawWalkableMap, units, universe.allUnits)
     val defenseGeneration = baseDefense.generation
     planInProgress = BWFuture.produceFrom {
-      val on         = universe.mapLayers.rawWalkableMap
-      val grouped    = helper.evaluateUnitGroups
+      val on = universe.mapLayers.rawWalkableMap
+      // a campaign sets out as one army and gathers in its formation; other attacks go as the groups the units stand in
+      val grouped = if (campaign) Seq(units.map(_.nativeUnitId)) else helper.evaluateUnitGroups.map(_.memberIds.toSeq)
       val newAttacks = grouped.map { group =>
         val asUnits = {
-          group.memberIds
+          group
             .flatMap { e =>
               val op = ownUnits.byId(e)
               op.forNone {
@@ -245,6 +251,9 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
     def meetingStats = migrationPlan.map(_.meetingStats)
 
     def force = currentForce
+
+    /** Reinforcements take their places in the attack. */
+    def join(units: Iterable[Mobile]): Unit = currentForce ++= units
 
     def renderDebug(renderer: Renderer): Unit = {
       migrationPlan.foreach { plan =>

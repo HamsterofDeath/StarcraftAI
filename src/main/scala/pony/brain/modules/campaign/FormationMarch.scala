@@ -14,8 +14,9 @@ import bwapi.{UnitType, WeaponType}
   * A campaign attack marching in formation along its path (Formation): the long range leads, the rest keep their
   * distance behind, and the front waits for the army. When an enemy comes within reach of a member the formation lets
   * go and every unit fights as it would without one; it forms again around the army once no enemy has been near for
-  * ReformFrames, and lets go for good once the front reaches the target. In the games before it the army met at the
-  * edge of the enemy's defence and then charged one by one, the fastest first.
+  * ReformFrames, and lets go for good once the front reaches the target. Reinforcements take their slots too but hold
+  * nobody up until they have caught up. In the games before it the army met at the edge of the enemy's defence and
+  * then charged one by one, the fastest first.
   */
 class FormationMarch(route: Formation.Route, override val universe: Universe) extends HasUniverse {
   import FormationMarch._
@@ -28,6 +29,7 @@ class FormationMarch(route: Formation.Route, override val universe: Universe) ex
   private var slots     = Map.empty[Int, MapTilePosition]
   private var fight     = Option.empty[MapTilePosition]
   private var middle    = Option.empty[MapTilePosition]
+  private var joined    = Set.empty[Int]
 
   /**
     * Where a member goes: its slot while the formation holds (a medic, without one, to the formation's middle), the
@@ -40,8 +42,12 @@ class FormationMarch(route: Formation.Route, override val universe: Universe) ex
   def update(force: Iterable[Mobile]): Unit = if (!arrived && currentTick - updatedAt >= Interval) {
     updatedAt = currentTick
     val fighters = force.filter(m => m.isInGame && !m.isInstanceOf[SupportUnit]).toVector
-    val places   = Formation.places(fighters.map(m => m.nativeUnitId -> reach(m)))
-    val depth    = Formation.depth(places)
+    if (fighters.nonEmpty) march(fighters)
+  }
+
+  private def march(fighters: Vector[Mobile]): Unit = {
+    val places = Formation.places(fighters.map(m => m.nativeUnitId -> reach(m)))
+    val depth  = Formation.depth(places)
     contact(fighters).foreach { (kind, tile) =>
       if (contactAt.forall(currentTick - _ >= ReformFrames))
         NativeMatchEvidence.trace("formation-contact", s"front=${front.map(_.round)} enemy=$kind@$tile")
@@ -51,34 +57,43 @@ class FormationMarch(route: Formation.Route, override val universe: Universe) ex
     }
     if (contactAt.exists(currentTick - _ < ReformFrames)) slots = Map.empty
     else {
-      val at = front.getOrElse {
-        val formed = Formation.formingFront(fighters.map(m => route.progressOf(m.currentTile)), depth)
+      val forming = front.isEmpty
+      val at      =
+        front.getOrElse(Formation.formingFront(fighters.map(m => route.progressOf(m.currentTile)), depth))
+      def tiles(at: Double) =
+        fighters.map(m => m.nativeUnitId -> tileFor(m, Formation.slot(route, at, places(m.nativeUnitId)))).toMap
+      val now   = tiles(at)
+      val apart = fighters.map(m => m -> m.currentTile.distanceTo(now(m.nativeUnitId)))
+      if (forming) {
+        // the army is who stands near the formation as it forms; whoever is further away catches up and joins
+        // the army once at its slot, without holding it up: reinforcements walk out of the base behind it
+        val near = apart.collect { case (m, d) if d <= GatherTiles => m.nativeUnitId }.toSet
+        joined = if (near.nonEmpty) near else fighters.map(_.nativeUnitId).toSet
         movedAt = currentTick
         NativeMatchEvidence.trace(
           "formation-form",
-          s"members=${fighters.size} depth=${depth.round} front=${formed.round} route=${route.length.round}"
+          s"members=${fighters.size} army=${joined.size} depth=${depth.round} front=${at.round} " +
+            s"route=${route.length.round}"
         )
-        formed
       }
-      def tiles(at: Double) =
-        fighters.map(m => m.nativeUnitId -> tileFor(m, Formation.slot(route, at, places(m.nativeUnitId)))).toMap
-      val now     = tiles(at)
-      val apart   = fighters.map(m => m -> m.currentTile.distanceTo(now(m.nativeUnitId)))
-      val keepUp  = Formation.keepsUp(apart.map(_._2))
+      joined ++= apart.collect { case (m, d) if d <= Formation.CohesionTiles => m.nativeUnitId }
+      val army    = apart.filter((m, _) => joined(m.nativeUnitId))
+      val keepUp  = Formation.keepsUp(army.map(_._2))
       val stalled = currentTick - movedAt > Formation.StallFrames
       val next    = if (keepUp || stalled) at + Formation.StepTiles else at
       if (next != at) movedAt = currentTick
       if (stalled) {
-        // who holds the army up, and what they are doing instead
-        val lagging = apart.filter(_._2 > Formation.CohesionTiles).sortBy(-_._2).take(6).map { (m, d) =>
-          val n = m.nativeUnit
+        // who holds the army up, and which behaviour orders them instead
+        val lagging = army.filter(_._2 > Formation.CohesionTiles).sortBy(-_._2).take(6).map { (m, d) =>
+          val n  = m.nativeUnit
+          val by = unitManager.jobOf(m).shortDebugString.stripPrefix("[BG] ").replace(',', ';')
           s"${m.nativeUnitId}:${n.getType.toString.replaceAll("^[A-Za-z]+_", "")}@${m.currentTile}" +
-            s">${now(m.nativeUnitId)}=${d.round}:${n.getOrder}:${unitManager.jobOf(m).getClass.getSimpleName}"
+            s">${now(m.nativeUnitId)}=${d.round}:${n.getOrder}:$by"
         }
         NativeMatchEvidence.trace(
           "formation-stall",
-          s"front=${at.round} members=${fighters.size} behind=${apart.count(_._2 > Formation.CohesionTiles)} " +
-            s"lagging=${lagging.mkString(",")}"
+          s"front=${at.round} members=${fighters.size} army=${army.size} " +
+            s"behind=${army.count(_._2 > Formation.CohesionTiles)} lagging=${lagging.mkString(",")}"
         )
       }
       if (next - depth / 2 >= route.length) {
@@ -105,7 +120,10 @@ class FormationMarch(route: Formation.Route, override val universe: Universe) ex
     }.nextOption().map(e => e.nativeUnit.getType -> e.currentTile)
   }
 
-  /** A ground unit's slot must be walkable and in sight of the route, else it stands on the route. */
+  /**
+    * A ground unit's slot must be walkable, in sight of the route and clear of planned buildings (units step off
+    * those), else it stands on the route.
+    */
   private def tileFor(m: Mobile, slot: Formation.Point) = {
     val walk = mapLayers.rawWalkableMap
     val tile = MapTilePosition.shared(
@@ -114,7 +132,9 @@ class FormationMarch(route: Formation.Route, override val universe: Universe) ex
     )
     lazy val nearest = onRoute(route.progressOf(tile))
     m match {
-      case _: GroundUnit if !walk.free(tile) || !walk.connectedByLine(tile, nearest) =>
+      case _: GroundUnit
+          if !walk.free(tile) || !mapLayers.blockedByPlannedBuildings.free(tile) ||
+            !walk.connectedByLine(tile, nearest) =>
         if (walk.free(nearest)) nearest else walk.nearestFree(nearest).getOrElse(nearest)
       case _ => tile
     }
@@ -146,4 +166,7 @@ object FormationMarch {
 
   /** ...and for this long after the last one was near, every unit fights on its own. */
   val ReformFrames = 24 * 5
+
+  /** Members this far from their slots as the formation forms catch up instead of holding the army. */
+  val GatherTiles = 20
 }
