@@ -15,8 +15,9 @@ import bwapi.{UnitType, WeaponType}
   * distance behind, and the front waits for the army. When an enemy comes within reach of a member the formation lets
   * go and every unit fights as it would without one; it forms again around the army once no enemy has been near for
   * ReformFrames, and lets go for good once the front reaches the target. Reinforcements take their slots too but hold
-  * nobody up until they have caught up. In the games before it the army met at the edge of the enemy's defence and
-  * then charged one by one, the fastest first.
+  * nobody up until they have caught up. The army first leaves our bases on its own and forms where the route lies
+  * HomeTiles away from them (Formation.departure). In the games before it the army met at the edge of the enemy's
+  * defence and then charged one by one, the fastest first.
   */
 class FormationMarch(route: Formation.Route, override val universe: Universe) extends HasUniverse {
   import FormationMarch._
@@ -31,6 +32,11 @@ class FormationMarch(route: Formation.Route, override val universe: Universe) ex
   private var middle    = Option.empty[MapTilePosition]
   private var joined    = Set.empty[Int]
   private var stalls    = 0
+  private val since     = currentTick
+  private val departure =
+    Formation.departure(route, bases.allBases.map(b => b.mainBuilding.centerTile).map(t => (t.x, t.y)), HomeTiles)
+  private val staging  = onRoute(departure)
+  private var departed = false
 
   /**
     * Where a member goes: its slot while the formation holds (a medic, without one, to the formation's middle), the
@@ -38,6 +44,7 @@ class FormationMarch(route: Formation.Route, override val universe: Universe) ex
     */
   def destinationOf(m: Mobile): Option[MapTilePosition] =
     if (slots.nonEmpty) slots.get(m.nativeUnitId).orElse(middle)
+    else if (!departed && !arrived) Some(staging)
     else fight.filter(_ => contactAt.exists(currentTick - _ < ReformFrames))
 
   def update(force: Iterable[Mobile]): Unit = if (!arrived && currentTick - updatedAt >= Interval) {
@@ -55,9 +62,20 @@ class FormationMarch(route: Formation.Route, override val universe: Universe) ex
       contactAt = Some(currentTick)
       fight = Some(tile)
       front = None
+      departed = true
     }
     if (contactAt.exists(currentTick - _ < ReformFrames)) slots = Map.empty
-    else {
+    else if (!departed && !gathered(fighters)) {
+      slots = Map.empty
+      if (currentTick - since > GatherFrames) {
+        arrived = true
+        NativeMatchEvidence.trace(
+          "formation-abandon",
+          s"gathering at $staging members=${fighters.size} near=${fighters.count(near(_))}"
+        )
+      }
+    } else {
+      departed = true
       val forming = front.isEmpty
       val at      =
         front.getOrElse(Formation.formingFront(fighters.map(m => route.progressOf(m.currentTile)), depth))
@@ -76,7 +94,8 @@ class FormationMarch(route: Formation.Route, override val universe: Universe) ex
         NativeMatchEvidence.trace(
           "formation-form",
           s"members=${fighters.size} army=${joined.size} depth=${depth.round} front=${at.round} " +
-            s"route=${route.length.round} via=${via.mkString(",")}"
+            s"route=${route.length.round} depart=${departure.round} after=${currentTick - since} " +
+            s"via=${via.mkString(",")}"
         )
       }
       joined ++= apart.collect { case (m, d) if caughtUp(m, d) => m.nativeUnitId }
@@ -119,6 +138,12 @@ class FormationMarch(route: Formation.Route, override val universe: Universe) ex
       }
     }
   }
+
+  /** Half the army has reached the staging point, or gone past it along the route. */
+  private def gathered(fighters: Seq[Mobile]) = fighters.count(near) * 2 >= fighters.size
+
+  private def near(m: Mobile) =
+    m.currentTile.distanceToIsLess(staging, StagingTiles) || route.progressOf(m.currentTile) >= departure
 
   /** The first visible enemy within reach of a member, if any. */
   private def contact(fighters: Seq[Mobile]) = {
@@ -185,4 +210,11 @@ object FormationMarch {
 
   /** Members this far from their slots as the formation forms catch up instead of holding the army. */
   val GatherTiles = 20
+
+  /** The army forms this far from our bases, once half of it stands within StagingTiles of that point... */
+  val HomeTiles    = 20.0
+  val StagingTiles = 10
+
+  /** ...or attacks without a formation if it has not gathered there by then. */
+  val GatherFrames = 24 * 90
 }
