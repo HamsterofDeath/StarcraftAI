@@ -54,6 +54,7 @@ class FormationMarch(route: Formation.Route, override val universe: Universe) ex
   }
 
   private def march(fighters: Vector[Mobile]): Unit = {
+    if (!mapped) { mapped = true; traceMap(fighters) }
     val places = Formation.places(fighters.map(m => m.nativeUnitId -> reach(m)))
     val depth  = Formation.depth(places)
     contact(fighters).foreach { (kind, tile) =>
@@ -139,6 +140,38 @@ class FormationMarch(route: Formation.Route, override val universe: Universe) ex
     }
   }
 
+  /**
+    * DIAGNOSTIC, once per game: the ground around the start of the march. # cliff, B building, m resource, + route,
+    * S staging, and the members by their type's initial (T for tanks).
+    */
+  private def traceMap(fighters: Seq[Mobile]): Unit = {
+    val start            = onRoute(0)
+    val (x0, y0, x1, y1) = (start.x - 24, start.y - 24, start.x + 24, start.y + 24)
+    val walk             = mapLayers.rawWalkableMap
+    val routed           = Iterator.iterate(0.0)(_ + 0.5).takeWhile(_ <= route.length).map(onRoute).toSet
+    val units            = fighters.map { m =>
+      val kind = m.nativeUnit.getType.toString.stripPrefix("Terran_")
+      m.currentTile -> (if (kind.startsWith("Siege")) 'T' else kind.head)
+    }.toMap
+    NativeMatchEvidence.trace("formation-map", s"x=$x0..$x1 y=$y0..$y1 staging=$staging")
+    (y0 to y1).foreach { y =>
+      val row = (x0 to x1).map { x =>
+        val t = MapTilePosition.shared(x, y)
+        if (!walk.inBounds(t)) ' '
+        else units.getOrElse(
+          t,
+          if (t == staging) 'S'
+          else if (!walk.free(t)) '#'
+          else if (!mapLayers.blockedByBuildingTiles.free(t)) 'B'
+          else if (!mapLayers.blockedByResources.free(t)) 'm'
+          else if (routed(t)) '+'
+          else '.'
+        )
+      }.mkString
+      NativeMatchEvidence.trace("formation-map", f"y=$y%03d $row")
+    }
+  }
+
   /** Half the army has reached the staging point, or gone past it along the route. */
   private def gathered(fighters: Seq[Mobile]) = fighters.count(near) * 2 >= fighters.size
 
@@ -198,6 +231,9 @@ class FormationMarch(route: Formation.Route, override val universe: Universe) ex
 }
 
 object FormationMarch {
+
+  /** DIAGNOSTIC: the map around the first march is traced once per game. */
+  @volatile private var mapped = false
 
   /** Frames between two updates of the formation. */
   val Interval = 8
