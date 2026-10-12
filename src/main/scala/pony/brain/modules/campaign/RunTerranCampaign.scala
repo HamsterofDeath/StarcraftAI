@@ -321,6 +321,25 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
         "strategy-scouting",
         s"minimal=$minimalScoutingActive reconnaissance=$reconnaissanceAllowed enemyLocated=$enemyLocated"
       )
+      // where the campaign army stands against its target: in game 2 vs Zerg on 34fb4c2 a maxed army of 54 kept the
+      // same target for forty minutes while the bank grew to 17000
+      if (force.nonEmpty) target.foreach { t =>
+        val tiles  = force.toVector.map(_.currentTile)
+        val center = MapTilePosition(tiles.map(_.x).sum / tiles.size, tiles.map(_.y).sum / tiles.size)
+        val spread = tiles.map(_.distanceTo(center)).max.round
+        val orders = force.toVector.groupBy(_.nativeUnit.getOrder.toString).map((k, v) => s"$k*${v.size}").toVector
+          .sorted.mkString(",")
+        val there = memory.buildings.filter(_.tile.distanceToIsLess(t, 2)).map { b =>
+          val u = nativeGame.getUnit(b.id)
+          s"${b.id}:${if (u == null) "?" else u.getType.toString.replaceAll("^[A-Za-z]+_", "")}" +
+            s":seen=${b.footprint.count(p => nativeGame.isVisible(p.asTilePosition))}/${b.footprint.size}"
+        }.mkString(",")
+        NativeMatchEvidence.trace(
+          "campaign-army",
+          s"size=${force.size} center=$center spread=$spread near=${tiles.count(_.distanceToIsLess(t, 10))} " +
+            s"target=$t there=$there orders=$orders"
+        )
+      }
     }
   }
 }
