@@ -54,7 +54,14 @@ class ConstructBuilding[W <: WorkerUnit: ClassTag, B <: Building](
     val size     = Size.shared(unitType.tileWidth(), unitType.tileHeight())
     Area(buildWhere, size)
   }
-  private val alternativeWorkers = {
+
+  /**
+    * Close enough to the footprint to build. Measured from the footprint, not its upper left tile: a refinery's corner
+    * lies inside the geyser, and in game 3 vs Zerg on 050c38f an SCV beside the geyser's east side stood 4.5 tiles from
+    * it, was ordered to walk on, could not, and twice gave up, which cost the first refinery three minutes.
+    */
+  private def atSite(tile: MapTilePosition) = area.distanceTo(tile) < 3
+  private val alternativeWorkers            = {
     class Input {
       val target     = buildWhere
       val pathfinder = pathfinders.groundSafe
@@ -99,7 +106,7 @@ class ConstructBuilding[W <: WorkerUnit: ClassTag, B <: Building](
   override def onTick_!(): Unit = {
     super.onTick_!()
     if (unit.gotUnloaded) resetTimer_!()
-    if (!arrivalCommandsReset && unit.currentTile.distanceToIsLess(buildWhere, 4)) {
+    if (!arrivalCommandsReset && atSite(unit.currentTile)) {
       resetIssuedOrders_!()
       resetTimer_!()
       arrivalCommandsReset = true
@@ -140,7 +147,7 @@ class ConstructBuilding[W <: WorkerUnit: ClassTag, B <: Building](
     val prior = super.higherPriorityOrder
     if (prior.nonEmpty) {
       prior
-    } else if (!startedActualConstruction && worker.onGround && buildWhere.distanceToIsMore(worker.currentTile, 4)) {
+    } else if (!startedActualConstruction && worker.onGround && !atSite(worker.currentTile)) {
       // Far build sites are refused natively; walk there first.
       Seq(Orders.MoveToTile(worker, buildWhere).lockingFor_!(24))
     } else {
@@ -163,7 +170,7 @@ class ConstructBuilding[W <: WorkerUnit: ClassTag, B <: Building](
         travelProgress.failed(
           currentTick,
           unit.currentTile,
-          unit.currentTile.distanceToIsLess(buildWhere, 4),
+          atSite(unit.currentTile),
           worker.isConstructingBuilding,
           times + 10
         ) &&
@@ -182,7 +189,7 @@ class ConstructBuilding[W <: WorkerUnit: ClassTag, B <: Building](
       if (fail && !failureTraced) {
         failureTraced = true
         // stalled short of the site: the next spot for this kind of building must lie elsewhere
-        if (byState && !unit.currentTile.distanceToIsLess(buildWhere, 4))
+        if (byState && !atSite(unit.currentTile))
           unitManager.unreachableSites = unitManager.unreachableSites :+ area
         NativeMatchEvidence.trace(
           "construction-failed",
