@@ -69,4 +69,14 @@ trait BuildingRequestHelper extends AIModule[WorkerUnit] {
       }
     }
   }
+
+  /** Whether requestBuilding(saveMoneyIfPoor = true) holds money back for this building. */
+  def savingFor[T <: Building](buildingType: Class[? <: T], priority: Priority = Priority.Default): Boolean =
+    resources.isAlreadyForceLocked(ResourceRequests.forUnit(race, buildingType, priority), buildingEmployer)
+
+  /** Gives back what requestBuilding(saveMoneyIfPoor = true) holds for a building no longer wanted. */
+  def stopSaving[T <: Building](buildingType: Class[? <: T], priority: Priority = Priority.Default): Unit =
+    if (savingFor(buildingType, priority)) {
+      resources.forceUnlock_!(ResourceRequests.forUnit(race, buildingType, priority), buildingEmployer)
+    }
 }

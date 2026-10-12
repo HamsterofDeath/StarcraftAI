@@ -105,8 +105,16 @@ class TerranEconomicOpening(universe: Universe)
       val newUnderWay = unitManager.requestedToBuild(classOf[CommandCenter]) ||
         unitManager.constructionsInProgress[CommandCenter].nonEmpty ||
         depots.exists(cc => cc.isBeingCreated || cc.isFloating)
-      val affordable =
-        cfg.expand(funds.minerals, funds.gas, cost.minerals, cost.gas, pending = false, safeReachableSite = true)
+      // money already put aside for the next depot counts toward it
+      val saving     = savingFor(classOf[CommandCenter], Priority.Expand)
+      val affordable = cfg.expand(
+        funds.minerals + (if (saving) cost.minerals else 0),
+        funds.gas + (if (saving) cost.gas else 0),
+        cost.minerals,
+        cost.gas,
+        pending = false,
+        safeReachableSite = true
+      )
       val choice = ExpansionChoice.decide(
         deficit,
         fresh.map(_.nativeUnitId),
@@ -139,7 +147,9 @@ class TerranEconomicOpening(universe: Universe)
                 s"job=${unitManager.jobOf(cc).shortDebugString} canLift=${cc.nativeUnit.canLift()}"
             )
           }
-        case ExpansionChoice.BuildNew =>
+        case ExpansionChoice.BuildNew | ExpansionChoice.WaitForMinerals =>
+          // Waiting for minerals puts the depot's price aside, so production stops spending it: in game 1 vs Terran on
+          // 09c3bb2 the unlocked bank stayed below 400 for three minutes while both fields ran dry.
           // Build the future flier as close as possible to the field it will later fly to, while
           // staying on the home side of the pairing rule so the depot still rebinds to the home
           // field and the relocation can trigger. Everything lazy or native is read here, on the
@@ -165,16 +175,21 @@ class TerranEconomicOpening(universe: Universe)
           }.getOrElse(AlternativeBuildingSpot.useDefault)
           requestBuilding(
             classOf[CommandCenter],
+            saveMoneyIfPoor = true,
             customBuildingPosition = custom,
             belongsTo = home.resourceArea,
             priority = Priority.Expand
           )
-          NativeMatchEvidence.trace(
+          if (choice == ExpansionChoice.BuildNew || !saving) NativeMatchEvidence.trace(
             "home-depot-request",
-            s"unlocked=${funds.minerals} toward=${field.map(_.uniqueId)}"
+            s"unlocked=${funds.minerals} toward=${field.map(_.uniqueId)} " +
+              s"saving=${savingFor(classOf[CommandCenter], Priority.Expand)}"
           )
         case _ =>
       }
+      val wantsNew = economyMoving && relocation.isEmpty &&
+        (choice == ExpansionChoice.BuildNew || choice == ExpansionChoice.WaitForMinerals)
+      if (!wantsNew) stopSaving(classOf[CommandCenter], Priority.Expand)
       if (currentTick % (Primes.prime31.i * 16) == 0) {
         val expandState = choice match {
           case _ if relocation.isDefined       => "moving"
