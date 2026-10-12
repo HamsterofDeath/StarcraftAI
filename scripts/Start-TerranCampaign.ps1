@@ -20,6 +20,8 @@ param(
  [double]$FieldHealthyFraction = 0.4,
  # A strategy key the bot knows, or 'default' to let it choose; the bot rejects unknown keys at start.
  [ValidatePattern('^[a-z0-9-]+$')][string]$Strategy = 'default',
+ # The race of the native computer opponent in melee games.
+ [ValidateSet('Terran', 'Protoss', 'Zerg')][string]$EnemyRace = 'Protoss',
  # Repository-relative e2e map (for example e2e/maps/vul4-zea6.scx), played with map settings.
  [string]$E2EMap,
  # Several repository-relative e2e maps played in order in one warm StarCraft process (auto restart).
@@ -105,8 +107,8 @@ New-Item -ItemType Directory -Path $run | Out-Null
 $iniPath = Join-Path $Runtime 'bwapi-data/bwapi.ini'
 $ini = Get-Content -LiteralPath $iniPath -Raw
 Copy-Item -LiteralPath $iniPath -Destination (Join-Path $run 'bwapi-before.ini')
-$pins = [ordered]@{ ai='NULL'; ai_dbg='NULL'; auto_menu='SINGLE_PLAYER'; auto_restart=$(if ($mapPlan.Count -gt 1) { 'ON' } else { 'OFF' }); mapiteration='SEQUENCE'; map=$mapRelative; race='Terran'; enemy_race='Protoss'; enemy_count='1'; game_type=$gameType; shared_memory='ON'; windowed='ON'; sound='OFF' }
-1..7 | ForEach-Object { $pins['enemy_race_' + $_] = 'Protoss' }
+$pins = [ordered]@{ ai='NULL'; ai_dbg='NULL'; auto_menu='SINGLE_PLAYER'; auto_restart=$(if ($mapPlan.Count -gt 1) { 'ON' } else { 'OFF' }); mapiteration='SEQUENCE'; map=$mapRelative; race='Terran'; enemy_race=$EnemyRace; enemy_count='1'; game_type=$gameType; shared_memory='ON'; windowed='ON'; sound='OFF' }
+1..7 | ForEach-Object { $pins['enemy_race_' + $_] = $EnemyRace }
 if ($Headless) {
   # Headless games draw nothing; their window sits far outside every monitor so it never shows up on the desktop.
   $pins['left'] = '-10000'; $pins['top'] = '-10000'; $pins['width'] = '640'; $pins['height'] = '480'
@@ -133,7 +135,7 @@ $fieldUsefulText = $FieldUsefulFraction.ToString([System.Globalization.CultureIn
 $fieldHealthyText = $FieldHealthyFraction.ToString([System.Globalization.CultureInfo]::InvariantCulture)
 $options = @("-Xmx${HeapMb}M",'-XX:ParallelGCThreads=2','-Dscala.concurrent.context.numThreads=2','-Dscala.concurrent.context.maxThreads=2',"-Dtwailight.run=$RunName","-Dtwailight.producer=$SourceCommit",('-Dtwailight.resultDirectory="'+$run+'"'),"-Dtwailight.mapInputSha256=$mapHash","-Dtwailight.minFighters=$MinFighters","-Dtwailight.armyMinerals=$ArmyMinerals","-Dtwailight.armyGas=$ArmyGas","-Dtwailight.expansionReserve=$ExpansionReserve","-Dtwailight.requiredFields=$RequiredFields","-Dtwailight.minScoutFighters=$MinScoutFighters","-Dtwailight.minScouts=$MinScouts","-Dtwailight.fieldUsefulFraction=$fieldUsefulText","-Dtwailight.fieldHealthyFraction=$fieldHealthyText","-Dtwailight.strategy=$Strategy","-Dtwailight.localSpeed=$LocalSpeedMs","-Dtwailight.aiTickFrames=$AiTickFrames",'-cp',('"'+$classpath+'"'),'pony.Controller')
 $options = $options[0..($options.Count-4)] + @($BotProperties | ForEach-Object { '-Dtwailight.' + $_ }) + @($(if ($mapPlan.Count -gt 1) { '-Dtwailight.mapPlan=' + ($mapPlan -join ',') })) + @("-Dtwailight.bankMinerals=$BankMinerals", "-Dtwailight.bankGas=$BankGas", ('-Dtwailight.headless=' + $Headless.IsPresent.ToString().ToLowerInvariant()), ('-Dtwailight.autoCamera=' + (-not $NoAutoCamera.IsPresent).ToString().ToLowerInvariant())) + $options[($options.Count-3)..($options.Count-1)]
-$receipt = [ordered]@{ schema=1; run=$RunName; owner='twilight_ai_impl'; producer=$SourceCommit; launchedAt=(Get-Date).ToUniversalTime().ToString('o'); status='unfinished'; game='StarCraft 1.16.1'; bwapiRevision=5016; javaClient='JBWAPI 2.2.0'; bwapiSha256=$dllHash; map=$mapRelative; mapInputSha256=$mapHash; javaSha256=(Get-FileHash -LiteralPath $Java -Algorithm SHA256).Hash; heapMb=$HeapMb; nativeWorkerThreads=2; ordinaryVision=$true; revealCheat=$false; opponent='unmodified native Protoss computer'; configuration=@{minFighters=$MinFighters;armyMinerals=$ArmyMinerals;armyGas=$ArmyGas;expansionReserve=$ExpansionReserve;requiredFields=$RequiredFields;minScoutFighters=$MinScoutFighters;minScouts=$MinScouts;fieldUsefulFraction=$FieldUsefulFraction;fieldHealthyFraction=$FieldHealthyFraction} }
+$receipt = [ordered]@{ schema=1; run=$RunName; owner='twilight_ai_impl'; producer=$SourceCommit; launchedAt=(Get-Date).ToUniversalTime().ToString('o'); status='unfinished'; game='StarCraft 1.16.1'; bwapiRevision=5016; javaClient='JBWAPI 2.2.0'; bwapiSha256=$dllHash; map=$mapRelative; mapInputSha256=$mapHash; javaSha256=(Get-FileHash -LiteralPath $Java -Algorithm SHA256).Hash; heapMb=$HeapMb; nativeWorkerThreads=2; ordinaryVision=$true; revealCheat=$false; opponent="unmodified native $EnemyRace computer"; configuration=@{minFighters=$MinFighters;armyMinerals=$ArmyMinerals;armyGas=$ArmyGas;expansionReserve=$ExpansionReserve;requiredFields=$RequiredFields;minScoutFighters=$MinScoutFighters;minScouts=$MinScouts;fieldUsefulFraction=$FieldUsefulFraction;fieldHealthyFraction=$FieldHealthyFraction} }
 $receipt.renderingEnabled = !$Headless.IsPresent
 $receipt.configuration.bankMinerals = $BankMinerals
 $receipt.configuration.bankGas = $BankGas
@@ -141,6 +143,7 @@ $receipt.configuration.localSpeed = $LocalSpeedMs
 $receipt.configuration.windowScale = if ($Headless) { $null } else { $WindowScale }
 $receipt.configuration.aiTickFrames = $AiTickFrames
 $receipt.configuration.strategy = $Strategy
+$receipt.configuration.enemyRace = $EnemyRace
 $receipt.configuration.gameType = $gameType
 $receipt.configuration.mapPlan = $mapPlan
 $receipt.configuration.botProperties = $BotProperties

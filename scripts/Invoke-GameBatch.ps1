@@ -9,6 +9,8 @@ param(
  # sbt, for compiling the run checkout.
  [string]$Sbt = 'sbt',
  [ValidatePattern('^[a-z0-9-]+$')][string]$Strategy = 'default',
+ # The native computer's race, for every game of the batch.
+ [ValidateSet('Terran', 'Protoss', 'Zerg')][string]$EnemyRace = 'Protoss',
  [ValidateRange(1, 100)][int]$Games = 1,
  # Upper bound in real minutes per game.
  [ValidateRange(1, 120)][int]$TimeoutMinutes = 25,
@@ -59,12 +61,13 @@ if (-not ($compiled | Where-Object { $_ -match '^\[success\]' }) -or ($compiled 
 }
 
 $runs = Join-Path $RunCheckout 'target/native-runs'
+$runPattern = 'game-' + $Strategy + '-' + $EnemyRace.ToLowerInvariant() + '-*'
 $rows = foreach ($n in 1..$Games) {
   Stop-Leftovers
-  $before = @(Get-ChildItem -LiteralPath $runs -Directory -Filter "game-$Strategy-*" -ErrorAction SilentlyContinue).Name
+  $before = @(Get-ChildItem -LiteralPath $runs -Directory -Filter $runPattern -ErrorAction SilentlyContinue).Name
   $game = @{ Runtime = $Runtime; Java = $Java; SourceCommit = $Commit; Repository = $RunCheckout
-             Strategy = $Strategy; TimeoutMinutes = $TimeoutMinutes; StallSeconds = $StallSeconds
-             BotProperties = $BotProperties }
+             Strategy = $Strategy; EnemyRace = $EnemyRace; TimeoutMinutes = $TimeoutMinutes
+             StallSeconds = $StallSeconds; BotProperties = $BotProperties }
   if ($Headed) { $game.Headed = $true }
   if ($LocalSpeedMs -ge 0) { $game.LocalSpeedMs = $LocalSpeedMs }
   # the whole report, not just its head: cutting the pipeline short would skip the runner's own cleanup
@@ -73,7 +76,7 @@ $rows = foreach ($n in 1..$Games) {
   $stopped = ($report | Where-Object { $_ -match '^Stopped: ' } | Select-Object -First 1)
   if ($stopped) { $outcome = $outcome + '; ' + ($stopped -replace ' [(]see .*', '') }
   Stop-Leftovers
-  $run = Get-ChildItem -LiteralPath $runs -Directory -Filter "game-$Strategy-*" |
+  $run = Get-ChildItem -LiteralPath $runs -Directory -Filter $runPattern |
     Where-Object { $before -notcontains $_.Name } | Sort-Object Name | Select-Object -Last 1
   $log = if ($run) { Join-Path $run.FullName 'bot-stdout.log' }
   $lines = if ($log -and (Test-Path -LiteralPath $log)) { Get-Content -LiteralPath $log } else { @() }
@@ -102,7 +105,8 @@ $rows = foreach ($n in 1..$Games) {
   $row
 }
 if (-not $Summary) { $Summary = Join-Path $runs ('batch-' + (Get-Date).ToString('yyyyMMdd-HHmmss') + '.json') }
-[pscustomobject]@{ commit = $Commit; strategy = $Strategy; games = @($rows) } | ConvertTo-Json -Depth 5 |
-  Set-Content -LiteralPath $Summary
+[pscustomobject]@{ commit = $Commit; strategy = $Strategy; enemyRace = $EnemyRace; games = @($rows) } |
+  ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $Summary
 $wins = @($rows | Where-Object { $_.outcome -match '^win' }).Count
-'{0} of {1} games won on {2} ({3}); summary {4}' -f $wins, $Games, $Commit.Substring(0, 7), $Strategy, $Summary
+'{0} of {1} games won on {2} ({3} vs {4}); summary {5}' -f $wins, $Games, $Commit.Substring(0, 7), $Strategy,
+  $EnemyRace, $Summary
