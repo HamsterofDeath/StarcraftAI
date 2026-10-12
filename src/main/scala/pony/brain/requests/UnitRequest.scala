@@ -23,19 +23,28 @@ object UnitRequest {
           .distanceSquaredTo(
             target
           )
-    ) =
+    ) = {
+      // reachable past buildings, not over bare terrain: in game 1 vs Zerg on d621ad2 the outer field's second refinery
+      // waited five minutes for builders picked inside the main, behind the closed depot wall
+      var anchor = Option.empty[Option[MapTilePosition]]
       (job: UnitWithJob[W]) => {
         val u       = job.universe
         val altUnit = job.unit
         val walkMap = u.mapLayers.rawWalkableMap
+        val passMap = u.mapLayers.freeWalkableIgnoringMobiles
+        if (anchor.isEmpty) anchor = Some(passMap.nearestFree(target))
 
-        val sameArea         = walkMap.areInSameWalkableArea(altUnit.currentTile, target)
+        val sameArea = anchor.flatten match {
+          case Some(tile) => passMap.areInSameWalkableArea(altUnit.currentTile, tile)
+          case None       => walkMap.areInSameWalkableArea(altUnit.currentTile, target)
+        }
         val canSee           = walkMap.connectedByLine(altUnit.currentTile, target)
         val distance         = distanceEvaluation(altUnit.currentTile)
         val busyness         = WorkerUnit.currentPriority(job)
         val weightedDistance = distance * busyness.sum
         PriorityChain(sameArea.ifElse(0, 1), canSee.ifElse(0, 1), weightedDistance)
       }
+    }
   }
 }
 
