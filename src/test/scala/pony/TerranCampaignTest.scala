@@ -17,7 +17,9 @@ import pony.brain.modules.economy.{
   LocalMineralMining, MineralFieldStaffing, MiningFieldStatus, TerranEconomicProgress, WorkerProductionQuota
 }
 import pony.brain.modules.micro.HuntSweep
-import pony.brain.modules.production.{AlternativeBuildingSpot, EnqueueArmy, ProvideNewBuildings, UnitRequestHelper}
+import pony.brain.modules.production.{
+  AlternativeBuildingSpot, EnqueueArmy, ProvideNewBuildings, ProvideNewSupply, UnitRequestHelper
+}
 import pony.brain.modules.wall.DepotRelocation
 import pony.brain.requests.{
   BuildUnitRequest, FailedPreHiringResult, MissingRequirementResult, PreHiringResult, UnitJobRequest
@@ -64,6 +66,7 @@ class TerranCampaignTest extends Specification with MustMatchers {
     Home depots reject the native mineral exclusion zone while ordinary buildings retain placement $depotPlacement
     A depot site counts for a field only within reach and nearer to it than to any other field $depotBinding
     The army queue orders deterministically and units lacking tech do not block buildable ones $armyQueue
+    Against Zerg the wall depots are asked for earlier while the wall misses any $wallSupply
     A refused PlaceBuilding order expires while actual construction remains protected $refusedPlacement
     Native terminal flag batches are separate while genuine live reveal remains invalid $terminalVision
     Both fields retain stable local defenders and replace casualties before expedition admission $defensiveReserve
@@ -479,6 +482,13 @@ class TerranCampaignTest extends Specification with MustMatchers {
       Vector("Marine"),
       Vector()
     )
+  }
+  def wallSupply = {
+    // the south wall's three depots against a 26-supply plan: the third is asked for at 11 used, not at 16
+    def asks(used: Int, wallMissing: Boolean, vsZerg: Boolean) =
+      used.toDouble / 26 >= ProvideNewSupply.requestAt(wallMissing, vsZerg)
+    (asks(11, true, true), asks(11, true, false), asks(11, false, true), asks(16, false, false)) ===
+      (true, false, false, true)
   }
   def refusedPlacement = {
     val refused  = new ConstructionTravelProgress(8323, MapTilePosition(70, 115))

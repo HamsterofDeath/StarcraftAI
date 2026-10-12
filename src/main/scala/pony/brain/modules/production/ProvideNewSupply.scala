@@ -24,7 +24,10 @@ class ProvideNewSupply(universe: Universe) extends OrderlessAIModule[WorkerUnit]
   override def onTick_!() = {
 
     val cur       = plannedSupplies
-    val needsMore = cur.supplyUsagePercent >= 0.6 && cur.total < 400
+    val needsMore = cur.supplyUsagePercent >= ProvideNewSupply.requestAt(
+      wall.exists(_.nextSupplySpot.isDefined),
+      forces.isTvZ
+    ) && cur.total < 400
 
     trace(s"Need more supply: $cur ($plannedSupplies planned)", needsMore)
     if (needsMore) {
@@ -57,4 +60,14 @@ class ProvideNewSupply(universe: Universe) extends OrderlessAIModule[WorkerUnit]
     val planned = unitManager.plannedSupplyAdditions
     real.copy(total = real.total + planned)
   }
+}
+
+object ProvideNewSupply {
+
+  /**
+    * The supply usage at which the next depot is requested. Against Zerg a wall still missing depots asks earlier: in
+    * game 1 vs Zerg on 34fb4c2 zerglings came at frame 3745 through the slot of the third wall depot, which sixty
+    * percent asked for only at frame 3976, and killed every SCV.
+    */
+  def requestAt(wallMissingDepots: Boolean, vsZerg: Boolean): Double = if (wallMissingDepots && vsZerg) 0.4 else 0.6
 }
