@@ -82,14 +82,20 @@ class TerranEconomicOpening(universe: Universe)
       // counted as held for 18 minutes while nobody mined it and a dozen SCVs stood idle.
       def minedField(cc: CommandCenter) =
         bases.allBases.find(_.mainBuilding == cc).filter(_.atField).flatMap(_.resourceArea)
+      // a field whose mining crew has no room counts as lost: in game 1 vs Zerg on c3edc7d one stood at 0 of 0 for 20
+      // minutes while it counted as held and 23 SCVs stood idle
+      val states         = mining.fieldStates
       val heldRichFields = landed.flatMap(minedField).filter(fieldHealthy).map(_.uniqueId).distinct
-      val heldStates     = mining.fieldStates.filter(s => heldRichFields.contains(s.id))
-      val forGas         = strategy.current.extraFieldsForGas
-      val bankFull       = forGas > 0 && resources.unlockedResources.minerals > 1500
-      val wanted         = ExpansionChoice.wantedFields(
+        .filter(id => states.find(_.id == id).forall(_.capacity > 0))
+      val heldStates = states.filter(s => heldRichFields.contains(s.id))
+      val forGas     = strategy.current.extraFieldsForGas
+      val bankFull   = forGas > 0 && resources.unlockedResources.minerals > 1500
+      // SCVs with nothing to mine call for the next field as well as full crews do
+      val idleSurplus = mining.idleWorkers >= ExpansionChoice.IdleSurplus
+      val wanted      = ExpansionChoice.wantedFields(
         cfg.requiredFields,
         heldRichFields.size,
-        heldStates.nonEmpty && heldStates.forall(_.saturated) || bankFull,
+        heldStates.nonEmpty && heldStates.forall(_.saturated) || bankFull || idleSurplus,
         cfg.maxFields + forGas
       )
       val deficit                        = wanted - heldRichFields.size

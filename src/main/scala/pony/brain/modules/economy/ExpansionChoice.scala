@@ -28,6 +28,12 @@ private[pony] object ExpansionChoice {
     math.min(max, if (held >= required && allSaturated) held + 1 else required)
 
   /**
+    * Idle SCVs that count as full crews: in game 5 vs Protoss on 09c3bb2 a dozen stood idle for 18 minutes while the
+    * expander waited for its fields to fill up.
+    */
+  val IdleSurplus = 8
+
+  /**
     * @param deficit     healthy fields missing
     * @param fresh       depots built at home that have not flown to a field of their own yet
     * @param exhausted   depots whose field is mined out

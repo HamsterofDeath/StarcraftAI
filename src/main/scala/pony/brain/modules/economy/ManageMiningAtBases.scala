@@ -103,9 +103,14 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule[WrapsUni
     if (currentTick % 720 == 360) traceIdleWorkers()
   }
 
+  private def idleWorkerUnits = ownUnits.allByType[WorkerUnit].filter(w => w.isInGame && w.nativeUnit.isIdle)
+
+  /** SCVs standing idle in the game, whatever job the bot thinks they have. */
+  def idleWorkers = idleWorkerUnits.size
+
   /** Native-idle SCVs by their job, with where they stand and whether a staffed field is walkable from there. */
   private def traceIdleWorkers(): Unit = {
-    val idle = ownUnits.allByType[WorkerUnit].filter(w => w.isInGame && w.nativeUnit.isIdle)
+    val idle = idleWorkerUnits
     if (idle.nonEmpty) {
       val walkable = mapLayers.freeWalkableIgnoringMobiles
       val anchors  = gatheringJobs.iterator.filter(_.natural).flatMap(g =>
@@ -123,6 +128,7 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule[WrapsUni
             ).mkString(" ") + "]"
           ).mkString(" ")
       )
+      NativeMatchEvidence.trace("mining-fields", gatheringJobs.map(_.describe).mkString(" "))
     }
   }
 
@@ -264,6 +270,16 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule[WrapsUni
     def releaseMiners(): Unit = unitManager.allJobsByUnitType[WorkerUnit].filter(_.employer == this).foreach(_.fail_!())
 
     override def toString = s"Gathering $minerals at $base"
+
+    /** Why a field takes as many miners as it does: its patches, those still tracked, live and rich, and how far. */
+    def describe = {
+      val depot   = base.mainBuilding
+      val patches = minerals.patches
+      s"${base.resourceArea.map(_.uniqueId).getOrElse(-1)}:depot=${depot.nativeUnitId}@${depot.tilePosition}" +
+        s":team=$teamSize/$capacity:patches=${patches.size}:tracked=${Micro.MiningOrganization.tracked}" +
+        s":live=${patches.count(_.isInGame)}:rich=${patches.count(_.remainingMinerals > 0)}" +
+        s":nearest=${patches.iterator.map(p => p.area.distanceTo(depot.area)).minOption.fold(-1)(math.round(_).toInt)}"
+    }
 
     object Micro {
 
@@ -466,6 +482,8 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule[WrapsUni
         }
 
         def idealNumberOfWorkers = assignments.valuesIterator.map(_.estimateRequiredWorkers).sum
+
+        def tracked = assignments.size
 
       }
 
