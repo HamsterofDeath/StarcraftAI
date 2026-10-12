@@ -41,6 +41,12 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
   private var gateChangedAt       = 0
   private val demolishers         = new Employer[MobileRangeWeapon](universe)
 
+  /**
+    * The walled main, as planned: its command center may fly to another field later, and in the killed game 2 vs Zerg
+    * on f00919d it had, so no depot seemed to open a way out from there and the wall stayed shut for the army.
+    */
+  private var wallHome = Option.empty[MapTilePosition]
+
   private def active = race.isTerran && strategy.current.usesWallDefense
 
   /** True once every planned wall depot and the gate barracks stand completed. */
@@ -97,7 +103,7 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
   }
 
   private def openDepots: Set[Int] = anchors.flatMap { wall =>
-    bases.mainBase.flatMap { home =>
+    wallHome.flatMap { home =>
       def alive(a: MapTilePosition) = ownUnits.allByType[SupplyDepot]
         .find(d => d.isInGame && !d.isBeingCreated && d.tilePosition == a)
       val singles = wall.iterator.filter { a =>
@@ -112,14 +118,14 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
   }.getOrElse(Set.empty)
 
   /** True when freeing the given tiles lets a ground path from home escape the defended region. */
-  private def opensWay(home: Base, freed: Set[MapTilePosition]): Boolean = {
+  private def opensWay(home: MapTilePosition, freed: Set[MapTilePosition]): Boolean = {
     strategicMap.defenseLineOf(home).exists { front =>
       def allowed(t: MapTilePosition): Boolean =
         mapLayers.rawWalkableMap.insideBounds(t) && mapLayers.rawWalkableMap.free(t) &&
           (freed(t) ||
             (mapLayers.blockedByBuildingTiles.free(t) && mapLayers.blockedByPlannedBuildings.free(t))) &&
           mapLayers.blockedByResources.free(t)
-      mapLayers.rawWalkableMap.nearestFree(home.mainBuilding.tilePosition).exists { start =>
+      mapLayers.rawWalkableMap.nearestFree(home).exists { start =>
         val visited = mutable.Set.empty[MapTilePosition]
         val queue   = mutable.Queue.empty[MapTilePosition]
         visited += start
@@ -584,6 +590,7 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
           refusedPlanning = chosen.isEmpty && gate.isEmpty
           if (chosen.nonEmpty || gate.isDefined) {
             anchors = Some(chosen)
+            wallHome = Some(home.mainBuilding.area.centerTile)
             NativeMatchEvidence.trace(
               "wall-planned",
               s"depots=${chosen.size} at=${chosen.mkString(",")} gate=$gate home=${home.mainBuilding.tilePosition} " +
@@ -641,6 +648,12 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
               )
             }
           }
+        }
+        // buildings come and go: a gate that found no depot to knock down looks again
+        if (gateOpened && gateDepotIds.isEmpty) {
+          gateDepotIds = openDepots
+          if (gateDepotIds.nonEmpty)
+            NativeMatchEvidence.trace("wall-gate-open", s"depots=${gateDepotIds.mkString(",")}")
         }
         if (gateOpened && gateDepotIds.nonEmpty) {
           ownUnits.allByType[SupplyDepot]
