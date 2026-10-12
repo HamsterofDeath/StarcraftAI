@@ -129,7 +129,11 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
     val defence = enemies.allByType[ArmedBuilding].iterator.filter(b =>
       b.isInGame && force.exists(_.currentTile.distanceToIsLess(b.centerTile, TerranCampaignConfig.FightTiles))
     ).map(_.nativeUnit).filter(armed)
-    val them = (near ++ defence).toVector.distinctBy(_.getID).map(BattleOdds.fighter)
+    // enemies that cannot hurt the fighters do not drive the army home: in game 5 vs Zerg on a82be0c three Scourge,
+    // which only hit the escorting vessels, called back 16 ground fighters at chance 0.03
+    val fighterTypes = force.iterator.filterNot(_.isInstanceOf[SupportUnit]).map(_.nativeUnit.getType).toSet
+    val them         = (near ++ defence).toVector.distinctBy(_.getID)
+      .filter(e => BattleOdds.canHurt(e.getType, fighterTypes)).map(BattleOdds.fighter)
     (BattleOdds.winChance(force.toVector.map(m => BattleOdds.fighter(m.nativeUnit)), them), them.map(_._1))
   }
 
