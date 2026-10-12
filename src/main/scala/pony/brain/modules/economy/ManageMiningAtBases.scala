@@ -108,6 +108,19 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule[WrapsUni
   /** SCVs standing idle in the game, whatever job the bot thinks they have. */
   def idleWorkers = idleWorkerUnits.size
 
+  /** Idle SCVs that cannot walk to any field we mine, when there is a field with room to walk to. */
+  def strandedWorkers: Int = {
+    val open = gatheringJobs.filter(g => g.natural && g.capacity > g.teamSize)
+    val idle = if (open.isEmpty) Vector.empty else idleWorkerUnits.toVector
+    if (idle.isEmpty) 0
+    else {
+      val walkable = mapLayers.freeWalkableIgnoringMobiles
+      val anchors  = open.flatMap(g => g.forBase.resourceArea.flatMap(a => walkable.nearestFreeBlock(a.center, 2)))
+      if (anchors.isEmpty) 0
+      else idle.count(w => !anchors.exists(t => walkable.areInSameWalkableArea(w.currentTile, t)))
+    }
+  }
+
   /** Native-idle SCVs by their job, with where they stand and whether a staffed field is walkable from there. */
   private def traceIdleWorkers(): Unit = {
     val idle = idleWorkerUnits

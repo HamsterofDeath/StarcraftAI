@@ -83,6 +83,19 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
     }
   }
 
+  private var evacuating = false
+
+  /**
+    * Lets SCVs walled into a mined-out main walk to the outer fields: a depot wall opens for good, a barracks gate opens
+    * while no enemy is near. In game 1 vs Zerg on f00919d up to 44 SCVs stood idle behind a closed three-depot wall for
+    * 15 minutes while two outer fields had room for 38 miners.
+    */
+  def letWorkersOut_!(): Unit = if (!evacuating) {
+    evacuating = true
+    NativeMatchEvidence.trace("wall-evacuate", s"gate=${gate.isDefined} opened=$gateOpen")
+    if (gate.isEmpty) openGate_!()
+  }
+
   private def openDepots: Set[Int] = anchors.flatMap { wall =>
     bases.mainBase.flatMap { home =>
       def alive(a: MapTilePosition) = ownUnits.allByType[SupplyDepot]
@@ -663,7 +676,7 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
     val armyOut  = worldDominationPlan.campaignForceSize > 0
     // never for the minimal scouts: a handful of fighters at five minutes lifted the gate just before the enemy's
     // first attack, which then broke into the main and killed the gate barracks
-    val wantOpen = !strategy.current.sealsMain && (armyOut || campaign.reconnaissanceAllowed)
+    val wantOpen = !strategy.current.sealsMain && (armyOut || campaign.reconnaissanceAllowed || evacuating)
     // landing takes a moment and fails while an enemy stands in the slot: close well before enemies arrive
     val danger = unitGrid.enemy.allInRange[Mobile](g.movedBy(2, 1), 16)
       .exists(e => !e.nativeUnit.isFlying && !e.isInstanceOf[WorkerUnit])

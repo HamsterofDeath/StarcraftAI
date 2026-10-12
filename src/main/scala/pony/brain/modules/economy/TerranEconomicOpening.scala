@@ -7,7 +7,7 @@ import pony.brain.budget.ResourceRequests
 import pony.brain.jobs.{Employer, UnitWithJob}
 import pony.brain.modules.campaign.TerranCampaignConfig
 import pony.brain.modules.production.{AlternativeBuildingSpot, BuildingRequestHelper}
-import pony.brain.modules.wall.DepotRelocation
+import pony.brain.modules.wall.{DepotRelocation, WallWithDepots}
 import pony.brain.requests.UnitJobRequest
 import pony.geometry.{Area, MapTilePosition}
 import pony.terrain.{ConstructionSiteFinder, ResourceArea}
@@ -24,7 +24,11 @@ class TerranEconomicOpening(universe: Universe)
 
   private def remaining(area: ResourceArea): Double = {
     val initial = area.patches.map(_.initialValue).sum.toDouble
-    if (initial <= 0) 1.0 else area.patches.map(_.value).sum / initial
+    // a lone blocking patch is no field: Destination's field 144 is one patch with no minerals, which counted as
+    // healthy, and depots flew to it in three games on 09c3bb2 to f00919d and mined nothing
+    if (area.patches.forall(_.patches.size < TerranEconomicOpening.MinFieldPatches)) 0.0
+    else if (initial <= 0) 1.0
+    else area.patches.map(_.value).sum / initial
   }
 
   /** Not yet mined out. */
@@ -200,6 +204,17 @@ class TerranEconomicOpening(universe: Universe)
       val wantsNew = economyMoving && relocation.isEmpty &&
         (choice == ExpansionChoice.BuildNew || choice == ExpansionChoice.WaitForMinerals)
       if (!wantsNew) stopSaving(classOf[CommandCenter], Priority.Expand)
+      // SCVs walled into a mined-out main walk out to the fields that have room
+      if (
+        strategy.current.usesWallDefense && currentTick % Primes.prime31.i == 0 &&
+        mining.idleWorkers >= ExpansionChoice.IdleSurplus
+      ) {
+        val stranded = mining.strandedWorkers
+        if (stranded >= ExpansionChoice.IdleSurplus) {
+          NativeMatchEvidence.trace("workers-stranded", s"count=$stranded")
+          universe.pluginByType[WallWithDepots].letWorkersOut_!()
+        }
+      }
       if (currentTick % (Primes.prime31.i * 16) == 0) {
         val expandState = choice match {
           case _ if relocation.isDefined       => "moving"
@@ -322,4 +337,13 @@ class TerranEconomicOpening(universe: Universe)
       }
     }
   }
+}
+
+object TerranEconomicOpening {
+
+  /**
+    * Fewer patches make a blocker, not a field: on (2)Destination a single empty patch near the south main counted as a
+    * held field in game 1 vs Zerg on f00919d, so the expander never looked for another one.
+    */
+  val MinFieldPatches = 4
 }
