@@ -133,7 +133,11 @@ class TerranEconomicOpening(universe: Universe)
                 depotEmployer.assignJob_!(job)
                 relocation = Some(job)
               }
-            }
+            } else if (currentTick % (Primes.prime31.i * 16) == 0) NativeMatchEvidence.trace(
+              "relocation-wait",
+              s"id=$id training=${cc.nativeUnit.isTraining} remaining=${cc.nativeUnit.getRemainingTrainTime} " +
+                s"job=${unitManager.jobOf(cc).shortDebugString} canLift=${cc.nativeUnit.canLift()}"
+            )
           }
         case ExpansionChoice.BuildNew =>
           // Build the future flier as close as possible to the field it will later fly to, while

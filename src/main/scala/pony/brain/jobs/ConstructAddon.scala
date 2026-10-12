@@ -48,6 +48,7 @@ class ConstructAddon[W <: CanBuildAddons, A <: Addon](
 
   override def onFinishOrFail(): Unit = {
     super.onFinishOrFail()
+    if (startedConstruction) basis.addonStarted_!() else basis.addonRefused_!()
     universe.ownUnits.allAddons.find(e => basis.positionedNextTo(e)).foreach { e =>
       basis.notifyAttach_!(e)
     }
