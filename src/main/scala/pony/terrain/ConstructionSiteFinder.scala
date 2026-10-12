@@ -62,7 +62,9 @@ class ConstructionSiteFinder(universe: Universe) {
   def forResourceArea(resources: ResourceArea): SubFinder = {
     val size = Size(4 + 2, 3) // include space for comsat
     // main thread
-    val grid = freeToBuildOn.or_!(universe.mapLayers.blockedForResourceDeposit.mutableCopy)
+    val grid        = freeToBuildOn.or_!(universe.mapLayers.blockedForResourceDeposit.mutableCopy)
+    val otherFields = universe.world.resourceAnalyzer.resourceAreas.iterator
+      .filterNot(_.uniqueId == resources.uniqueId).map(_.center).toVector
     new SubFinder {
       override def find: Option[MapTilePosition] = {
         // background
@@ -90,7 +92,13 @@ class ConstructionSiteFinder(universe: Universe) {
                 }
                 fromPatch || fromGeysir
               }
-              correctArea && lineOfSight
+              def bindsHere = ResourceDepotPlacement.bindsTo(
+                Area(candidate, Size(4, 3)),
+                resources.center,
+                otherFields,
+                pony.brain.Base.FieldReach
+              )
+              correctArea && bindsHere && lineOfSight
             }
             .toVector
         }

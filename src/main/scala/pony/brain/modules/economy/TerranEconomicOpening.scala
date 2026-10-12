@@ -77,8 +77,12 @@ class TerranEconomicOpening(universe: Universe)
         bases.allBases.find(_.mainBuilding == cc).flatMap(_.resourceArea)
       val cfg    = TerranCampaignConfig.load()
       val landed = depots.filterNot(cc => cc.isBeingCreated || cc.isFloating)
-      // Fields count as held while healthy, so the next command center is under way before one runs dry.
-      val heldRichFields = landed.flatMap(fieldOf).filter(fieldHealthy).map(_.uniqueId).distinct
+      // Fields count as held while healthy, so the next command center is under way before one runs dry. A depot out of
+      // reach of its field gets no miners: in game 5 vs Protoss on 09c3bb2 one landed 15 tiles off the natural, which
+      // counted as held for 18 minutes while nobody mined it and a dozen SCVs stood idle.
+      def minedField(cc: CommandCenter) =
+        bases.allBases.find(_.mainBuilding == cc).filter(_.atField).flatMap(_.resourceArea)
+      val heldRichFields = landed.flatMap(minedField).filter(fieldHealthy).map(_.uniqueId).distinct
       val heldStates     = mining.fieldStates.filter(s => heldRichFields.contains(s.id))
       val forGas         = strategy.current.extraFieldsForGas
       val bankFull       = forGas > 0 && resources.unlockedResources.minerals > 1500

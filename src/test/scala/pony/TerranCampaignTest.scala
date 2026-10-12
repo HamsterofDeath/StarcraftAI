@@ -62,6 +62,7 @@ class TerranCampaignTest extends Specification with MustMatchers {
     Exhausting START cannot revoke a genuinely established second field $exhaustedStart
     Default mineral staffing transfers to landed fields without remote worker demand $coveredStaffing
     Home depots reject the native mineral exclusion zone while ordinary buildings retain placement $depotPlacement
+    A depot site counts for a field only within reach and nearer to it than to any other field $depotBinding
     A refused PlaceBuilding order expires while actual construction remains protected $refusedPlacement
     Native terminal flag batches are separate while genuine live reveal remains invalid $terminalVision
     Both fields retain stable local defenders and replace casualties before expedition admission $defensiveReserve
@@ -448,6 +449,18 @@ class TerranCampaignTest extends Specification with MustMatchers {
       ResourceDepotPlacement.permitted(clearHomeSite, true, blocked),
       ResourceDepotPlacement.permitted(refusedNativeSite, false, blocked)
     ) === (false, true, true)
+  }
+  def depotBinding = {
+    // Destination's south fields: 143 centered at (28,110), the natural 144 at (43,118)
+    val field143             = MapTilePosition(28, 110)
+    val natural              = MapTilePosition(43, 118)
+    def site(x: Int, y: Int) = Area(MapTilePosition(x, y), Size(4, 3))
+    (
+      ResourceDepotPlacement.bindsTo(site(29, 104), natural, Seq(field143), 12),
+      ResourceDepotPlacement.bindsTo(site(29, 104), field143, Seq(natural), 12),
+      ResourceDepotPlacement.bindsTo(site(34, 112), natural, Seq(field143), 12),
+      ResourceDepotPlacement.bindsTo(site(44, 121), natural, Seq(field143), 12)
+    ) === (false, true, false, true)
   }
   def refusedPlacement = {
     val refused  = new ConstructionTravelProgress(8323, MapTilePosition(70, 115))

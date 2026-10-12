@@ -100,6 +100,30 @@ class ManageMiningAtBases(universe: Universe) extends OrderlessAIModule[WrapsUni
     if (operational && !secondWasOperational)
       NativeMatchEvidence.trace("second-field-mining", fieldStates.mkString(";"))
     secondWasOperational = operational
+    if (currentTick % 720 == 360) traceIdleWorkers()
+  }
+
+  /** Native-idle SCVs by their job, with where they stand and whether a staffed field is walkable from there. */
+  private def traceIdleWorkers(): Unit = {
+    val idle = ownUnits.allByType[WorkerUnit].filter(w => w.isInGame && w.nativeUnit.isIdle)
+    if (idle.nonEmpty) {
+      val walkable = mapLayers.freeWalkableIgnoringMobiles
+      val anchors  = gatheringJobs.iterator.filter(_.natural).flatMap(g =>
+        g.forBase.resourceArea.flatMap(a => walkable.nearestFreeBlock(a.center, 2))
+      ).toVector
+      val byJob = idle.groupBy(w => unitManager.jobOptOf(w).fold("none")(_.getClass.getSimpleName))
+        .toVector.sortBy(-_._2.size)
+      NativeMatchEvidence.trace(
+        "idle-workers",
+        s"count=${idle.size} fields=${gatheringJobs.map(g => s"${g.teamSize}/${g.capacity}").mkString(",")} " +
+          byJob.map((job, ws) =>
+            s"$job=${ws.size}[" + ws.take(4).map(w =>
+              s"#${w.nativeUnitId}@${w.currentTile}" +
+                s" reach=${anchors.count(t => walkable.areInSameWalkableArea(w.currentTile, t))}"
+            ).mkString(" ") + "]"
+          ).mkString(" ")
+      )
+    }
   }
 
   private def createJobsForBases(): Unit = {
