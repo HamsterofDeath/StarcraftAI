@@ -17,7 +17,7 @@ import pony.brain.modules.economy.{
   LocalMineralMining, MineralFieldStaffing, MiningFieldStatus, TerranEconomicProgress, WorkerProductionQuota
 }
 import pony.brain.modules.micro.HuntSweep
-import pony.brain.modules.production.{AlternativeBuildingSpot, ProvideNewBuildings, UnitRequestHelper}
+import pony.brain.modules.production.{AlternativeBuildingSpot, EnqueueArmy, ProvideNewBuildings, UnitRequestHelper}
 import pony.brain.modules.wall.DepotRelocation
 import pony.brain.requests.{
   BuildUnitRequest, FailedPreHiringResult, MissingRequirementResult, PreHiringResult, UnitJobRequest
@@ -63,6 +63,7 @@ class TerranCampaignTest extends Specification with MustMatchers {
     Default mineral staffing transfers to landed fields without remote worker demand $coveredStaffing
     Home depots reject the native mineral exclusion zone while ordinary buildings retain placement $depotPlacement
     A depot site counts for a field only within reach and nearer to it than to any other field $depotBinding
+    The army queue orders deterministically and units lacking tech do not block buildable ones $armyQueue
     A refused PlaceBuilding order expires while actual construction remains protected $refusedPlacement
     Native terminal flag batches are separate while genuine live reveal remains invalid $terminalVision
     Both fields retain stable local defenders and replace casualties before expedition admission $defensiveReserve
@@ -461,6 +462,23 @@ class TerranCampaignTest extends Specification with MustMatchers {
       ResourceDepotPlacement.bindsTo(site(34, 112), natural, Seq(field143), 12),
       ResourceDepotPlacement.bindsTo(site(44, 121), natural, Seq(field143), 12)
     ) === (false, true, false, true)
+  }
+  def armyQueue = {
+    // the campaign's shares; at the start only the barracks stands and the tank lacks gas
+    val wanted                               = Map("Tank" -> 6.0, "Goliath" -> 2.0, "Vulture" -> 4.0, "Marine" -> 4.0)
+    def order(existing: Map[String, Double]) = EnqueueArmy.mostMissingFirst(wanted, existing)(identity).map(_._1)
+    val start                                = order(Map.empty)
+    (
+      start,
+      order(Map("Tank" -> 1.0, "Marine" -> 0.5)),
+      EnqueueArmy.payableInOrder(start.filter(_ == "Marine"))(_ != "Tank"),
+      EnqueueArmy.payableInOrder(start)(_ != "Tank")
+    ) === (
+      Vector("Tank", "Marine", "Vulture", "Goliath"),
+      Vector("Vulture", "Goliath", "Marine", "Tank"),
+      Vector("Marine"),
+      Vector()
+    )
   }
   def refusedPlacement = {
     val refused  = new ConstructionTravelProgress(8323, MapTilePosition(70, 115))

@@ -14,29 +14,18 @@ class EnqueueArmy(universe: Universe)
   type RequestOrder = Seq[Ratio]
 
   private val myRequestPlan = oncePerTick {
-    val idealRatios = percentages
-    val mostMissing = idealRatios.wanted.toVector.sortBy { case (t, idealRatio) =>
-      val existingRatio = idealRatios.existing.getOrElse(t, 0.0)
-      existingRatio / idealRatio
+    val idealRatios    = percentages
+    val mostMissing    = EnqueueArmy.mostMissingFirst(idealRatios.wanted, idealRatios.existing)(_.getName)
+    val (now, later)   = mostMissing.partition { case (c, _) => universe.unitManager.allRequirementsFulfilled(c) }
+    val needsSomething = later.toSet
+    val buildThese     = EnqueueArmy.payableInOrder(now) { e =>
+      val rich             = resources.couldAffordNow(e._1)
+      def mineralsOverflow = resources.unlockedResources.moreMineralsThanGas &&
+        resources.unlockedResources.minerals > 400
+      def gasOverflow = resources.unlockedResources.moreGasThanMinerals &&
+        resources.unlockedResources.gas > 400
+      rich || mineralsOverflow || gasOverflow
     }
-    val needsSomething = {
-      val (_, later) = mostMissing.partition { case (c, _) => universe.unitManager.allRequirementsFulfilled(c) }
-      later.toSet
-    }
-
-    val canBuildNow = mostMissing.filterNot {
-      case (c, _) => universe.unitManager.requirementsQueuedToBuild(c)
-    }
-    val highestPriority = canBuildNow
-    val buildThese      =
-      highestPriority.takeWhile { e =>
-        val rich             = resources.couldAffordNow(e._1)
-        def mineralsOverflow = resources.unlockedResources.moreMineralsThanGas &&
-          resources.unlockedResources.minerals > 400
-        def gasOverflow = resources.unlockedResources.moreGasThanMinerals &&
-          resources.unlockedResources.gas > 400
-        rich || mineralsOverflow || gasOverflow
-      }
     RequestPlan(buildThese, needsSomething)
   }
 
@@ -102,4 +91,22 @@ class EnqueueArmy(universe: Universe)
       existing: Map[Class[? <: Mobile], Double]
   )
 
+}
+
+object EnqueueArmy {
+
+  /**
+    * The wanted unit types, the furthest below their share first; ties go to the larger share, then by name. The shares
+    * are keyed by classes, whose map order changes from run to run.
+    */
+  def mostMissingFirst[T](wanted: Map[T, Double], existing: Map[T, Double])(name: T => String): Vector[(T, Double)] =
+    wanted.toVector.sortBy { case (t, share) => (existing.getOrElse(t, 0.0) / share, -share, name(t)) }
+
+  /**
+    * The units to request now among those whose tech stands: in order, up to the first one we cannot pay for yet, so
+    * the money is saved for it. A unit still missing its tech must not stop the others: in game 5 vs Zerg on 09c3bb2
+    * the finished wall barracks stood idle until zerglings razed it, while a factory unit headed the queue.
+    */
+  def payableInOrder[T](buildableNow: Vector[T])(payable: T => Boolean): Vector[T] =
+    buildableNow.takeWhile(payable)
 }
