@@ -28,6 +28,7 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
   private var huntIndex         = 0
   private var huntTarget        = Option.empty[MapTilePosition]
   private var huntInitiated     = false
+  private var huntInitiatedAt   = 0
   private var favourable        = true
   // Bunker crews hold the mineral lines; every other fighter keeps up the pressure unless field guards are configured.
   private val defenseRoster = new TerranDefenseRoster(config.fieldGuards)
@@ -190,7 +191,16 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
     val known = memory.attackPosition
     // With the enemy wiped from memory but the match still running, sweep the map for remnants
     // instead of letting the army stand idle waiting for a slow scout to find the last building.
-    val sweepDone = !worldDominationPlan.planningInProgress && worldDominationPlan.campaignForceSize == 0
+    val sweepDone = !worldDominationPlan.planningInProgress &&
+      (worldDominationPlan.campaignForceSize == 0 ||
+        huntTarget.exists { point =>
+          val army = worldDominationPlan.campaignForce
+          HuntSweep.visited(
+            army.count(_.currentTile.distanceToIsLess(point, HuntSweep.VisitTiles)),
+            army.size,
+            currentTick - huntInitiatedAt
+          )
+        })
     if (known.isDefined) {
       huntTarget = None
       huntInitiated = false
@@ -275,7 +285,10 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
         if (strategy.current.usesWallDefense && wall.complete && !wall.gateOpen) wall.openGate_!()
         val accepted = worldDominationPlan.initiateCampaignAttack(where, troops.map(_.nativeUnitId).toSet)
         if (accepted) {
-          if (huntTarget.contains(where)) huntInitiated = true
+          if (huntTarget.contains(where) && !huntInitiated) {
+            huntInitiated = true
+            huntInitiatedAt = currentTick
+          }
           campaignCommitted = true
           NativeMatchEvidence.trace(
             if (launched) "reinforce" else "launch",

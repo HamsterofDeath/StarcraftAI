@@ -93,7 +93,7 @@ class TerranCampaignTest extends Specification with MustMatchers {
     A new command center is preferred over moving one that still mines $preferNewDepot
     New bases go to our half of the map first, then close to the main base $expansionSites
     Fully staffed fields ask for one more field, up to the maximum $moreFields
-    An endgame hunt sweeps every resource area farthest from home first and wraps around $huntSweep
+    An endgame hunt sweeps every resource area farthest from home first, wraps around and moves on once looked at $huntSweep
     A farthest-point carpet spread picks far-apart posts in a deterministic order $carpetPosts
   """
   private def building(id: Int, x: Int, base: Boolean = true) =
@@ -350,9 +350,13 @@ class TerranCampaignTest extends Specification with MustMatchers {
       order(Seq(near, mid, far), None),
       next(3, 2),
       next(3, 0),
-      next(0, 2)
+      next(0, 2),
+      visited(near = 5, army = 10, framesSinceLaunch = 0),
+      visited(near = 4, army = 10, framesSinceLaunch = VisitFrames),
+      visited(near = 0, army = 10, framesSinceLaunch = VisitFrames + 1),
+      visited(near = 0, army = 0, framesSinceLaunch = 0)
     ) ===
-      (Vector(far, mid, near), Vector(near, mid, far), 0, 1, 2)
+      (Vector(far, mid, near), Vector(near, mid, far), 0, 1, 2, true, false, true, false)
   }
   def carpetPosts = {
     import CarpetPosts._
