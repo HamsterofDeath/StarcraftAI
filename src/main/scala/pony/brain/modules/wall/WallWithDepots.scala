@@ -125,11 +125,14 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
           (freed(t) ||
             (mapLayers.blockedByBuildingTiles.free(t) && mapLayers.blockedByPlannedBuildings.free(t))) &&
           mapLayers.blockedByResources.free(t)
-      mapLayers.rawWalkableMap.nearestFree(home).exists { start =>
+      // from the passable tiles around it: the search started inside the command center itself found no way out in
+      // game 1 vs Zerg on 829bad1, and the gate stayed shut for ten minutes
+      val starts = mapLayers.rawWalkableMap.spiralAround(home, 80).filter(allowed).take(12).toVector
+      starts.nonEmpty && {
         val visited = mutable.Set.empty[MapTilePosition]
         val queue   = mutable.Queue.empty[MapTilePosition]
-        visited += start
-        queue += start
+        visited ++= starts
+        queue ++= starts
         var escaped = false
         var steps   = 0
         while (queue.nonEmpty && !escaped && steps < 20000) {
