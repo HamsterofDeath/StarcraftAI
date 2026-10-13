@@ -10,7 +10,7 @@ import pony.brain.modules.production.{AlternativeBuildingSpot, BuildingRequestHe
 import pony.brain.requests.{UnitJobRequest, UnitRequest}
 import pony.combat.MobileRangeWeapon
 import pony.geometry.{Area, MapTilePosition, Size}
-import pony.terrain.{AreaHelper, ChokePoint}
+import pony.terrain.{AreaHelper, StrategicMap}
 import pony.units.{Barracks, Goliath, Marine, Mobile, SCV, SupplyDepot, Tank, Vulture, WorkerUnit, WrapsUnit}
 
 import scala.collection.mutable
@@ -218,18 +218,36 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
     }
   }
 
-  /** Span the pass with depots and check that no walkable path from outside to inside remains. */
-  private def computeWall(home: Base): Vector[MapTilePosition] = {
-    val front = strategicMap.defenseLineOf(home)
-    if (front.isEmpty) { probe("no defense line"); return Vector.empty }
-    val f        = front.get
+  /**
+    * The wall for a main's front line: depots, and the barracks gate if there is one. A barracks gate is tried first,
+    * then depots spanning the pass, checked that no walkable path from outside to inside remains.
+    */
+  private def computeWall(f: StrategicMap#FrontLine): (Vector[MapTilePosition], Option[MapTilePosition]) = {
+    val none = (Vector.empty[MapTilePosition], None)
+    // Prefer a barracks as the gate, on the choke line or a parallel line up to two tiles in or out: a ramp's width
+    // varies, and a barracks (three tiles) and depots (two) must fill the pass exactly.
+    val (linePlan, lineChecks) = gatePlan(f)
+    val (anyPlan, freeCheck)   = linePlan.fold(freeGatePlan(f))(p => (Some(p), "free:skipped"))
+    anyPlan match {
+      case Some((depots, barracks)) =>
+        NativeMatchEvidence.trace(
+          "wall-gate-planned",
+          s"barracks=$barracks depots=${depots.mkString(",")} line=${linePlan.isDefined}"
+        )
+        return (depots, Some(barracks))
+      case None =>
+        NativeMatchEvidence.trace(
+          "wall-gate-none",
+          s"checks=${lineChecks.mkString(" ")} $freeCheck; depots only, opened by demolition"
+        )
+    }
     val segments = f.chokePoint.lines.flatMap(cutting =>
       segmentThrough(f.chokePoint.center, cutting.absoluteFrom, cutting.absoluteTo)
     )
     val span = segments.distinct.flatten.distinct
-    if (span.isEmpty) { probe("no pinnable pass at the choke"); return Vector.empty }
+    if (span.isEmpty) { probe("no pinnable pass at the choke"); return none }
     val allCandidates = span.flatMap(placementsCovering).distinct
-    if (allCandidates.isEmpty) { probe(s"span=${span.size} candidates=0"); return Vector.empty }
+    if (allCandidates.isEmpty) { probe(s"span=${span.size} candidates=0"); return none }
     val coveredByCandidate = allCandidates.map(a => a -> footprint(a).filter(span.contains).toSet).toMap
     val tileToCandidates   = span.map(t => t -> allCandidates.filter(a => footprint(a).exists(_ == t))).toMap
     var budget             = 20000
@@ -253,30 +271,10 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
     }
     val unbuildable = span.filter(t => tileToCandidates.getOrElse(t, Vector.empty).isEmpty)
     val required    = span.filterNot(unbuildable.contains)
-
-    // Prefer a barracks as the gate, on the choke line or a parallel line up to two tiles in or out: a ramp's width
-    // varies, and a barracks (three tiles) and depots (two) must fill the pass exactly.
-    val (linePlan, lineChecks) = gatePlan(home, f.chokePoint)
-    val (anyPlan, freeCheck)   = linePlan.fold(freeGatePlan(home, f.chokePoint))(p => (Some(p), "free:skipped"))
-    anyPlan match {
-      case Some((depots, barracks)) =>
-        gate = Some(barracks)
-        NativeMatchEvidence.trace(
-          "wall-gate-planned",
-          s"barracks=$barracks depots=${depots.mkString(",")} line=${linePlan.isDefined}"
-        )
-        return depots
-      case None =>
-        NativeMatchEvidence.trace(
-          "wall-gate-none",
-          s"checks=${lineChecks.mkString(" ")} $freeCheck; depots only, opened by demolition"
-        )
-    }
-    budget = 20000
-    val solved = solve(required.toSet, Vector.empty)
+    val solved      = solve(required.toSet, Vector.empty)
     if (solved.isEmpty) {
       probe(s"span=${span.size} candidates=${allCandidates.size} noCover missing=${unbuildable.mkString(",")}")
-      return Vector.empty
+      return none
     }
     if (unbuildable.nonEmpty) {
       NativeMatchEvidence.trace("wall-slit", s"unbuildable=${unbuildable.mkString(",")} depots=${solved.get.size}")
@@ -287,7 +285,7 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
     // A leak is plugged along the breach path, nearest to the wall first.
     var anchors  = solved.get
     var attempts = 0
-    var breach   = breachPath(home, anchors)
+    var breach   = breachPath(f, anchors)
     if (breach.isDefined) {
       NativeMatchEvidence.trace("wall-leak", s"pathLen=${breach.get.size} path=${breach.get.take(24).mkString(",")}")
     }
@@ -318,9 +316,9 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
               s"pathLen=${path.size} buildable=${path.count(t => placementsCovering(t).nonEmpty)} anchors=${anchors.mkString(",")} path=${path.take(16).mkString(",")}"
             )
           }
-          return Vector.empty
+          return none
       }
-      breach = breachPath(home, anchors)
+      breach = breachPath(f, anchors)
     }
     if (breach.isDefined) {
       if (!reportedSealFailure) {
@@ -330,10 +328,10 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
           s"attempts=$attempts pathLen=${breach.get.size} path=${breach.get.take(24).mkString(",")} anchors=${anchors.mkString(",")}"
         )
       }
-      Vector.empty
+      none
     } else {
       probe(s"span=${span.size} depots=${anchors.size} sealed=true")
-      anchors
+      (anchors, None)
     }
   }
 
@@ -367,9 +365,9 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
     * (judged on pixels). Also returns one diagnosis per line.
     */
   private def gatePlan(
-      home: Base,
-      choke: ChokePoint
+      front: StrategicMap#FrontLine
   ): (Option[(Vector[MapTilePosition], MapTilePosition)], Vector[String]) = {
+    val choke  = front.chokePoint
     val checks = mutable.ArrayBuffer.empty[String]
     val plans  = for {
       shift   <- Iterator(0, 1, -1, 2, -2)
@@ -395,8 +393,8 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
         val taken = barracksTiles(b).toSet
         coverWithDepots(span.filterNot(taken).toSet, taken).iterator.flatMap { depots =>
           covered += 1
-          val closes = pixelPass(home, WallGeometry.Dims.Zealot, depots, Some(b)).contains(false)
-          val opens  = closes && pixelPass(home, WallGeometry.Dims.SiegeTank, depots, None).contains(true)
+          val closes = pixelPass(front, WallGeometry.Dims.Zealot, depots, Some(b)).contains(false)
+          val opens  = closes && pixelPass(front, WallGeometry.Dims.SiegeTank, depots, None).contains(true)
           Option.when(closes && opens)(depots -> b)
         }
       }.nextOption()
@@ -413,19 +411,19 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
     * choke; None without a known outside start.
     */
   private def pixelPass(
-      home: Base,
+      front: StrategicMap#FrontLine,
       unit: WallGeometry.Dims,
       depots: Vector[MapTilePosition],
       barracks: Option[MapTilePosition]
-  ): Option[Boolean] = pixelWay(home, unit, depots, barracks).map(_.isDefined)
+  ): Option[Boolean] = pixelWay(front, unit, depots, barracks).map(_.isDefined)
 
   /** The way `pixelPass` finds (Some(None) when there is none); None without a known outside start. */
   private def pixelWay(
-      home: Base,
+      front: StrategicMap#FrontLine,
       unit: WallGeometry.Dims,
       depots: Vector[MapTilePosition],
       barracks: Option[MapTilePosition]
-  ): Option[Option[Vector[(Int, Int)]]] = strategicMap.defenseLineOf(home).flatMap { front =>
+  ): Option[Option[Vector[(Int, Int)]]] = {
     import WallGeometry._
     val grid     = mapLayers.rawWalkableMap
     val c        = front.chokePoint.center
@@ -464,11 +462,10 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
     * kept if a siege tank gets through once the barracks lifts.
     */
   private def freeGatePlan(
-      home: Base,
-      choke: ChokePoint
+      front: StrategicMap#FrontLine
   ): (Option[(Vector[MapTilePosition], MapTilePosition)], String) = {
     import WallGeometry.Dims
-    val c     = choke.center
+    val c     = front.chokePoint.center
     val spots = (for (dx <- -7 to 4; dy <- -6 to 4) yield c.movedBy(dx, dy)).filter(barracksFree)
       .sortBy(b => (b.movedBy(2, 1).distanceSquaredTo(c), b.y, b.x)).take(10)
     var tried = 0
@@ -476,7 +473,7 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
       tried += 1
       val taken  = barracksTiles(b).toSet
       var depots = Vector.empty[MapTilePosition]
-      var way    = pixelWay(home, Dims.Zealot, depots, Some(b))
+      var way    = pixelWay(front, Dims.Zealot, depots, Some(b))
       var stuck  = way.isEmpty
       while (way.exists(_.isDefined) && depots.size < 4 && !stuck) {
         val tiles = way.get.get.map((x, y) => MapTilePosition(x / 32, y / 32)).distinct
@@ -487,58 +484,59 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
           .headOption match {
           case Some(a) =>
             depots :+= a
-            way = pixelWay(home, Dims.Zealot, depots, Some(b))
+            way = pixelWay(front, Dims.Zealot, depots, Some(b))
           case None => stuck = true
         }
       }
       val closed = way.contains(None) && !stuck
-      Option.when(closed && pixelPass(home, Dims.SiegeTank, depots, None).contains(true))(depots -> b)
+      Option.when(closed && pixelPass(front, Dims.SiegeTank, depots, None).contains(true))(depots -> b)
     }.nextOption()
     (plan, s"free:spots=${spots.size}:tried=$tried:ok=${plan.isDefined}")
   }
 
   /** A free path from a known outside tile to the defended side means the wall leaks. */
-  private def breachPath(home: Base, anchors: Vector[MapTilePosition]): Option[Vector[MapTilePosition]] = {
-    strategicMap.defenseLineOf(home).flatMap { front =>
-      val wallTiles                            = anchors.flatMap(footprint).toSet
-      def allowed(t: MapTilePosition): Boolean =
-        mapLayers.rawWalkableMap.insideBounds(t) && mapLayers.rawWalkableMap.free(t) &&
-          mapLayers.blockedByBuildingTiles.free(t) && mapLayers.blockedByPlannedBuildings.free(t) &&
-          mapLayers.blockedByResources.free(t) &&
-          !wallTiles(t)
-      val seeds =
-        (mapLayers.rawWalkableMap.spiralAround(front.chokePoint.center, 16) ++
-          mapLayers.rawWalkableMap.spiralAround(front.chokePoint.center, 24))
-          .filter(t => allowed(t) && front.outerTerritory.free(t) && !front.defended.free(t)).take(2)
-      if (seeds.isEmpty) None
-      else {
-        val visited = mutable.Set.empty[MapTilePosition]
-        val parent  = mutable.Map.empty[MapTilePosition, MapTilePosition]
-        val queue   = mutable.Queue.empty[MapTilePosition]
-        seeds.foreach { s => visited += s; queue += s }
-        var breach = Option.empty[MapTilePosition]
-        while (queue.nonEmpty && breach.isEmpty) {
-          val cur = queue.dequeue()
-          if (front.defended.free(cur)) breach = Some(cur)
-          else for (dx <- -1 to 1; dy <- -1 to 1 if dx != 0 || dy != 0) {
-            val n = cur.movedBy(dx, dy)
-            // Units cannot cut a corner through two blocked tiles, so diagonal steps
-            // are only legal when at least one shared orthogonal tile is walkable.
-            val corner = dx == 0 || dy == 0 || allowed(cur.movedBy(dx, 0)) || allowed(cur.movedBy(0, dy))
-            if (!visited(n) && allowed(n) && corner) {
-              visited += n
-              parent(n) = cur
-              queue += n
-            }
+  private def breachPath(
+      front: StrategicMap#FrontLine,
+      anchors: Vector[MapTilePosition]
+  ): Option[Vector[MapTilePosition]] = {
+    val wallTiles                            = anchors.flatMap(footprint).toSet
+    def allowed(t: MapTilePosition): Boolean =
+      mapLayers.rawWalkableMap.insideBounds(t) && mapLayers.rawWalkableMap.free(t) &&
+        mapLayers.blockedByBuildingTiles.free(t) && mapLayers.blockedByPlannedBuildings.free(t) &&
+        mapLayers.blockedByResources.free(t) &&
+        !wallTiles(t)
+    val seeds =
+      (mapLayers.rawWalkableMap.spiralAround(front.chokePoint.center, 16) ++
+        mapLayers.rawWalkableMap.spiralAround(front.chokePoint.center, 24))
+        .filter(t => allowed(t) && front.outerTerritory.free(t) && !front.defended.free(t)).take(2)
+    if (seeds.isEmpty) None
+    else {
+      val visited = mutable.Set.empty[MapTilePosition]
+      val parent  = mutable.Map.empty[MapTilePosition, MapTilePosition]
+      val queue   = mutable.Queue.empty[MapTilePosition]
+      seeds.foreach { s => visited += s; queue += s }
+      var breach = Option.empty[MapTilePosition]
+      while (queue.nonEmpty && breach.isEmpty) {
+        val cur = queue.dequeue()
+        if (front.defended.free(cur)) breach = Some(cur)
+        else for (dx <- -1 to 1; dy <- -1 to 1 if dx != 0 || dy != 0) {
+          val n = cur.movedBy(dx, dy)
+          // Units cannot cut a corner through two blocked tiles, so diagonal steps
+          // are only legal when at least one shared orthogonal tile is walkable.
+          val corner = dx == 0 || dy == 0 || allowed(cur.movedBy(dx, 0)) || allowed(cur.movedBy(0, dy))
+          if (!visited(n) && allowed(n) && corner) {
+            visited += n
+            parent(n) = cur
+            queue += n
           }
         }
-        breach.map { b =>
-          val path = mutable.ArrayBuffer.empty[MapTilePosition]
-          var p    = b
-          path += p
-          while (parent.contains(p)) { p = parent(p); path += p }
-          path.toVector
-        }
+      }
+      breach.map { b =>
+        val path = mutable.ArrayBuffer.empty[MapTilePosition]
+        var p    = b
+        path += p
+        while (parent.contains(p)) { p = parent(p); path += p }
+        path.toVector
       }
     }
   }
@@ -555,7 +553,12 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
         if (lastWallAttempt >= 0 && currentTick - lastWallAttempt < 24 * 60 * 5) Vector.empty
         else {
           lastWallAttempt = currentTick
-          val chosen = computeWall(home)
+          if (survey && !surveyed) surveyStarts()
+          val (chosen, gatePlanned) = strategicMap.defenseLineOf(home) match {
+            case Some(front) => computeWall(front)
+            case None        => probe("no defense line"); (Vector.empty, None)
+          }
+          gate = gatePlanned
           refusedPlanning = chosen.isEmpty && gate.isEmpty
           if (chosen.nonEmpty || gate.isDefined) {
             anchors = Some(chosen)
@@ -636,6 +639,63 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
         }
       }
     }
+  }
+
+  private val survey   = sys.props.get("twailight.wallSurvey").contains("true")
+  private var surveyed = false
+
+  /**
+    * With -Dtwailight.wallSurvey=true: the wall planned for the main at every start location and the terrain at its
+    * choke, traced once, to see how the planner reads a map without a game from each start.
+    */
+  private def surveyStarts(): Unit = {
+    surveyed = true
+    nativeGame.getStartLocations.asScala.foreach { s =>
+      val start = MapTilePosition(s.getX, s.getY)
+      // a command center's center tile, as Base.mainBuilding.area.centerTile
+      val front = strategicMap.defenseLineOf(start.movedBy(2, 1))
+      probed = false
+      reportedSealFailure = false
+      val (depots, barracks) = front.map(computeWall).getOrElse((Vector.empty, None))
+      NativeMatchEvidence.trace(
+        "wall-survey",
+        s"start=$start choke=${front.map(_.chokePoint.center)} depots=${depots.mkString(",")} gate=$barracks"
+      )
+      front.foreach(f => NativeMatchEvidence.trace("wall-terrain", terrainAround(f)))
+    }
+    probed = false
+    reportedSealFailure = false
+  }
+
+  /**
+    * The 19x19 tiles around a front line's choke, rows joined by '/': '#' not walkable, 'm' resources, '*' the choke's
+    * center, 'x' its cutting lines, and 'D'/'d' the defended side, 'O'/'o' the outer territory and '+'/',' neither,
+    * capitals where buildable.
+    */
+  private def terrainAround(f: StrategicMap#FrontLine): String = {
+    val c     = f.chokePoint.center
+    val grid  = mapLayers.rawWalkableMap
+    val lines = mutable.Set.empty[(Int, Int)]
+    f.chokePoint.lines.foreach(l =>
+      AreaHelper.traverseTilesOfLine(l.absoluteFrom, l.absoluteTo, (x, y) => lines += ((x, y)))
+    )
+    val rows = (c.y - 9 to c.y + 9).map { y =>
+      (c.x - 9 to c.x + 9).map { x =>
+        lazy val t = MapTilePosition(x, y)
+        if (x < 0 || y < 0 || x >= grid.cols || y >= grid.rows || !grid.free(t)) '#'
+        else if (mapLayers.blockedByResources.blocked(t)) 'm'
+        else if (t == c) '*'
+        else if (lines((x, y))) 'x'
+        else {
+          val buildable = mapLayers.freeTilesForConstruction.free(t)
+          if (f.defended.free(t)) { if (buildable) 'D' else 'd' }
+          else if (f.outerTerritory.free(t)) { if (buildable) 'O' else 'o' }
+          else if (buildable) '+'
+          else ','
+        }
+      }.mkString
+    }
+    s"center=$c x0=${c.x - 9} y0=${c.y - 9} rows=${rows.mkString("/")}"
   }
 
   /** Renews the request for the gate barracks until it stands (requests expire unless repeated). */

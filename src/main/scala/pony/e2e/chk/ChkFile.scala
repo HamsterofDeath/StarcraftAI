@@ -9,6 +9,17 @@ final case class ChkFile(sections: Vector[(String, Array[Byte])]) {
 
   def get(name: String): Option[Array[Byte]] = sections.reverseIterator.find(_._1 == name).map(_._2)
 
+  /**
+    * The section as the game reads a tile layer: every duplicate written over the ones before it, a shorter one only
+    * over its own length. Protected maps such as ICCup Lost_Temple follow a full MTXM with a partial one.
+    */
+  def overlaid(name: String): Array[Byte] =
+    sections.collect { case (`name`, data) => data }.reduceLeftOption { (below, above) =>
+      val merged = java.util.Arrays.copyOf(below, below.length max above.length)
+      System.arraycopy(above, 0, merged, 0, above.length)
+      merged
+    }.getOrElse(throw new NoSuchElementException(name))
+
   def names: Vector[String] = sections.map(_._1)
 
   def bytes: Array[Byte] = {

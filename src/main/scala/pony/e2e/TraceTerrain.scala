@@ -25,7 +25,7 @@ object TraceTerrain {
     val tileset = Vector("badlands", "platform", "install", "ashworld", "jungle", "desert", "ice", "twilight")(era)
     val cv5     = le(data.read(s"tileset\\$tileset.cv5"))
     val vf4     = le(data.read(s"tileset\\$tileset.vf4"))
-    val mtxm    = le(chk("MTXM"))
+    val mtxm    = le(chk.overlaid("MTXM"))
     def megatile(x: Int, y: Int) = {
       val id = mtxm.getShort((y * width + x) * 2) & 0xffff
       cv5.getShort((id >> 4) * 52 + 20 + (id & 0xf) * 2) & 0xffff
