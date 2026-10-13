@@ -64,10 +64,24 @@ object NativeMatchEvidence {
     */
   def buildDiagnosis(builder: bwapi.Unit, tile: bwapi.TilePosition, kind: bwapi.UnitType): String =
     liveGame.fold("game=unknown") { g =>
+      val (w, h)      = (kind.tileWidth, kind.tileHeight)
+      val unbuildable = for {
+        dx <- 0 until w
+        dy <- 0 until h
+        if !g.isBuildable(tile.x + dx, tile.y + dy, true)
+      } yield s"(${tile.x + dx},${tile.y + dy})"
+      val corner = new bwapi.TilePosition(tile.x + w, tile.y + h)
+      val inWay  = g
+        .getUnitsInRectangle(tile.toPosition, corner.toPosition)
+        .asScala
+        .filter(u => u.getID != builder.getID && !u.isFlying && !u.isLoaded)
+        .map(u => s"${u.getID}:${u.getType.toString.replaceAll("^[A-Za-z]+_", "")}:${u.getOrder}")
+      val center = new bwapi.Position(tile.x * 32 + w * 16, tile.y * 32 + h * 16)
       s"builderCanBuild=${builder.canBuild(kind)} builderCanBuildThere=${builder.canBuild(kind, tile)} " +
         s"canMake=${g.canMake(kind, builder)} canBuildHere=${g.canBuildHere(tile, kind, builder)} " +
         s"explored=${g.canBuildHere(tile, kind, builder, true)} interruptible=${builder.isInterruptible} " +
-        s"order=${builder.getOrder} minerals=${g.self().minerals}"
+        s"order=${builder.getOrder} minerals=${g.self().minerals} path=${builder.hasPath(center)} " +
+        s"unbuildable=${unbuildable.mkString(",")} inWay=${inWay.mkString(",")}"
     }
 
   /** 1-based number of the current game in this bot process; warm sessions play several. */
