@@ -13,7 +13,7 @@ import bwapi.UnitType
 import scala.collection.mutable
 
 /**
-  * SCVs fight a small raid at a base that its fighters cannot answer, and go back to mining once it is over. In game 1
+  * SCVs fight a small melee raid at a base that its fighters cannot answer, and go back to mining once it is over. In game 1
   * vs Zerg on af1b88d two Zerglings came at frame 3600 and five by 5400, before the first Marine; the SCVs went on
   * mining while the Zerglings killed them one by one, and the main fell by minute 8.
   */
@@ -145,15 +145,19 @@ object WorkerMilitia {
   val MinHitPoints = 20
 
   /** A raid bigger than this is an army that SCVs only die against. */
-  val MaxRaiders = 8
+  val MaxRaiders = 6
 
-  /** SCVs that beat one raider: three hold a Zergling, a Zealot takes six. */
-  def scvsFor(t: UnitType) =
-    if (t == UnitType.Zerg_Zergling) 3 else if (t == UnitType.Protoss_Zealot) 6 else 4
+  /**
+    * SCVs that beat one raider: three hold a Zergling, a Zealot takes six. SCVs fight only these melee raiders: in game
+    * 5 vs Terran on 9b66c60 up to 28 SCVs were called against the Marines of an army of ten Marines and two Siege Tanks
+    * at the natural, and the 44 SCVs of frame 15840 were 26 at frame 17280.
+    */
+  val ScvsFor = Map(UnitType.Zerg_Zergling -> 3, UnitType.Protoss_Zealot -> 6)
 
   /** SCVs a raid calls for, less what the fighters near the base answer. */
   def wanted(raiders: Seq[UnitType], fighters: Int) =
-    if (raiders.isEmpty || raiders.size > MaxRaiders) 0 else (raiders.map(scvsFor).sum - 3 * fighters) max 0
+    if (raiders.isEmpty || raiders.size > MaxRaiders || !raiders.forall(ScvsFor.contains)) 0
+    else (raiders.map(ScvsFor).sum - 3 * fighters) max 0
 }
 
 /** One SCV of the militia fights the raider nearest it, and goes back to work once its base no longer calls for it. */

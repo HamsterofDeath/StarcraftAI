@@ -74,7 +74,7 @@ class TerranCampaignTest extends Specification with MustMatchers {
     Postreserve expedition thresholds keep army production active until the deployable force qualifies $expeditionThresholds
     Local raids invalidate async offense, wait for a busy planner, and clear before offense resumes $defensiveRecall
     A defence planned during a raid is not taken up once the raid is over $staleDefense
-    A small raid its base's fighters cannot answer calls SCVs to arms, an army does not $militia
+    A small melee raid its base's fighters cannot answer calls SCVs to arms, an army or shooters do not $militia
     After a raid that called the army home it stays home a while before it sets out again $calmAfterRecall
     A raid turns the campaign army back only when home cannot hold it and it is worth half the army $raidResponse
     A smaller raid home cannot hold draws a detachment worth twice the raid, less what home has $raidDetachment
@@ -636,14 +636,16 @@ class TerranCampaignTest extends Specification with MustMatchers {
   }
 
   def militia = {
-    import bwapi.UnitType.{Protoss_Zealot, Zerg_Hydralisk, Zerg_Zergling}
+    import bwapi.UnitType.{Protoss_Zealot, Terran_Marine, Zerg_Hydralisk, Zerg_Zergling}
     (
       WorkerMilitia.wanted(Seq(Zerg_Zergling, Zerg_Zergling), 0),
       WorkerMilitia.wanted(Seq(Zerg_Zergling, Zerg_Zergling), 2),
-      WorkerMilitia.wanted(Seq(Protoss_Zealot, Zerg_Hydralisk), 1),
-      WorkerMilitia.wanted(Seq.fill(9)(Zerg_Zergling), 0),
+      WorkerMilitia.wanted(Seq(Protoss_Zealot, Zerg_Zergling), 1),
+      WorkerMilitia.wanted(Seq(Protoss_Zealot, Zerg_Hydralisk), 0),
+      WorkerMilitia.wanted(Seq(Terran_Marine), 0),
+      WorkerMilitia.wanted(Seq.fill(7)(Zerg_Zergling), 0),
       WorkerMilitia.wanted(Nil, 0)
-    ) === (6, 0, 7, 0, 0)
+    ) === (6, 0, 6, 0, 0, 0, 0)
   }
   def calmAfterRecall = {
     import TerranCampaignConfig.{calmedDown, CalmFrames}
