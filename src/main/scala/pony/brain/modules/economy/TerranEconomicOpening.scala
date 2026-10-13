@@ -37,7 +37,20 @@ class TerranEconomicOpening(universe: Universe)
   /** Rich enough to hold and to move to. */
   private def fieldHealthy(area: ResourceArea): Boolean = TerranCampaignConfig.load().fieldHealthy(remaining(area))
 
-  /** Free, healthy fields ordered by ExpansionSite: our half of the map first, then the closest to our main base. */
+  /** By field: whether SCVs can walk there from our start, buildings aside. The terrain never changes. */
+  private val walkableFromStart                      = scala.collection.mutable.HashMap.empty[Int, Boolean]
+  private def reachable(area: ResourceArea): Boolean = walkableFromStart.getOrElseUpdate(
+    area.uniqueId, {
+      val own    = nativeGame.self().getStartLocation
+      val ground = mapLayers.rawWalkableMap
+      ground.nearestFree(MapTilePosition(own.x, own.y)).forall(ground.areInSameWalkableArea(_, area.nearbyFreeTile))
+    }
+  )
+
+  /**
+    * Free, healthy fields ordered by ExpansionSite: fields SCVs can walk to first, then our half of the map, then the
+    * closest to our main base.
+    */
   private def rankedFields(fields: Seq[ResourceArea]): Seq[ResourceArea] = {
     import scala.jdk.CollectionConverters._
     val own         = nativeGame.self().getStartLocation
@@ -48,16 +61,19 @@ class TerranEconomicOpening(universe: Universe)
     val ranked      = ExpansionSite.rank(
       fields.map { a =>
         val tile = a.nearbyFreeTile
-        ExpansionSite.Candidate(a.uniqueId, tile.x, tile.y, strategicMap.defenseLineOf(tile).isDefined)
+        ExpansionSite.Candidate(a.uniqueId, tile.x, tile.y, strategicMap.defenseLineOf(tile).isDefined, reachable(a))
       },
       main,
       ourStart,
       enemyStarts
     ).map(c => byId(c.id))
     // a strategy living on gas takes the fields with a geyser first (game 1 on 3f2d8e9 held five command centers and
-    // two refineries), keeping the order otherwise
-    if (strategy.current.extraFieldsForGas > 0) ranked.sortBy(a => if (a.geysirs.isEmpty) 1 else 0) else ranked
+    // two refineries), among those SCVs can walk to, keeping the order otherwise
+    if (strategy.current.extraFieldsForGas > 0)
+      ranked.sortBy(a => (if (reachable(a)) 0 else 1, if (a.geysirs.isEmpty) 1 else 0))
+    else ranked
   }
+  private var fieldsTraced = false
 
   /** The field the next depot will fly to: the best ranked safe, healthy one. */
   private def likelySecondField(home: Base): Option[ResourceArea] =
@@ -69,6 +85,15 @@ class TerranEconomicOpening(universe: Universe)
 
   override def onTick_!(): Unit = {
     if (currentTick % Primes.prime31.i != 0) return
+    if (!fieldsTraced) {
+      fieldsTraced = true
+      NativeMatchEvidence.trace(
+        "expansion-fields",
+        strategicMap.resources.toVector.sortBy(_.uniqueId).map(a =>
+          s"${a.uniqueId}@${a.nearbyFreeTile}:walk=${reachable(a)}"
+        ).mkString(" ")
+      )
+    }
     val mining = universe.pluginByType[ManageMiningAtBases]
     relocation = relocation.filterNot(j => j.failedOrObsolete || j.isFinished)
     val depots = ownUnits.allByType[CommandCenter].filter(_.isInGame).toVector
@@ -249,7 +274,7 @@ class TerranEconomicOpening(universe: Universe)
     private def chooseDestination(): Unit = {
       returningHome = false
       // The relocated depot trains local miners, so the field need not be walkable from home (after the
-      // wall stands nothing is); walkability is only traced. ExpansionSite keeps the depot on our half.
+      // wall stands nothing is); walkability is only traced. ExpansionSite puts islands last and keeps the depot on our half.
       val walkable                             = mapLayers.freeWalkableIgnoringMobiles
       def walkableFromHere(area: ResourceArea) =
         walkable.areInSameWalkableArea(home, area.nearbyFreeTile)
@@ -261,7 +286,7 @@ class TerranEconomicOpening(universe: Universe)
             s":covered=${bases.isCovered(a)}:healthy=${fieldHealthy(a)}" +
             s":danger=${!mapLayers.slightlyDangerousAsBlocked.free(tile)}" +
             s":enemies=${unitGrid.enemy.allInRange[Mobile](tile, 12).size}" +
-            s":line=${strategicMap.defenseLineOf(tile).isDefined}:walk=${walkableFromHere(a)}"
+            s":line=${strategicMap.defenseLineOf(tile).isDefined}:walk=${walkableFromHere(a)}:ground=${reachable(a)}"
         }.mkString(" ")
       )
       destination = rankedFields(strategicMap.resources.filter(safe).toVector)

@@ -102,7 +102,7 @@ class TerranCampaignTest extends Specification with MustMatchers {
     A real background placement refusal logs immutable data without reading live worker caches $backgroundPlacementRefusal
     A mineral field at or below five percent is mined out, at or below forty percent no longer held $fieldReplenishment
     A new command center is preferred over moving one that still mines $preferNewDepot
-    New bases go to our half of the map first, then close to the main base $expansionSites
+    New bases go where SCVs can walk, to our half of the map first, then close to the main base $expansionSites
     Fully staffed fields ask for one more field, up to the maximum $moreFields
     An endgame hunt sweeps every resource area farthest from home first, wraps around and moves on once looked at $huntSweep
     The hunt skips the points a scanner sweep just showed, unless it showed them all $huntScans
@@ -283,8 +283,16 @@ class TerranCampaignTest extends Specification with MustMatchers {
     val near   = Candidate(2, 80, 96, defenseLine = false)
     val theirs = Candidate(3, 50, 40, defenseLine = true)
     val lined  = Candidate(4, 80, 96, defenseLine = true)
-    rank(Seq(far, near, theirs, lined), main = (64, 70), ourStart = (64, 118), enemyStarts = Seq((31, 7)))
-      .map(_.id) === Seq(4, 2, 1, 3)
+    // ICCup Lost_Temple seen from the north main: of three possible enemy starts the island in the corner lies nearest
+    // ours, the ramp's own natural nearer the east start; SCVs cannot walk to the island
+    val island  = Candidate(122, 5, 6, defenseLine = false, reachable = false)
+    val natural = Candidate(126, 95, 5, defenseLine = true)
+    (
+      rank(Seq(far, near, theirs, lined), main = (64, 70), ourStart = (64, 118), enemyStarts = Seq((31, 7)))
+        .map(_.id),
+      rank(Seq(island, natural), main = (57, 6), ourStart = (57, 6), enemyStarts = Seq((7, 87), (27, 118), (117, 27)))
+        .map(_.id)
+    ) === (Seq(4, 2, 1, 3), Seq(126, 122))
   }
 
   def preferNewDepot = {

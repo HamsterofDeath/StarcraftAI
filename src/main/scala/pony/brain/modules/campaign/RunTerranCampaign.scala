@@ -49,14 +49,12 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
         b.mainBuilding.isInGame &&
           !b.mainBuilding.isBeingCreated && !b.mainBuilding.isFloating
       ).flatMap { base =>
-        base.resourceArea.map { area =>
-          val rally = strategicMap.defenseLineOf(base).flatMap(_.pointsInside
-            .filter(
-              mapLayers.freeWalkableTiles.free
-            ).toVector.sortBy(_.distanceSquaredTo(base.mainBuilding.centerTile)).headOption)
-            .getOrElse(area.nearbyFreeTile)
-          DefenseField(area.uniqueId, rally)
-        }
+        // The field's own free tile is the rally. It once was the defense line's inside point nearest the depot, but
+        // defenseLineOf builds a new front line on every call, so those points were never ready and each frame queued
+        // one more search for them on the two background threads. On ICCup Lost_Temple (9497320) a search took long
+        // enough that the queue never emptied, and every attack plan behind it timed out: an army of eighty stood at
+        // home for twenty game minutes with 9000 minerals banked.
+        base.resourceArea.map(area => DefenseField(area.uniqueId, area.nearbyFreeTile))
       }.groupBy(_.id).values.map(_.head).toVector
       // at nearly maxed supply nothing more can be built: every field guard joins the attack
       val supplyCapped = nativeGame.self().supplyUsed >= 2 * TerranCampaignConfig.SupplyCappedAt
