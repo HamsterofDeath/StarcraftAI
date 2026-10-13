@@ -75,6 +75,7 @@ class TerranCampaignTest extends Specification with MustMatchers {
     Local raids invalidate async offense, wait for a busy planner, and clear before offense resumes $defensiveRecall
     A defence planned during a raid is not taken up once the raid is over $staleDefense
     A small melee raid its base's fighters cannot answer calls SCVs to arms, an army or shooters do not $militia
+    The militia meets raiders up to the far side of the main's unfinished wall $militiaReach
     After a raid that called the army home it stays home a while before it sets out again $calmAfterRecall
     A raid turns the campaign army back only when home cannot hold it and it is worth half the army $raidResponse
     A smaller raid home cannot hold draws a detachment worth twice the raid, less what home has $raidDetachment
@@ -667,6 +668,15 @@ class TerranCampaignTest extends Specification with MustMatchers {
       WorkerMilitia.wanted(Seq.fill(7)(Zerg_Zergling), 0),
       WorkerMilitia.wanted(Nil, 0)
     ) === (6, 0, 6, 0, 0, 0, 0)
+  }
+  def militiaReach = {
+    val home = MapTilePosition(118, 28)
+    (
+      // the depot wall of (117,27) on ICCup Lost_Temple, its far corner 27 tiles out
+      WorkerMilitia.reach(home, Area(MapTilePosition(118, 54), Size(3, 2)).tiles),
+      WorkerMilitia.reach(home, Vector(MapTilePosition(125, 35))),
+      WorkerMilitia.reach(home, Vector.empty)
+    ) === (30, WorkerMilitia.Reach, WorkerMilitia.Reach)
   }
   def calmAfterRecall = {
     import TerranCampaignConfig.{calmedDown, CalmFrames}

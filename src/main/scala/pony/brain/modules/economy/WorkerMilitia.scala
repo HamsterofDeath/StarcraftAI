@@ -4,6 +4,7 @@ package modules
 package economy
 
 import pony.brain.jobs.{Employer, Interruptable, UnitWithJob}
+import pony.brain.modules.wall.WallWithDepots
 import pony.brain.requests.{UnitJobRequest, UnitRequest}
 import pony.geometry.MapTilePosition
 import pony.units.{MainBuilding, Mobile, SCV, WorkerUnit}
@@ -26,9 +27,13 @@ class WorkerMilitia(universe: Universe) extends OrderlessAIModule[SCV](universe)
   private var grounds = Map.empty[MapTilePosition, mutable.BitSet]
   private var wanted  = Map.empty[MapTilePosition, Int]
   private var reports = Map.empty[MapTilePosition, String]
+  private var reaches = Map.empty[MapTilePosition, Int]
 
   /** Whether the base still calls for its militia. */
   def calls(home: MapTilePosition) = wanted.getOrElse(home, 0) > 0
+
+  /** How far from `home` its militia meets raiders. */
+  def reachOf(home: MapTilePosition) = reaches.getOrElse(home, Reach)
 
   /** The raider of `home` nearest the worker. */
   def targetFor(worker: SCV, home: MapTilePosition): Option[Mobile] =
@@ -45,13 +50,20 @@ class WorkerMilitia(universe: Universe) extends OrderlessAIModule[SCV](universe)
       e.isInGame && !e.isInstanceOf[WorkerUnit] && !e.nativeUnit.isFlying && e.nativeUnit.isVisible &&
       e.nativeUnit.isDetected && !e.isHarmlessNow && e.nativeUnit.getType.groundWeapon.damageAmount > 0
     }.toVector
+    val wall      = pluginByType[WallWithDepots]
+    val wallTiles = if (wall.unfinished) wall.footprintTiles else Vector.empty
+    val mainHome  = bases.mainBase.map(_.mainBuilding.centerTile)
+    reaches = mains.map { main =>
+      val home = main.centerTile
+      home -> (if (mainHome.contains(home)) WorkerMilitia.reach(home, wallTiles) else Reach)
+    }.toMap
     val found = mains.flatMap { main =>
       val home = main.centerTile
-      val near = armed.filter(e => home.distanceToIsLess(e.currentTile, Reach))
+      val near = armed.filter(e => home.distanceToIsLess(e.currentTile, reachOf(home)))
       if (near.isEmpty) None
       else {
         val ground  = homeGround(main)
-        val raiders = near.filter(e => reaches(ground, e.currentTile))
+        val raiders = near.filter(e => onGround(ground, e.currentTile))
         Option.when(raiders.nonEmpty)(home -> (raiders, ground))
       }
     }.toMap
@@ -60,7 +72,7 @@ class WorkerMilitia(universe: Universe) extends OrderlessAIModule[SCV](universe)
     wanted = raids.map { (home, raiders) =>
       val fighters = ownUnits.allMobilesWithWeapons.count(m =>
         m.isInGame && !m.isBeingCreated && !m.isInstanceOf[WorkerUnit] &&
-          m.currentTile.distanceToIsLess(home, Reach + 4)
+          m.currentTile.distanceToIsLess(home, reachOf(home) + 4)
       )
       home -> WorkerMilitia.wanted(raiders.map(r => r.nativeUnit.getType), fighters)
     }
@@ -86,7 +98,7 @@ class WorkerMilitia(universe: Universe) extends OrderlessAIModule[SCV](universe)
       .withOnlyAccepting { w =>
         val job = unitManager.jobOf(w)
         w.isInGame && !w.isBeingCreated && w.onGround && w.nativeUnit.getHitPoints >= MinHitPoints &&
-        reaches(ground, w.currentTile) && (job.isIdle || job.isInstanceOf[GatherMineralsAtSinglePatch])
+        onGround(ground, w.currentTile) && (job.isIdle || job.isInstanceOf[GatherMineralsAtSinglePatch])
       }.withRequest(_.withCherryPicker_!(UnitRequest.CherryPickers.cherryPickWorkerByDistance[SCV](home)()))
     val hired = unitManager.request(request, buildIfNoneAvailable = false).units.toVector
     hired.foreach(w => militia.assignJob_!(new MilitiaDuty(w, home, this, militia)))
@@ -100,12 +112,13 @@ class WorkerMilitia(universe: Universe) extends OrderlessAIModule[SCV](universe)
   private def homeGround(main: MainBuilding) = {
     val grid                        = mapLayers.freeWalkableIgnoringMobiles
     val home                        = main.centerTile
+    val radius                      = reachOf(home) + 2
     val seen                        = mutable.BitSet.empty
     val queue                       = mutable.Queue.empty[(Int, Int)]
     def visit(x: Int, y: Int): Unit = {
       val dx = x - home.x
       val dy = y - home.y
-      if (grid.inBounds(x, y) && !seen(x + y * grid.cols) && grid.free(x, y) && dx * dx + dy * dy < GroundTiles) {
+      if (grid.inBounds(x, y) && !seen(x + y * grid.cols) && grid.free(x, y) && dx * dx + dy * dy < radius * radius) {
         seen += x + y * grid.cols
         queue += x -> y
       }
@@ -124,7 +137,7 @@ class WorkerMilitia(universe: Universe) extends OrderlessAIModule[SCV](universe)
   }
 
   /** Whether a unit on the tile stands on the ground: units stand on the edges of blocked tiles too. */
-  private def reaches(ground: mutable.BitSet, t: MapTilePosition) = {
+  private def onGround(ground: mutable.BitSet, t: MapTilePosition) = {
     val cols = mapLayers.freeWalkableIgnoringMobiles.cols
     (-1 to 1).exists(dx => (-1 to 1).exists(dy => ground(t.x + dx + (t.y + dy) * cols)))
   }
@@ -138,8 +151,15 @@ object WorkerMilitia {
     */
   val Reach = 20
 
-  /** The squared radius of the ground searched for the raiders' way in: a little beyond Reach. */
-  val GroundTiles = (Reach + 2) * (Reach + 2)
+  /**
+    * Reach, or past the farthest tile of the main's unfinished wall where that lies farther out: the builders stand
+    * beside the wall and their attackers beside them. At (117,27) on ICCup Lost_Temple the wall lies 23 to 27 tiles from
+    * the command center. In game 1 vs Zerg on 74b88f4 one Zergling killed five SCVs there one after another, the barracks
+    * builder among them, while the militia never came. Both depots fell after it, no Marine was ever trained, and six
+    * Zerglings took the main by minute 5.
+    */
+  def reach(home: MapTilePosition, wall: Iterable[MapTilePosition]) =
+    wall.iterator.map(t => math.ceil(home.distanceTo(t)).toInt + 2).maxOption.fold(Reach)(_ max Reach)
 
   /** SCVs this hurt stay out of the fight. */
   val MinHitPoints = 20
@@ -166,7 +186,7 @@ private[pony] class MilitiaDuty(worker: SCV, val home: MapTilePosition, militia:
   private def target            = militia.targetFor(worker, home)
   override def shortDebugString = s"Militia at $home"
   override def isFinished       =
-    !militia.calls(home) || target.isEmpty || worker.currentTile.distanceToIsMore(home, WorkerMilitia.Reach + 6)
+    !militia.calls(home) || target.isEmpty || worker.currentTile.distanceToIsMore(home, militia.reachOf(home) + 6)
   override def jobHasFailedWithoutDeath = !worker.nativeUnit.exists || worker.isDead
   override def everyNth                 = 7
   override def ordersForTick            = target.map(Orders.AttackUnit(worker, _)).toSeq
