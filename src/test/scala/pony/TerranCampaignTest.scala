@@ -73,6 +73,7 @@ class TerranCampaignTest extends Specification with MustMatchers {
     Postreserve expedition thresholds keep army production active until the deployable force qualifies $expeditionThresholds
     Local raids invalidate async offense, wait for a busy planner, and clear before offense resumes $defensiveRecall
     A raid turns the campaign army back only when home cannot hold it and it is worth half the army $raidResponse
+    A smaller raid home cannot hold draws a detachment worth twice the raid, less what home has $raidDetachment
     A lost guard cannot reserve a fighter still owned by an expedition $reserveCustody
     Mineral field corners require enough nonoverlapping bunker sites for full coverage $bunkerCoverage
     Garrison reservations stay unique and replace a killed Marine without inventing native cargo $bunkerGarrison
@@ -552,6 +553,18 @@ class TerranCampaignTest extends Specification with MustMatchers {
       RaidResponse.recallsCampaign(threat = 4000, home = 500, campaign = 7000),
       RaidResponse.recallsCampaign(threat = 4000, home = 5000, campaign = 7000)
     ) === (true, false, true, false)
+
+  def raidDetachment =
+    (
+      // game 1 vs Terran on d96d96e: nobody home, the army of 2625 out
+      RaidResponse.detachment(threat = 500, home = 0, campaign = 2625),
+      RaidResponse.detachment(threat = 500, home = 300, campaign = 2625),
+      // home holds alone
+      RaidResponse.detachment(threat = 500, home = 600, campaign = 2625),
+      // the whole army turns back
+      RaidResponse.detachment(threat = 2000, home = 0, campaign = 2625),
+      RaidResponse.detachment(threat = 175, home = 0, campaign = 0)
+    ) === (1000, 700, 0, 0, 0)
 
   def defensiveRecall = {
     val control          = new CampaignDefenseControl

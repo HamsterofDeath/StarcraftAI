@@ -35,6 +35,23 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
   /** Calls the campaign army home: its units fall back to their guard posts. */
   def recallCampaign_!(): Unit = attacks.retain(a => !a.campaign)
 
+  /**
+    * Sends the campaign fighters nearest `where` home until they are worth `worth`; the rest march on. Released, they
+    * answer the raid like the units at home, and join the army again as reinforcements once it is over.
+    */
+  def detachFromCampaign_!(where: MapTilePosition, worth: Int, value: Mobile => Int): Seq[Mobile] = {
+    val out   = attacks.filter(_.campaign)
+    var total = 0
+    val sent  = out.iterator.flatMap(_.force).filter(m => m.isFigher && !m.isInstanceOf[SupportUnit]).toVector
+      .sortBy(_.currentTile.distanceSquaredTo(where)).takeWhile { m =>
+        val more = total < worth
+        if (more) total += value(m)
+        more
+      }
+    if (sent.nonEmpty) out.foreach(_.release(sent.toSet))
+    sent
+  }
+
   /** The cruisers out on a raid (CruiserRaids); a raid weighs like the campaign army when home is attacked. */
   var raidingFleet = Set.empty[Mobile]
 
@@ -253,6 +270,9 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
 
     /** Reinforcements take their places in the attack. */
     def join(units: Iterable[Mobile]): Unit = currentForce ++= units
+
+    /** A detachment leaves the attack. */
+    def release(units: Set[Mobile]): Unit = currentForce --= units
 
     def renderDebug(renderer: Renderer): Unit = {
       migrationPlan.foreach { plan =>

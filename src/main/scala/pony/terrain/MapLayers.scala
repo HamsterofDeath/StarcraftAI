@@ -279,7 +279,10 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   private def evalOnlyBuildings = evalOnlyUnits(ownUnits.allByType[Building].filterNot(_.isFloating))
 
   private def evalOnlyAreasToDefend = {
-    evalOnlyUnitsAsync(ownUnits.allByType[Building].filterNot(b => b.isFloating || b.isInstanceOf[DetectorBuilding]), 8)
+    evalOnlyUnitsAsync(
+      ownUnits.allByType[Building].filterNot(b => b.isFloating || b.isInstanceOf[DetectorBuilding]),
+      MapLayers.DefendedRing
+    )
   }
 
   private def evalOnlyUnitsAsync(units: => IterableOnce[StaticallyPositioned], growBy: Int) = {
@@ -566,4 +569,10 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
     val enemy = new EnemyData
     val own   = new OwnData
   }
+}
+
+object MapLayers {
+
+  /** How far around our buildings an enemy counts as a raid: the reach of `defendedTiles`. */
+  val DefendedRing = 8
 }

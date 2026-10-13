@@ -48,8 +48,8 @@ object ReplayDump {
       * '#' none), then each region's centre and neighbours: the native pathfinder routes units between these.
       */
     def regions(g: bwapi.Game): Unit = {
-      val chars = ('a' to 'z') ++ ('A' to 'Z') ++ ('0' to '9')
-      val seen  = scala.collection.mutable.LinkedHashMap.empty[Int, bwapi.Region]
+      val chars                  = ('a' to 'z') ++ ('A' to 'Z') ++ ('0' to '9')
+      val seen                   = scala.collection.mutable.LinkedHashMap.empty[Int, bwapi.Region]
       def label(r: bwapi.Region) = chars(seen.keys.toVector.indexOf(r.getID) % chars.size)
       println("      " + (x0 to x1).map(x => (x / 10 % 10).toString).mkString)
       println("      " + (x0 to x1).map(x => (x % 10).toString).mkString)
@@ -83,7 +83,8 @@ object ReplayDump {
         val kind = u.getType
         if (kind.isBuilding || kind.isMineralField || kind == bwapi.UnitType.Resource_Vespene_Geyser) {
           val t = u.getTilePosition
-          val c = if (kind.isMineralField) 'm' else if (u.getPlayer == g.self()) kind.toString.split('_').last.head
+          val c = if (kind.isMineralField) 'm'
+          else if (u.getPlayer == g.self()) kind.toString.split('_').last.head
           else kind.toString.split('_').last.head.toLower
           for (dx <- 0 until kind.tileWidth; dy <- 0 until kind.tileHeight) marks((t.x + dx, t.y + dy)) = c
         } else if (!u.isFlying && !u.isLoaded) {
@@ -97,7 +98,8 @@ object ReplayDump {
         val row = (x0 to x1).map { x =>
           marks.getOrElse(
             (x, y), {
-              val walk = (for (wx <- 0 until 4; wy <- 0 until 4) yield g.isWalkable(x * 4 + wx, y * 4 + wy)).count(identity)
+              val walk =
+                (for (wx <- 0 until 4; wy <- 0 until 4) yield g.isWalkable(x * 4 + wx, y * 4 + wy)).count(identity)
               if (walk == 0) '#' else if (walk < 16) '~' else '.'
             }
           )

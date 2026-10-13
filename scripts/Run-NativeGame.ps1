@@ -58,6 +58,17 @@ while ((Get-Process -Id $receipt.botPid -ErrorAction SilentlyContinue) -and (Get
 if ($stalledIn) { "Stopped: no progress during $stalledIn (see $botLog)" }
 elseif ((Get-Date) -ge $deadline) { "Stopped: still running after $TimeoutMinutes minutes" }
 Start-Sleep -Milliseconds 500
+# StarCraft writes the replay of a finished game as it leaves it; stopped at once, most games left none to study
+$finished = Read-Result
+if (-not $stalledIn -and $finished -and $finished.status -ne 'unfinished') {
+  $replays = Join-Path $Runtime 'maps/replays'
+  $replayDeadline = (Get-Date).AddSeconds(10)
+  while ((Get-Date) -lt $replayDeadline -and (Get-Process -Id $receipt.gamePid -ErrorAction SilentlyContinue) -and
+    -not (Get-ChildItem -LiteralPath $replays -Recurse -File -Filter '*.rep' -ErrorAction SilentlyContinue |
+      Where-Object { $_.LastWriteTime -gt $started -and $_.Name -ne 'dump.rep' })) {
+    Start-Sleep -Milliseconds 250
+  }
+}
 foreach ($ownedPid in @($receipt.botPid, $receipt.gamePid)) {
   Get-Process -Id $ownedPid -ErrorAction SilentlyContinue | Stop-Process -Force
 }

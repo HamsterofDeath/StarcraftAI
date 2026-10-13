@@ -14,18 +14,18 @@ import java.nio.file.Paths
   */
 object TraceTerrain {
   def main(args: Array[String]): Unit = {
-    val chk                = ChkFile.parse(MpqArchive.open(Paths.get(args(0))).read(InspectMap.ScenarioPath))
-    val data               = MpqArchive.open(Paths.get(args(1)))
-    val Array(x0, y0, x1, y1) = args.slice(2, 6).map(_.toInt)
-    val heights            = args.lift(6).contains("heights")
+    val chk                    = ChkFile.parse(MpqArchive.open(Paths.get(args(0))).read(InspectMap.ScenarioPath))
+    val data                   = MpqArchive.open(Paths.get(args(1)))
+    val Array(x0, y0, x1, y1)  = args.slice(2, 6).map(_.toInt)
+    val heights                = args.lift(6).contains("heights")
     def le(bytes: Array[Byte]) = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
-    val dim                = le(chk("DIM "))
-    val width              = dim.getShort(0) & 0xffff
-    val era                = (le(chk("ERA ")).getShort(0) & 0xffff) % 8
-    val tileset            = Vector("badlands", "platform", "install", "ashworld", "jungle", "desert", "ice", "twilight")(era)
-    val cv5                = le(data.read(s"tileset\\$tileset.cv5"))
-    val vf4                = le(data.read(s"tileset\\$tileset.vf4"))
-    val mtxm               = le(chk("MTXM"))
+    val dim                    = le(chk("DIM "))
+    val width                  = dim.getShort(0) & 0xffff
+    val era                    = (le(chk("ERA ")).getShort(0) & 0xffff) % 8
+    val tileset = Vector("badlands", "platform", "install", "ashworld", "jungle", "desert", "ice", "twilight")(era)
+    val cv5     = le(data.read(s"tileset\\$tileset.cv5"))
+    val vf4     = le(data.read(s"tileset\\$tileset.vf4"))
+    val mtxm    = le(chk("MTXM"))
     def megatile(x: Int, y: Int) = {
       val id = mtxm.getShort((y * width + x) * 2) & 0xffff
       cv5.getShort((id >> 4) * 52 + 20 + (id & 0xf) * 2) & 0xffff
@@ -35,8 +35,8 @@ object TraceTerrain {
       cv5.getShort((id >> 4) * 52 + 2) & 0xffff
     }
     def mini(x: Int, y: Int) = (0 until 16).map(i => vf4.getShort(megatile(x, y) * 32 + i * 2) & 0xffff)
-    val marks              = scala.collection.mutable.HashMap.empty[(Int, Int), Char]
-    val units              = le(chk("UNIT"))
+    val marks                = scala.collection.mutable.HashMap.empty[(Int, Int), Char]
+    val units                = le(chk("UNIT"))
     (0 until chk("UNIT").length / 36).foreach { i =>
       val (px, py, kind) =
         (units.getShort(i * 36 + 4) & 0xffff, units.getShort(i * 36 + 6) & 0xffff, units.getShort(i * 36 + 8) & 0xffff)
@@ -74,7 +74,8 @@ object TraceTerrain {
             val flags    = mini(x, y)
             val walkable = flags.count(f => (f & 0x1) != 0)
             if (walkable == 0) '#'
-            else if (heights) (if (flags.exists(f => (f & 0x4) != 0)) '2' else if (flags.exists(f => (f & 0x2) != 0)) '1' else '0')
+            else if (heights)
+              (if (flags.exists(f => (f & 0x4) != 0)) '2' else if (flags.exists(f => (f & 0x2) != 0)) '1' else '0')
             else if (walkable < 16) '~'
             else if ((groupFlags(x, y) & 0x80) == 0) '.'
             else ','
