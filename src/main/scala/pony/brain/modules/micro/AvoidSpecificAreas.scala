@@ -80,6 +80,9 @@ abstract class AvoidSpecificAreas[T <: Mobile: ClassTag](universe: Universe)
 
   protected val actionName = self.getClass.className
 
+  /** A unit that keeps to its other orders for now, wherever it stands. */
+  protected def exempt(unit: T): Boolean = false
+
   override protected def wrapBase(unit: T) = new SingleUnitBehaviour[T](unit, meta) {
 
     private val isInstantFireUnit = this.unit.isInstantFireUnit
@@ -92,7 +95,7 @@ abstract class AvoidSpecificAreas[T <: Mobile: ClassTag](universe: Universe)
         weapon.isReadyToFireWeapon &&
         weapon.hasTarget
       }
-      super.butOnlyIf && !couldFireInBetween
+      super.butOnlyIf && !couldFireInBetween && !exempt(this.unit)
     }
 
     override def describeShort = actionName
