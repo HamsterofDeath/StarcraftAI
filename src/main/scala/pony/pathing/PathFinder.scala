@@ -27,9 +27,7 @@ object PathFinder {
     // fill the grid
     grid.allFree.foreach { e =>
       asGrid(e.x)(e.y) = new GridNode2DInt(e.x, e.y) {
-        override def suggestHeuristics: Heuristics[GridNode2DInt] = {
-          (from: GridNode2DInt, to: GridNode2DInt) => from.distanceTo(to).toInt
-        }
+        override def suggestHeuristics: Heuristics[GridNode2DInt] = (a, b) => GridNode2DInt.octile(a, b)
 
         override def supportsShortcuts: Boolean = true
 

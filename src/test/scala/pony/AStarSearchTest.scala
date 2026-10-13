@@ -21,6 +21,7 @@ class AStarSearchTest extends Specification with MustMatchers {
        |Shortcuts drop every node a direct line can bypass $shortcuts
        |The zero heuristic still finds the target $zeroHeuristic
        |PathFinder routes around a wall on a Grid2D $pathFinderAroundWall
+       |PathFinder takes the short way round a wall, not the side nearer the map's corner $pathFinderShortSide
        """.stripMargin
 
   /** A 4-connected grid; `blocked` tiles get no node. */
@@ -118,5 +119,14 @@ class AStarSearchTest extends Specification with MustMatchers {
       (path.toSeq.flatMap(_.waypoints).forall(grid.free) must beTrue) and
       (path.map(_.waypoints.head) === Some(MapTilePosition(1, 1))) and
       (path.map(_.bestEffort) === Some(MapTilePosition(10, 1)))
+  }
+
+  def pathFinderShortSide = {
+    // a wall from (10,2) to (10,22): 19 tiles lead round below it, 31 above it, where the old step cost went
+    val wall  = (2 to 22).map(y => 10 + y * 30)
+    val grid  = new Grid2D(30, 30, BitSet(wall*))
+    val tiles = PathFinder.on(grid, isOnGround = true).findTilesNow(MapTilePosition(5, 15), MapTilePosition(15, 15))
+    (tiles.exists(_.size <= 20) must beTrue) and (tiles.exists(_.forall(_.y >= 15)) must beTrue) and
+      (tiles.flatMap(_.lastOption) === Some(MapTilePosition(15, 15)))
   }
 }
