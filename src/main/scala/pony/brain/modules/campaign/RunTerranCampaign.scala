@@ -238,6 +238,16 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
       previousTarget = target
       launched = false
     }
+    // the army out keeps its attack when the next hunt point lies near the last one (setCampaignTarget), so no launch
+    // starts the visit, and a maxed army has no idle fighter to launch with: in game 4 vs Zerg on b65df6a an army of 77
+    // stood beside (67,23) for forty minutes
+    if (
+      huntTarget.isDefined && !huntInitiated && !worldDominationPlan.planningInProgress &&
+      worldDominationPlan.campaignForceSize > 0
+    ) {
+      huntInitiated = true
+      huntInitiatedAt = currentTick
+    }
     val troops   = expedition
     val minerals = troops.map(_.nativeUnitType.mineralPrice).sum
     val gas      = troops.map(_.nativeUnitType.gasPrice).sum
