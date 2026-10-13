@@ -11,6 +11,17 @@ private[pony] object HuntSweep {
     points.toVector.sortBy(p => home.map(h => -p.distanceSquaredTo(h)).getOrElse(0))
   def next(size: Int, index: Int): Int = if (size <= 0) index else (index + 1) % size
 
+  /**
+    * The hunt points the army visits and those only sweeps look at: the army walks to none on an island. In game 4 vs
+    * Protoss on 369b895 on ICCup Lost_Temple a maxed army spent three minutes moving toward the island point (2,7) it
+    * could never reach; with dropships it would be ferried there and back. A sweep that finds a building there makes it
+    * the army's target, and the ferry takes it over. With no point the army can walk to, it takes them all.
+    */
+  def byGround[T](points: Vector[T], walkable: T => Boolean): (Vector[T], Vector[T]) = {
+    val (army, swept) = points.partition(walkable)
+    if (army.isEmpty) (points, Vector.empty) else (army, swept)
+  }
+
   /** Tiles from a hunt point within which an army unit counts as having looked there. */
   val VisitTiles = 10
 
@@ -36,6 +47,16 @@ private[pony] object HuntSweep {
 
   /** ...and counts as looked at for this long. */
   val ScanFreshFrames = 24 * 90
+
+  /**
+    * The hunt points for the next sweeps: none swept within ScanFreshFrames, those never swept first, then the longest
+    * unswept. In game 4 vs Protoss on 369b895 on ICCup Lost_Temple the comsats took the first stale point in the list:
+    * they swept (7,87) and (27,118) fourteen times each and seven of the seventeen points never, and the island (2,7)
+    * once, at frame 69637; that sweep found the enemy's last base.
+    */
+  def toScan[T](points: Vector[T], scannedAt: T => Option[Int], now: Int): Vector[T] =
+    points.filterNot(p => scannedAt(p).exists(at => now - at < ScanFreshFrames))
+      .sortBy(p => scannedAt(p).getOrElse(Int.MinValue))
 
   /** Whether a sweep cast at `scannedAt` showed the hunt point lately. */
   def clearedByScan(scannedAt: Option[Int], now: Int) =

@@ -25,6 +25,7 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
   private var wasReady          = false
   private var campaignCommitted = false
   private var huntPoints        = Vector.empty[MapTilePosition]
+  private var sweptOnly         = Vector.empty[MapTilePosition]
   private var huntIndex         = 0
   private var huntTarget        = Option.empty[MapTilePosition]
   private var huntInitiated     = false
@@ -38,7 +39,7 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
   /** The hunt points no sweep looked at lately, while the army hunts for an enemy none of whose buildings is known. */
   def huntPointsToScan: Vector[MapTilePosition] =
     if (huntTarget.isEmpty || memory.attackPosition.isDefined) Vector.empty
-    else huntPoints.filterNot(p => huntScans.get(p).exists(at => currentTick - at < HuntSweep.ScanFreshFrames))
+    else HuntSweep.toScan(huntPoints ++ sweptOnly, huntScans.get, currentTick)
   def huntPointScanned(p: MapTilePosition): Unit = huntScans(p) = currentTick
   private def clearedByScan(p: MapTilePosition)  = HuntSweep.clearedByScan(huntScans.get(p), currentTick)
   // Bunker crews hold the mineral lines; every other fighter keeps up the pressure unless field guards are configured.
@@ -226,11 +227,15 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
           val own         = nativeGame.self().getStartLocation
           val enemyStarts = nativeGame.getStartLocations.asScala.toVector.filterNot(_ == own)
             .map(t => MapTilePosition(t.x, t.y))
-          huntPoints =
+          val ground = mapLayers.rawWalkableMap
+          val points =
             (enemyStarts ++ HuntSweep.order(
               strategicMap.resources.map(_.nearbyFreeTile).toSeq,
               bases.mainBase.map(_.mainBuilding.tilePosition)
             )).distinct
+          val (army, swept) = HuntSweep.byGround(points, ground.areInSameWalkableArea(home, _))
+          huntPoints = army
+          sweptOnly = swept
         }
         // the army skips the points a sweep just showed empty
         huntIndex = HuntSweep.nextUnscanned(huntPoints.size, huntIndex, i => clearedByScan(huntPoints(i)))

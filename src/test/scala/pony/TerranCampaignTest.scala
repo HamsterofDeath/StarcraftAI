@@ -110,6 +110,8 @@ class TerranCampaignTest extends Specification with MustMatchers {
     Fully staffed fields ask for one more field, up to the maximum $moreFields
     An endgame hunt sweeps every resource area farthest from home first, wraps around and moves on once looked at $huntSweep
     The hunt skips the points a scanner sweep just showed, unless it showed them all $huntScans
+    The army hunts the points it can walk to and leaves islands to the sweeps $huntIslands
+    Sweeps go to hunt points never swept, then to those swept longest ago $huntScanOrder
     A farthest-point carpet spread picks far-apart posts in a deterministic order $carpetPosts
   """
   private def building(id: Int, x: Int, base: Boolean = true) =
@@ -410,6 +412,25 @@ class TerranCampaignTest extends Specification with MustMatchers {
       nextUnscanned(2, 1, Set(0, 1)),
       nextUnscanned(0, 2, swept)
     ) === (false, true, false, false, 3, 3, 1, 2)
+  }
+  def huntScanOrder = {
+    import HuntSweep.{toScan, ScanFreshFrames}
+    val now    = 100000
+    val lastAt = Map("a" -> (now - ScanFreshFrames - 10), "b" -> (now - 5), "c" -> (now - ScanFreshFrames - 900))
+    toScan(Vector("a", "b", "c", "d", "e"), lastAt.get, now) === Vector("d", "e", "c", "a")
+  }
+  def huntIslands = {
+    import HuntSweep.byGround
+    // ICCup Lost_Temple's hunt points: the north main, the west main's natural, and the north-west island
+    val points = Vector(MapTilePosition(57, 6), MapTilePosition(2, 87), MapTilePosition(2, 7))
+    val island = Set(MapTilePosition(2, 7))
+    (
+      byGround(points, p => !island(p)),
+      byGround(Vector(MapTilePosition(2, 7)), p => !island(p))
+    ) === (
+      (Vector(MapTilePosition(57, 6), MapTilePosition(2, 87)), Vector(MapTilePosition(2, 7))),
+      (Vector(MapTilePosition(2, 7)), Vector.empty)
+    )
   }
   def carpetPosts = {
     import CarpetPosts._
