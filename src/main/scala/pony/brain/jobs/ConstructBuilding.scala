@@ -7,7 +7,7 @@ import pony.brain.requests.{CanAcceptSwitchAndHasFunding, CanAcceptUnitSwitch, U
 import pony.geometry.{Area, Grid2D, MapTilePosition, Size}
 import pony.pathing.PathFinder
 import pony.terrain.ResourceArea
-import pony.units.{Building, Bunker, MainBuilding, WorkerUnit}
+import pony.units.{Building, WorkerUnit}
 
 import pony.brain.requests.UnitRequest.CherryPickers
 
@@ -31,13 +31,10 @@ class ConstructBuilding[W <: WorkerUnit: ClassTag, B <: Building](
     with IssueOrderNTimes[W] {
   self =>
 
+  // A builder progresses only by coming closer to its site. One that walked back and forth used to count as travelling:
+  // in game 9 vs Terran on ICCup Lost_Temple at a52f427 the first factory's builder did so for 2600 frames.
   private lazy val travelProgress = sharedTravelProgress.getOrElse {
-    val target =
-      if (
-        strategy.current.runsTerranCampaign &&
-        (isMainBuilding || buildingType == classOf[Bunker])
-      ) Some(buildWhere)
-      else None
+    val target = if (strategy.current.runsTerranCampaign) Some(buildWhere) else None
     new ConstructionTravelProgress(currentTick, unit.currentTile, target)
   }
   private var arrivalCommandsReset = false
@@ -59,7 +56,6 @@ class ConstructBuilding[W <: WorkerUnit: ClassTag, B <: Building](
     * it, was ordered to walk on, could not, and twice gave up, which cost the first refinery three minutes.
     */
   private def atSite(tile: MapTilePosition) = area.distanceTo(tile) < 3
-  private val isMainBuilding                = classOf[MainBuilding] >= buildingType
 
   listen_!((failed: Boolean) => {
     mapLayers.unblockBuilding_!(area)
@@ -124,12 +120,16 @@ class ConstructBuilding[W <: WorkerUnit: ClassTag, B <: Building](
   private var stillAt    = unit.currentTile
   private var stillSince = currentTick
   private var detour     = Option.empty[MapTilePosition]
+  private var route      = Vector.empty[MapTilePosition]
 
   /**
-    * A short step along our own path when the game will not move the builder. StarCraft routes through the middle of
-    * its pathing regions and ignores our buildings: in game 3 vs Terran on 9497320 on ICCup Lost_Temple the SCV that
-    * built the first wall depot stood between it and the gate barracks, each order to walk to the second depot's site
-    * ended where it stood, and the wall stayed open all game while the same SCV failed seven times.
+    * Short steps along our own path once the game will not move the builder, up to the site. StarCraft routes through
+    * the middle of its pathing regions and ignores our buildings: in game 3 vs Terran on 9497320 on ICCup Lost_Temple
+    * the SCV that built the first wall depot stood between it and the gate barracks, each order to walk to the second
+    * depot's site ended where it stood, and the wall stayed open all game while the same SCV failed seven times. The
+    * builder used to take one step and then get the game's order again: in game 9 vs Terran on that map at a52f427 the
+    * first factory's site lay behind a row of three depots, and for 2600 frames the SCV stepped three tiles along the row
+    * and walked back to where it stood. The factory was not built when the enemy's marines broke in, and we lost.
     */
   private def detourStep: Option[MapTilePosition] = {
     val here = worker.currentTile
@@ -138,13 +138,23 @@ class ConstructBuilding[W <: WorkerUnit: ClassTag, B <: Building](
       stillSince = currentTick
       if (detour.exists(_.distanceToIsLess(here, 2))) detour = None
     }
-    if (detour.isEmpty && currentTick - stillSince >= ConstructBuilding.StillFrames) {
-      stillSince = currentTick
-      detour = ConstructBuilding.stepTowards(mapLayers.freeWalkableIgnoringMobiles, here, area.centerTile)
-      NativeMatchEvidence.trace(
-        "construction-detour",
-        s"type=${typeOfBuilding.className} where=$buildWhere worker=${worker.nativeUnitId} at=$here step=$detour"
-      )
+    val stuck = currentTick - stillSince >= ConstructBuilding.StillFrames
+    if (stuck || (detour.isEmpty && route.nonEmpty)) {
+      val walkable = mapLayers.freeWalkableIgnoringMobiles
+      detour = ConstructBuilding.nextStep(walkable, route, here).filter(_ => !stuck)
+      if (detour.isEmpty) {
+        route = ConstructBuilding.routeTowards(walkable, here, area.centerTile)
+        detour = ConstructBuilding.nextStep(walkable, route, here)
+      }
+      if (detour.isEmpty) route = Vector.empty
+      if (stuck) {
+        stillSince = currentTick
+        NativeMatchEvidence.trace(
+          "construction-detour",
+          s"type=${typeOfBuilding.className} where=$buildWhere worker=${worker.nativeUnitId} at=$here step=$detour " +
+            s"route=${route.size}"
+        )
+      }
     }
     detour
   }
@@ -281,7 +291,24 @@ object ConstructBuilding {
     * failed. In 30 games on that map 899 of 1238 tries gave no step.
     */
   def stepTowards(walkable: Grid2D, here: MapTilePosition, goal: MapTilePosition): Option[MapTilePosition] =
-    PathFinder.on(walkable, isOnGround = true).findTilesNow(here, goal)
-      .flatMap(route => route.slice(1, DetourTiles + 1).filter(walkable.connectedByLine(route.head, _)).lastOption)
-      .filter(_ != here)
+    nextStep(walkable, routeTowards(walkable, here, goal), here)
+
+  /** Our route from `here` towards `goal` on `walkable`, every tile of it; empty if there is none. */
+  def routeTowards(walkable: Grid2D, here: MapTilePosition, goal: MapTilePosition): Vector[MapTilePosition] =
+    PathFinder.on(walkable, isOnGround = true).findTilesNow(here, goal).getOrElse(Vector.empty)
+
+  /**
+    * The next step along `route` for a builder at `here`: the farthest of the `DetourTiles` tiles after its tile on the
+    * route, or the last one beside it, that a straight line from there reaches. None at the route's end, or off it.
+    */
+  def nextStep(walkable: Grid2D, route: Vector[MapTilePosition], here: MapTilePosition): Option[MapTilePosition] = {
+    val on = route.lastIndexOf(here)
+    val at =
+      if (on >= 0) on else route.lastIndexWhere(t => math.abs(t.x - here.x) <= 1 && math.abs(t.y - here.y) <= 1)
+    if (at < 0) None
+    else {
+      val from = if (walkable.free(here)) here else route(at)
+      route.slice(at + 1, at + 1 + DetourTiles).filter(walkable.connectedByLine(from, _)).lastOption.filter(_ != here)
+    }
+  }
 }

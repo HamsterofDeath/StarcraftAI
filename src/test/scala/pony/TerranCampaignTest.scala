@@ -53,6 +53,7 @@ class TerranCampaignTest extends Specification with MustMatchers {
     A distant progressing builder survives pathfinding and a stalled builder expires $builderTravel
     A builder still walking at its site is not given up, one standing or wandering there is $builderWalksAtSite
     A builder the game will not move steps along our route even where it runs straight $builderDetourStep
+    Such a builder keeps to our route in straight steps all the way round a row of depots to its site $builderFollowsRoute
     Queued groups safely resolve units which have all died $staleGroup
     Partially dead queued groups retain only surviving members $partialGroup
     Singleton scouting terminates and the final unpaired site is still scouted $singletonScout
@@ -263,6 +264,25 @@ class TerranCampaignTest extends Specification with MustMatchers {
       ConstructBuilding.stepTowards(walkable, MapTilePosition(16, 87), above),
       ConstructBuilding.stepTowards(walkable, above, above)
     ) === (true, Some(above), None)
+  }
+  def builderFollowsRoute = {
+    // the north main of ICCup Lost_Temple in game 9 vs Terran at a52f427: the factory's site lay behind three depots
+    val walkable = new Grid2D(80, 30, collection.immutable.BitSet.empty).mutableCopy
+    walkable.block_!(Area(MapTilePosition(57, 6), Size(4, 3)))                               // command center
+    walkable.block_!(Area(MapTilePosition(49, 11), Size(4, 3)))                              // second command center
+    Seq(53, 56, 59).foreach(x => walkable.block_!(Area(MapTilePosition(x, 10), Size(3, 2)))) // depots
+    val factory = Area(MapTilePosition(56, 12), Size(4, 3))
+    walkable.block_!(factory) // planned
+    val start = MapTilePosition(54, 9)
+    val route = ConstructBuilding.routeTowards(walkable, start, factory.centerTile)
+    val hops  = Iterator.iterate(Option(start))(_.flatMap(ConstructBuilding.nextStep(walkable, route, _)))
+      .takeWhile(_.isDefined).flatten.take(40).toVector
+    (
+      hops.size < 40,
+      hops.zip(hops.tail).forall { case (a, b) => walkable.connectedByLine(a, b) },
+      factory.distanceTo(hops.last) < 3,
+      ConstructBuilding.nextStep(walkable, route, MapTilePosition(40, 25))
+    ) === (true, true, true, None)
   }
   def staleGroup = {
     val units = AllUnits(new Units(null, false, null), new Units(null, true, null))
