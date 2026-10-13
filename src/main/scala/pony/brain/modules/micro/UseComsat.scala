@@ -43,13 +43,23 @@ class UseComsat(universe: Universe) extends DefaultBehaviour[Comsat](universe) {
     }.orElse(if (wanted.isEmpty) huntScan(comsat) else None).toList
   }
 
-  /** In the endgame hunt a comsat with energy to spare sweeps a hunt point nobody looked at lately. */
+  // the frame each comsat last swept a hunt point
+  private val huntCasts = mutable.Map.empty[Int, Int]
+
+  /**
+    * In the endgame hunt a comsat with energy to spare sweeps a hunt point nobody looked at lately. Its energy drops
+    * only frames after the order: in game 1 vs Terran on d2cbf0b one comsat at 150 swept three points in three frames.
+    */
   private def huntScan(comsat: Comsat) =
-    if (comsat.mana < HuntSweep.ScanMana || !comsat.canCastNow(ScannerSweep)) None
+    if (
+      comsat.mana < HuntSweep.ScanMana || !comsat.canCastNow(ScannerSweep) ||
+      huntCasts.get(comsat.nativeUnitId).exists(at => currentTick - at < HuntSweep.ScanShownFrames)
+    ) None
     else {
       val campaign = universe.pluginByType[RunTerranCampaign]
       campaign.huntPointsToScan.find(p => !nativeGame.isVisible(p.x, p.y)).map { p =>
         campaign.huntPointScanned(p)
+        huntCasts(comsat.nativeUnitId) = currentTick
         sweeps += p -> currentTick
         NativeMatchEvidence.trace("comsat-sweep", s"reason=Hunt at=$p energy=${comsat.mana}")
         Orders.ScanWithComsat(comsat, p)
