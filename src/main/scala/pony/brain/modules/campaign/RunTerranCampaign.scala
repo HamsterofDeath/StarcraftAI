@@ -344,10 +344,18 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
           s"${b.id}:${if (u == null) "?" else u.getType.toString.replaceAll("^[A-Za-z]+_", "")}" +
             s":seen=${b.footprint.count(p => nativeGame.isVisible(p.asTilePosition))}/${b.footprint.size}"
         }.mkString(",")
+        // which behaviour orders the army, and where its stragglers stand: in game 2 vs Protoss on b65df6a the army stood
+        // by our wall for twenty minutes, attack-moving, with no formation left to hold it
+        def by(m: Mobile) = unitManager.jobOf(m).shortDebugString.stripPrefix("[BG] ").replaceAll("[,=]", ";")
+        val jobs          = force.toVector.groupBy(by).map((k, v) => s"$k*${v.size}").toVector.sorted.mkString(",")
+        val far           = force.toVector.sortBy(m => -m.currentTile.distanceTo(t)).take(4).map { m =>
+          s"${m.nativeUnitId}:${m.nativeUnit.getType.toString.replaceAll("^[A-Za-z]+_", "")}@${m.currentTile}" +
+            s">${m.nativeUnit.getTargetPosition.toTilePosition}:${m.nativeUnit.getOrder}"
+        }.mkString(",")
         NativeMatchEvidence.trace(
           "campaign-army",
           s"size=${force.size} center=$center spread=$spread near=${tiles.count(_.distanceToIsLess(t, 10))} " +
-            s"target=$t there=$there orders=$orders"
+            s"target=$t there=$there orders=$orders by=$jobs far=$far"
         )
       }
     }
