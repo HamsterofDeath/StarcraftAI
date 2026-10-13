@@ -24,10 +24,16 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
   private val baseDefense                                         = new CampaignDefenseControl
   def baseDefenseActive                                           = baseDefense.pressure
   def setBaseDefensePressure(active: Boolean, recallCampaign: Boolean = true, detail: => String = ""): Unit = {
-    val changed = active != baseDefense.pressure || active && recallCampaign != baseDefense.recallsCampaign
+    val changed  = active != baseDefense.pressure || active && recallCampaign != baseDefense.recallsCampaign
+    val raidOver = !active && baseDefense.pressure
     baseDefense.setPressure(active)
     baseDefense.recallsCampaign = recallCampaign
     if (active && recallCampaign) attacks.retain(a => !a.campaign)
+    // Once the raid is over its defenders are free again. A defence attack ends by itself only when half of it stands
+    // within seven tiles of the raid, and a big one spreads its formation wider: in game 5 vs Protoss on 37e3b92 the
+    // eighteen defenders of a raid on our ramp held their formation places on it for the rest of the game, and the
+    // campaign army of sixty-four behind them never got out of the main.
+    if (raidOver) attacks.retain(_.campaign)
     if (changed) NativeMatchEvidence.trace("base-defense-pressure", s"active=$active recall=$recallCampaign $detail")
   }
   def campaignForce: Set[Mobile] = attacks.iterator.filter(_.campaign).flatMap(_.force).toSet
@@ -152,9 +158,10 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
     if (thinking) {
       planInProgress.result.foreach { plan =>
         attacks ++= plan.parts.filter(p =>
-          !p.campaign ||
-            (campaignTarget.exists(c => !c.distanceToIsMore(p.destination.where, 12)) &&
-              baseDefense.acceptsCampaign(p.defenseGeneration))
+          if (p.campaign)
+            campaignTarget.exists(c => !c.distanceToIsMore(p.destination.where, 12)) &&
+            baseDefense.acceptsCampaign(p.defenseGeneration)
+          else baseDefense.acceptsDefense(p.defenseGeneration)
         )
           .flatMap(_.complete)
         thinking = false

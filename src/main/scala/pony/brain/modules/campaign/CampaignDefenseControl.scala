@@ -22,4 +22,7 @@ private[pony] class CampaignDefenseControl {
     if (planning) None else { val result = pending; pending = None; result }
   }
   def acceptsCampaign(version: Int) = !pressure && generation == version
+
+  /** A defence planned during one raid is only taken up while that raid lasts. */
+  def acceptsDefense(version: Int) = generation == version
 }

@@ -72,6 +72,7 @@ class TerranCampaignTest extends Specification with MustMatchers {
     Both fields retain stable local defenders and replace casualties before expedition admission $defensiveReserve
     Postreserve expedition thresholds keep army production active until the deployable force qualifies $expeditionThresholds
     Local raids invalidate async offense, wait for a busy planner, and clear before offense resumes $defensiveRecall
+    A defence planned during a raid is not taken up once the raid is over $staleDefense
     A raid turns the campaign army back only when home cannot hold it and it is worth half the army $raidResponse
     A smaller raid home cannot hold draws a detachment worth twice the raid, less what home has $raidDetachment
     Small campaign retargets add up from the target the army set out for $campaignRetarget
@@ -599,6 +600,15 @@ class TerranCampaignTest extends Specification with MustMatchers {
       control.acceptsCampaign(control.generation),
       control.takeReady(false)
     ) === (None, Some(raid), true, false, false, true, None)
+  }
+
+  def staleDefense = {
+    val control = new CampaignDefenseControl
+    control.setPressure(true)
+    val duringRaid = control.generation
+    val admitted   = control.acceptsDefense(duringRaid)
+    control.setPressure(false)
+    (admitted, control.acceptsDefense(duringRaid), control.acceptsDefense(control.generation)) === (true, false, true)
   }
   def reserveCustody = {
     val roster = new TerranDefenseRoster(1)
