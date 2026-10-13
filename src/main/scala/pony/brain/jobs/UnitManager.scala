@@ -196,9 +196,15 @@ class UnitManager(override val universe: Universe) extends HasUniverse {
       }
       trace(s"Failed: ${failed.mkString("\n")}")
       trace(s"Finished: ${done.mkString(", ")}")
-      val ret = done ++ failed
-      assert(ret.size == ret.distinct.size, s"A job is failed and finished at the same time")
-      ret
+      // A job can be finished and failed in the same tick; it is cleaned up once. This used to be an assertion, and it
+      // ended game 2 vs Terran on ICCup Lost_Temple at 74b88f4 as a crash at frame 11498.
+      done.filter(failed.contains).foreach { job =>
+        NativeMatchEvidence.trace(
+          "job-finished-and-failed",
+          s"${job.getClass.getSimpleName} #${job.unit.nativeUnitId} ${job.failureDebug}"
+        )
+      }
+      (done ++ failed).distinct
     }
     trace(s"Cleaning up ${removeUs.size} finished/failed jobs", removeUs.nonEmpty)
 

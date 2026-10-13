@@ -5,14 +5,12 @@ package jobs
 import pony.brain.budget.ResourceApprovalSuccess
 import pony.brain.requests.{CanAcceptSwitchAndHasFunding, CanAcceptUnitSwitch, UnitJobRequest}
 import pony.geometry.{Area, MapTilePosition, Size}
-import pony.pathing.{Path, PathFinder}
+import pony.pathing.PathFinder
 import pony.terrain.ResourceArea
 import pony.units.{Building, Bunker, MainBuilding, WorkerUnit}
-import pony.util.FutureIterator
 
 import pony.brain.requests.UnitRequest.CherryPickers
 
-import scala.collection.mutable
 import scala.reflect.ClassTag
 
 class ConstructBuilding[W <: WorkerUnit: ClassTag, B <: Building](
@@ -61,29 +59,7 @@ class ConstructBuilding[W <: WorkerUnit: ClassTag, B <: Building](
     * it, was ordered to walk on, could not, and twice gave up, which cost the first refinery three minutes.
     */
   private def atSite(tile: MapTilePosition) = area.distanceTo(tile) < 3
-  private val alternativeWorkers            = {
-    class Input {
-      val target     = buildWhere
-      val pathfinder = pathfinders.groundSafe
-      val candidates = unitManager.ownUnits.allByType[W].map { w =>
-        w.currentTile
-      }
-    }
-
-    FutureIterator.feed(new Input).produceAsyncLater { in =>
-      val paths = in.candidates.flatMap { where =>
-        in.pathfinder.findSimplePathNow(where, in.target, tryFixPath = true)
-      }
-      val data = new ClosestPaths(paths)
-      in.candidates.foreach { pos =>
-        mapLayers.rawWalkableMap.spiralAround(pos, 5).foreach { precalcThis =>
-          data.closestPathFrom(precalcThis)
-        }
-      }
-      data
-    }.named("Find worker path")
-  }
-  private val isMainBuilding = classOf[MainBuilding] >= buildingType
+  private val isMainBuilding                = classOf[MainBuilding] >= buildingType
 
   listen_!((failed: Boolean) => {
     mapLayers.unblockBuilding_!(area)
@@ -116,16 +92,6 @@ class ConstructBuilding[W <: WorkerUnit: ClassTag, B <: Building](
       unlockManually_!()
       resourcesUnlocked = true
       mapLayers.unblockBuilding_!(area)
-    }
-
-    if (stillWantsOptimization) {
-      // regularly try to optimize
-      ifNth(Primes.prime43) {
-        alternativeWorkers.prepareNextIfDone()
-      }
-      if (alternativeWorkers.hasResult) {
-        unitManager.tryFindBetterEmployeeFor(this)
-      }
     }
   }
 
@@ -267,16 +233,15 @@ class ConstructBuilding[W <: WorkerUnit: ClassTag, B <: Building](
 
   def building = constructs
 
+  /**
+    * The builder is weighed once, when the job is planned (ProvideNewBuildings), by straight distance. A search for the
+    * worker with the shortest path used to run beside it, repeated every 43 frames while the builder walked. It threw for
+    * any tile without a straight line to one of its paths' waypoints, so it never gave a result: in the ten games on
+    * ICCup Lost_Temple at 74b88f4 it failed 15 to 86 times per game, and no builder was ever swapped by it. Every tested
+    * game ran without it, so it is gone, along with its load on the bot's two worker threads.
+    */
   override def asRequest: UnitJobRequest[W] = {
-    val picker = alternativeWorkers.mostRecent match {
-      case Some(data) =>
-        CherryPickers.cherryPickWorkerByDistance[W](area.centerTile) { from =>
-          data.closestPathFrom(from)
-        }
-      case None =>
-        CherryPickers.cherryPickWorkerByDistance[W](area.centerTile)()
-    }
-
+    val picker = CherryPickers.cherryPickWorkerByDistance[W](area.centerTile)()
     UnitJobRequest.constructor[W](employer).withRequest(_.withCherryPicker_!(picker))
   }
 
@@ -300,25 +265,6 @@ class ConstructBuilding[W <: WorkerUnit: ClassTag, B <: Building](
   }
 
   override protected def ferryDropTarget = area.centerTile.toSome
-
-  private class ClosestPaths(source: Iterable[Path]) {
-    private val cache = mutable.HashMap.empty[MapTilePosition, Double]
-
-    def closestPathFrom(here: MapTilePosition) = {
-      cache.getOrElseUpdate(
-        here, {
-          val candidates = source.map { path =>
-            if (path.waypoints.nonEmpty) {
-              path -> path.distanceToFinalTargetViaPath(here).getOr(s"Should never happen")
-            } else {
-              path -> 0.0
-            }
-          }
-          candidates.minBy(_._2)._2
-        }
-      )
-    }
-  }
 }
 
 object ConstructBuilding {
