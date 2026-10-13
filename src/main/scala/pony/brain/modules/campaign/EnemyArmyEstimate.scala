@@ -28,6 +28,8 @@ class EnemyArmyEstimate(universe: Universe) extends OrderlessAIModule[WrapsUnit]
 
   private def value(t: bwapi.UnitType) = (t.mineralPrice + t.gasPrice).toDouble
 
+  private val PlayableRaces = Vector(bwapi.Race.Terran, bwapi.Race.Protoss, bwapi.Race.Zerg)
+
   override def onTick_!(): Unit = {
     val now   = currentTick
     val self  = nativeGame.self()
@@ -59,11 +61,13 @@ class EnemyArmyEstimate(universe: Universe) extends OrderlessAIModule[WrapsUnit]
       lastReport = now / ReportFrames
       val e = estimate(now)
       // what the game reports about the enemy, for checking the bound only: zeros while the enemy is inaccessible,
-      // the real figures with -Dtwailight.completeMap=true (gathered/spent/supply/unit score/army value now)
+      // the real figures with -Dtwailight.completeMap=true (gathered/spent/supply/unit score/army value now); the
+      // supply summed over the races, as supplyUsed() indexes by the player's race, Unknown for a Random opponent
       val truth = nativeGame.enemies().asScala.map { p =>
         val army = p.getUnits.asScala.iterator.map(_.getType)
           .filter(t => !t.isBuilding && !t.isWorker && t.canAttack).map(value).sum
-        s"${p.gatheredMinerals + p.gatheredGas}/${p.spentMinerals + p.spentGas}/${p.supplyUsed}/${p.getUnitScore}/" +
+        val supply = PlayableRaces.map(r => p.supplyUsed(r)).sum
+        s"${p.gatheredMinerals + p.gatheredGas}/${p.spentMinerals + p.spentGas}/$supply/${p.getUnitScore}/" +
           army.round
       }.mkString(",")
       NativeMatchEvidence.trace(
