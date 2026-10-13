@@ -38,6 +38,9 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
   /** Slots of add-on buildings still being built, taken on the main thread: layers may be evaluated by planners. */
   @volatile private var plannedAddonSlots = Vector.empty[Area]
 
+  /** Ground no new building may stand on, though units walk there: the way out through an opened wall. */
+  @volatile private var keptClear = Vector.empty[Area]
+
   private val justBuildings                   = register(evalOnlyBuildings)
   private val justMines                       = register(evalOnlyMines)
   private val justMineralsAndGas              = register(evalOnlyResources)
@@ -215,6 +218,11 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
     plannedBuildings.free_!(where)
   }
 
+  /** No building is placed on `where` from now on; it stays walkable for every pathfinder. */
+  def keepClearOfBuildings_!(where: Area): Unit = {
+    keptClear :+= where
+  }
+
   def tick(): Unit = {
     super.onTick_!()
     update()
@@ -353,10 +361,14 @@ class MapLayers(override val universe: Universe) extends HasUniverse {
     ret
   }
 
-  private def evalEverythingStaticBuildable = withBuildingsAndResources.mutableCopy
-    .or_!(plannedBuildings)
-    .or_!(justWorkerPaths)
-    .or_!(rawMapBuild)
+  private def evalEverythingStaticBuildable = {
+    val ret = withBuildingsAndResources.mutableCopy
+      .or_!(plannedBuildings)
+      .or_!(justWorkerPaths)
+      .or_!(rawMapBuild)
+    keptClear.foreach(ret.block_!)
+    ret
+  }
 
   private def evalEverythingStaticWalkable = withBuildingsAndResources.mutableCopy
     .or_!(plannedBuildings)
