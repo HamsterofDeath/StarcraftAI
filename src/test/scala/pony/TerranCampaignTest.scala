@@ -14,7 +14,8 @@ import pony.brain.modules.campaign.{
   RaidResponse, ScoutPointPairs, TerranCampaignConfig, TerranDefenseRoster, WorldDominationPlan
 }
 import pony.brain.modules.economy.{
-  LocalMineralMining, MineralFieldStaffing, MiningFieldStatus, TerranEconomicProgress, WorkerProductionQuota
+  LocalMineralMining, MineralFieldStaffing, MiningFieldStatus, TerranEconomicProgress, WorkerMilitia,
+  WorkerProductionQuota
 }
 import pony.brain.modules.micro.HuntSweep
 import pony.brain.modules.production.{
@@ -66,13 +67,15 @@ class TerranCampaignTest extends Specification with MustMatchers {
     Home depots reject the native mineral exclusion zone while ordinary buildings retain placement $depotPlacement
     A depot site counts for a field only within reach and nearer to it than to any other field $depotBinding
     The army queue orders deterministically and units lacking tech do not block buildable ones $armyQueue
-    Against Zerg the wall depots are asked for earlier while the wall misses any $wallSupply
+    Against Zerg the wall depots are asked for earlier while the wall misses any, once its gate stands $wallSupply
     A refused PlaceBuilding order expires while actual construction remains protected $refusedPlacement
     Native terminal flag batches are separate while genuine live reveal remains invalid $terminalVision
     Both fields retain stable local defenders and replace casualties before expedition admission $defensiveReserve
     Postreserve expedition thresholds keep army production active until the deployable force qualifies $expeditionThresholds
     Local raids invalidate async offense, wait for a busy planner, and clear before offense resumes $defensiveRecall
     A defence planned during a raid is not taken up once the raid is over $staleDefense
+    A small raid its base's fighters cannot answer calls SCVs to arms, an army does not $militia
+    After a raid that called the army home it stays home a while before it sets out again $calmAfterRecall
     A raid turns the campaign army back only when home cannot hold it and it is worth half the army $raidResponse
     A smaller raid home cannot hold draws a detachment worth twice the raid, less what home has $raidDetachment
     Small campaign retargets add up from the target the army set out for $campaignRetarget
@@ -487,11 +490,17 @@ class TerranCampaignTest extends Specification with MustMatchers {
     )
   }
   def wallSupply = {
-    // the south wall's three depots against a 26-supply plan: the third is asked for at 11 used, not at 16
-    def asks(used: Int, wallMissing: Boolean, vsZerg: Boolean) =
-      used.toDouble / 26 >= ProvideNewSupply.requestAt(wallMissing, vsZerg)
-    (asks(11, true, true), asks(11, true, false), asks(11, false, true), asks(16, false, false)) ===
-      (true, false, false, true)
+    // the south wall's three depots against a 26-supply plan: the third is asked for at 11 used, not at 16; the north
+    // wall's second depot waits for its barracks gate
+    def asks(used: Int, wallMissing: Boolean, vsZerg: Boolean, gateMissing: Boolean = false) =
+      used.toDouble / 26 >= ProvideNewSupply.requestAt(wallMissing, gateMissing, vsZerg)
+    (
+      asks(11, true, true),
+      asks(11, true, false),
+      asks(11, false, true),
+      asks(16, false, false),
+      asks(11, true, true, gateMissing = true)
+    ) === (true, false, false, true, false)
   }
   def refusedPlacement = {
     val refused  = new ConstructionTravelProgress(8323, MapTilePosition(70, 115))
@@ -609,6 +618,21 @@ class TerranCampaignTest extends Specification with MustMatchers {
     val admitted   = control.acceptsDefense(duringRaid)
     control.setPressure(false)
     (admitted, control.acceptsDefense(duringRaid), control.acceptsDefense(control.generation)) === (true, false, true)
+  }
+
+  def militia = {
+    import bwapi.UnitType.{Protoss_Zealot, Zerg_Hydralisk, Zerg_Zergling}
+    (
+      WorkerMilitia.wanted(Seq(Zerg_Zergling, Zerg_Zergling), 0),
+      WorkerMilitia.wanted(Seq(Zerg_Zergling, Zerg_Zergling), 2),
+      WorkerMilitia.wanted(Seq(Protoss_Zealot, Zerg_Hydralisk), 1),
+      WorkerMilitia.wanted(Seq.fill(9)(Zerg_Zergling), 0),
+      WorkerMilitia.wanted(Nil, 0)
+    ) === (6, 0, 7, 0, 0)
+  }
+  def calmAfterRecall = {
+    import TerranCampaignConfig.{calmedDown, CalmFrames}
+    (calmedDown(24, false), calmedDown(CalmFrames, false), calmedDown(24, true)) === (false, true, true)
   }
   def reserveCustody = {
     val roster = new TerranDefenseRoster(1)

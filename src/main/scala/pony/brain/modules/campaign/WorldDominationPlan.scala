@@ -23,9 +23,14 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
   private var thinkingSince                                       = 0
   private val baseDefense                                         = new CampaignDefenseControl
   def baseDefenseActive                                           = baseDefense.pressure
+  private var recallEndedAt                                       = Int.MinValue / 2
+
+  /** Frames since the last raid that called the campaign army home was over. */
+  def framesSinceRecall = currentTick - recallEndedAt
   def setBaseDefensePressure(active: Boolean, recallCampaign: Boolean = true, detail: => String = ""): Unit = {
     val changed  = active != baseDefense.pressure || active && recallCampaign != baseDefense.recallsCampaign
     val raidOver = !active && baseDefense.pressure
+    if (raidOver && baseDefense.recallsCampaign) recallEndedAt = currentTick
     baseDefense.setPressure(active)
     baseDefense.recallsCampaign = recallCampaign
     if (active && recallCampaign) attacks.retain(a => !a.campaign)

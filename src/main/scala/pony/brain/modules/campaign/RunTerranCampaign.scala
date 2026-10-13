@@ -30,6 +30,7 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
   private var huntInitiated     = false
   private var huntInitiatedAt   = 0
   private var favourable        = true
+  private var calm              = true
   // Bunker crews hold the mineral lines; every other fighter keeps up the pressure unless field guards are configured.
   private val defenseRoster = new TerranDefenseRoster(config.fieldGuards)
   private val defenses      = oncePerTick {
@@ -294,7 +295,14 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
         s"launch=$odds chance=${"%.2f".format(chance)} fighters=${troops.size} known=${counted(known)}"
       )
       if (ready) favourable = odds
-      if (ready && odds && !worldDominationPlan.planningInProgress) {
+      // the first launch after a raid that called the army home waits until the raiders are gone
+      val calmNow = launched || TerranCampaignConfig.calmedDown(worldDominationPlan.framesSinceRecall, capped)
+      if (ready && calmNow != calm) NativeMatchEvidence.trace(
+        "offense-calm",
+        s"calm=$calmNow sinceRecall=${worldDominationPlan.framesSinceRecall} fighters=${troops.size}"
+      )
+      if (ready) calm = calmNow
+      if (ready && odds && calmNow && !worldDominationPlan.planningInProgress) {
         // a walled main lets the army out: the wall depots are demolished to open the gate
         val wall = universe.pluginByType[WallWithDepots]
         if (strategy.current.usesWallDefense && wall.complete) wall.openGate_!()

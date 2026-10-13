@@ -58,6 +58,9 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
         .map { b => gateBarracksId = Some(b.nativeUnitId); b }
     }
 
+  /** Whether the wall's gate barracks is planned and not yet placed. */
+  def gateMissing = gate.isDefined && gateBarracks.isEmpty
+
   /** The tiles the planned wall covers: its depots and its barracks gate. */
   def footprintTiles: Vector[MapTilePosition] =
     anchors.toVector.flatten.flatMap(a => Area(a, Size(3, 2)).tiles) ++

@@ -84,9 +84,17 @@ object TerranCampaignConfig {
   val TargetDefenceTiles = 12
   val FightTiles         = 12
 
-  def launches(chance: Double, supplyCapped: Boolean) = supplyCapped || chance >= LaunchChance
-  def retreats(chance: Double, supplyCapped: Boolean) = !supplyCapped && chance < RetreatChance
-  def load()                                          = {
+  /**
+    * After a raid that called the army home the army stays home this long before it sets out again: the raiders wait
+    * outside. In game 3 vs Zerg on af1b88d an army of thirty set out 24 frames after thirteen Hydralisks drew back from
+    * the natural, at chance 0.93, met twenty Hydralisks and two Lurkers outside it and turned back at chance 0.21.
+    */
+  val CalmFrames = 24 * 20
+
+  def calmedDown(framesSinceRecall: Int, supplyCapped: Boolean) = supplyCapped || framesSinceRecall >= CalmFrames
+  def launches(chance: Double, supplyCapped: Boolean)           = supplyCapped || chance >= LaunchChance
+  def retreats(chance: Double, supplyCapped: Boolean)           = !supplyCapped && chance < RetreatChance
+  def load()                                                    = {
     def number(key: String, default: Int)      = sys.props.get("twailight." + key).map(_.toInt).getOrElse(default)
     def fraction(key: String, default: Double) = sys.props.get("twailight." + key).map(_.toDouble).getOrElse(default)
     TerranCampaignConfig(

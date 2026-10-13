@@ -1,6 +1,6 @@
 package pony
 
-import pony.combat.{HasSinglePointMagicSpell, HasSingleTargetSpells, MobileRangeWeapon}
+import pony.combat.{HasSinglePointMagicSpell, HasSingleTargetSpells}
 import pony.geometry.{Area, MapTilePosition, Size}
 import pony.render.Renderer
 import pony.tech.Upgrade
@@ -65,7 +65,8 @@ object Orders {
     }
   }
 
-  case class AttackUnit(attacker: MobileRangeWeapon, target: CanDie) extends UnitOrder {
+  // any armed mobile: SCVs of the militia (WorkerMilitia) hit with their welders
+  case class AttackUnit(attacker: Mobile, target: CanDie) extends UnitOrder {
 
     override def obsolete = super.obsolete || target.isDead
 

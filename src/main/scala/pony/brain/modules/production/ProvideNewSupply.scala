@@ -26,6 +26,7 @@ class ProvideNewSupply(universe: Universe) extends OrderlessAIModule[WorkerUnit]
     val cur       = plannedSupplies
     val needsMore = cur.supplyUsagePercent >= ProvideNewSupply.requestAt(
       wall.exists(_.nextSupplySpot.isDefined),
+      wall.exists(_.gateMissing),
       forces.isTvZ
     ) && cur.total < 400
 
@@ -67,7 +68,10 @@ object ProvideNewSupply {
   /**
     * The supply usage at which the next depot is requested. Against Zerg a wall still missing depots asks earlier: in
     * game 1 vs Zerg on 34fb4c2 zerglings came at frame 3745 through the slot of the third wall depot, which sixty
-    * percent asked for only at frame 3976, and killed every SCV.
+    * percent asked for only at frame 3976, and killed every SCV. A wall with a barracks gate gets its barracks first:
+    * in game 1 vs Zerg on af1b88d the early second depot took the money at frame 2233, the barracks followed at 2744
+    * instead of about 2300, and was still being built when the first Zerglings killed its SCV at 3774.
     */
-  def requestAt(wallMissingDepots: Boolean, vsZerg: Boolean): Double = if (wallMissingDepots && vsZerg) 0.4 else 0.6
+  def requestAt(wallMissingDepots: Boolean, gateMissing: Boolean, vsZerg: Boolean): Double =
+    if (wallMissingDepots && !gateMissing && vsZerg) 0.4 else 0.6
 }

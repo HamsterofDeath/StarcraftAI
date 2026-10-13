@@ -7,7 +7,9 @@ import pony.brain.modules.bunkers.{BunkerStimCycle, TerranBunkerDefense}
 import pony.brain.modules.campaign.{
   CarpetSpread, EnemyArmyEstimate, HandleDefenses, RunTerranCampaign, WorldDominationPlan
 }
-import pony.brain.modules.economy.{ManageMiningAtBases, ManageMiningAtGeysirs, ProvideExpansions, ProvideSpareSCVs}
+import pony.brain.modules.economy.{
+  ManageMiningAtBases, ManageMiningAtGeysirs, ProvideExpansions, ProvideSpareSCVs, WorkerMilitia
+}
 import pony.brain.modules.ferry.FerryManager
 import pony.brain.modules.micro.{TankBoxes, WatchForCloak}
 import pony.brain.modules.production.{
@@ -96,6 +98,7 @@ class TwilightSparkle(world: DefaultWorld) {
     new ProvideNewBuildings(universe),
     new ProvideSuggestedAndRequestedAddons(universe),
     new HandleDefenses(universe),
+    new WorkerMilitia(universe),
     new TerranBunkerDefense(universe),
     new BunkerStimCycle(universe),
     new EnemyArmyEstimate(universe),
