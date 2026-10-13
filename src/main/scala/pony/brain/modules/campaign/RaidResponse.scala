@@ -24,11 +24,22 @@ private[pony] object RaidResponse {
     else (threat * DetachShare - home).min(campaign)
 
   /**
-    * Whether home fighters stay behind our closed wall rather than go out to a raid beyond it, given the worth of the
-    * enemy force near the raid (None when the wall does not keep the raid out). They stay while that force outweighs
-    * them; once staying, until they are worth half as much again, so that enemies stepping in and out of sight do not
-    * send them out and call them back again and again.
+    * Frames after a raid beyond our closed wall began during which home fighters stay behind it whatever they see. In
+    * game 1 vs Terran on ICCup Lost_Temple at 0cc8d1c a lone Medic in sight counted 75 against 600 at home; eleven
+    * Marines filed out through the wall into twelve Marines and three Medics coming round the corner and died without a
+    * kill. Four seconds later the enemy column stood in sight of our depots.
     */
-  def holdsBehindWall(force: Option[Int], home: Int, holding: Boolean): Boolean =
-    force.exists(f => if (holding) f * 3 > home * 2 else f > home)
+  val LookFrames = 24 * 4
+
+  /** Frames an enemy fighter out of sight still counts toward the force near a raid, where it was last seen. */
+  val SeenFrames = 24 * 10
+
+  /**
+    * Whether home fighters stay behind our closed wall rather than go out to a raid beyond it, given the worth of the
+    * enemy force seen near the raid lately (None when the wall does not keep the raid out) and the frames since the raid
+    * began. They stay while they look, then while that force outweighs them; once staying, until they are worth half
+    * as much again, so that enemies stepping in and out of sight do not send them out and call them back again and again.
+    */
+  def holdsBehindWall(force: Option[Int], home: Int, holding: Boolean, sinceRaid: Int): Boolean =
+    force.exists(f => sinceRaid < LookFrames || (if (holding) f * 3 > home * 2 else f > home))
 }

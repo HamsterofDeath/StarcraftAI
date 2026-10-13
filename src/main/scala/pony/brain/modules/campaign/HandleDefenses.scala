@@ -11,18 +11,22 @@ import pony.util.BWFuture
 
 import pony.combat.AttackPriorities.Lowest
 
+import scala.collection.mutable
+
 class HandleDefenses(universe: Universe) extends OrderlessAIModule[Mobile](universe) {
 
   private var backgroundOp = BWFuture.none[Seq[Group[Mobile]]]
 
   override def onTick_!(): Unit = {
     if (race.isTerran && strategy.current.runsTerranCampaign) {
+      def value(u: WrapsUnit) = u.nativeUnitType.mineralPrice + u.nativeUnitType.gasPrice
+      noteSightings(value)
       val localThreats = (mapLayers.defendedTiles.allBlocked.flatMap(tile => unitGrid.enemy.onTile(tile)) ++ shelling)
         .filterNot(_.isHarmlessNow).toVector.distinctBy(_.nativeUnitId)
       if (localThreats.isEmpty) worldDominationPlan.setBaseDefensePressure(false)
       else {
-        def value(u: WrapsUnit) = u.nativeUnitType.mineralPrice + u.nativeUnitType.gasPrice
-        val out                 = worldDominationPlan.campaignForce ++ worldDominationPlan.raidingFleet
+        if (raidSince < 0) raidSince = currentTick
+        val out = worldDominationPlan.campaignForce ++ worldDominationPlan.raidingFleet
         // behind a sealed wall the ground units cannot reach a raid outside it, nor help against it
         val raided = localThreats.head.currentTile
         val home   = ownUnits.allMobilesWithWeapons.iterator.filter { m =>
@@ -46,17 +50,21 @@ class HandleDefenses(universe: Universe) extends OrderlessAIModule[Mobile](unive
             s"at=$raided worth=${sent.map(value).sum} units=${sent.size} threat=$threat home=$home campaign=$campaign"
           )
         }
-        val force = forceBeyondWall(localThreats, raided, value)
-        val hold  = RaidResponse.holdsBehindWall(force, home, holding)
+        val force = forceBeyondWall(localThreats, raided)
+        val since = currentTick - raidSince
+        val hold  = RaidResponse.holdsBehindWall(force, home, holding, since)
         if (hold != holding) NativeMatchEvidence.trace(
           "base-defense-hold",
-          s"${if (hold) "on" else "off"} at=$raided force=${force.getOrElse(0)} home=$home threat=$threat"
+          s"${if (hold) "on" else "off"} at=$raided force=${force.getOrElse(0)} home=$home threat=$threat since=$since"
         )
         holding = hold
         if (hold) worldDominationPlan.holdBaseDefense_!()
         else worldDominationPlan.requestBaseDefense(raided)
       }
-      if (localThreats.isEmpty) holding = false
+      if (localThreats.isEmpty) {
+        holding = false
+        raidSince = -1
+      }
       return
     }
     if (backgroundOp.result.isEmpty) {
@@ -94,28 +102,38 @@ class HandleDefenses(universe: Universe) extends OrderlessAIModule[Mobile](unive
 
   private var holding = false
 
+  /** The frame the raid on our bases began, or -1 while there is none. */
+  private var raidSince = -1
+
+  /** Each enemy ground fighter seen lately: the frame it was last in sight, where, and its worth. */
+  private val sightings = mutable.Map.empty[Int, (Int, MapTilePosition, Int)]
+
+  private def noteSightings(value: WrapsUnit => Int): Unit = {
+    enemies.allCompletedMobiles.iterator.filter { e =>
+      e.nativeUnit.isVisible && !e.nativeUnit.isFlying && !e.isInstanceOf[WorkerUnit] && !e.isHarmlessNow
+    }.foreach(e => sightings(e.nativeUnitId) = (currentTick, e.currentTile, value(e)))
+    // the dead leave the enemy's units at once
+    sightings.filterInPlace((id, seen) => currentTick - seen._1 < RaidResponse.SeenFrames && enemies.byId(id).isDefined)
+  }
+
   /** How far from the raid enemies count as its force: the twelve zealots of game 1 stood within ten tiles. */
   private val HoldRadius = 12
 
   /**
-    * The worth of the visible enemy ground force near a raid that stands wholly beyond our closed wall, or None for a
-    * raid the wall does not keep out: fliers, guns that reach past the defended ring, a sealed main (its fighters cannot
-    * get out), or any raider inside. Home fighters sent beyond the wall walk out through a slit only a Marine fits, one
-    * by one: in game 1 vs Protoss on ICCup Lost_Temple at 87b3736 the first of twelve zealots at the wall counted 100
-    * against 600 at home, and eleven Marines went out to it and died. Held, they shoot over the wall from behind it.
+    * The worth of the enemy ground force seen near a raid lately when it stands wholly beyond our closed wall, or None
+    * for a raid the wall does not keep out: fliers, guns that reach past the defended ring, a sealed main (its fighters
+    * cannot get out), or any raider inside. Home fighters sent beyond the wall walk out through a slit only a Marine
+    * fits, one by one: in game 1 vs Protoss on ICCup Lost_Temple at 87b3736 the first of twelve zealots at the wall
+    * counted 100 against 600 at home, and eleven Marines went out to it and died. Held, they shoot over the wall from
+    * behind it. Enemies that step out of sight still count where they were last seen for RaidResponse.SeenFrames.
     */
-  private def forceBeyondWall(raiders: Seq[Mobile], raided: MapTilePosition, value: WrapsUnit => Int): Option[Int] = {
+  private def forceBeyondWall(raiders: Seq[Mobile], raided: MapTilePosition): Option[Int] = {
     val wall   = universe.pluginByType[WallWithDepots]
     val beyond = !strategy.current.sealsMain && raiders.forall { e =>
       !e.nativeUnit.isFlying && e.nativeUnit.getType.groundWeapon.maxRange / 32 <= MapLayers.DefendedRing &&
       wall.closedAgainst(e.currentTile)
     }
-    Option.when(beyond) {
-      enemies.allCompletedMobiles.iterator.filter { e =>
-        e.nativeUnit.isVisible && !e.nativeUnit.isFlying && !e.isInstanceOf[WorkerUnit] && !e.isHarmlessNow &&
-        e.currentTile.distanceToIsLess(raided, HoldRadius)
-      }.map(value).sum
-    }
+    Option.when(beyond)(sightings.valuesIterator.filter(_._2.distanceToIsLess(raided, HoldRadius)).map(_._3).sum)
   }
 
   /**

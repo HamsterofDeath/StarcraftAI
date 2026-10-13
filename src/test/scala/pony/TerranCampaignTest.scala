@@ -81,6 +81,7 @@ class TerranCampaignTest extends Specification with MustMatchers {
     A raid turns the campaign army back only when home cannot hold it and it is worth half the army $raidResponse
     A smaller raid home cannot hold draws a detachment worth twice the raid, less what home has $raidDetachment
     Home fighters stay behind the closed wall while the force beyond it outweighs them $raidBeyondWall
+    They first look a few seconds before they go out to a raid beyond the wall $raidBeyondWallLook
     Small campaign retargets add up from the target the army set out for $campaignRetarget
     A lost guard cannot reserve a fighter still owned by an expedition $reserveCustody
     Mineral field corners require enough nonoverlapping bunker sites for full coverage $bunkerCoverage
@@ -640,17 +641,32 @@ class TerranCampaignTest extends Specification with MustMatchers {
       RaidResponse.detachment(threat = 175, home = 0, campaign = 0)
     ) === (1000, 700, 0, 0, 0)
 
-  def raidBeyondWall =
+  def raidBeyondWall = {
+    val looked = RaidResponse.LookFrames
     (
       // game 1 vs Protoss on ICCup Lost_Temple at 87b3736: twelve zealots at the wall, eleven Marines and a tank home
-      RaidResponse.holdsBehindWall(Some(1200), home = 800, holding = false),
-      RaidResponse.holdsBehindWall(Some(1200), home = 1500, holding = false),
+      RaidResponse.holdsBehindWall(Some(1200), home = 800, holding = false, looked),
+      RaidResponse.holdsBehindWall(Some(1200), home = 1500, holding = false, looked),
       // held, they go out only once worth half as much again as the force
-      RaidResponse.holdsBehindWall(Some(1200), home = 1500, holding = true),
-      RaidResponse.holdsBehindWall(Some(1200), home = 1900, holding = true),
+      RaidResponse.holdsBehindWall(Some(1200), home = 1500, holding = true, looked),
+      RaidResponse.holdsBehindWall(Some(1200), home = 1900, holding = true, looked),
       // a raid the wall does not keep out is always answered
-      RaidResponse.holdsBehindWall(None, home = 0, holding = true)
+      RaidResponse.holdsBehindWall(None, home = 0, holding = true, looked)
     ) === (true, false, true, false, false)
+  }
+
+  def raidBeyondWallLook =
+    (
+      // game 1 vs Terran on ICCup Lost_Temple at 0cc8d1c: one Medic in sight, twelve Marines and two Medics round the corner
+      RaidResponse.holdsBehindWall(Some(75), home = 600, holding = false, sinceRaid = 0),
+      RaidResponse.holdsBehindWall(Some(75), home = 600, holding = false, RaidResponse.LookFrames - 1),
+      // four seconds on, the Marines had come into sight of our depots
+      RaidResponse.holdsBehindWall(Some(825), home = 600, holding = true, RaidResponse.LookFrames),
+      // a raider alone is met once looked at
+      RaidResponse.holdsBehindWall(Some(75), home = 600, holding = true, RaidResponse.LookFrames),
+      // nor does looking keep them from a raid the wall does not keep out
+      RaidResponse.holdsBehindWall(None, home = 600, holding = false, sinceRaid = 0)
+    ) === (true, true, true, false, false)
 
   def campaignRetarget = {
     // game 1 vs Terran on e73348a: the target crept from a science facility to the depots behind it
