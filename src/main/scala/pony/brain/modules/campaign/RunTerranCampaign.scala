@@ -279,10 +279,11 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
       )
     }
     wasReady = ready
-    // A sealed depot wall must open once the army is ready, or no scout ever finds the target the launch needs.
+    // A sealed depot wall must open once the army is ready, or no scout ever finds the target the launch needs. A lifted
+    // barracks gate counts as open, but its depots still hold back units StarCraft leads past them: they come down too.
     if (ready) {
       val wall = universe.pluginByType[WallWithDepots]
-      if (strategy.current.usesWallDefense && wall.complete && !wall.gateOpen) wall.openGate_!()
+      if (strategy.current.usesWallDefense && wall.complete) wall.openGate_!()
     }
     if (campaignLaunchEnabled) target.foreach { where =>
       // the first launch at a target waits for the odds; reinforcements join the army out there regardless
@@ -294,9 +295,9 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
       )
       if (ready) favourable = odds
       if (ready && odds && !worldDominationPlan.planningInProgress) {
-        // a walled main lets the army out: one wall depot is demolished to open the gate
+        // a walled main lets the army out: the wall depots are demolished to open the gate
         val wall = universe.pluginByType[WallWithDepots]
-        if (strategy.current.usesWallDefense && wall.complete && !wall.gateOpen) wall.openGate_!()
+        if (strategy.current.usesWallDefense && wall.complete) wall.openGate_!()
         val accepted = worldDominationPlan.initiateCampaignAttack(where, troops.map(_.nativeUnitId).toSet)
         if (accepted) {
           if (huntTarget.contains(where) && !huntInitiated) {

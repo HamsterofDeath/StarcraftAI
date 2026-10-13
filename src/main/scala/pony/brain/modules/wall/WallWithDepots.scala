@@ -73,13 +73,15 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
   def gateOpen: Boolean = gateOpened || gateBarracks.exists(_.isFloating)
 
   /**
-    * Knock down every depot of the wall and keep its ground and an apron of ApronTiles behind it free of new buildings;
-    * a barracks gate lifts instead. StarCraft's own pathing ignores buildings and leads units through the middle of the
-    * ramp: in game 3 vs Protoss on 86defc6 one depot came down and the two left standing in the middle held an army of
-    * up to 86 behind them for twenty minutes, pressed against their backs beside the free gap (pony.e2e.ReplayDump).
+    * Knock down every depot of the wall and keep its ground and an apron of ApronTiles behind it free of new buildings.
+    * StarCraft's own pathing ignores buildings and leads units through the middle of the ramp: in game 3 vs Protoss on
+    * 86defc6 one depot came down and the two left standing in the middle held an army of up to 86 behind them for twenty
+    * minutes, pressed against their backs beside the free gap (pony.e2e.ReplayDump). A lifted barracks gate is such a
+    * gap as well: in game 1 vs Terran on e73348a half the army of 97 stood behind the depots of the north wall for forty
+    * game minutes; the barracks stays lifted until its depots are down.
     */
   def openGate_!(): Unit = {
-    if (!gateOpened && gate.isEmpty && !strategy.current.sealsMain) {
+    if (!gateOpened && !strategy.current.sealsMain) {
       gateOpened = true
       gateDepotIds = wallDepots
       anchors.filter(_.nonEmpty).foreach { wall =>
@@ -647,14 +649,18 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
   /**
     * The barracks gate opens (lifts) while the army is out, attacking or reinforcing, or scouting is allowed, and closes
     * (lands in its slot) whenever enemy ground fighters come within sixteen tiles of it. A barracks still training cancels
-    * its queue before it lifts.
+    * its queue before it lifts. Once the wall is opened for good (openGate_!) it opens until the depots are down.
     */
   private def controlGate(): Unit = for (g <- gate; b <- gateBarracks if !b.isBeingCreated) {
     val campaign = universe.pluginByType[RunTerranCampaign]
     val armyOut  = worldDominationPlan.campaignForceSize > 0
     // never for the minimal scouts: a handful of fighters at five minutes lifted the gate just before the enemy's
     // first attack, which then broke into the main and killed the gate barracks
-    val wantOpen = !strategy.current.sealsMain && (armyOut || campaign.reconnaissanceAllowed || evacuating)
+    // with the wall's depots coming down it stays open until they are gone and then lands to train again: no depot
+    // left, it seals nothing, and a lifted barracks trains nothing
+    val depotsStanding = ownUnits.allByType[SupplyDepot].exists(d => d.isInGame && gateDepotIds(d.nativeUnitId))
+    val wantOpen       = !strategy.current.sealsMain &&
+      (if (gateOpened) depotsStanding else armyOut || campaign.reconnaissanceAllowed || evacuating)
     // landing takes a moment and fails while an enemy stands in the slot: close well before enemies arrive
     val danger = unitGrid.enemy.allInRange[Mobile](g.movedBy(2, 1), 16)
       .exists(e => !e.nativeUnit.isFlying && !e.isInstanceOf[WorkerUnit])
