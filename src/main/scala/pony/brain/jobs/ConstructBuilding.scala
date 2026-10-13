@@ -5,7 +5,7 @@ package jobs
 import pony.brain.budget.ResourceApprovalSuccess
 import pony.brain.requests.{CanAcceptSwitchAndHasFunding, CanAcceptUnitSwitch, UnitJobRequest}
 import pony.geometry.{Area, MapTilePosition, Size}
-import pony.pathing.Path
+import pony.pathing.{Path, PathFinder}
 import pony.terrain.ResourceArea
 import pony.units.{Building, Bunker, MainBuilding, WorkerUnit}
 import pony.util.FutureIterator
@@ -149,10 +149,41 @@ class ConstructBuilding[W <: WorkerUnit: ClassTag, B <: Building](
       prior
     } else if (!startedActualConstruction && worker.onGround && !atSite(worker.currentTile)) {
       // Far build sites are refused natively; walk there first.
-      Seq(Orders.MoveToTile(worker, buildWhere).lockingFor_!(24))
+      Seq(Orders.MoveToTile(worker, detourStep.getOrElse(buildWhere)).lockingFor_!(24))
     } else {
       Nil
     }
+  }
+
+  private var stillAt    = unit.currentTile
+  private var stillSince = currentTick
+  private var detour     = Option.empty[MapTilePosition]
+
+  /**
+    * A short step along our own path when the game will not move the builder. StarCraft routes through the middle of
+    * its pathing regions and ignores our buildings: in game 3 vs Terran on 9497320 on ICCup Lost_Temple the SCV that
+    * built the first wall depot stood between it and the gate barracks, each order to walk to the second depot's site
+    * ended where it stood, and the wall stayed open all game while the same SCV failed seven times.
+    */
+  private def detourStep: Option[MapTilePosition] = {
+    val here = worker.currentTile
+    if (here != stillAt) {
+      stillAt = here
+      stillSince = currentTick
+      if (detour.exists(_.distanceToIsLess(here, 2))) detour = None
+    }
+    if (detour.isEmpty && currentTick - stillSince >= ConstructBuilding.StillFrames) {
+      stillSince = currentTick
+      detour = PathFinder.on(mapLayers.freeWalkableIgnoringMobiles, isOnGround = true)
+        .findSimplePathNow(here, area.centerTile)
+        .flatMap(_.waypoints.takeWhile(_.distanceToIsLess(here, ConstructBuilding.DetourTiles + 1)).lastOption)
+        .filter(_ != here)
+      NativeMatchEvidence.trace(
+        "construction-detour",
+        s"type=${typeOfBuilding.className} where=$buildWhere worker=${worker.nativeUnitId} at=$here step=$detour"
+      )
+    }
+    detour
   }
 
   override def shortDebugString: String = s"Build ${buildingType.className}"
@@ -288,4 +319,13 @@ class ConstructBuilding[W <: WorkerUnit: ClassTag, B <: Building](
       )
     }
   }
+}
+
+object ConstructBuilding {
+
+  /** Frames a builder short of its site stands on one tile before it steps along our own path instead. */
+  val StillFrames = 48
+
+  /** How far one such step goes, in tiles: short, so the game never has to route it between its pathing regions. */
+  val DetourTiles = 3
 }
