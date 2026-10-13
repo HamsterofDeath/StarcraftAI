@@ -6,9 +6,10 @@ package strategy
 import pony.brain.budget.ResourceRequests
 import pony.brain.modules.campaign.TerranCampaignConfig
 import pony.brain.modules.production.{IdealProducerCount, IdealUnitRatio}
+import pony.geometry.MapTilePosition
 import pony.tech.Upgrades
 import pony.units.{
-  Barracks, Bunker, Factory, Goliath, MachineShop, MainBuilding, Marine, Medic, ScienceVessel, Tank, Vulture
+  Barracks, Bunker, Dropship, Factory, Goliath, MachineShop, MainBuilding, Marine, Medic, ScienceVessel, Tank, Vulture
 }
 
 /** The default Terran campaign: bunkered mineral fields, a spare home Command Center, then a massed army attack. */
@@ -61,7 +62,24 @@ class DefaultTerranCampaign(override val universe: Universe) extends LongTermStr
       // game once hidden enemies showed up or three bases pay for the starport, control tower and science facility
       IdealUnitRatio(classOf[ScienceVessel], 1 + scale / 4)(
         phase.isSinceLateMid && (cloakThreat || bases.finishedBases.size >= 3)
+      ) ::
+      // dropships carry the army to enemy bases on islands, where its ground units ask for a ferry (FerrySupport)
+      IdealUnitRatio(classOf[Dropship], 1)(
+        ownUnits.allByType[Dropship].size < DefaultTerranCampaign.dropships(
+          islandFields,
+          bases.finishedBases.size,
+          ferryManager.waitingForFerry
+        )
       ) :: Nil
+  }
+
+  /** Whether a field lies where no SCV can walk from our start: an island. The terrain never changes. */
+  private lazy val islandFields = {
+    val own    = nativeGame.self().getStartLocation
+    val ground = mapLayers.rawWalkableMap
+    ground.nearestFree(MapTilePosition(own.x, own.y)).exists { start =>
+      strategicMap.resources.exists(a => !ground.areInSameWalkableArea(start, a.nearbyFreeTile))
+    }
   }
 
   override def suggestUpgrades =
@@ -75,6 +93,19 @@ class DefaultTerranCampaign(override val universe: Universe) extends LongTermStr
       UpgradeToResearch(Upgrades.Terran.MedicEnergy)(bases.finishedBases.size >= 3) ::
       // the vessels strip the shields and energy of Protoss armies (EmpShockwave)
       UpgradeToResearch(Upgrades.Terran.EMP)(ownUnits.allByType[ScienceVessel].nonEmpty) :: Nil
+}
+
+object DefaultTerranCampaign {
+
+  /**
+    * The dropships kept: none on a map whose fields SCVs can all walk to; else two once the third base stands or units
+    * wait for a ferry, and one more for every eight units waiting, up to four. A maxed army trains nothing, so the first
+    * two come before any island target is known: in game 2 vs Zerg on 369b895 on ICCup Lost_Temple 95 units at 200
+    * supply stood 28 minutes beside the island Hatchery at (118,115), with 41,000 minerals banked and no dropship.
+    */
+  def dropships(islandFields: Boolean, finishedBases: Int, waitingForFerry: Int): Int =
+    if (!islandFields || finishedBases < 3 && waitingForFerry == 0) 0
+    else 2 + (waitingForFerry / 8 min 2)
 }
 
 final class DefaultTerranCampaignPlugin

@@ -76,6 +76,7 @@ class TerranCampaignTest extends Specification with MustMatchers {
     A defence planned during a raid is not taken up once the raid is over $staleDefense
     A small melee raid its base's fighters cannot answer calls SCVs to arms, an army or shooters do not $militia
     The militia meets raiders up to the far side of the main's unfinished wall $militiaReach
+    Dropships wait for the army only on maps with island fields, more while units wait for a ferry $islandDropships
     After a raid that called the army home it stays home a while before it sets out again $calmAfterRecall
     A raid turns the campaign army back only when home cannot hold it and it is worth half the army $raidResponse
     A smaller raid home cannot hold draws a detachment worth twice the raid, less what home has $raidDetachment
@@ -693,6 +694,17 @@ class TerranCampaignTest extends Specification with MustMatchers {
       WorkerMilitia.reach(home, Vector(MapTilePosition(125, 35))),
       WorkerMilitia.reach(home, Vector.empty)
     ) === (30, WorkerMilitia.Reach, WorkerMilitia.Reach)
+  }
+  def islandDropships = {
+    import pony.brain.modules.strategy.DefaultTerranCampaign.dropships
+    (
+      dropships(islandFields = false, finishedBases = 5, waitingForFerry = 40),
+      dropships(islandFields = true, finishedBases = 2, waitingForFerry = 0),
+      dropships(islandFields = true, finishedBases = 3, waitingForFerry = 0),
+      dropships(islandFields = true, finishedBases = 2, waitingForFerry = 1),
+      dropships(islandFields = true, finishedBases = 4, waitingForFerry = 8),
+      dropships(islandFields = true, finishedBases = 4, waitingForFerry = 61)
+    ) === (0, 0, 2, 2, 3, 4)
   }
   def calmAfterRecall = {
     import TerranCampaignConfig.{calmedDown, CalmFrames}
