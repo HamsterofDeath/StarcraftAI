@@ -33,11 +33,12 @@ $ErrorActionPreference = 'Stop'
 # result, length, the counted trace events, the economy at a given minute and, for a crash, the first stack lines.
 
 function Stop-Leftovers {
+  # a listed process may end on its own before it is stopped, which must not end the batch
   Get-Process StarCraft -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-  Get-CimInstance Win32_Process -Filter "Name='java.exe'" |
-    Where-Object { $_.CommandLine -match 'pony\.Controller' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
-  Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" |
-    Where-Object { $_.CommandLine -match 'Hide-GameWindow' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+  Get-CimInstance Win32_Process -Filter "Name='java.exe'" | Where-Object { $_.CommandLine -match 'pony\.Controller' } |
+    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+  Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" | Where-Object { $_.CommandLine -match 'Hide-GameWindow' } |
+    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 }
 
 if (-not $Commit) { $Commit = (git -C $SourceRepository rev-parse HEAD).Trim() }
