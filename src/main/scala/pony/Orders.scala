@@ -255,10 +255,18 @@ object Orders {
     }
   }
 
+  /**
+    * Whether the game takes an attack-move from this kind of unit. A medic's heals along the way; a unit without a
+    * weapon (a Science Vessel, a Dropship) is refused one and stays where it is: in game 4 vs Zerg on ICCup Lost_Temple
+    * at 9471a0b the campaign army's two vessels stood in our main for fifty thousand frames, their orders refused.
+    */
+  def attackMoves(kind: bwapi.UnitType): Boolean = kind.canAttack || kind == bwapi.UnitType.Terran_Medic
+
   case class AttackMove(myUnit: Mobile, where: MapTilePosition) extends UnitOrder {
 
     override def issueOrderToGame(): Unit = {
-      myUnit.nativeUnit.attack(where.asMapPosition.toNative)
+      if (attackMoves(myUnit.nativeUnit.getType)) myUnit.nativeUnit.attack(where.asMapPosition.toNative)
+      else myUnit.nativeUnit.move(where.asMapPosition.toNative)
     }
 
     override def renderDebug(renderer: Renderer): Unit = {}

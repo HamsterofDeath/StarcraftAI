@@ -322,6 +322,14 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
       area.flatMap(_.nearestFree(realCenter))
         .getOrElse(realCenter)
     }
+
+    /** The middle of the third of the attack's fighters nearest its target. */
+    private val front = this.oncePerTick {
+      val fighters = currentForce.iterator.filter(m => m.isFigher && !m.isInstanceOf[SupportUnit]).toVector
+        .sortBy(_.currentTile.distanceSquaredTo(targetOfAttack.where))
+      MapTilePosition.averageOpt(fighters.take((fighters.size + 2) / 3).iterator.map(_.currentTile))
+    }
+
     private val pathToFollow = {
       universe.pathfinders.groundSafe
         .findPaths(currentCenter, targetOfAttack.where)
@@ -390,17 +398,22 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
 
           t match {
             case s: SupportUnit =>
-              // among the nearest fighters of this attack; away from them, along the attack's path
-              val stayHere = {
-                val stayBetweenThese = {
-                  s.nearestAllies.iterator
-                    .filter(a => a.isFigher && currentForce(a) && a.currentTile.distanceToIsLess(s.currentTile, 8))
-                    .take(3)
-                    .map(_.currentTile)
-                }
-                MapTilePosition.averageOpt(stayBetweenThese)
+              // Among the nearest fighters of this attack; away from them, along the attack's path. While they walk on,
+              // a medic walks on with them: in game 4 vs Zerg on ICCup Lost_Temple at 9471a0b four medics, each sent
+              // to the middle of the tanks behind it, stood in the enemy's narrow ramp, and the army of fifty, attacking
+              // towards an empty main, stood behind them for fifty thousand frames. A Science Vessel blocks nobody; away
+              // from the fighters it flies to the army's front, which needs its detection.
+              val fighters = s.nearestAllies.iterator
+                .filter(a => a.isFigher && currentForce(a) && a.currentTile.distanceToIsLess(s.currentTile, 8))
+                .take(3)
+                .toVector
+              val stayHere = MapTilePosition.averageOpt(fighters.iterator.map(_.currentTile))
+              s match {
+                case _: ScienceVessel =>
+                  stayHere.orElse(front.get).map(AttackToPosition(t, _)).getOrElse(defaultCommand)
+                case _ if WorldDominationPlan.walkOn(fighters.map(_.nativeUnit.getOrder)) => defaultCommand
+                case _ => stayHere.map(AttackToPosition(t, _)).getOrElse(defaultCommand)
               }
-              stayHere.map { AttackToPosition(t, _) }.getOrElse { defaultCommand }
             case _ =>
               defaultCommand
           }
@@ -424,6 +437,10 @@ private[pony] object WorldDominationPlan {
 
   /** How far the campaign target moves before the army out is sent to the new one. */
   val RetargetTiles = 8
+
+  /** Whether a support unit walks on with its nearest fighters, given their orders: when all of them are on their way. */
+  def walkOn(fighterOrders: Seq[bwapi.Order]): Boolean =
+    fighterOrders.nonEmpty && fighterOrders.forall(o => o == bwapi.Order.AttackMove || o == bwapi.Order.Move)
 
   /** Whether a new campaign target replaces the one the army set out for. */
   def retargets(setOutFor: Option[MapTilePosition], next: Option[MapTilePosition]): Boolean = (next, setOutFor) match {

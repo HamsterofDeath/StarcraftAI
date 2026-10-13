@@ -85,6 +85,8 @@ class TerranCampaignTest extends Specification with MustMatchers {
     Home fighters stay behind the closed wall while the force beyond it outweighs them $raidBeyondWall
     They first look a few seconds before they go out to a raid beyond the wall $raidBeyondWallLook
     Small campaign retargets add up from the target the army set out for $campaignRetarget
+    A medic walks on with its nearest fighters while all of them are on their way, and stays among them otherwise $medicWalksOn
+    Units without a weapon are moved where others attack-move, which the game would refuse them $attackMoveOnlyArmed
     A lost guard cannot reserve a fighter still owned by an expedition $reserveCustody
     Mineral field corners require enough nonoverlapping bunker sites for full coverage $bunkerCoverage
     Garrison reservations stay unique and replace a killed Marine without inventing native cargo $bunkerGarrison
@@ -714,6 +716,26 @@ class TerranCampaignTest extends Specification with MustMatchers {
     }
     (sent, WorldDominationPlan.retargets(None, steps.head), WorldDominationPlan.retargets(steps.head, None)) ===
       (Vector(false, true, false, true), true, true)
+  }
+
+  def medicWalksOn = {
+    import bwapi.Order.{AttackMove, AttackUnit, Move, PlayerGuard}
+    // game 4 vs Zerg on Lost_Temple at 9471a0b: the tanks behind the medics in the ramp all attack-moved
+    (
+      WorldDominationPlan.walkOn(Seq(AttackMove, AttackMove, AttackMove)),
+      WorldDominationPlan.walkOn(Seq(Move, AttackMove)),
+      WorldDominationPlan.walkOn(Seq(AttackMove, AttackUnit, AttackMove)),
+      WorldDominationPlan.walkOn(Seq(PlayerGuard)),
+      WorldDominationPlan.walkOn(Nil)
+    ) === (true, true, false, false, false)
+  }
+
+  def attackMoveOnlyArmed = {
+    import bwapi.UnitType.{
+      Terran_Dropship, Terran_Medic, Terran_Science_Vessel, Terran_Siege_Tank_Siege_Mode, Terran_Vulture
+    }
+    Seq(Terran_Science_Vessel, Terran_Dropship, Terran_Medic, Terran_Vulture, Terran_Siege_Tank_Siege_Mode)
+      .map(Orders.attackMoves) === Seq(false, false, true, true, true)
   }
 
   def defensiveRecall = {
