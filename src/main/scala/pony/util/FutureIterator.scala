@@ -2,6 +2,7 @@ package pony
 package util
 
 import java.util.concurrent.locks.ReentrantReadWriteLock
+import scala.util.{Failure, Success}
 
 class FutureIterator[IN, T](feed: => IN, produce: IN => T, startNow: Boolean) {
   private var nthHint                = 1
@@ -9,9 +10,13 @@ class FutureIterator[IN, T](feed: => IN, produce: IN => T, startNow: Boolean) {
   private val lock                   = new ReentrantReadWriteLock()
   private var lastFeed               = Option.empty[IN]
   private var done                   = Option.empty[T]
-  private var inProgress             = if (startNow) nextFuture else BWFuture.none
-  private var thinking               = startNow
   private var calledForCurrentResult = false
+  private var failures               = 0
+  // Set before the first calculation starts. A quick one used to finish before the constructor set it, and the
+  // iterator then thought forever and never calculated again: 742 of 20000 in FutureIteratorTest. In game 5 vs Protoss
+  // on ICCup Lost_Temple at 87b3736 no raid was ever reported while twelve zealots killed our workers by the CC.
+  private var thinking   = startNow
+  private var inProgress = if (startNow) nextFuture else BWFuture.none
 
   def setupRecalcHint(tick: PrimeNumber) = {
     triggerRecalcOn(tick.i)
@@ -68,28 +73,37 @@ class FutureIterator[IN, T](feed: => IN, produce: IN => T, startNow: Boolean) {
 
   def prepareNextIfDone(): Unit = {
     lock.writeLock().lock()
-    if (!thinking) {
-      thinking = true
-      lastFeed = None
-      inProgress = nextFuture
-    }
-    lock.writeLock().unlock()
+    try {
+      if (!thinking) {
+        // the calculation reports back under this lock, so it cannot finish before these are set
+        inProgress = nextFuture
+        thinking = true
+        lastFeed = None
+      }
+    } finally lock.writeLock().unlock()
   }
 
+  /** A failed calculation keeps the last result and lets the next one start; it used to leave the iterator thinking. */
   private def nextFuture = {
     val start = System.currentTimeMillis()
     val input = feed
     val fut   = BWFuture.produceFrom(produce(input))
-    fut.future.foreach {
-      case any =>
-        lock.writeLock().lock()
+    fut.future.onComplete { result =>
+      lock.writeLock().lock()
+      try {
         thinking = false
-        done = any
-        lastFeed = Some(input)
-        calledForCurrentResult = false
+        result match {
+          case Success(any) =>
+            done = any
+            lastFeed = Some(input)
+            calledForCurrentResult = false
+          case Failure(e) =>
+            failures += 1
+            if (failures == 1) NativeMatchEvidence.trace("future-iterator-failed", s"name=$name error=$e")
+        }
         val duration = System.currentTimeMillis() - start
         debug(s"Future $name took $duration ms", duration > 0)
-        lock.writeLock().unlock()
+      } finally lock.writeLock().unlock()
     }
     fut
   }
