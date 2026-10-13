@@ -14,6 +14,8 @@ class WallGeometryTest extends Specification with MustMatchers {
        |A depot above a barracks leaves 13 pixels and stops a zealot $depotAboveBarracks
        |With the barracks lifted a siege tank passes the depot $liftedGate
        |Blocked walk tiles stop units like buildings $terrain
+       |A trained Marine appears past the barracks' lower left corner $exitLowerLeft
+       |A trained Marine appears beside that corner when a building stands on it $exitBlocked
        """.stripMargin
 
   /** A pass five tiles high; units start left of the wall at x = 128 and must reach x > 300. */
@@ -43,5 +45,17 @@ class WallGeometryTest extends Specification with MustMatchers {
     // a solid column of blocked walk tiles across the whole pass
     val cliff: (Int, Int) => Boolean = (wx, _) => wx == 20
     passable(Dims.Marine, Nil, cliff, region, outside, inside) must beFalse
+  }
+
+  // a barracks at tile (4, 0): its box runs from x = 144 to 248 and down to y = 80
+  private val barracks = buildingBox(4, 0, Dims.Barracks)
+
+  // 144 - 8 - 1 = 135 and 80 + 9 + 1 = 90: the nearest center on the four pixel grid clear of the barracks
+  def exitLowerLeft = exitCenter(Dims.Marine, barracks, Seq(barracks), open, region) === Some((136, 92))
+
+  // a depot at tile (2, 2) covers x = 74 to 150 and y = 74 to 122: the Marine appears right of it, under the barracks
+  def exitBlocked = {
+    val depot = buildingBox(2, 2, Dims.SupplyDepot)
+    exitCenter(Dims.Marine, barracks, Seq(barracks, depot), open, region) === Some((160, 92))
   }
 }

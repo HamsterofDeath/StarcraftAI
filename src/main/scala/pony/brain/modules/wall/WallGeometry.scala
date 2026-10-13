@@ -53,6 +53,42 @@ private[pony] object WallGeometry {
       step: Int = 4
   ): Boolean = path(unit, obstacles, blockedWalkTile, region, from, inside, step).isDefined
 
+  /** Whether the unit's box around the center (cx, cy) lies in `region`, clear of obstacles and blocked walk tiles. */
+  def fits(unit: Dims, obstacles: Seq[Box], blockedWalkTile: (Int, Int) => Boolean, region: Box)(
+      cx: Int,
+      cy: Int
+  ): Boolean = {
+    val body = Box(cx - unit.left, cy - unit.up, cx + unit.right, cy + unit.down)
+    body.left >= region.left && body.top >= region.top && body.right <= region.right &&
+    body.bottom <= region.bottom && !obstacles.exists(_.intersects(body)) && {
+      val walkTiles = for {
+        wx <- (body.left / 8) to (body.right / 8)
+        wy <- (body.top / 8) to (body.bottom / 8)
+      } yield (wx, wy)
+      !walkTiles.exists(blockedWalkTile.tupled)
+    }
+  }
+
+  /**
+    * Where StarCraft puts a unit trained in a building with the box `building`: just past the box's lower left corner,
+    * or the free center nearest to that within a tile when it is taken. Centers lie on the `step` grid `path` searches.
+    */
+  def exitCenter(
+      unit: Dims,
+      building: Box,
+      obstacles: Seq[Box],
+      blockedWalkTile: (Int, Int) => Boolean,
+      region: Box,
+      step: Int = 4
+  ): Option[(Int, Int)] = {
+    val (x, y)       = (building.left - unit.right - 1, building.bottom + unit.up + 1)
+    val free         = fits(unit, obstacles, blockedWalkTile, region)
+    def snap(v: Int) = v - Math.floorMod(v, step)
+    (for (dx <- -32 to 32 by step; dy <- -32 to 32 by step) yield (snap(x + dx), snap(y + dy))).distinct
+      .sortBy((cx, cy) => ((cx - x) * (cx - x) + (cy - y) * (cy - y), cy, cx))
+      .find(free.tupled)
+  }
+
   /** The centers of one shortest way through, as `passable` judges it, from a start to the inside. */
   def path(
       unit: Dims,
@@ -63,17 +99,7 @@ private[pony] object WallGeometry {
       inside: (Int, Int) => Boolean,
       step: Int = 4
   ): Option[Vector[(Int, Int)]] = {
-    def free(cx: Int, cy: Int): Boolean = {
-      val body = Box(cx - unit.left, cy - unit.up, cx + unit.right, cy + unit.down)
-      body.left >= region.left && body.top >= region.top && body.right <= region.right &&
-      body.bottom <= region.bottom && !obstacles.exists(_.intersects(body)) && {
-        val walkTiles = for {
-          wx <- (body.left / 8) to (body.right / 8)
-          wy <- (body.top / 8) to (body.bottom / 8)
-        } yield (wx, wy)
-        !walkTiles.exists(blockedWalkTile.tupled)
-      }
-    }
+    val free         = fits(unit, obstacles, blockedWalkTile, region)
     def snap(v: Int) = v - Math.floorMod(v, step)
     val parent       = mutable.HashMap.empty[(Int, Int), (Int, Int)]
     val visited      = mutable.HashSet.empty[(Int, Int)]
