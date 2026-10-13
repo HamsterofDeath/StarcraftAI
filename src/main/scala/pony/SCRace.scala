@@ -44,6 +44,10 @@ object SCRace {
     else if (r == Race.Terran) Some(Terran)
     else if (r == Race.Zerg) Some(Zerg)
     else None
+
+  /** The race most of these units belong to, if any belongs to one. */
+  def mostOf(races: Iterable[Race]): Option[SCRace] =
+    races.flatMap(known).groupBy(identity).maxByOption(_._2.size).map(_._1)
 }
 
 case object Terran extends SCRace {
