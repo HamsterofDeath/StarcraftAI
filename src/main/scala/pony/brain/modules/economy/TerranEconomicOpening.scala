@@ -5,7 +5,7 @@ package economy
 
 import pony.brain.budget.ResourceRequests
 import pony.brain.jobs.{Employer, UnitWithJob}
-import pony.brain.modules.campaign.TerranCampaignConfig
+import pony.brain.modules.campaign.{RunTerranCampaign, TerranCampaignConfig}
 import pony.brain.modules.production.{AlternativeBuildingSpot, BuildingRequestHelper}
 import pony.brain.modules.wall.{DepotRelocation, WallWithDepots}
 import pony.brain.requests.UnitJobRequest
@@ -58,10 +58,18 @@ class TerranEconomicOpening(universe: Universe)
     val enemyStarts = nativeGame.getStartLocations.asScala.toVector.filterNot(_ == own).map(t => (t.x, t.y))
     val main        = bases.mainBase.map(_.mainBuilding.tilePosition).fold(ourStart)(t => (t.x, t.y))
     val byId        = fields.map(a => a.uniqueId -> a).toMap
+    val enemy       = universe.pluginByType[RunTerranCampaign].enemyBuildings.map(_.tile)
     val ranked      = ExpansionSite.rank(
       fields.map { a =>
         val tile = a.nearbyFreeTile
-        ExpansionSite.Candidate(a.uniqueId, tile.x, tile.y, strategicMap.defenseLineOf(tile).isDefined, reachable(a))
+        ExpansionSite.Candidate(
+          a.uniqueId,
+          tile.x,
+          tile.y,
+          strategicMap.defenseLineOf(tile).isDefined,
+          reachable(a),
+          enemy.exists(_.distanceToIsLess(tile, ExpansionSite.EnemyTiles))
+        )
       },
       main,
       ourStart,
@@ -132,8 +140,11 @@ class TerranEconomicOpening(universe: Universe)
       def sharedField(cc: CommandCenter) =
         fieldOf(cc).exists(a => landed.count(o => o != cc && fieldOf(o).contains(a)) > 0)
       // A depot built at home shares the home field until it flies to its own; the home depot anchors defense and
-      // only moves off its own exhausted field.
-      val fresh = landed.filter(cc => cc != home.mainBuilding && sharedField(cc))
+      // only moves off its own exhausted field. Of depots sharing a field, one that stands at it keeps mining while
+      // another does not: in game 9 vs Terran on 74b88f4 on Lost_Temple a depot built 18 tiles off the natural shared
+      // it, the natural's own depot flew off instead, and nobody mined the field again.
+      val sharing = landed.filter(cc => cc != home.mainBuilding && sharedField(cc))
+      val fresh   = ExpansionChoice.fliers(sharing.map(cc => cc.nativeUnitId -> minedField(cc).isDefined))
       // a sealed main keeps its depot: the wall, its posts and the ferry's sides all measure from it, and in game 1 on
       // 3f2d8e9 the home depot flew off its exhausted field at minute 16 and the main counted as open from then on
       val exhausted = landed.filter(cc => fieldOf(cc).forall(a => !fieldUseful(a)))
@@ -156,7 +167,7 @@ class TerranEconomicOpening(universe: Universe)
       )
       val choice = ExpansionChoice.decide(
         deficit,
-        fresh.map(_.nativeUnitId),
+        fresh,
         exhausted.map(_.nativeUnitId),
         newUnderWay,
         affordable
@@ -278,6 +289,7 @@ class TerranEconomicOpening(universe: Universe)
       val walkable                             = mapLayers.freeWalkableIgnoringMobiles
       def walkableFromHere(area: ResourceArea) =
         walkable.areInSameWalkableArea(home, area.nearbyFreeTile)
+      val enemy = this.universe.pluginByType[RunTerranCampaign].enemyBuildings.map(_.tile)
       NativeMatchEvidence.trace(
         "depot-destination-candidates",
         s"depot=${depot.nativeUnitId} from=$home " + strategicMap.resources.toVector.map { a =>
@@ -285,6 +297,7 @@ class TerranEconomicOpening(universe: Universe)
           s"${a.uniqueId}@$tile:d=${math.sqrt(tile.distanceSquaredTo(home).toDouble).toInt}" +
             s":covered=${bases.isCovered(a)}:healthy=${fieldHealthy(a)}" +
             s":danger=${!mapLayers.slightlyDangerousAsBlocked.free(tile)}" +
+            s":nearEnemy=${enemy.exists(_.distanceToIsLess(tile, ExpansionSite.EnemyTiles))}" +
             s":enemies=${unitGrid.enemy.allInRange[Mobile](tile, 12).size}" +
             s":line=${strategicMap.defenseLineOf(tile).isDefined}:walk=${walkableFromHere(a)}:ground=${reachable(a)}"
         }.mkString(" ")

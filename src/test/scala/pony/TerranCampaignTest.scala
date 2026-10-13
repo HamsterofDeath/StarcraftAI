@@ -104,7 +104,8 @@ class TerranCampaignTest extends Specification with MustMatchers {
     A real background placement refusal logs immutable data without reading live worker caches $backgroundPlacementRefusal
     A mineral field at or below five percent is mined out, at or below forty percent no longer held $fieldReplenishment
     A new command center is preferred over moving one that still mines $preferNewDepot
-    New bases go where SCVs can walk, to our half of the map first, then close to the main base $expansionSites
+    Of depots sharing a field, one standing away from it flies before the one at it $depotAtFieldStays
+    New bases go where SCVs can walk, away from known enemies, to our half first, then close to the main $expansionSites
     Fully staffed fields ask for one more field, up to the maximum $moreFields
     An endgame hunt sweeps every resource area farthest from home first, wraps around and moves on once looked at $huntSweep
     The hunt skips the points a scanner sweep just showed, unless it showed them all $huntScans
@@ -289,12 +290,18 @@ class TerranCampaignTest extends Specification with MustMatchers {
     // ours, the ramp's own natural nearer the east start; SCVs cannot walk to the island
     val island  = Candidate(122, 5, 6, defenseLine = false, reachable = false)
     val natural = Candidate(126, 95, 5, defenseLine = true)
+    // seen from the east main with the enemy found in the north main: its natural lies nearer our main than the field
+    // below our ramp, but beside the enemy
+    val besideThem = Candidate(126, 93, 2, defenseLine = true, nearEnemy = true)
+    val belowRamp  = Candidate(130, 124, 65, defenseLine = true)
     (
       rank(Seq(far, near, theirs, lined), main = (64, 70), ourStart = (64, 118), enemyStarts = Seq((31, 7)))
         .map(_.id),
       rank(Seq(island, natural), main = (57, 6), ourStart = (57, 6), enemyStarts = Seq((7, 87), (27, 118), (117, 27)))
+        .map(_.id),
+      rank(Seq(besideThem, belowRamp), main = (117, 27), ourStart = (117, 27), enemyStarts = Seq((57, 6)))
         .map(_.id)
-    ) === (Seq(4, 2, 1, 3), Seq(126, 122))
+    ) === (Seq(4, 2, 1, 3), Seq(126, 122), Seq(130, 126))
   }
 
   def preferNewDepot = {
@@ -307,6 +314,15 @@ class TerranCampaignTest extends Specification with MustMatchers {
       decide(1, Nil, Seq(5), newUnderWay = false, affordable = false),
       decide(1, Nil, Nil, newUnderWay = false, affordable = false)
     ) === (Hold, Move(9), Hold, BuildNew, Move(5), WaitForMinerals)
+  }
+  def depotAtFieldStays = {
+    import pony.brain.modules.economy.ExpansionChoice.fliers
+    (
+      fliers(Seq(174 -> true, 314 -> false)),
+      fliers(Seq(174 -> true, 314 -> true)),
+      fliers(Seq(9 -> false)),
+      fliers(Nil)
+    ) === (Seq(314), Seq(174, 314), Seq(9), Nil)
   }
 
   def fieldReplenishment = {

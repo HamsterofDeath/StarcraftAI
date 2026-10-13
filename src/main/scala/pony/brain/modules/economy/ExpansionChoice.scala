@@ -28,6 +28,15 @@ private[pony] object ExpansionChoice {
     math.min(max, if (held >= required && allSaturated) held + 1 else required)
 
   /**
+    * The fresh depots among those sharing a field, by id with whether each stands at its field: those that do not,
+    * if any; a depot standing at its field flies only when every sharer does.
+    */
+  def fliers(sharing: Seq[(Int, Boolean)]): Seq[Int] = {
+    val away = sharing.collect { case (id, false) => id }
+    if (away.nonEmpty) away else sharing.map(_._1)
+  }
+
+  /**
     * Idle SCVs that count as full crews: in game 5 vs Protoss on 09c3bb2 a dozen stood idle for 18 minutes while the
     * expander waited for its fields to fill up.
     */
