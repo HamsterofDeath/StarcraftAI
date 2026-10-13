@@ -558,15 +558,18 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
       tried += 1
       val taken = barracksTiles(b).toSet
       val seen  = mutable.Set.empty[Set[MapTilePosition]]
+      // The barracks' exit corner faces the same ground whichever depots close the rest, so once one sealed wall leaves
+      // it outside the next spot is tried. Searching on took nine seconds at ICCup Lost_Temple's (7,87), the game waiting.
+      var exitOutside                                                              = false
       def search(depots: Vector[MapTilePosition]): Option[Vector[MapTilePosition]] =
-        if (!seen.add(depots.toSet) || calls >= MaxFreeGateWays) None
+        if (exitOutside || !seen.add(depots.toSet) || calls >= MaxFreeGateWays) None
         else {
           calls += 1
           pixelWay(front, Dims.Zealot, depots, Some(b), near) match {
             case Some(None) =>
               val opens = pixelPass(front, Dims.SiegeTank, depots, None, near).contains(true)
               val exits = opens && exitsInside(front, depots, b, near)
-              if (opens && !exits) exitsOut += 1
+              if (opens && !exits) { exitsOut += 1; exitOutside = true }
               Option.when(exits)(depots)
             case Some(Some(way)) if depots.size < 4 =>
               val tiles = way.map((x, y) => MapTilePosition(x / 32, y / 32)).distinct
