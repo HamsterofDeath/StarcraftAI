@@ -451,20 +451,17 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
       near: Int
   ): Option[Option[Vector[(Int, Int)]]] = {
     val scene = new PixelScene(front, depots, barracks, near)
-    import scene._
-    val starts = (grid.spiralAround(c, 16) ++ grid.spiralAround(c, 24))
-      .filter(t => grid.free(t) && front.outerTerritory.free(t) && !front.defended.free(t))
-      .filter(t => t.x >= x0 && t.x <= x1 && t.y >= y0 && t.y <= y1).distinct.take(6)
-      .map(t => (t.x * 32 + 16, t.y * 32 + 16)).toVector
-    Option.when(starts.nonEmpty)(way(unit, starts))
+    Option.when(scene.outside.nonEmpty)(scene.way(unit, scene.outside))
   }
 
   /**
-    * Where a Marine trained in the gate barracks `b` appears, and whether it walks from there to the defended side with
-    * the wall closed. StarCraft puts it past the barracks' lower left corner, and at the top of a ramp that corner can
-    * open onto the ramp in front of the wall: in game 4 vs Terran on 9497320 from ICCup Lost_Temple's west main every
-    * Marine the gate trained stood on the ramp, the enemy's first push killed all eight there, the next ones walked
-    * out into it one by one, and then the barracks fell.
+    * Where a Marine trained in the gate barracks `b` appears, and whether that lies behind the closed wall: the Marine
+    * walks from there to the defended side, and no zealot from outside comes within a tile of it. StarCraft puts it past
+    * the barracks' lower left corner, and at the top of a ramp that corner can open onto the ramp in front of the wall:
+    * in game 4 vs Terran on 9497320 from ICCup Lost_Temple's west main every Marine the gate trained stood on the ramp,
+    * the enemy's first push killed all eight there, the next ones walked out into it one by one, and then the barracks
+    * fell. Moving a depot a tile then opened a slit from the ramp to the main that a Marine passes, so walking in alone
+    * does not tell that the Marines appear inside.
     */
   private def gateExit(
       front: StrategicMap#FrontLine,
@@ -476,7 +473,12 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
     val scene = new PixelScene(front, depots, Some(b), near)
     val exit  =
       exitCenter(Dims.Marine, buildingBox(b.x, b.y, Dims.Barracks), scene.obstacles, scene.blocked, scene.region)
-    (exit.map((x, y) => MapTilePosition(x / 32, y / 32)), exit.exists(e => scene.way(Dims.Marine, Vector(e)).isDefined))
+    val tile    = exit.map((x, y) => MapTilePosition(x / 32, y / 32))
+    def walksIn = exit.exists(e => scene.way(Dims.Marine, Vector(e)).isDefined)
+    def exposed = tile.exists(t =>
+      scene.way(Dims.Zealot, scene.outside, (x, y) => (x / 32 - t.x).abs <= 1 && (y / 32 - t.y).abs <= 1).isDefined
+    )
+    (tile, walksIn && !exposed)
   }
 
   private def exitsInside(
@@ -515,18 +517,20 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
     val obstacles                 = planned ++ standing
     def blocked(wx: Int, wy: Int) =
       wx < 0 || wy < 0 || wx >= grid.cols * 4 || wy >= grid.rows * 4 || !nativeGame.isWalkable(wx, wy)
-    def way(unit: Dims, starts: Seq[(Int, Int)]) =
-      path(
-        unit,
-        obstacles,
-        blocked,
-        region,
-        starts,
-        { (x, y) =>
-          val t = MapTilePosition(x / 32, y / 32)
-          front.defended.free(t) && ((t.x - c.x).abs max (t.y - c.y).abs) > near
-        }
-      )
+
+    /** Centers of a few walkable outer tiles near the choke, where the enemy comes from. */
+    val outside: Vector[(Int, Int)] = (grid.spiralAround(c, 16) ++ grid.spiralAround(c, 24))
+      .filter(t => grid.free(t) && front.outerTerritory.free(t) && !front.defended.free(t))
+      .filter(t => t.x >= x0 && t.x <= x1 && t.y >= y0 && t.y <= y1).distinct.take(6)
+      .map(t => (t.x * 32 + 16, t.y * 32 + 16)).toVector
+
+    private def deepInside(x: Int, y: Int) = {
+      val t = MapTilePosition(x / 32, y / 32)
+      front.defended.free(t) && ((t.x - c.x).abs max (t.y - c.y).abs) > near
+    }
+
+    def way(unit: Dims, starts: Seq[(Int, Int)], goal: (Int, Int) => Boolean = deepInside) =
+      path(unit, obstacles, blocked, region, starts, goal)
   }
 
   /**
