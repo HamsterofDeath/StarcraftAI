@@ -12,23 +12,17 @@ class Forces(
 
   def myRace = myself.scRace
 
-  def isTvT = {
-    forces.myself.scRace.isTerran &&
-    forces.hostilePlayers.size == 1 &&
-    forces.hostilePlayers.players.head.scRace.isTerran
-  }
+  // against a Random opponent none of these holds until its race has been seen
+  def isTvT = versus(_.isTerran)
 
-  def isTvZ = {
-    forces.myself.scRace.isTerran &&
-    forces.hostilePlayers.size == 1 &&
-    forces.hostilePlayers.players.head.scRace.isZerg
-  }
+  def isTvZ = versus(_.isZerg)
 
-  def isTvP = {
+  def isTvP = versus(_.isProtoss)
+
+  private def versus(enemy: SCRace => Boolean) =
     forces.myself.scRace.isTerran &&
-    forces.hostilePlayers.size == 1 &&
-    forces.hostilePlayers.players.head.scRace.isProtoss
-  }
+      forces.hostilePlayers.size == 1 &&
+      forces.hostilePlayers.players.head.knownRace.exists(enemy)
 
   val myself         = Player(me)(universe)
   val alliedPlayers  = Force(myAllies.map(Player(_)(universe)))(universe)

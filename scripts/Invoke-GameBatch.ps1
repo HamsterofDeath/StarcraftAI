@@ -10,7 +10,9 @@ param(
  [string]$Sbt = 'sbt',
  [ValidatePattern('^[a-z0-9-]+$')][string]$Strategy = 'default',
  # The native computer's race, for every game of the batch.
- [ValidateSet('Terran', 'Protoss', 'Zerg')][string]$EnemyRace = 'Protoss',
+ [ValidateSet('Terran', 'Protoss', 'Zerg', 'Random')][string]$EnemyRace = 'Protoss',
+ # The melee map relative to the runtime; the launcher's default when empty.
+ [string]$Map,
  [ValidateRange(1, 100)][int]$Games = 1,
  # Upper bound in real minutes per game.
  [ValidateRange(1, 120)][int]$TimeoutMinutes = 25,
@@ -69,6 +71,7 @@ $rows = foreach ($n in 1..$Games) {
   $game = @{ Runtime = $Runtime; Java = $Java; SourceCommit = $Commit; Repository = $RunCheckout
              Strategy = $Strategy; EnemyRace = $EnemyRace; TimeoutMinutes = $TimeoutMinutes
              StallSeconds = $StallSeconds; BotProperties = $BotProperties }
+  if ($Map) { $game.Map = $Map }
   if ($Headed) { $game.Headed = $true }
   if ($LocalSpeedMs -ge 0) { $game.LocalSpeedMs = $LocalSpeedMs }
   # the whole report, not just its head: cutting the pipeline short would skip the runner's own cleanup

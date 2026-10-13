@@ -37,14 +37,13 @@ sealed trait SCRace {
 }
 
 object SCRace {
-  def fromNative(r: Race) = {
-    if (r == Race.Protoss) Protoss
-    else if (r == Race.Terran) Terran
-    else if (r == Race.Zerg) Zerg
-    else {
-      throw new IllegalStateException(s"Check this: $this")
-    }
-  }
+
+  /** The race the game shows, if it shows one: a Random opponent's reads Unknown until it has been seen. */
+  def known(r: Race): Option[SCRace] =
+    if (r == Race.Protoss) Some(Protoss)
+    else if (r == Race.Terran) Some(Terran)
+    else if (r == Race.Zerg) Some(Zerg)
+    else None
 }
 
 case object Terran extends SCRace {

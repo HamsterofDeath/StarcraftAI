@@ -20,8 +20,10 @@ param(
  [double]$FieldHealthyFraction = 0.4,
  # A strategy key the bot knows, or 'default' to let it choose; the bot rejects unknown keys at start.
  [ValidatePattern('^[a-z0-9-]+$')][string]$Strategy = 'default',
- # The race of the native computer opponent in melee games.
- [ValidateSet('Terran', 'Protoss', 'Zerg')][string]$EnemyRace = 'Protoss',
+ # The race of the native computer opponent in melee games; a Random one shows its race once it has been seen.
+ [ValidateSet('Terran', 'Protoss', 'Zerg', 'Random')][string]$EnemyRace = 'Protoss',
+ # The melee map, relative to the runtime (for example 'maps/BroodWar/ICCup/ICCup Lost_Temple.scx').
+ [string]$Map = 'maps/BroodWar/aiide/(2)Destination.scx',
  # Repository-relative e2e map (for example e2e/maps/vul4-zea6.scx), played with map settings.
  [string]$E2EMap,
  # Several repository-relative e2e maps played in order in one warm StarCraft process (auto restart).
@@ -81,7 +83,8 @@ if ($E2EMaps.Count -gt 0) {
   $mapRelative = if ($mapPlan.Count -gt 1) { $mapFolder + '/*.scx' } else { $mapPlan[0] }
   $gameType = 'USE_MAP_SETTINGS'
 } else {
-  $mapRelative = 'maps/BroodWar/aiide/(2)Destination.scx'
+  if (-not (Test-Path -LiteralPath (Join-Path $Runtime $Map))) { throw ('Map not found in the runtime: ' + $Map) }
+  $mapRelative = $Map.Replace('\', '/')
   $gameType = 'MELEE'
 }
 $mapHash = (Get-FileHash -LiteralPath (Join-Path $Runtime $(if ($mapPlan.Count -gt 1) { $mapPlan[0] } else { $mapRelative })) -Algorithm SHA256).Hash

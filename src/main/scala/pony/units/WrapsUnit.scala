@@ -132,7 +132,7 @@ trait WrapsUnit extends HasUniverse with AfterTickListener {
   def unitIdText       = Integer.toString(unitId, 36)
   def mySCRace         = {
     val r = nativeUnit.getType.getRace
-    SCRace.fromNative(r)
+    SCRace.known(r).getOrElse(throw new IllegalStateException(s"$r is no playable race"))
   }
   def isBeingCreated      = unfinished.get
   override def onTick_!() = {

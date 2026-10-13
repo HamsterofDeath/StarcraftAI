@@ -5,7 +5,9 @@ param(
  [string]$Repository = (Split-Path $PSScriptRoot -Parent),
  # A strategy key the bot knows, or 'default' to let it choose.
  [ValidatePattern('^[a-z0-9-]+$')][string]$Strategy = 'default',
- [ValidateSet('Terran', 'Protoss', 'Zerg')][string]$EnemyRace = 'Protoss',
+ [ValidateSet('Terran', 'Protoss', 'Zerg', 'Random')][string]$EnemyRace = 'Protoss',
+ # The melee map relative to the runtime; the launcher's default when empty.
+ [string]$Map,
  # Upper bound in real minutes for the whole game.
  [ValidateRange(1, 120)][int]$TimeoutMinutes = 30,
  # A game whose bot output and result stay unchanged this long is stuck and gets stopped.
@@ -20,13 +22,14 @@ param(
  [string[]]$BotProperties = @()
 )
 $ErrorActionPreference = 'Stop'
-# One melee game against a native computer on the launcher's default map, stopped as soon as the bot writes its final
+# One melee game against a native computer on -Map or the launcher's default map, stopped as soon as the bot writes its final
 # result. Afterwards: the result, the economy heartbeat as a table and the most frequent trace events.
 $launcher = Join-Path $PSScriptRoot 'Start-TerranCampaign.ps1'
 $runName = 'game-' + $Strategy + '-' + $EnemyRace.ToLowerInvariant() + '-' + (Get-Date).ToString('yyyyMMdd-HHmmss')
 $launch = @{ Runtime = $Runtime; Java = $Java; RunName = $runName; SourceCommit = $SourceCommit
              Repository = $Repository; Strategy = $Strategy; EnemyRace = $EnemyRace; BotProperties = $BotProperties
              HeapMb = 384 }
+if ($Map) { $launch.Map = $Map }
 if (-not $Headed) { $launch.Headless = $true }
 if ($LocalSpeedMs -ge 0) { $launch.LocalSpeedMs = $LocalSpeedMs }
 $started = Get-Date

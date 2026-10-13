@@ -15,7 +15,16 @@ class StrategyPluginTest extends Specification with MustMatchers {
        |Two plugins with one key are rejected $duplicateKeys
        |A key must be lowercase letters, digits and dashes $keyFormat
        |Strategies declare the campaign machinery they use $capabilities
+       |A Random opponent's race stays unknown until the game shows it $randomRace
        """.stripMargin
+
+  def randomRace =
+    (
+      SCRace.known(bwapi.Race.Unknown),
+      SCRace.known(bwapi.Race.Random),
+      SCRace.known(bwapi.Race.Zerg),
+      SCRace.known(bwapi.Race.Terran)
+    ) === (None, None, Some(Zerg), Some(Terran))
 
   private val universe: pony.brain.Universe = null
 
