@@ -85,13 +85,14 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
   def campaignForceSize                                        = attacks.filter(_.campaign).map(_.force.size).sum
   private var campaignTarget                                   = Option.empty[MapTilePosition]
   def setCampaignTarget(target: Option[MapTilePosition]): Unit = {
-    // Small retargets from fog updates must not cancel a running campaign attack.
-    val meaningfullyChanged = (target, campaignTarget) match {
-      case (Some(next), Some(prev)) => next.distanceToIsMore(prev, 8)
-      case (next, prev)             => next != prev
+    // Small retargets from fog updates must not cancel a running campaign attack. They are measured from the target the
+    // attack set out for, not from the last small step: in game 1 vs Terran on e73348a five steps of under eight tiles
+    // each led eighteen tiles away, and the army stood at its first target for forty game minutes.
+    val meaningfullyChanged = WorldDominationPlan.retargets(campaignTarget, target)
+    if (meaningfullyChanged) {
+      attacks.retain(a => !a.campaign)
+      campaignTarget = target
     }
-    if (meaningfullyChanged) attacks.retain(a => !a.campaign)
-    campaignTarget = target
   }
 
   def initiateCampaignAttack(where: MapTilePosition, expeditionIds: Set[Int]): Boolean = {
@@ -114,7 +115,9 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
     else {
       army match {
         case Some(out) => out.join(available)
-        case None      => initiateAttack(where, available, Lowest, campaign = true)
+        case None      =>
+          campaignTarget = Some(where)
+          initiateAttack(where, available, Lowest, campaign = true)
       }
       true
     }
@@ -397,4 +400,16 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
     def complete = Attacks(parts.flatMap(_.complete))
   }
 
+}
+
+private[pony] object WorldDominationPlan {
+
+  /** How far the campaign target moves before the army out is sent to the new one. */
+  val RetargetTiles = 8
+
+  /** Whether a new campaign target replaces the one the army set out for. */
+  def retargets(setOutFor: Option[MapTilePosition], next: Option[MapTilePosition]): Boolean = (next, setOutFor) match {
+    case (Some(n), Some(p)) => n.distanceToIsMore(p, RetargetTiles)
+    case (n, p)             => n != p
+  }
 }

@@ -85,6 +85,14 @@ class Units(game: Game, hostile: Boolean, override val universe: Universe) exten
   private def taken(id: Int) =
     nativeIdToUnit.get(id).exists(w => !w.isInstanceOf[Resource] && forces.isEnemy(w.nativeUnit))
 
+  /**
+    * An enemy unit seen in the hands of no enemy has left the enemy: a Terran add-on whose building lifted off belongs to
+    * nobody until a building lands at it again. In game 1 vs Terran on e73348a such a machine shop held nine sieged tanks
+    * in the razed enemy main for forty game minutes; no unit attacks it, and the game ends without it. Out of sight, a
+    * unit shows no owner at all, so only a visible one counts.
+    */
+  private def defected(w: WrapsUnit) = w.nativeUnit.isVisible && !forces.isEnemy(w.nativeUnit)
+
   private def renegade(by: String)(u: bwapi.Unit): bwapi.Unit = {
     NativeMatchEvidence.trace("unit-renegade", s"unit=${u.getID} type=${u.getType} by=$by")
     u
@@ -186,6 +194,12 @@ class Units(game: Game, hostile: Boolean, override val universe: Universe) exten
       dead_!(dead)
       if (ownAndNeutral)
         dead_!(allRelevant.map(_.nativeUnit).filter(u => taken(u.getID)).map(renegade("sweep")).toSeq)
+      else {
+        // seen again, it is the enemy's again
+        val gone = allRelevant.filter(defected).map(w => renegade("sweep")(w.nativeUnit)).toSeq
+        dead_!(gone)
+        gone.foreach(u => graveyard -= u.getID)
+      }
     }
 
     val addThese = {

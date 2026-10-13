@@ -68,10 +68,25 @@ $finished = Read-Result
 if ($timedOut -or (-not $stalledIn -and $finished -and $finished.status -ne 'unfinished')) {
   $replays = Join-Path $Runtime 'maps/replays'
   $replayDeadline = (Get-Date).AddSeconds($(if ($timedOut) { 20 } else { 10 }))
+  $replay = $null
   while ((Get-Date) -lt $replayDeadline -and (Get-Process -Id $receipt.gamePid -ErrorAction SilentlyContinue) -and
-    -not (Get-ChildItem -LiteralPath $replays -Recurse -File -Filter '*.rep' -ErrorAction SilentlyContinue |
-      Where-Object { $_.LastWriteTime -gt $started -and $_.Name -ne 'dump.rep' })) {
+    -not ($replay = Get-ChildItem -LiteralPath $replays -Recurse -File -Filter '*.rep' -ErrorAction SilentlyContinue |
+      Where-Object { $_.LastWriteTime -gt $started -and $_.Name -ne 'dump.rep' } | Select-Object -First 1)) {
     Start-Sleep -Milliseconds 250
+  }
+  # the replay appears before StarCraft has written it: stopped then, the replay of the 63-minute game 1 vs Terran on
+  # e73348a was cut at 256 KiB and did not load. Written, it is closed and keeps its size.
+  if ($replay) {
+    $writtenDeadline = (Get-Date).AddSeconds(30)
+    $lastSize = -1
+    while ((Get-Date) -lt $writtenDeadline -and (Get-Process -Id $receipt.gamePid -ErrorAction SilentlyContinue)) {
+      $size = (Get-Item -LiteralPath $replay.FullName).Length
+      $closed = $false
+      try { [System.IO.File]::Open($replay.FullName, 'Open', 'Read', 'None').Dispose(); $closed = $true } catch {}
+      if ($closed -and $size -eq $lastSize) { break }
+      $lastSize = $size
+      Start-Sleep -Milliseconds 500
+    }
   }
 }
 foreach ($ownedPid in @($receipt.botPid, $receipt.gamePid)) {

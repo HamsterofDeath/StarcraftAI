@@ -9,7 +9,7 @@ import pony.brain.modules.micro.HuntSweep
 import pony.brain.modules.wall.WallWithDepots
 import pony.combat.{ArmedBuilding, BattleOdds}
 import pony.geometry.MapTilePosition
-import pony.units.{Medic, Mobile, SupportUnit, TransporterUnit, WorkerUnit, WrapsUnit}
+import pony.units.{Building, Medic, Mobile, SupportUnit, TransporterUnit, WorkerUnit, WrapsUnit}
 
 import scala.jdk.CollectionConverters._
 
@@ -350,8 +350,21 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
         val jobs          = force.toVector.groupBy(by).map((k, v) => s"$k*${v.size}").toVector.sorted.mkString(",")
         val far           = force.toVector.sortBy(m => -m.currentTile.distanceTo(t)).take(4).map { m =>
           s"${m.nativeUnitId}:${m.nativeUnit.getType.toString.replaceAll("^[A-Za-z]+_", "")}@${m.currentTile}" +
-            s">${m.nativeUnit.getTargetPosition.toTilePosition}:${m.nativeUnit.getOrder}"
+            s">${m.nativeUnit.getTargetPosition.toTilePosition}:${m.nativeUnit.getOrder}" +
+            s"${if (m.nativeUnit.isMoving) "" else ":still"}${if (m.nativeUnit.isStuck) ":stuck" else ""}"
         }.mkString(",")
+        // what stands around the farthest straggler: in game 1 vs Terran on e73348a half the army of 97 stood still in
+        // our main beside the open wall gate for forty game minutes, attack-moving to the target
+        val around = force.toVector.maxByOption(_.currentTile.distanceTo(t)).map { m =>
+          val here      = m.currentTile
+          val buildings = ownUnits.allByType[Building].filter(b => !b.isFloating && b.area.distanceTo(here) <= 5)
+            .map(b => s"${b.nativeUnit.getType.toString.replaceAll("^[A-Za-z]+_", "")}@${b.tilePosition}")
+          val crowd  = ownUnits.allByType[Mobile].count(_.currentTile.distanceToIsLess(here, 4))
+          val sieged = ownUnits.allByType[Mobile].count(o =>
+            o.nativeUnit.isSieged && o.currentTile.distanceToIsLess(here, 6)
+          )
+          s"$here:crowd=$crowd:sieged=$sieged:buildings=${buildings.toVector.sorted.mkString("+")}"
+        }.getOrElse("")
         // what holds sieged tanks in place: in game 3 vs Terran on 6ca7cd9 twenty of them stood sieged in the razed
         // enemy main for twenty game minutes, and the army with them
         val sieged = force.toVector.filter(_.nativeUnit.isSieged)
@@ -366,7 +379,7 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
         NativeMatchEvidence.trace(
           "campaign-army",
           s"size=${force.size} center=$center spread=$spread near=${tiles.count(_.distanceToIsLess(t, 10))} " +
-            s"target=$t there=$there orders=$orders by=$jobs far=$far sieged=${sieged.size} held=$held"
+            s"target=$t there=$there orders=$orders by=$jobs far=$far around=$around sieged=${sieged.size} held=$held"
         )
       }
     }

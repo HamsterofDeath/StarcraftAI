@@ -11,7 +11,7 @@ import pony.brain.modules.bunkers.{
 }
 import pony.brain.modules.campaign.{
   CampaignDefenseControl, CarpetPosts, DefenseField, DefenseFighter, EnemyCampaignMemory, Group, ObservedEnemyBuilding,
-  RaidResponse, ScoutPointPairs, TerranCampaignConfig, TerranDefenseRoster
+  RaidResponse, ScoutPointPairs, TerranCampaignConfig, TerranDefenseRoster, WorldDominationPlan
 }
 import pony.brain.modules.economy.{
   LocalMineralMining, MineralFieldStaffing, MiningFieldStatus, TerranEconomicProgress, WorkerProductionQuota
@@ -74,6 +74,7 @@ class TerranCampaignTest extends Specification with MustMatchers {
     Local raids invalidate async offense, wait for a busy planner, and clear before offense resumes $defensiveRecall
     A raid turns the campaign army back only when home cannot hold it and it is worth half the army $raidResponse
     A smaller raid home cannot hold draws a detachment worth twice the raid, less what home has $raidDetachment
+    Small campaign retargets add up from the target the army set out for $campaignRetarget
     A lost guard cannot reserve a fighter still owned by an expedition $reserveCustody
     Mineral field corners require enough nonoverlapping bunker sites for full coverage $bunkerCoverage
     Garrison reservations stay unique and replace a killed Marine without inventing native cargo $bunkerGarrison
@@ -565,6 +566,18 @@ class TerranCampaignTest extends Specification with MustMatchers {
       RaidResponse.detachment(threat = 2000, home = 0, campaign = 2625),
       RaidResponse.detachment(threat = 175, home = 0, campaign = 0)
     ) === (1000, 700, 0, 0, 0)
+
+  def campaignRetarget = {
+    // game 1 vs Terran on e73348a: the target crept from a science facility to the depots behind it
+    val steps     = Vector((77, 110), (78, 112), (78, 114), (76, 121)).map((x, y) => Some(MapTilePosition(x, y)))
+    val (_, sent) = steps.foldLeft((Option(MapTilePosition(74, 103)), Vector.empty[Boolean])) {
+      case ((setOutFor, sent), next) =>
+        val again = WorldDominationPlan.retargets(setOutFor, next)
+        (if (again) next else setOutFor, sent :+ again)
+    }
+    (sent, WorldDominationPlan.retargets(None, steps.head), WorldDominationPlan.retargets(steps.head, None)) ===
+      (Vector(false, true, false, true), true, true)
+  }
 
   def defensiveRecall = {
     val control          = new CampaignDefenseControl
