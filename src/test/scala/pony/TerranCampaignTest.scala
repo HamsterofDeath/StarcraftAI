@@ -4,7 +4,7 @@ import pony.brain.budget.{
   HasFunding, MineralsRequest, ResourceApproval, ResourceApprovalId, ResourceApprovalSuccess, ResourceManager,
   ResourceRequestSum, ResourceRequests, SupplyRequest
 }
-import pony.brain.jobs.{ConstructionTravelProgress, Employer, UnitManager, UnitWithJob}
+import pony.brain.jobs.{ConstructBuilding, ConstructionTravelProgress, Employer, UnitManager, UnitWithJob}
 import pony.brain.modules.bunkers.{
   BunkerBoardingRetry, BunkerCoverage, BunkerGarrison, BunkerMarineQuota, BunkerRepairAdmission, BunkerRepairState,
   BunkerWorkerRoutes, TerranBunkerDefense
@@ -51,6 +51,8 @@ class TerranCampaignTest extends Specification with MustMatchers {
     Strategy construction does not touch forces before world initialization $initializationOrder
     Paused duplicate callbacks cannot advance AI time and a fresh match resets it $nativeClock
     A distant progressing builder survives pathfinding and a stalled builder expires $builderTravel
+    A builder still walking at its site is not given up, one standing or wandering there is $builderWalksAtSite
+    A builder the game will not move steps along our route even where it runs straight $builderDetourStep
     Queued groups safely resolve units which have all died $staleGroup
     Partially dead queued groups retain only surviving members $partialGroup
     Singleton scouting terminates and the final unpaired site is still scouted $singletonScout
@@ -225,6 +227,40 @@ class TerranCampaignTest extends Specification with MustMatchers {
       travel.failed(1984, MapTilePosition(60, 0), true, false, 60)
     ) ===
       (false, false, true, false, false, true)
+  }
+  def builderWalksAtSite = {
+    // game 4 vs Terran on ICCup Lost_Temple at 0cc8d1c: within reach of the factory's site at 7596, walking round a depot
+    val walking = new ConstructionTravelProgress(7500, MapTilePosition(8, 90))
+    walking.failed(7596, MapTilePosition(12, 90), true, false, 60)
+    val wandering = new ConstructionTravelProgress(0, MapTilePosition(0, 0))
+    (0 to 7).foreach(i => wandering.failed(i * 45, MapTilePosition(i % 2, 0), true, false, 60))
+    (
+      walking.failed(7644, MapTilePosition(14, 89), true, false, 60),
+      walking.failed(7658, MapTilePosition(15, 89), true, false, 60),
+      walking.failed(7718, MapTilePosition(15, 89), true, false, 60),
+      walking.failed(7719, MapTilePosition(15, 89), true, false, 60),
+      wandering.failed(ConstructionTravelProgress.AtSiteFrames, MapTilePosition(0, 0), true, false, 60),
+      wandering.failed(ConstructionTravelProgress.AtSiteFrames + 1, MapTilePosition(1, 0), true, false, 60)
+    ) === (false, false, false, true, false, true)
+  }
+  def builderDetourStep = {
+    // the west main of ICCup Lost_Temple in game 4 vs Terran at 0cc8d1c: the SCV stood between barracks and depot
+    val walkable = new Grid2D(32, 100, collection.immutable.BitSet.empty).mutableCopy
+    walkable.block_!(Area(MapTilePosition(11, 83), Size(4, 3))) // barracks
+    walkable.block_!(Area(MapTilePosition(13, 87), Size(3, 2))) // depot
+    walkable.block_!(Area(MapTilePosition(7, 87), Size(4, 3)))  // command center
+    walkable.block_!(Area(MapTilePosition(11, 88), Size(2, 2))) // comsat
+    val factory = Area(MapTilePosition(14, 89), Size(4, 3))
+    walkable.block_!(factory) // planned
+    val here  = MapTilePosition(13, 86)
+    val above = MapTilePosition(16, 88)
+    (
+      // east along the gap, on a straight line the game walks
+      ConstructBuilding.stepTowards(walkable, here, factory.centerTile)
+        .exists(step => step.x >= 15 && walkable.connectedByLine(here, step)),
+      ConstructBuilding.stepTowards(walkable, MapTilePosition(16, 87), above),
+      ConstructBuilding.stepTowards(walkable, above, above)
+    ) === (true, Some(above), None)
   }
   def staleGroup = {
     val units = AllUnits(new Units(null, false, null), new Units(null, true, null))

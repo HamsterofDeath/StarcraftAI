@@ -4,7 +4,7 @@ package jobs
 
 import pony.brain.budget.ResourceApprovalSuccess
 import pony.brain.requests.{CanAcceptSwitchAndHasFunding, CanAcceptUnitSwitch, UnitJobRequest}
-import pony.geometry.{Area, MapTilePosition, Size}
+import pony.geometry.{Area, Grid2D, MapTilePosition, Size}
 import pony.pathing.PathFinder
 import pony.terrain.ResourceArea
 import pony.units.{Building, Bunker, MainBuilding, WorkerUnit}
@@ -140,10 +140,7 @@ class ConstructBuilding[W <: WorkerUnit: ClassTag, B <: Building](
     }
     if (detour.isEmpty && currentTick - stillSince >= ConstructBuilding.StillFrames) {
       stillSince = currentTick
-      detour = PathFinder.on(mapLayers.freeWalkableIgnoringMobiles, isOnGround = true)
-        .findSimplePathNow(here, area.centerTile)
-        .flatMap(_.waypoints.takeWhile(_.distanceToIsLess(here, ConstructBuilding.DetourTiles + 1)).lastOption)
-        .filter(_ != here)
+      detour = ConstructBuilding.stepTowards(mapLayers.freeWalkableIgnoringMobiles, here, area.centerTile)
       NativeMatchEvidence.trace(
         "construction-detour",
         s"type=${typeOfBuilding.className} where=$buildWhere worker=${worker.nativeUnitId} at=$here step=$detour"
@@ -274,4 +271,17 @@ object ConstructBuilding {
 
   /** How far one such step goes, in tiles: short, so the game never has to route it between its pathing regions. */
   val DetourTiles = 3
+
+  /**
+    * The farthest of the first `DetourTiles` tiles of our route from `here` towards `goal` on `walkable` that a straight
+    * line from its start reaches, so the game walks it straight. The step used to be the last of the path's waypoints
+    * within `DetourTiles` of the builder, but waypoints keep only every fourth tile, so any route that began with four
+    * tiles in a row had none: in game 4 vs Terran on ICCup Lost_Temple at 0cc8d1c the SCV sent to build the first factory
+    * stood between the barracks and a depot of the west main, got no step fifteen times in 28 seconds, and its job
+    * failed. In 30 games on that map 899 of 1238 tries gave no step.
+    */
+  def stepTowards(walkable: Grid2D, here: MapTilePosition, goal: MapTilePosition): Option[MapTilePosition] =
+    PathFinder.on(walkable, isOnGround = true).findTilesNow(here, goal)
+      .flatMap(route => route.slice(1, DetourTiles + 1).filter(walkable.connectedByLine(route.head, _)).lastOption)
+      .filter(_ != here)
 }

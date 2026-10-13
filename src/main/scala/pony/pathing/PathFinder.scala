@@ -124,6 +124,16 @@ class PathFinder(on: Grid2D, isOnGround: Boolean) {
     evalPath(from, to, paths, tryFixPath)
   }
 
+  /**
+    * Every tile of the route from `from` towards `to`, both moved onto free tiles as for findPathNow; it ends at the goal
+    * or at the last tile the search reached. Path.waypoints keep only every fourth tile.
+    */
+  def findTilesNow(from: MapTilePosition, to: MapTilePosition): Option[Vector[MapTilePosition]] = {
+    val fromFixed = on.nearestFree(from)
+    val toFixed   = fromFixed.flatMap(e => on.areaOf(e).flatMap(_.nearestFreeNoGap(to))).orElse(on.nearestFree(to))
+    for (a <- fromFixed; b <- toFixed) yield spawn.tilesBetween(a, b)
+  }
+
   /** Route to the goal across walkable regions without clamping it into the start's area. */
   def findUnclampedPathNow(from: MapTilePosition, to: MapTilePosition): Option[Paths] = {
     val fromFixed = on.nearestFree(from)
@@ -165,6 +175,11 @@ class PathFinder(on: Grid2D, isOnGround: Boolean) {
   class AstarPathFinder(grid: Array[Array[GridNode2DInt]], isOnGround: Boolean) {
 
     def basedOn = on
+
+    def tilesBetween(from: MapTilePosition, to: MapTilePosition): Vector[MapTilePosition] = {
+      val finder = new AStarSearch[GridNode2DInt](from, to).performSearch()
+      finder.fullSolution.map(e => e: MapTilePosition) :+ (finder.targetOrNearestReachable: MapTilePosition)
+    }
 
     def findPaths(
         from: MapTilePosition,
