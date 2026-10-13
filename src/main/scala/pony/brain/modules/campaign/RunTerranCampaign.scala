@@ -31,6 +31,16 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
   private var huntInitiatedAt   = 0
   private var favourable        = true
   private var calm              = true
+  // the frame a comsat last swept each hunt point (UseComsat)
+  private val huntScans    = scala.collection.mutable.Map.empty[MapTilePosition, Int]
+  private var huntChosenAt = 0
+
+  /** The hunt points no sweep looked at lately, while the army hunts for an enemy none of whose buildings is known. */
+  def huntPointsToScan: Vector[MapTilePosition] =
+    if (huntTarget.isEmpty || memory.attackPosition.isDefined) Vector.empty
+    else huntPoints.filterNot(p => huntScans.get(p).exists(at => currentTick - at < HuntSweep.ScanFreshFrames))
+  def huntPointScanned(p: MapTilePosition): Unit = huntScans(p) = currentTick
+  private def clearedByScan(p: MapTilePosition)  = HuntSweep.clearedByScan(huntScans.get(p), currentTick)
   // Bunker crews hold the mineral lines; every other fighter keeps up the pressure unless field guards are configured.
   private val defenseRoster = new TerranDefenseRoster(config.fieldGuards)
   private val defenses      = oncePerTick {
@@ -204,7 +214,7 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
             army.count(_.currentTile.distanceToIsLess(point, HuntSweep.VisitTiles)),
             army.size,
             currentTick - huntInitiatedAt
-          )
+          ) || clearedByScan(point) && huntScans(point) > huntChosenAt - HuntSweep.ScanShownFrames
         })
     if (known.isDefined) {
       huntTarget = None
@@ -224,9 +234,12 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
               bases.mainBase.map(_.mainBuilding.tilePosition)
             )).distinct
         }
+        // the army skips the points a sweep just showed empty
+        huntIndex = HuntSweep.nextUnscanned(huntPoints.size, huntIndex, i => clearedByScan(huntPoints(i)))
         huntTarget = if (huntPoints.isEmpty) None else Some(huntPoints(huntIndex % huntPoints.size))
         if (huntTarget.isDefined) huntIndex = HuntSweep.next(huntPoints.size, huntIndex)
         huntInitiated = false
+        huntChosenAt = currentTick
         huntTarget.foreach(p =>
           NativeMatchEvidence.trace("hunt-sweep", s"point=$p index=$huntIndex areas=${huntPoints.size}")
         )

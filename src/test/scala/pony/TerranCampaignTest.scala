@@ -105,6 +105,7 @@ class TerranCampaignTest extends Specification with MustMatchers {
     New bases go to our half of the map first, then close to the main base $expansionSites
     Fully staffed fields ask for one more field, up to the maximum $moreFields
     An endgame hunt sweeps every resource area farthest from home first, wraps around and moves on once looked at $huntSweep
+    The hunt skips the points a scanner sweep just showed, unless it showed them all $huntScans
     A farthest-point carpet spread picks far-apart posts in a deterministic order $carpetPosts
   """
   private def building(id: Int, x: Int, base: Boolean = true) =
@@ -368,6 +369,20 @@ class TerranCampaignTest extends Specification with MustMatchers {
       visited(near = 0, army = 0, framesSinceLaunch = 0)
     ) ===
       (Vector(far, mid, near), Vector(near, mid, far), 0, 1, 2, true, false, true, false)
+  }
+  def huntScans = {
+    import HuntSweep._
+    val swept = Set(1, 2)
+    (
+      clearedByScan(Some(100), 100 + ScanShownFrames - 1),
+      clearedByScan(Some(100), 100 + ScanShownFrames),
+      clearedByScan(Some(100), 100 + ScanFreshFrames),
+      clearedByScan(None, 100),
+      nextUnscanned(4, 1, swept),
+      nextUnscanned(4, 3, swept),
+      nextUnscanned(2, 1, Set(0, 1)),
+      nextUnscanned(0, 2, swept)
+    ) === (false, true, false, false, 3, 3, 1, 2)
   }
   def carpetPosts = {
     import CarpetPosts._

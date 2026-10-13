@@ -23,4 +23,26 @@ private[pony] object HuntSweep {
     */
   def visited(near: Int, army: Int, framesSinceLaunch: Int): Boolean =
     framesSinceLaunch > VisitFrames || army > 0 && near * 2 >= army
+
+  /**
+    * Comsats with this much energy sweep hunt points nobody looks at (UseComsat), and keep two sweeps for hidden
+    * enemies. In game 4 vs Zerg on af1b88d the army of 46 spent the full 180 seconds on each of the empty hunt points
+    * (5,85) and (5,120) while five comsats had not swept since frame 36025.
+    */
+  val ScanMana = 150
+
+  /** A swept hunt point shows what stands there this many frames after the sweep is cast... */
+  val ScanShownFrames = 48
+
+  /** ...and counts as looked at for this long. */
+  val ScanFreshFrames = 24 * 90
+
+  /** Whether a sweep cast at `scannedAt` showed the hunt point lately. */
+  def clearedByScan(scannedAt: Option[Int], now: Int) =
+    scannedAt.exists(at => now - at >= ScanShownFrames && now - at < ScanFreshFrames)
+
+  /** The first hunt point from `index` on that no sweep showed lately, or `index` when sweeps showed them all. */
+  def nextUnscanned(size: Int, index: Int, cleared: Int => Boolean): Int =
+    if (size <= 0) index
+    else (0 until size).iterator.map(i => (index + i) % size).find(i => !cleared(i)).getOrElse(index % size)
 }

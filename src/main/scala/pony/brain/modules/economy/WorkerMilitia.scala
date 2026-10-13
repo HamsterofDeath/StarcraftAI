@@ -35,9 +35,8 @@ class WorkerMilitia(universe: Universe) extends OrderlessAIModule[SCV](universe)
     raids.getOrElse(home, Vector.empty).iterator.filter(_.isInGame)
       .minByOpt(_.currentTile.distanceSquaredTo(worker.currentTile))
 
-  override def onTick_!(): Unit = ifNth(Primes.prime11) {
-    update()
-  }
+  // every heavy tick: an ifNth on top of the heavy cadence comes round only every 11 * 24 frames
+  override def onTick_!(): Unit = update()
 
   private def update(): Unit = {
     val mains = bases.allBases.iterator.map(_.mainBuilding)
@@ -99,10 +98,10 @@ class WorkerMilitia(universe: Universe) extends OrderlessAIModule[SCV](universe)
     * a closed wall keeps the raiders outside it out of the militia's reach, and its SCVs inside.
     */
   private def homeGround(main: MainBuilding) = {
-    val grid  = mapLayers.freeWalkableIgnoringMobiles
-    val home  = main.centerTile
-    val seen  = mutable.BitSet.empty
-    val queue = mutable.Queue.empty[(Int, Int)]
+    val grid                        = mapLayers.freeWalkableIgnoringMobiles
+    val home                        = main.centerTile
+    val seen                        = mutable.BitSet.empty
+    val queue                       = mutable.Queue.empty[(Int, Int)]
     def visit(x: Int, y: Int): Unit = {
       val dx = x - home.x
       val dy = y - home.y
