@@ -17,7 +17,9 @@ private[pony] class CampaignDefenseControl {
     pressure = now
     if (!now) { target = None; pending = None }
   }
-  def queue(where: MapTilePosition): Unit                   = { target = Some(where); pending = Some(where) }
+  def queue(where: MapTilePosition): Unit = { target = Some(where); pending = Some(where) }
+  // a new generation, so a defence still being planned is not taken up
+  def withdraw(): Unit                                      = { target = None; pending = None; generation += 1 }
   def takeReady(planning: Boolean): Option[MapTilePosition] = {
     if (planning) None else { val result = pending; pending = None; result }
   }

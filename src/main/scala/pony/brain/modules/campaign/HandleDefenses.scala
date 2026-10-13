@@ -3,6 +3,8 @@ package brain
 package modules
 package campaign
 
+import pony.brain.modules.wall.WallWithDepots
+import pony.geometry.MapTilePosition
 import pony.terrain.MapLayers
 import pony.units.{Building, Mobile, WorkerUnit, WrapsUnit}
 import pony.util.BWFuture
@@ -44,8 +46,17 @@ class HandleDefenses(universe: Universe) extends OrderlessAIModule[Mobile](unive
             s"at=$raided worth=${sent.map(value).sum} units=${sent.size} threat=$threat home=$home campaign=$campaign"
           )
         }
+        val force = forceBeyondWall(localThreats, raided, value)
+        val hold  = RaidResponse.holdsBehindWall(force, home, holding)
+        if (hold != holding) NativeMatchEvidence.trace(
+          "base-defense-hold",
+          s"${if (hold) "on" else "off"} at=$raided force=${force.getOrElse(0)} home=$home threat=$threat"
+        )
+        holding = hold
+        if (hold) worldDominationPlan.holdBaseDefense_!()
+        else worldDominationPlan.requestBaseDefense(raided)
       }
-      localThreats.headOption.foreach(threat => worldDominationPlan.requestBaseDefense(threat.currentTile))
+      if (localThreats.isEmpty) holding = false
       return
     }
     if (backgroundOp.result.isEmpty) {
@@ -79,6 +90,32 @@ class HandleDefenses(universe: Universe) extends OrderlessAIModule[Mobile](unive
 
   private def resetBackgroundOp(): Unit = {
     backgroundOp = BWFuture.none
+  }
+
+  private var holding = false
+
+  /** How far from the raid enemies count as its force: the twelve zealots of game 1 stood within ten tiles. */
+  private val HoldRadius = 12
+
+  /**
+    * The worth of the visible enemy ground force near a raid that stands wholly beyond our closed wall, or None for a
+    * raid the wall does not keep out: fliers, guns that reach past the defended ring, a sealed main (its fighters cannot
+    * get out), or any raider inside. Home fighters sent beyond the wall walk out through a slit only a Marine fits, one
+    * by one: in game 1 vs Protoss on ICCup Lost_Temple at 87b3736 the first of twelve zealots at the wall counted 100
+    * against 600 at home, and eleven Marines went out to it and died. Held, they shoot over the wall from behind it.
+    */
+  private def forceBeyondWall(raiders: Seq[Mobile], raided: MapTilePosition, value: WrapsUnit => Int): Option[Int] = {
+    val wall   = universe.pluginByType[WallWithDepots]
+    val beyond = !strategy.current.sealsMain && raiders.forall { e =>
+      !e.nativeUnit.isFlying && e.nativeUnit.getType.groundWeapon.maxRange / 32 <= MapLayers.DefendedRing &&
+      wall.closedAgainst(e.currentTile)
+    }
+    Option.when(beyond) {
+      enemies.allCompletedMobiles.iterator.filter { e =>
+        e.nativeUnit.isVisible && !e.nativeUnit.isFlying && !e.isInstanceOf[WorkerUnit] && !e.isHarmlessNow &&
+        e.currentTile.distanceToIsLess(raided, HoldRadius)
+      }.map(value).sum
+    }
   }
 
   /**

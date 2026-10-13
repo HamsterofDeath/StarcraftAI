@@ -22,4 +22,13 @@ private[pony] object RaidResponse {
   def detachment(threat: Int, home: Int, campaign: Int): Int =
     if (recallsCampaign(threat, home, campaign) || threat <= home) 0
     else (threat * DetachShare - home).min(campaign)
+
+  /**
+    * Whether home fighters stay behind our closed wall rather than go out to a raid beyond it, given the worth of the
+    * enemy force near the raid (None when the wall does not keep the raid out). They stay while that force outweighs
+    * them; once staying, until they are worth half as much again, so that enemies stepping in and out of sight do not
+    * send them out and call them back again and again.
+    */
+  def holdsBehindWall(force: Option[Int], home: Int, holding: Boolean): Boolean =
+    force.exists(f => if (holding) f * 3 > home * 2 else f > home)
 }

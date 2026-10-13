@@ -9,7 +9,7 @@ import pony.brain.modules.economy.GatherMineralsAtSinglePatch
 import pony.brain.modules.production.{AlternativeBuildingSpot, BuildingRequestHelper}
 import pony.brain.requests.{UnitJobRequest, UnitRequest}
 import pony.combat.MobileRangeWeapon
-import pony.geometry.{Area, MapTilePosition, Size}
+import pony.geometry.{Area, Grid2D, MapTilePosition, Size}
 import pony.terrain.{AreaHelper, StrategicMap}
 import pony.units.{Barracks, Goliath, Marine, Mobile, SCV, SupplyDepot, Tank, Vulture, WorkerUnit, WrapsUnit}
 
@@ -74,6 +74,39 @@ class WallWithDepots(universe: Universe) extends OrderlessAIModule[WorkerUnit](u
 
   /** True once the wall was deliberately opened, or while its barracks gate is lifted. */
   def gateOpen: Boolean = gateOpened || gateBarracks.exists(_.isFloating)
+
+  /**
+    * Whether the complete wall stands closed between the main and `tile`: with its gate landed, `tile` is not among the
+    * tiles a worker walks to from the main command center past the standing buildings. Closed means zealot-tight, not
+    * shut: two depots side by side leave 19 pixels, and a Marine fits through.
+    */
+  def closedAgainst(tile: MapTilePosition): Boolean =
+    active && complete && !gateOpen && insideWall.exists(inside => !inside.free(tile))
+
+  private var insideAt     = -1
+  private var insideCached = Option.empty[Grid2D]
+
+  /**
+    * The main's side of the wall, by whole tiles as FerryManager's sealed split: None unless the buildings cut the main
+    * off from most of its terrain. Worked out at most once a second.
+    */
+  private def insideWall: Option[Grid2D] = {
+    if (insideAt < 0 || currentTick - insideAt >= 24) {
+      insideAt = currentTick
+      val walkable = mapLayers.blockedByBuildingTiles.mutableCopy
+        .or_!(mapLayers.blockedByResources.mutableCopy)
+        .or_!(mapLayers.rawWalkableMap.mutableCopy)
+        .guaranteeImmutability
+      insideCached = for {
+        main     <- bases.mainBase
+        anchor   <- walkable.nearestFree(main.mainBuilding.centerTile)
+        inside   <- walkable.areaOf(anchor)
+        mainArea <- mapLayers.rawWalkableMap.areaOf(anchor)
+        if inside.freeCount * 2 < mainArea.freeCount
+      } yield inside
+    }
+    insideCached
+  }
 
   /**
     * Knock down every depot of the wall and keep its ground and an apron of ApronTiles behind it free of new buildings.

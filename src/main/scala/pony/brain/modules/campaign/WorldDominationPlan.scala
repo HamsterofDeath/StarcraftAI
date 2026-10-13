@@ -82,6 +82,12 @@ class WorldDominationPlan(override val universe: Universe) extends HasUniverse {
         (!thinking && attacks.isEmpty))
     ) baseDefense.queue(where)
   }
+
+  /** Calls off the defence of a raid: its defenders go back to their posts while the raid lasts. */
+  def holdBaseDefense_!(): Unit = {
+    baseDefense.withdraw()
+    attacks.retain(_.campaign)
+  }
   def immediateBaseDefenseOrder(unit: Mobile): Option[UnitOrder] = {
     if (!baseDefense.pressure || attackOf(unit).exists(_.migrationPlan.isDefined)) None
     // a raid home can hold leaves the campaign army on its way
