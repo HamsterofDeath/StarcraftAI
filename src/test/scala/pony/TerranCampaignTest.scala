@@ -80,6 +80,7 @@ class TerranCampaignTest extends Specification with MustMatchers {
     A small melee raid its base's fighters cannot answer calls SCVs to arms, an army or shooters do not $militia
     The militia meets raiders up to the far side of the main's unfinished wall $militiaReach
     Dropships wait for the army only on maps with island fields, more while units wait for a ferry $islandDropships
+    A ferry flies straight on from the end of its safe way when that ends short of the drop point $ferryPastSafety
     After a raid that called the army home it stays home a while before it sets out again $calmAfterRecall
     A raid turns the campaign army back only when home cannot hold it and it is worth half the army $raidResponse
     A smaller raid home cannot hold draws a detachment worth twice the raid, less what home has $raidDetachment
@@ -820,6 +821,17 @@ class TerranCampaignTest extends Specification with MustMatchers {
       dropships(islandFields = true, finishedBases = 4, waitingForFerry = 8),
       dropships(islandFields = true, finishedBases = 4, waitingForFerry = 61)
     ) === (0, 0, 2, 2, 3, 4)
+  }
+  def ferryPastSafety = {
+    import pony.brain.modules.ferry.TransportGroundUnits.pastSafety
+    // game 7 vs Zerg on ICCup Lost_Temple at a52f427: the safe way to the island base at (118,115) ended at (97,92)
+    val (safeEnd, target) = (MapTilePosition(97, 92), MapTilePosition(118, 115))
+    (
+      pastSafety(MapTilePosition(117, 30), safeEnd, target),                   // still on its way
+      pastSafety(MapTilePosition(98, 90), safeEnd, target),                    // at its end
+      pastSafety(MapTilePosition(108, 104), safeEnd, target),                  // on the straight way in
+      pastSafety(MapTilePosition(115, 112), MapTilePosition(116, 113), target) // the safe way reaches the drop point
+    ) === (false, true, true, false)
   }
   def calmAfterRecall = {
     import TerranCampaignConfig.{calmedDown, CalmFrames}

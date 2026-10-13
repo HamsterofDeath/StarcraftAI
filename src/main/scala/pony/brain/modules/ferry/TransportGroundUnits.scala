@@ -142,8 +142,11 @@ class TransportGroundUnits(universe: Universe)
                   Orders.MoveToTile(this.unit, transporterTarget.where)
               }
             }
-            val near = this.unit.currentTile.distanceToIsLess(transporterTarget.where, 5)
-            if (near)
+            val near            = this.unit.currentTile.distanceToIsLess(transporterTarget.where, 5)
+            def carriesFighters = this.unit.loaded.exists(_.isFigher)
+            def straightOn      = transporterTarget.unit.isEmpty && carriesFighters &&
+              TransportGroundUnits.pastSafety(this.unit.currentTile, safePath.safeDestination, transporterTarget.where)
+            if (near || straightOn)
               simpleCommand
             else
               safePath.nextPositionFor(this.unit).map { where =>
@@ -167,9 +170,11 @@ class TransportGroundUnits(universe: Universe)
         ferryManager.planFor(this.unit) match {
           case Some(plan) =>
             if ((plan.instantDropRequested || plan.dropUnitsNow) && !this.unit.canDropHere) {
-              // a ferry hovering with no order keeps its cargo for good: fly straight there until a path is known
+              // a ferry hovering with no order keeps its cargo for good: fly straight there until a path is known.
+              // Over the target area the drop point lies close by, and the safe way could lead back out of it.
               this.unit.nearestDropTile.orElse(Some(plan.toWhere)).flatMap { tile =>
-                orderByTile(tile).orElse(Some(Orders.MoveToTile(this.unit, tile)))
+                if (plan.dropUnitsNow) Some(Orders.MoveToTile(this.unit, tile))
+                else orderByTile(tile).orElse(Some(Orders.MoveToTile(this.unit, tile)))
               }
             } else if (plan.instantDropRequested && this.unit.canDropHere) {
               plan.asapDrop.map { dropIt =>
@@ -203,4 +208,18 @@ class TransportGroundUnits(universe: Universe)
       order.toList
     }
   }
+}
+
+object TransportGroundUnits {
+
+  /**
+    * Whether a ferry at `here` flies straight to `target`: its safe way, which counts every tile within 12 of an enemy as
+    * unsafe, ends at `safeEnd` short of it, and the ferry has come to that end or past it. It used to stop there: in game 7
+    * vs Zerg on ICCup Lost_Temple at a52f427 the enemy's last base stood on the island at (118,115) with two spore
+    * colonies, our dropship hovered with four units over a ledge at (97,92), and the army waited at the cliff until the
+    * game timed out at frame 105169.
+    */
+  def pastSafety(here: MapTilePosition, safeEnd: MapTilePosition, target: MapTilePosition): Boolean =
+    safeEnd.distanceToIsMore(target, 5) &&
+      (here.distanceToIsLess(safeEnd, 6) || here.distanceSquaredTo(target) < safeEnd.distanceSquaredTo(target))
 }
