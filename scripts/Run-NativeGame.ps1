@@ -55,14 +55,19 @@ while ((Get-Process -Id $receipt.botPid -ErrorAction SilentlyContinue) -and (Get
   $limit = if ($phase -eq 'startup') { $StartupSeconds } else { $StallSeconds }
   if (((Get-Date) - $lastProgressAt).TotalSeconds -ge $limit) { $stalledIn = $phase; break }
 }
+$timedOut = -not $stalledIn -and (Get-Date) -ge $deadline
 if ($stalledIn) { "Stopped: no progress during $stalledIn (see $botLog)" }
-elseif ((Get-Date) -ge $deadline) { "Stopped: still running after $TimeoutMinutes minutes" }
+elseif ($timedOut) {
+  "Stopped: still running after $TimeoutMinutes minutes"
+  # the bot leaves the game on this request, and StarCraft writes the replay of the game it leaves
+  Set-Content -LiteralPath (Join-Path $run 'leave-request') -Value 'time limit'
+}
 Start-Sleep -Milliseconds 500
-# StarCraft writes the replay of a finished game as it leaves it; stopped at once, most games left none to study
+# StarCraft writes the replay of a game as it leaves it; stopped at once, most games left none to study
 $finished = Read-Result
-if (-not $stalledIn -and $finished -and $finished.status -ne 'unfinished') {
+if ($timedOut -or (-not $stalledIn -and $finished -and $finished.status -ne 'unfinished')) {
   $replays = Join-Path $Runtime 'maps/replays'
-  $replayDeadline = (Get-Date).AddSeconds(10)
+  $replayDeadline = (Get-Date).AddSeconds($(if ($timedOut) { 20 } else { 10 }))
   while ((Get-Date) -lt $replayDeadline -and (Get-Process -Id $receipt.gamePid -ErrorAction SilentlyContinue) -and
     -not (Get-ChildItem -LiteralPath $replays -Recurse -File -Filter '*.rep' -ErrorAction SilentlyContinue |
       Where-Object { $_.LastWriteTime -gt $started -and $_.Name -ne 'dump.rep' })) {

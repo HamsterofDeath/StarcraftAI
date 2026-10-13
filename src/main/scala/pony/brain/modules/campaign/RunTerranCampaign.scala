@@ -352,10 +352,21 @@ class RunTerranCampaign(universe: Universe) extends OrderlessAIModule[Mobile](un
           s"${m.nativeUnitId}:${m.nativeUnit.getType.toString.replaceAll("^[A-Za-z]+_", "")}@${m.currentTile}" +
             s">${m.nativeUnit.getTargetPosition.toTilePosition}:${m.nativeUnit.getOrder}"
         }.mkString(",")
+        // what holds sieged tanks in place: in game 3 vs Terran on 6ca7cd9 twenty of them stood sieged in the razed
+        // enemy main for twenty game minutes, and the army with them
+        val sieged = force.toVector.filter(_.nativeUnit.isSieged)
+        val held   = sieged.take(3).map { m =>
+          val near = enemies.allBuildings.filter(_.centerTile.distanceToIsLess(m.currentTile, 12)).take(2).map { b =>
+            s"${b.nativeUnit.getType.toString.replaceAll("^[A-Za-z]+_", "")}@${b.centerTile}" +
+              s"${if (b.isFloating) ":fly" else ""}${if (b.nativeUnit.isVisible) "" else ":unseen"}"
+          }
+          val ground = unitGrid.enemy.allInRange[Mobile](m.currentTile, 12).size
+          s"${m.nativeUnitId}@${m.currentTile}:buildings=${near.mkString("+")}:ground=$ground"
+        }.mkString(",")
         NativeMatchEvidence.trace(
           "campaign-army",
           s"size=${force.size} center=$center spread=$spread near=${tiles.count(_.distanceToIsLess(t, 10))} " +
-            s"target=$t there=$there orders=$orders by=$jobs far=$far"
+            s"target=$t there=$there orders=$orders by=$jobs far=$far sieged=${sieged.size} held=$held"
         )
       }
     }

@@ -89,6 +89,7 @@ object NativeMatchEvidence {
   def observeLiveVision(game: Game): Boolean = {
     if (!game.isInGame) return false
     liveGame = Some(game)
+    leaveOnRequest(game)
     val player = game.self()
     // These exact native victory/defeat fields are exported with the final synthetic flag batch.
     val terminal   = player != null && (player.isDefeated || player.isVictorious)
@@ -106,6 +107,20 @@ object NativeMatchEvidence {
   }
   def trace(event: String, detail: String): Unit =
     println("TWAILIGHT_CAMPAIGN frame=" + TickCounter.tickCount + " event=" + event + " detail=" + detail)
+
+  /**
+    * A runner out of time asks the bot to leave by a `leave-request` file next to the result: StarCraft writes the
+    * replay only for a game it leaves, and a game stopped at the time limit left nothing to study. The game stays
+    * unfinished, not lost.
+    */
+  private def leaveOnRequest(game: Game): Unit =
+    if (!leaveRequested && game.getFrameCount % 48 == 0 && new File(resultDirectory, "leave-request").exists) {
+      leaveRequested = true
+      trace("leave-requested", s"nativeFrame=${game.getFrameCount}")
+      game.leaveGame()
+    }
+  private var leaveRequested  = false
+  private def resultDirectory = new File(sys.props.getOrElse("twailight.resultDirectory", "log"))
 
   /**
     * Bank, income so far, supply (in whole units), what the SCVs are doing, bases and fighters: one line for economy
@@ -146,7 +161,7 @@ object NativeMatchEvidence {
 
   private def quoted(s: String) = "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
   private def write(game: Game, status: String, winner: Option[Boolean]): Unit = {
-    val directory = new File(sys.props.getOrElse("twailight.resultDirectory", "log"))
+    val directory = resultDirectory
     directory.mkdirs()
     val output    = new PrintWriter(new File(directory, resultFileName))
     val opponents = game.enemies().asScala.map { p =>
@@ -189,6 +204,7 @@ object NativeMatchEvidence {
     gameNumber += 1
     vision = new NativeVisionCoverage
     startupFailed = false
+    leaveRequested = false
     val start = game.self().getStartLocation
     initialState = "{\"minerals\":" + game.self().minerals() + ",\"gas\":" + game.self().gas() +
       ",\"startTile\":[" + start.getX + "," + start.getY + "],\"ownUnits\":" +
@@ -199,7 +215,8 @@ object NativeMatchEvidence {
     write(game, "unfinished", None)
   }
   def ended(game: Game, winner: Boolean): Unit =
-    write(game, if (startupFailed) "crash" else if (winner) "win" else "loss", Some(winner))
+    if (leaveRequested) write(game, "unfinished", None)
+    else write(game, if (startupFailed) "crash" else if (winner) "win" else "loss", Some(winner))
   def failed(game: Game, error: Throwable): Unit = {
     startupFailed = true
     write(game, "crash", None)

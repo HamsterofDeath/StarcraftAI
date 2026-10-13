@@ -20,8 +20,9 @@ class SiegeUnsiegeSelf(universe: Universe) extends DefaultBehaviour[Tank](univer
     override def preconditionOk = upgrades.hasResearched(TankSiegeMode)
 
     override def toOrder(what: Objective) = {
-      val enemies   = this.unit.surroundings.mediumEnemyGroundUnits
-      val buildings = this.unit.surroundings.mediumEnemyBuildings
+      val enemies = this.unit.surroundings.mediumEnemyGroundUnits
+      // a lifted Terran building is out of a tank's reach and must not hold it sieged over a razed main
+      val buildings = this.unit.surroundings.mediumEnemyBuildings.filterNot(_.isFloating)
 
       def buildingInRange = buildings.exists(_.area.distanceTo(this.unit.currentTile) <= 11)
 
