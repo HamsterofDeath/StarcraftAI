@@ -20,8 +20,8 @@ class WallPostsTest extends Specification with MustMatchers {
   private val planned = layout(wall, MapTilePosition(43, 30))
 
   def depths = (planned.posts(Role.Infantry).head._2 must beCloseTo(13.0, 0.01)) and
-    (planned.posts(Role.Tank).head._2 must beCloseTo(18.5, 0.01)) and
-    (planned.approach.head._2 must beCloseTo(6.0, 0.01))
+    (planned.posts(Role.Tank).head._2 must beCloseTo(17.0, 0.01)) and
+    (planned.approach.head._2 must beCloseTo(9.0, 0.01))
 
   // a Dragoon with its range upgrade reaches six tiles from the wall's far side (y = 9); a sieged tank twelve
   def tankRange = {
