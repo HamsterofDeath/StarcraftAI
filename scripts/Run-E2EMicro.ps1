@@ -86,6 +86,9 @@ $rows = for ($i = 0; $i -lt $plan.Count; $i++) {
   $metric = $metricsByMap[$mapName]
   $ownInitialDurability = if ($metric) { [double]$metric.ownInitialDurability } else { $null }
   $enemyInitialDurability = if ($metric) { [double]$metric.enemyInitialDurability } else { $null }
+  $enemyBuildingInitialDurability = if ($metric -and $metric.PSObject.Properties.Name -contains 'enemyBuildingInitialDurability') {
+    [double]$metric.enemyBuildingInitialDurability
+  } else { 0 }
   $ownAllDurability = if ($r -and $r.selfAllForces) { [double]$r.selfAllForces.durability } else { $null }
   $enemyAllDurability = if ($r -and $r.enemyAllForces) { [double]$r.enemyAllForces.durability } else { $null }
   $damageDealt = if ($null -ne $enemyInitialDurability -and $null -ne $enemyAllDurability) {
@@ -94,6 +97,10 @@ $rows = for ($i = 0; $i -lt $plan.Count; $i++) {
   $damageTaken = if ($null -ne $ownInitialDurability -and $null -ne $ownAllDurability) {
     [math]::Max(0, $ownInitialDurability - $ownAllDurability)
   } else { $null }
+  if ($enemyBuildingInitialDurability -gt 0 -and $enemyAllDurability -eq 0 -and $r.status -ne 'win') {
+    # A final snapshot that never saw the buildings cannot prove they were destroyed.
+    $damageDealt = $null
+  }
   $netDamage = if ($null -ne $damageDealt -and $null -ne $damageTaken) { $damageDealt - $damageTaken } else { $null }
   $damageDealtPct = if ($enemyInitialDurability -gt 0 -and $null -ne $damageDealt) {
     [math]::Round(100 * $damageDealt / $enemyInitialDurability, 1)

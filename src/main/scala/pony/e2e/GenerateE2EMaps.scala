@@ -378,7 +378,8 @@ object GenerateE2EMaps {
   )
 
   /** Hit points plus shields of every unit type, by the UNIT ids scenarios are built from. */
-  private val DurabilityByUnitId = UnitType.values.map(t => t.id -> (t.maxHitPoints + t.maxShields)).toMap
+  private val UnitTypesById      = UnitType.values.map(t => t.id -> t).toMap
+  private val DurabilityByUnitId = UnitTypesById.map((id, t) => id -> (t.maxHitPoints + t.maxShields))
 
   /** The durability one side of a scenario starts with: the damage the other side can remove from it at most. */
   def initialDurability(scenario: UmsScenario, owner: Int): Int = scenario.units.iterator
@@ -387,10 +388,17 @@ object GenerateE2EMaps {
     .sum
 
   /** The starting durability of every scenario, for runners that score a game by damage removed and taken. */
+  /** The starting durability in buildings alone, whose survivors a final snapshot may never have seen. */
+  def initialBuildingDurability(scenario: UmsScenario, owner: Int): Int = scenario.units.iterator
+    .filter(u => u.owner == owner && UnitTypesById.get(u.unitId).exists(_.isBuilding))
+    .map(u => DurabilityByUnitId.getOrElse(u.unitId, 0))
+    .sum
+
   def scenarioMetricsJson(scenarios: Map[String, UmsScenario]): String = scenarios.toVector.sortBy(_._1).map {
     (name, scenario) =>
       s"""{"map":"$name","ownInitialDurability":${initialDurability(scenario, 0)},""" +
-        s""""enemyInitialDurability":${initialDurability(scenario, 1)}}"""
+        s""""enemyInitialDurability":${initialDurability(scenario, 1)},""" +
+        s""""enemyBuildingInitialDurability":${initialBuildingDurability(scenario, 1)}}"""
   }.mkString("[\n", ",\n", "\n]\n")
 
   def write(scenario: UmsScenario, template: ChkFile, target: Path): Unit = {

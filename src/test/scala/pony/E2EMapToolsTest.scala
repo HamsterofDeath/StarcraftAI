@@ -149,6 +149,8 @@ class E2EMapToolsTest extends Specification with MustMatchers {
       (GenerateE2EMaps.initialDurability(tankVsDragoons, 1) === 1080) and
       (GenerateE2EMaps.initialDurability(cannonScenario, 0) === 450) and
       (GenerateE2EMaps.initialDurability(cannonScenario, 1) === 1000) and
+      (GenerateE2EMaps.initialBuildingDurability(cannonScenario, 1) === 1000) and
+      (GenerateE2EMaps.initialBuildingDurability(tankVsDragoons, 1) === 0) and
       (GenerateE2EMaps.scenarioMetricsJson(GenerateE2EMaps.Abilities) must
         contain("\"map\":\"stnk4-drg6\",\"ownInitialDurability\":600,\"enemyInitialDurability\":1080"))
   }
