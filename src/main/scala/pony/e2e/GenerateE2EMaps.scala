@@ -204,7 +204,7 @@ object GenerateE2EMaps {
         )
       ),
       Trigger(Seq(0), Seq(Trigger.commandsAtMost(1, MapUnit.PhotonCannon, 0)), Seq(Trigger.victory)),
-      Trigger(Seq(0), Seq(Trigger.commandsAtMost(0, ours.unitId, 0)), Seq(Trigger.defeat)),
+      Trigger(Seq(0), defeatConditions(ours), Seq(Trigger.defeat)),
       Trigger(Seq(0), Seq(Trigger.elapsedSeconds(timeoutSeconds)), Seq(Trigger.defeat))
     ),
     groundTiles = BadlandsDirt
@@ -223,6 +223,15 @@ object GenerateE2EMaps {
       MapUnit(MapUnit.PhotonCannon, 1, TurretColumn * 32, 32 * 32 + (2 * i - (count - 1)) * 32)
     }
   }
+
+  /** Defeat once every attacker is dead; tanks count in both modes, so sieging the last one is not losing it. */
+  private def defeatConditions(ours: Side) =
+    if (ours.unitId == MapUnit.SiegeTank)
+      Seq(
+        Trigger.commandsAtMost(0, MapUnit.SiegeTank, 0),
+        Trigger.commandsAtMost(0, MapUnit.SiegeTankSieged, 0)
+      )
+    else Seq(Trigger.commandsAtMost(0, ours.unitId, 0))
 
   def cannonFileName(ours: Side, n: Int, cannons: Int, support: Option[(Side, Int)] = None): String = {
     val name = s"${ours.code}$n${support.fold("")((s, k) => s"-${s.code}$k")}-$CannonCode$cannons"

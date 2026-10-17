@@ -19,10 +19,12 @@ class SiegeUnsiegeSelf(universe: Universe) extends DefaultBehaviour[Tank](univer
 
     override def preconditionOk = upgrades.hasResearched(TankSiegeMode)
 
-    private var wasSieged = this.unit.isSieged
+    private var wasSieged           = this.unit.isSieged
+    private var siegeOrderAnnounced = false
 
     override def toOrder(what: Objective) = {
       if (this.unit.isSieged != wasSieged) {
+        siegeOrderAnnounced = false
         wasSieged = this.unit.isSieged
         NativeMatchEvidence.trace(
           "siege-change",
@@ -41,7 +43,7 @@ class SiegeUnsiegeSelf(universe: Universe) extends DefaultBehaviour[Tank](univer
 
       def anyCloseButNotTooClose = {
         enemies.exists { e =>
-          !e.isHarmlessNow && e.centerTile.distanceToIsMore(this.unit.centerTile, 4)
+          !e.isHarmlessNow && e.centerTile.distanceToIsMore(this.unit.centerTile, 2)
         }
       }
 
@@ -49,7 +51,7 @@ class SiegeUnsiegeSelf(universe: Universe) extends DefaultBehaviour[Tank](univer
       if (this.unit.isSieged) {
         val staySieged = {
           val hasTargets = buildingInRange || anyCloseButNotTooClose
-          buildingInRange || (hasTargets && !botheredByMelee)
+          hasTargets
         }
         if (staySieged) {
           Nil
@@ -58,6 +60,14 @@ class SiegeUnsiegeSelf(universe: Universe) extends DefaultBehaviour[Tank](univer
         }
       } else {
         if (buildingInRange || (siegeableInRange && !botheredByMelee)) {
+          if (!siegeOrderAnnounced) {
+            siegeOrderAnnounced = true
+            NativeMatchEvidence.trace(
+              "siege-order",
+              s"unit=${this.unit.nativeUnitId} buildings=${buildings.size} buildingInRange=$buildingInRange " +
+                s"enemies=${enemies.size} at=${this.unit.currentTile}"
+            )
+          }
           Orders.TechOnSelf(this.unit, TankSiegeMode).toList
         } else {
           Nil

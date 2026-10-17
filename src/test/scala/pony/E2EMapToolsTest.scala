@@ -122,7 +122,9 @@ class E2EMapToolsTest extends Specification with MustMatchers {
       (ptex(12 * 44 + GenerateE2EMaps.TankSiegeTech) === 1.toByte) and
       (GenerateE2EMaps.Abilities("mvul4-zea6").researched === Seq(0 -> GenerateE2EMaps.SpiderMinesTech)) and
       (GenerateE2EMaps.Abilities("stnk3-mvul4-zea8-drg4").researched.size === 2) and
-      (GenerateE2EMaps.Abilities("tnk3-vul4-zea8-drg4").researched.isEmpty must beTrue)
+      (GenerateE2EMaps.Abilities("tnk3-vul4-zea8-drg4").researched.isEmpty must beTrue) and
+      (GenerateE2EMaps.cannons(GenerateE2EMaps.TankWithSiege, 3, 2).triggers
+        .exists(t => t.conditions.map(_.unit) == Seq(MapUnit.SiegeTank, MapUnit.SiegeTankSieged)) must beTrue)
   }
 
   def formationScenario = {
