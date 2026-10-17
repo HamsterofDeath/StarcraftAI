@@ -193,8 +193,10 @@ object NativeMatchEvidence {
           ",\"game\":" + gameNumber +
           ",\"selfForces\":" + forces(game.self().getUnits.asScala) +
           ",\"enemyForces\":" + forces(game.enemies().asScala.flatMap(_.getUnits.asScala)) +
-          ",\"selfAllForces\":" + forces(game.self().getUnits.asScala, includeBuildings = true) +
-          ",\"enemyAllForces\":" + forces(game.enemies().asScala.flatMap(_.getUnits.asScala), includeBuildings = true) +
+          ",\"selfAllForces\":" +
+          forces(game.getAllUnits.asScala.filter(_.getPlayer == game.self()), includeBuildings = true) +
+          ",\"enemyAllForces\":" +
+          forces(game.getAllUnits.asScala.filter(_.getPlayer.isEnemy(game.self())), includeBuildings = true) +
           ",\"configuration\":{\"minFighters\":" + config.minFighters + ",\"armyMinerals\":" + config.armyMinerals +
           ",\"armyGas\":" + config.armyGas + ",\"expansionReserve\":" + config.expansionReserve +
           ",\"bankMinerals\":" + config.bankMinerals + ",\"bankGas\":" + config.bankGas + "}}"
