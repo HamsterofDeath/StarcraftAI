@@ -37,8 +37,11 @@ class SiegeUnsiegeSelf(universe: Universe) extends DefaultBehaviour[Tank](univer
 
       def buildingInRange = buildings.exists(_.area.distanceTo(this.unit.currentTile) <= 12)
 
+      def anyRangedEnemy =
+        enemies.exists(e => !e.isHarmlessNow && e.nativeUnit.getType.groundWeapon.maxRange > 32)
+
       def siegeableInRange = {
-        buildingInRange || enemies.iterator.filterNot(_.isHarmlessNow).take(2).size >= 2
+        buildingInRange || (anyRangedEnemy && enemies.iterator.filterNot(_.isHarmlessNow).take(2).size >= 2)
       }
 
       def anyCloseButNotTooClose = {
@@ -65,7 +68,7 @@ class SiegeUnsiegeSelf(universe: Universe) extends DefaultBehaviour[Tank](univer
             NativeMatchEvidence.trace(
               "siege-order",
               s"unit=${this.unit.nativeUnitId} buildings=${buildings.size} buildingInRange=$buildingInRange " +
-                s"enemies=${enemies.size} at=${this.unit.currentTile}"
+                s"enemies=${enemies.size} ranged=$anyRangedEnemy at=${this.unit.currentTile}"
             )
           }
           Orders.TechOnSelf(this.unit, TankSiegeMode).toList
