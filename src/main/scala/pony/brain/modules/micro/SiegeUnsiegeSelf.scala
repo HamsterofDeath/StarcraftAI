@@ -13,13 +13,22 @@ class SiegeUnsiegeSelf(universe: Universe) extends DefaultBehaviour[Tank](univer
 
   override def forceRepeatedCommands = true
 
-  override def priority = SecondPriority.EvenMore
+  override def priority = SecondPriority.Max
 
   override protected def wrapBase(unit: Tank) = new SingleUnitBehaviour[Tank](unit, meta) {
 
     override def preconditionOk = upgrades.hasResearched(TankSiegeMode)
 
+    private var wasSieged = this.unit.isSieged
+
     override def toOrder(what: Objective) = {
+      if (this.unit.isSieged != wasSieged) {
+        wasSieged = this.unit.isSieged
+        NativeMatchEvidence.trace(
+          "siege-change",
+          s"unit=${this.unit.nativeUnitId} sieged=$wasSieged at=${this.unit.currentTile}"
+        )
+      }
       val enemies = this.unit.surroundings.mediumEnemyGroundUnits
       // a lifted Terran building is out of a tank's reach and must not hold it sieged over a razed main
       val buildings = this.unit.surroundings.mediumEnemyBuildings.filterNot(_.isFloating)

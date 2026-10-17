@@ -65,7 +65,7 @@ class SetupMineField(universe: Universe) extends DefaultBehaviour[Vulture](unive
 
       private var inBattle = false
 
-      override def priority = if (inBattle) SecondPriority.EvenMore else super.priority
+      override def priority = if (inBattle) SecondPriority.Max else super.priority
 
       override def describeShort: String = "Minefield"
 
