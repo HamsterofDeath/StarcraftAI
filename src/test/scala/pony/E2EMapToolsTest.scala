@@ -21,6 +21,8 @@ class E2EMapToolsTest extends Specification with MustMatchers {
        |Scenario titles must be short and usable in a replay file name $titles
        |Map file names fit StarCraft's 31 characters even with a session prefix $fileNames
        |Cannon scenarios place powered, non-overlapping cannons with BWAPI's unit ids $cannonScenario
+       |Ability scenarios research siege mode and spider mines from the start $abilityScenario
+       |Siege-line scenarios place the mine line at the named distance $formationScenario
        """.stripMargin
 
   private def bytes(values: Int*) = values.map(_.toByte).toArray
@@ -89,6 +91,52 @@ class E2EMapToolsTest extends Specification with MustMatchers {
       (cannons.combinations(2).forall { case Seq(a, b) => math.abs(a.y - b.y) >= 64 || math.abs(a.x - b.x) >= 64 }
         must beTrue) and
       (cannons.forall(c => c.x % 32 == 0 && c.y % 32 == 0) must beTrue)
+  }
+
+  def abilityScenario = {
+    val template = ChkFile(Vector(
+      "TYPE",
+      "VER ",
+      "IVE2",
+      "VCOD",
+      "PUNI",
+      "UPGR",
+      "PTEC",
+      "UNIS",
+      "UPGS",
+      "TECS",
+      "COLR",
+      "PUPx",
+      "PTEx",
+      "UNIx",
+      "UPGx",
+      "TECx"
+    ).map(n => n -> (if (n == "PTEx") new Array[Byte](1672) else bytes(1, 2))) :+ ("ERA " -> bytes(112, 0)))
+    val ptex = ChkFile.parse(GenerateE2EMaps.Abilities("stnk4-zea12").build(template).bytes)("PTEx")
+    (MapUnit.SpiderMine === bwapi.UnitType.Terran_Vulture_Spider_Mine.id) and
+      (MapUnit.SiegeTankSieged === bwapi.UnitType.Terran_Siege_Tank_Siege_Mode.id) and
+      (MapUnit.Hydralisk === bwapi.UnitType.Zerg_Hydralisk.id) and
+      (GenerateE2EMaps.TankSiegeTech === bwapi.TechType.Tank_Siege_Mode.ordinal()) and
+      (GenerateE2EMaps.SpiderMinesTech === bwapi.TechType.Spider_Mines.ordinal()) and
+      (ptex(GenerateE2EMaps.TankSiegeTech) === 1.toByte) and
+      (ptex(12 * 44 + GenerateE2EMaps.TankSiegeTech) === 1.toByte) and
+      (GenerateE2EMaps.Abilities("mvul4-zea6").researched === Seq(0 -> GenerateE2EMaps.SpiderMinesTech)) and
+      (GenerateE2EMaps.Abilities("stnk3-mvul4-zea8-drg4").researched.size === 2) and
+      (GenerateE2EMaps.Abilities("tnk3-vul4-zea8-drg4").researched.isEmpty must beTrue)
+  }
+
+  def formationScenario = {
+    def parts(d: Int) = {
+      val units = GenerateE2EMaps.SiegeFormation(s"frm$d-zea12").units
+      (units.filter(_.unitId == MapUnit.SiegeTankSieged), units.filter(_.unitId == MapUnit.SpiderMine))
+    }
+    val (tanks0, mines0) = parts(0)
+    val (tanks5, mines5) = parts(5)
+    (tanks0.size === 4) and
+      (mines0.isEmpty must beTrue) and
+      (mines5.size === 8) and
+      (mines5.map(_.x).distinct.size === 1) and
+      (mines5.head.x - tanks5.head.x === 5 * 32)
   }
 
   def kiteScenario = {
