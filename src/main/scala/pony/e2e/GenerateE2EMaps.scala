@@ -351,7 +351,7 @@ object GenerateE2EMaps {
 
   /** The siege line at every mine distance, against chargers and against ranged units that outrange the mines. */
   val SiegeFormation: Map[String, UmsScenario] = (for {
-    distance    <- Seq(0, 3, 5, 7, 9)
+    distance    <- Seq(0, 3, 4, 5, 6, 7, 8, 9)
     (theirs, m) <- Seq(Zealot -> 12, Dragoon -> 6)
   } yield s"frm$distance-${theirs.code}$m" -> siegeLine(distance, theirs, m)).toMap
 
