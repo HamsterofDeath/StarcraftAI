@@ -5,6 +5,8 @@ import pony.e2e.mpq.{MpqArchive, MpqWriter}
 
 import java.nio.file.{Files, Path, Paths}
 
+import bwapi.UnitType
+
 /**
   * Writes the end-to-end scenario maps: `sbt "runMain pony.e2e.GenerateE2EMaps <template.scx> <outDir>"`. The template
   * must be a Badlands map such as AIIDE's (2)Destination.scx; it provides the verification code and the defaults.
@@ -375,6 +377,22 @@ object GenerateE2EMaps {
     Trigger(Seq(0), Seq(Trigger.elapsedSeconds(timeoutSeconds)), Seq(Trigger.defeat))
   )
 
+  /** Hit points plus shields of every unit type, by the UNIT ids scenarios are built from. */
+  private val DurabilityByUnitId = UnitType.values.map(t => t.id -> (t.maxHitPoints + t.maxShields)).toMap
+
+  /** The durability one side of a scenario starts with: the damage the other side can remove from it at most. */
+  def initialDurability(scenario: UmsScenario, owner: Int): Int = scenario.units.iterator
+    .filter(u => u.owner == owner && u.unitId != MapUnit.StartLocation)
+    .map(u => DurabilityByUnitId.getOrElse(u.unitId, 0))
+    .sum
+
+  /** The starting durability of every scenario, for runners that score a game by damage removed and taken. */
+  def scenarioMetricsJson(scenarios: Map[String, UmsScenario]): String = scenarios.toVector.sortBy(_._1).map {
+    (name, scenario) =>
+      s"""{"map":"$name","ownInitialDurability":${initialDurability(scenario, 0)},""" +
+        s""""enemyInitialDurability":${initialDurability(scenario, 1)}}"""
+  }.mkString("[\n", ",\n", "\n]\n")
+
   def write(scenario: UmsScenario, template: ChkFile, target: Path): Unit = {
     Files.createDirectories(target.getParent)
     Files.write(target, MpqWriter.write(Seq(InspectMap.ScenarioPath -> scenario.build(template).bytes)))
@@ -382,8 +400,11 @@ object GenerateE2EMaps {
 
   def main(args: Array[String]): Unit = {
     val template = ChkFile.parse(MpqArchive.open(Paths.get(args(0))).read(InspectMap.ScenarioPath))
+    val out      = Paths.get(args(1))
+    Files.createDirectories(out)
+    Files.writeString(out.resolve("scenario-metrics.json"), scenarioMetricsJson(All))
     All.foreach { case (fileName, scenario) =>
-      val target = Paths.get(args(1)).resolve(fileName + ".scx")
+      val target = out.resolve(fileName + ".scx")
       write(scenario, template, target)
       println(s"wrote $target (${Files.size(target)} bytes)")
     }

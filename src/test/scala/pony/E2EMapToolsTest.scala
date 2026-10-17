@@ -23,6 +23,7 @@ class E2EMapToolsTest extends Specification with MustMatchers {
        |Cannon scenarios place powered, non-overlapping cannons with BWAPI's unit ids $cannonScenario
        |Ability scenarios research siege mode and spider mines from the start $abilityScenario
        |Siege-line scenarios place the mine line at the named distance $formationScenario
+       |Scenario metrics record both armies' starting durability $scenarioMetrics
        """.stripMargin
 
   private def bytes(values: Int*) = values.map(_.toByte).toArray
@@ -139,6 +140,17 @@ class E2EMapToolsTest extends Specification with MustMatchers {
       (mines5.size === 8) and
       (mines5.map(_.x).distinct.size === 1) and
       (mines5.head.x - tanks5.head.x === 5 * 32)
+  }
+
+  def scenarioMetrics = {
+    val tankVsDragoons = GenerateE2EMaps.Abilities("stnk4-drg6")
+    val cannonScenario = GenerateE2EMaps.Abilities("stnk3-can2")
+    (GenerateE2EMaps.initialDurability(tankVsDragoons, 0) === 600) and
+      (GenerateE2EMaps.initialDurability(tankVsDragoons, 1) === 1080) and
+      (GenerateE2EMaps.initialDurability(cannonScenario, 0) === 450) and
+      (GenerateE2EMaps.initialDurability(cannonScenario, 1) === 1000) and
+      (GenerateE2EMaps.scenarioMetricsJson(GenerateE2EMaps.Abilities) must
+        contain("\"map\":\"stnk4-drg6\",\"ownInitialDurability\":600,\"enemyInitialDurability\":1080"))
   }
 
   def kiteScenario = {

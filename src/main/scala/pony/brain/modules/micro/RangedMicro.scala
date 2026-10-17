@@ -87,6 +87,7 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
       val inTankGroup   = me.isInstanceOf[Tank] && !me.nativeUnit.isSieged
       val meleeStandoff = if (inTankGroup) TankMeleeStandoff else ContactSlack
       val rally         = if (inTankGroup) tankRally(me, threatPoints) else None
+      val targeted      = threatPoints.exists(_.aimsAtMe) || me.isBeingAttacked
       val decision      =
         decide(
           shooter,
@@ -99,6 +100,7 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
           groundWalkable = terrainWalkable,
           mode = focusMode,
           meleeStandoff = meleeStandoff,
+          fallBackWhenTargeted = inTankGroup && targeted,
           rally = rally
         )
       decision match {

@@ -148,9 +148,11 @@ object NativeMatchEvidence {
     * Surviving units other than buildings and their summed hit points and shields, for micro scenarios; in total and by
     * type, which the battle battery learns from.
     */
-  private def forces(units: Iterable[bwapi.Unit]) = {
+  private def forces(units: Iterable[bwapi.Unit], includeBuildings: Boolean = false) = {
     val alive =
-      units.filter(u => u.exists && !u.getType.isBuilding && u.getType != bwapi.UnitType.Special_Start_Location)
+      units.filter(u =>
+        u.exists && (includeBuildings || !u.getType.isBuilding) && u.getType != bwapi.UnitType.Special_Start_Location
+      )
         .toVector
     def summary(of: Vector[bwapi.Unit]) =
       "{\"units\":" + of.size + ",\"durability\":" + of.iterator.map(u => u.getHitPoints + u.getShields).sum
@@ -191,6 +193,8 @@ object NativeMatchEvidence {
           ",\"game\":" + gameNumber +
           ",\"selfForces\":" + forces(game.self().getUnits.asScala) +
           ",\"enemyForces\":" + forces(game.enemies().asScala.flatMap(_.getUnits.asScala)) +
+          ",\"selfAllForces\":" + forces(game.self().getUnits.asScala, includeBuildings = true) +
+          ",\"enemyAllForces\":" + forces(game.enemies().asScala.flatMap(_.getUnits.asScala), includeBuildings = true) +
           ",\"configuration\":{\"minFighters\":" + config.minFighters + ",\"armyMinerals\":" + config.armyMinerals +
           ",\"armyGas\":" + config.armyGas + ",\"expansionReserve\":" + config.expansionReserve +
           ",\"bankMinerals\":" + config.bankMinerals + ",\"bankGas\":" + config.bankGas + "}}"

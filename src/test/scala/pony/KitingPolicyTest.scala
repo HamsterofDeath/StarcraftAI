@@ -25,6 +25,7 @@ class KitingPolicyTest extends Specification with MustMatchers {
        |A unit too slow to kite steps back only when a melee enemy is in contact $stepBack
        |With a melee standoff it starts back long before contact, with a full step $meleeStandoffStartsEarly
        |A retreat with a rally point goes back through the group instead of fanning out $rallyCohesion
+       |The shooter ranged enemies aim at falls back while it reloads $targetedFallback
        |A reloading unit closes in on a target that cannot hit back $approachHarmless
        |A reloading unit does not close in on a melee enemy that would reach it $noApproachIntoDanger
        |The unit static defence shoots at leaves its reach after firing $leavesTurretReach
@@ -182,6 +183,15 @@ class KitingPolicyTest extends Specification with MustMatchers {
       case Some(to) => to.y must be_<(1024.0)
       case other    => other === Some(Point(0, 0))
     }
+
+  def targetedFallback = {
+    val dragoon = Threat(1, Point(1200, 1024), 180, reach = 170, speed = 5, aimsAtMe = true, ground = true)
+    (decide(slowShooter(20), Seq(dragoon), open) === Hold) and
+      (decide(slowShooter(20), Seq(dragoon), open, fallBackWhenTargeted = true) match {
+        case Retreat(to) => to.x must be_<(1024.0)
+        case other       => other === Retreat(Point(0, 0))
+      })
+  }
 
   def approachHarmless = {
     val farAway = Threat(1, Point(1500, 1024), 160, reach = 0, speed = 4)

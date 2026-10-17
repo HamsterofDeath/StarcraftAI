@@ -107,6 +107,7 @@ object KitingPolicy {
       dance: Dance = Dance.Aimed,
       groundWalkable: Point => Boolean = _ => true,
       meleeStandoff: Double = ContactSlack,
+      fallBackWhenTargeted: Boolean = false,
       rally: Option[Point] = None,
       mode: FocusMode = FocusMode.Weakest
   ): Decision = {
@@ -120,6 +121,11 @@ object KitingPolicy {
     // ground units that can hit a flyer and would reach it before its reload ends
     def chasers = threats.filter(t =>
       t.ground && t.reach > 0 && t.speed > 0 &&
+        gap(me.at, t) <= t.speed * (me.cooldown + SafetyFrames)
+    )
+    // mobile ranged enemies that can hit this shooter before its reload ends
+    def rangedChasers = threats.filter(t =>
+      t.speed > 0 && t.reach > MeleeReach &&
         gap(me.at, t) <= t.speed * (me.cooldown + SafetyFrames)
     )
     lazy val overCliff =
@@ -137,6 +143,10 @@ object KitingPolicy {
       retreatPoint(me, turrets, walkable, step).map(Retreat(_)).getOrElse(Hold)
     // fire, go back over a cliff: ground enemies have to go around while the flyer reloads above unwalkable ground
     else if (overCliff.isDefined) Retreat(overCliff.get)
+    // fire, fall back: the shooter the ranged enemies are firing at gives ground while it reloads; they must
+    // stop to shoot and then catch up again, and the next shooter in line takes their fire instead
+    else if (fallBackWhenTargeted && rangedChasers.nonEmpty)
+      retreatPoint(me, rangedChasers, walkable, step, rally).map(Retreat(_)).getOrElse(Hold)
     // kite: clearly faster and longer-ranged, so stepping out of reach costs nothing
     else if (runFrom.exists(t => gap(me.at, t) <= t.speed * (me.cooldown + SafetyFrames))) {
       retreatPoint(
