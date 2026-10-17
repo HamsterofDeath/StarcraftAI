@@ -390,7 +390,9 @@ object GenerateE2EMaps {
   /** The starting durability of every scenario, for runners that score a game by damage removed and taken. */
   /** The starting durability in buildings alone, whose survivors a final snapshot may never have seen. */
   def initialBuildingDurability(scenario: UmsScenario, owner: Int): Int = scenario.units.iterator
-    .filter(u => u.owner == owner && UnitTypesById.get(u.unitId).exists(_.isBuilding))
+    .filter(u =>
+      u.owner == owner && u.unitId != MapUnit.StartLocation && UnitTypesById.get(u.unitId).exists(_.isBuilding)
+    )
     .map(u => DurabilityByUnitId.getOrElse(u.unitId, 0))
     .sum
 
