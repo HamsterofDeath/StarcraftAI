@@ -66,6 +66,8 @@ class DefaultTerranCampaign(override val universe: Universe) extends LongTermStr
 
   override def suggestUpgrades =
     UpgradeToResearch(Upgrades.Terran.TankSiegeMode)(unitManager.existsAndDone(classOf[MachineShop])) ::
+      UpgradeToResearch(Upgrades.Terran.SpiderMines)(unitManager.existsAndDone(classOf[MachineShop])) ::
+      UpgradeToResearch(Upgrades.Terran.VultureSpeed)(unitManager.existsAndDone(classOf[MachineShop])) ::
       UpgradeToResearch(Upgrades.Terran.VehicleWeapons)(bases.finishedBases.size >= 2) ::
       UpgradeToResearch(Upgrades.Terran.VehicleArmor)(bases.finishedBases.size >= 2) ::
       UpgradeToResearch(Upgrades.Terran.GoliathRange)(bases.finishedBases.size >= 2) ::

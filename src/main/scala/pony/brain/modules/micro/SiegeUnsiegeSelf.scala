@@ -24,10 +24,10 @@ class SiegeUnsiegeSelf(universe: Universe) extends DefaultBehaviour[Tank](univer
       // a lifted Terran building is out of a tank's reach and must not hold it sieged over a razed main
       val buildings = this.unit.surroundings.mediumEnemyBuildings.filterNot(_.isFloating)
 
-      def buildingInRange = buildings.exists(_.area.distanceTo(this.unit.currentTile) <= 11)
+      def buildingInRange = buildings.exists(_.area.distanceTo(this.unit.currentTile) <= 12)
 
       def siegeableInRange = {
-        buildingInRange || enemies.iterator.filterNot(_.isHarmlessNow).take(4).size >= 3
+        buildingInRange || enemies.iterator.filterNot(_.isHarmlessNow).take(2).size >= 2
       }
 
       def anyCloseButNotTooClose = {
@@ -40,7 +40,7 @@ class SiegeUnsiegeSelf(universe: Universe) extends DefaultBehaviour[Tank](univer
       if (this.unit.isSieged) {
         val staySieged = {
           val hasTargets = buildingInRange || anyCloseButNotTooClose
-          hasTargets && !botheredByMelee
+          buildingInRange || (hasTargets && !botheredByMelee)
         }
         if (staySieged) {
           Nil
@@ -48,7 +48,7 @@ class SiegeUnsiegeSelf(universe: Universe) extends DefaultBehaviour[Tank](univer
           Orders.TechOnSelf(this.unit, TankSiegeMode).toList
         }
       } else {
-        if (siegeableInRange && !botheredByMelee) {
+        if (buildingInRange || (siegeableInRange && !botheredByMelee)) {
           Orders.TechOnSelf(this.unit, TankSiegeMode).toList
         } else {
           Nil

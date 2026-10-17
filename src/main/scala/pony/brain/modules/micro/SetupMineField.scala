@@ -74,7 +74,7 @@ class SetupMineField(universe: Universe) extends DefaultBehaviour[Vulture](unive
           case Idle =>
             // TODO include test in tech trait
             if (this.unit.spiderMineCount > 0 && this.unit.canCastNow(SpiderMines)) {
-              val enemies = this.universe.unitGrid.enemy.allInRange[GroundUnit](this.unit.currentTile, 5)
+              val enemies = this.universe.unitGrid.enemy.allInRange[GroundUnit](this.unit.currentTile, 8)
               if (enemies.nonEmpty) {
                 inBattle = true
                 // drop mines on sight of enemy
@@ -132,6 +132,11 @@ class SetupMineField(universe: Universe) extends DefaultBehaviour[Vulture](unive
           case myState @ DroppingMine(_) =>
             inBattle = false
             myState -> Nil
+        }
+        newState match {
+          case DroppingMine(where) if state == Idle =>
+            NativeMatchEvidence.trace("mine-laid", s"unit=${this.unit.nativeUnitId} at=$where battle=$inBattle")
+          case _ =>
         }
         state = newState
         orders

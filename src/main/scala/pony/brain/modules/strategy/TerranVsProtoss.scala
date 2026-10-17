@@ -41,7 +41,7 @@ class TerranVsProtoss(override val universe: Universe) extends LongTermStrategy 
   override def suggestUpgrades: Seq[UpgradeToResearch] =
     UpgradeToResearch(Upgrades.Terran.SpiderMines)(phase.isAnyTime) ::
       UpgradeToResearch(Upgrades.Terran.VultureSpeed)(phase.isSinceEarlyMid) ::
-      UpgradeToResearch(Upgrades.Terran.TankSiegeMode)(phase.isSinceAlmostMid) ::
+      UpgradeToResearch(Upgrades.Terran.TankSiegeMode)(phase.isAnyTime) ::
       UpgradeToResearch(Upgrades.Terran.VehicleWeapons)(phase.isSinceMid) ::
       UpgradeToResearch(Upgrades.Terran.VehicleArmor)(phase.isSinceMid) ::
       UpgradeToResearch(Upgrades.Terran.GoliathRange)(phase.isSinceLateMid) ::

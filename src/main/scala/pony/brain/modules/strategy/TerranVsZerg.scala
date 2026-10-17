@@ -18,7 +18,8 @@ class TerranVsZerg(override val universe: Universe) extends LongTermStrategy wit
       UpgradeToResearch(Upgrades.Terran.MarineRange)(phase.isSinceEarlyMid) ::
       UpgradeToResearch(Upgrades.Terran.InfantryWeapons)(phase.isSinceMid) ::
       UpgradeToResearch(Upgrades.Terran.InfantryArmor)(phase.isSinceMid) ::
-      UpgradeToResearch(Upgrades.Terran.TankSiegeMode)(phase.isSinceMid) ::
+      UpgradeToResearch(Upgrades.Terran.TankSiegeMode)(phase.isAnyTime) ::
+      UpgradeToResearch(Upgrades.Terran.SpiderMines)(phase.isAnyTime) ::
       Nil
 
   override def suggestUnits = {

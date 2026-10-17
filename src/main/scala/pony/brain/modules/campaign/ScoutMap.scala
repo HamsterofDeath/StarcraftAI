@@ -247,7 +247,7 @@ class ScoutMap(universe: Universe) extends DefaultBehaviour[ArmedMobile](univers
         // A minimal scout exists to find the enemy; visiting same-region area pairs would never
         // cross into the enemy's region. Instead it tours every unvisited field, farthest first.
         val chosen: List[RawScoutingPlan] = if (minimal) {
-          val tour: List[Int] = if (scouts.nonEmpty) Nil
+          val tour: List[Int] = if (allowed <= 0) Nil
           else {
             val covered = coveredRightNow.get
             val home    = bases.mainBase.map(_.mainBuilding.tilePosition)
@@ -257,7 +257,7 @@ class ScoutMap(universe: Universe) extends DefaultBehaviour[ArmedMobile](univers
               .toVector.sortBy(ra => home.map(h => -ra.nearbyFreeTile.distanceSquaredTo(h)).getOrElse(0))
               .map(_.uniqueId).toList
           }
-          val scout = if (tour.isEmpty) None
+          val scout = if (tour.isEmpty) Vector.empty[GroundUnit]
           else ownUnits.allMobilesWithWeapons
             .flatMap(_.asGroundUnit)
             .filter(e =>
@@ -265,13 +265,16 @@ class ScoutMap(universe: Universe) extends DefaultBehaviour[ArmedMobile](univers
                 !e.isInstanceOf[WorkerUnit] && !e.isInstanceOf[SupportUnit] && !e.isInstanceOf[TransporterUnit]
             )
             .filterNot(universe.pluginByType[RunTerranCampaign].isReservedDefender)
-            .toVector.sortBy(-_.initialNativeType.topSpeed()).headOption
+            .toVector.sortBy(-_.initialNativeType.topSpeed())
           for {
-            unit  <- scout.toList
-            start <- tour.headOption.toList
+            chosenScouts = scout.filter(_.currentArea.isDefined)
+              .filterNot(u => scouts.keys.exists(_.nativeUnitId == u.nativeUnitId)).take(allowed)
+            (unit, index) <- chosenScouts.zipWithIndex.toList
+            portion = tour.zipWithIndex.filter(_._2 % chosenScouts.size == index).map(_._1)
+            start <- portion.headOption.toList
           } yield RawScoutingPlan(
             ScoutingCandidate(unit.nativeUnitId, 0, unit.currentArea.get, unit.currentTile),
-            tour.drop(1),
+            portion.drop(1),
             start
           )
         } else plans.take(allowed)
