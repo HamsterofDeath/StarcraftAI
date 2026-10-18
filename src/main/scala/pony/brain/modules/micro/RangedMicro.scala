@@ -5,7 +5,7 @@ package micro
 
 import pony.combat.{ArmedBuilding, MobileRangeWeapon}
 import pony.geometry.MapTilePosition
-import pony.units.{CanDie, Mobile, Tank, WrapsUnit}
+import pony.units.{CanDie, Mobile, SCV, Tank, WrapsUnit}
 
 import bwapi.{UnitType, WeaponType}
 import pony.brain.modules.micro.KitingPolicy._
@@ -88,7 +88,13 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
       val meleeStandoff = if (inTankGroup) TankMeleeStandoff else ContactSlack
       val rally         = if (inTankGroup) tankRally(me, threatPoints) else None
       val targeted      = threatPoints.exists(_.aimsAtMe) || me.isBeingAttacked
-      val decision      =
+      // hurt flyers with SCVs waiting cycle out to them as a group and come back mended
+      val repairSupport = if (me.nativeUnit.isFlying) repairRallyOf(me) else None
+      val hurt          = me.nativeUnit.getHitPoints + me.nativeUnit.getShields <
+        me.nativeUnit.getType.maxHitPoints + me.nativeUnit.getType.maxShields
+      val repairRally = if (hurt) repairSupport else None
+      val danceNow    = if (repairSupport.isDefined) Dance.All else dance
+      val decision    =
         decide(
           shooter,
           threatPoints,
@@ -96,12 +102,13 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
           lead = leadFrames,
           committed = committed.toMap,
           speedRatio = speedRatio,
-          dance = dance,
+          dance = danceNow,
           groundWalkable = terrainWalkable,
           mode = focusMode,
           meleeStandoff = meleeStandoff,
           fallBackWhenTargeted = inTankGroup && targeted,
-          rally = rally
+          rally = rally,
+          repairRally = repairRally
         )
       decision match {
         case Shoot(id) =>
@@ -176,6 +183,16 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
       if (length == 0) Some(center)
       else Some(Point(center.x + dx / length * 96, center.y + dy / length * 96))
     }
+  }
+
+  /** Where the SCVs that could mend this flyer wait: their centre, when any wait within reach of the fight. */
+  private def repairRallyOf(me: MobileRangeWeapon): Option[Point] = {
+    val at   = position(me)
+    val scvs = ownUnits.allByType[SCV]
+      .filter(s => s.isInGame && !s.isBeingCreated && position(s).distanceTo(at) <= 24 * 32)
+      .toVector
+    if (scvs.isEmpty) None
+    else Some(Point(scvs.map(s => position(s).x).sum / scvs.size, scvs.map(s => position(s).y).sum / scvs.size))
   }
 
   private def radius(t: UnitType) = (t.dimensionLeft + t.dimensionRight + 1) / 2.0

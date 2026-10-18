@@ -95,6 +95,8 @@ object KitingPolicy {
     * @param speedRatio how much faster than an enemy the shooter must be before running from it pays off
     * @param dance      which reloading units leave the reach of static defence
     * @param groundWalkable where ground units can stand: a flyer reloads above the rest, where they cannot follow
+    * @param repairRally  where repair waits for this hurt shooter: it leaves static defence towards that point and
+    *                     stays out until mended instead of returning the moment its weapon is ready again
     */
   def decide(
       me: Shooter,
@@ -109,6 +111,7 @@ object KitingPolicy {
       meleeStandoff: Double = ContactSlack,
       fallBackWhenTargeted: Boolean = false,
       rally: Option[Point] = None,
+      repairRally: Option[Point] = None,
       mode: FocusMode = FocusMode.Weakest
   ): Decision = {
     val runFrom = outranged(me, threats, speedRatio)
@@ -136,11 +139,23 @@ object KitingPolicy {
     else if (me.cooldown == 0) Shoot(target(me, threats, committed, mode).id)
     else if (me.cooldown <= lead && threats.exists(t => me.at.distanceTo(t.at) <= me.range))
       Shoot(target(me, threats, committed, mode).id)
-    // static defence: come back from outside its reach just in time to fire on arrival
-    else if (focus.speed == 0 && focus.reach >= me.range && me.cooldown <= lead + arrival) Shoot(focus.id)
-    // fire, go back: the unit it shoots at leaves its reach, so it has to switch to another unit
-    else if (insideTurrets && (dance == Dance.All || dance == Dance.Aimed && turrets.exists(_.aimsAtMe)))
-      retreatPoint(me, turrets, walkable, step).map(Retreat(_)).getOrElse(Hold)
+    // static defence: come back from outside its reach just in time to fire on arrival; from inside there is
+    // nothing to come back to — the way out comes first, or the shooter never leaves the reach at all
+    else if (
+      repairRally.isEmpty && !insideTurrets && focus.speed == 0 && focus.reach >= me.range &&
+      me.cooldown <= lead + arrival
+    ) Shoot(focus.id)
+    // fire, go back: the unit it shoots at leaves its reach, so it has to switch to another unit; a hurt
+    // shooter with repair waiting always leaves, towards the repair point
+    else if (
+      insideTurrets &&
+      (repairRally.isDefined || dance == Dance.All ||
+        dance == Dance.Aimed && turrets.exists(_.aimsAtMe))
+    )
+      retreatPoint(me, turrets, walkable, step, repairRally.orElse(rally)).map(Retreat(_)).getOrElse(Hold)
+    // hurt, with repair waiting: fly to it and stay there until mended instead of returning on reload alone
+    else if (repairRally.isDefined && turrets.nonEmpty)
+      if (me.at.distanceTo(repairRally.get) > CohesionRadius) Approach(repairRally.get) else Hold
     // fire, go back over a cliff: ground enemies have to go around while the flyer reloads above unwalkable ground
     else if (overCliff.isDefined) Retreat(overCliff.get)
     // fire, fall back: the shooter the ranged enemies are firing at gives ground while it reloads; they must

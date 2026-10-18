@@ -35,6 +35,9 @@ class KitingPolicyTest extends Specification with MustMatchers {
        |Units static defence ignores keep firing from inside its reach $staysWhenNotAimedAt
        |With Dance.All every reloading unit leaves the reach of static defence, with Dance.Off none $danceModes
        |A unit outside static defence returns just in time to fire on arrival $returnsInTime
+       |A unit inside static defence reach leaves it before it returns $noReturnFromInside
+       |A hurt shooter flies to its repair point instead of returning $hurtToRepair
+       |A hurt shooter waits at its repair point $waitsAtRepair
        |Static defence the unit outranges is fought from outside its reach $outrangedTurret
        |A reloading flyer backs off over a cliff from ground enemies that would catch it $flyerOverCliff
        |Without unwalkable ground nearby a reloading flyer holds against faster ground enemies $flyerHoldsInTheOpen
@@ -255,6 +258,24 @@ class KitingPolicyTest extends Specification with MustMatchers {
     val far = cannon(aimsAtMe = true, x = 1324)
     (decide(wraith.copy(cooldown = 20), Seq(far), open) === Shoot(1)) and
       (decide(wraith.copy(cooldown = 25), Seq(far), open) === Hold)
+  }
+
+  def noReturnFromInside = {
+    // 240 pixels from the cannon the wraith is still inside its 258 reach; "return in time" used to fire from here
+    val inside = wraith.copy(cooldown = 11)
+    (decide(inside, Seq(cannon(aimsAtMe = false)), open, dance = Dance.All) must beLike { case Retreat(_) => ok }) and
+      (decide(inside, Seq(cannon(aimsAtMe = false)), open) === Hold)
+  }
+
+  def hurtToRepair = {
+    val far = cannon(aimsAtMe = true, x = 1324)
+    decide(wraith.copy(cooldown = 20), Seq(far), open, repairRally = Some(Point(700, 1024))) ===
+      Approach(Point(700, 1024))
+  }
+
+  def waitsAtRepair = {
+    val atRepair = wraith.copy(cooldown = 20, at = Point(720, 1024))
+    decide(atRepair, Seq(cannon(aimsAtMe = true, x = 1324)), open, repairRally = Some(Point(700, 1024))) === Hold
   }
 
   def outrangedTurret = {
