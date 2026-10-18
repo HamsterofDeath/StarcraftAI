@@ -33,9 +33,8 @@ class IrradiateChoiceTest extends Specification with MustMatchers {
   private val archon  = blip(4, x = 1000, durability = 360, price = 400)
   private val crowd   = zealots :+ archon
 
-  def groupFirst =
-    (score(zealots.head, crowd, radius) must beGreaterThan(score(archon, crowd, radius))) and
-      (best(crowd, crowd, radius).exists((c, _) => Set(1, 2, 3).contains(c.id)) must beTrue)
+  def groupFirst = (score(zealots.head, crowd, radius) must beGreaterThan(score(archon, crowd, radius))) and
+    (best(crowd, crowd, radius).exists((c, _) => Set(1, 2, 3).contains(c.id)) must beTrue)
 
   // a templar (80 to burn, 200 to kill) against a lone zealot (160 and 100), too far apart to share a burn
   private val templar = blip(5, durability = 80, price = 200)
@@ -47,7 +46,11 @@ class IrradiateChoiceTest extends Specification with MustMatchers {
     // 250 of damage on 360 of archon, plus that share of its 400 price — never the archon's whole 360 or 400
     (score(archon, Seq(archon), radius) must beCloseTo(250.0 + 400.0 * 250.0 / 360.0, 6.significantFigures)) and
       // and never more health than a hurt unit has left: 40 of damage and a quarter of its price
-      (score(blip(7, durability = 40).copy(maxDurability = 160), Seq(blip(7, durability = 40).copy(maxDurability = 160)), radius) must beCloseTo(65.0, 6.significantFigures))
+      (score(
+        blip(7, durability = 40).copy(maxDurability = 160),
+        Seq(blip(7, durability = 40).copy(maxDurability = 160)),
+        radius
+      ) must beCloseTo(65.0, 6.significantFigures))
 
   def immune = {
     val dragoon = blip(8, durability = 180, price = 175, organic = false)
