@@ -167,6 +167,9 @@ object KitingPolicy {
         dance == Dance.Aimed && turrets.exists(_.aimsAtMe))
     )
       retreatPoint(me, turrets, walkable, step, repairRally.orElse(rally)).map(Retreat(_)).getOrElse(Hold)
+    // reloading deeper inside the reach than the weapon needs: step back to its edge, where leaving is short
+    else if (insideTurrets && me.at.distanceTo(focus.at) < me.range * RangeEdgeFraction)
+      retreatPoint(me, turrets, walkable, step / 2, repairRally.orElse(rally)).map(Retreat(_)).getOrElse(Hold)
     // hurt and reloading outside the reach, with repair waiting: spend the reload flying to it
     else if (repairRally.isDefined && turrets.nonEmpty)
       if (me.at.distanceTo(repairRally.get) > CohesionRadius) Approach(repairRally.get) else Hold
@@ -217,6 +220,9 @@ object KitingPolicy {
 
   /** How much each pixel beyond the cohesion radius costs a retreat point, against the distance it gains. */
   val CohesionWeight = 0.5
+
+  /** Fraction of its range inside static defence reach a reloading shooter falls back to. */
+  val RangeEdgeFraction = 0.9
 
   /** Fraction of its range a shooter keeps to the focus target while reloading. */
   val ApproachFraction = 0.85

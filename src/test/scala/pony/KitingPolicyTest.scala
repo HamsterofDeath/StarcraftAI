@@ -35,6 +35,7 @@ class KitingPolicyTest extends Specification with MustMatchers {
        |A free shot never pulls a shooter out of a fight already in range $annoyKeepsFightingInRange
        |The unit static defence shoots at leaves its reach after firing $leavesTurretReach
        |Units static defence ignores keep firing from inside its reach $staysWhenNotAimedAt
+       |A reloading unit deep inside the reach steps back to its weapon's edge $stepsToRangeEdge
        |With Dance.All every reloading unit leaves the reach of static defence, with Dance.Off none $danceModes
        |A unit outside static defence returns just in time to fire on arrival $returnsInTime
        |A unit inside static defence reach leaves it before it returns $noReturnFromInside
@@ -267,6 +268,14 @@ class KitingPolicyTest extends Specification with MustMatchers {
   }
 
   def staysWhenNotAimedAt = decide(wraith, Seq(cannon(aimsAtMe = false)), open) === Hold
+
+  def stepsToRangeEdge = {
+    // 156 pixels from the cannon a wraith (range 190) sits deeper than its weapon needs
+    val deep = wraith.copy(cooldown = 20)
+    decide(deep, Seq(cannon(aimsAtMe = false, x = 1180)), open) must beLike {
+      case Retreat(to) => to.distanceTo(Point(1180, 1024)) must be_>(156.0)
+    }
+  }
 
   def danceModes =
     (decide(wraith, Seq(cannon(aimsAtMe = false)), open, dance = Dance.All) must beLike { case Retreat(_) => ok }) and
