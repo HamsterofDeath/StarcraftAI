@@ -271,7 +271,7 @@ class KitingPolicyTest extends Specification with MustMatchers {
 
   def stepsToRangeEdge = {
     // 156 pixels from the cannon a wraith (range 190) sits deeper than its weapon needs
-    val deep = wraith.copy(cooldown = 20)
+    val deep = wraith.copy(cooldown = 20, flying = true)
     decide(deep, Seq(cannon(aimsAtMe = false, x = 1180)), open) must beLike {
       case Retreat(to) => to.distanceTo(Point(1180, 1024)) must be_>(156.0)
     }

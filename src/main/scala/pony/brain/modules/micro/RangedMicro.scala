@@ -223,13 +223,13 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
   }
 
   /**
-    * The dance against static defence alone, scaled by how badly the shooters around outgun it (KitingPolicy
+    * The dance of a flyer against static defence alone, scaled by how badly the shooters around outgun it (KitingPolicy
     * .overwhelms): an overwhelming flight keeps firing while only the targeted unit steps out; anything less
     * goes in and out as a group. Anything but static defence keeps the configured dance.
     */
   private def staticDance(me: MobileRangeWeapon, threats: Seq[Threat], shooter: Shooter): Dance = {
     val turrets = threats.filter(t => t.speed == 0 && t.reach > 0)
-    if (turrets.isEmpty || !threats.forall(_.speed == 0)) dance
+    if (!me.nativeUnit.isFlying || turrets.isEmpty || !threats.forall(_.speed == 0)) dance
     else {
       val allies = ownUnits.allByType[MobileRangeWeapon]
         .count(a => a.isInGame && position(a).distanceTo(shooter.at) <= ConsiderRadius)

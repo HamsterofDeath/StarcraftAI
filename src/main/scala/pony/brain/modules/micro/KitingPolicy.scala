@@ -168,7 +168,7 @@ object KitingPolicy {
     )
       retreatPoint(me, turrets, walkable, step, repairRally.orElse(rally)).map(Retreat(_)).getOrElse(Hold)
     // reloading deeper inside the reach than the weapon needs: step back to its edge, where leaving is short
-    else if (insideTurrets && me.at.distanceTo(focus.at) < me.range * RangeEdgeFraction)
+    else if (me.flying && insideTurrets && me.at.distanceTo(focus.at) < me.range * RangeEdgeFraction)
       retreatPoint(me, turrets, walkable, step / 2, repairRally.orElse(rally)).map(Retreat(_)).getOrElse(Hold)
     // hurt and reloading outside the reach, with repair waiting: spend the reload flying to it
     else if (repairRally.isDefined && turrets.nonEmpty)
