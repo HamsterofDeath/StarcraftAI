@@ -85,7 +85,7 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
         val support = ownUnits.allByType[SCV]
           .exists(s => s.isInGame && !s.isBeingCreated && position(s).distanceTo(at) <= 24 * 32)
         val members = ownUnits.allByType[MobileRangeWeapon].filter { a =>
-          a.isInGame && a.nativeUnit.isFlying && position(a).distanceTo(at) <= 48 * 32
+          a.exists && a.nativeUnit.isFlying && position(a).distanceTo(at) <= 48 * 32
         }.map { a =>
           PassMember(
             inside = position(a).distanceTo(at) - reach < StandOff,
@@ -98,9 +98,9 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
         if (next != passPhase) {
           if (traceDecisions)
             NativeMatchEvidence.trace(
-            "kite-pass",
-            s"phase=$passPhase->$next members=${members.size} of=${ownUnits.allByType[MobileRangeWeapon].size} support=$support"
-          )
+              "kite-pass",
+              s"phase=$passPhase->$next members=${members.size} of=${ownUnits.allByType[MobileRangeWeapon].size} support=$support"
+            )
           if (next == PassPhase.Diving) firedThisPass.clear()
           passPhase = next
           passSince = frame
@@ -288,7 +288,7 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
     if (!me.nativeUnit.isFlying || turrets.isEmpty || !threats.forall(_.speed == 0)) dance
     else {
       val allies = ownUnits.allByType[MobileRangeWeapon]
-        .count(a => a.isInGame && position(a).distanceTo(shooter.at) <= ConsiderRadius)
+        .count(a => a.exists && position(a).distanceTo(shooter.at) <= ConsiderRadius)
       val focus  = turrets.minBy(t => shooter.at.distanceTo(t.at))
       val weapon = weaponAgainst(me.nativeUnit.getType, targetFlies = false)
       val myDps  = focus.focus.shotDamage / math.max(1, weapon.damageCooldown)
