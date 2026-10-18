@@ -94,7 +94,9 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
         me.nativeUnit.getType.maxHitPoints + me.nativeUnit.getType.maxShields
       val repairRally = if (hurt) repairSupport else None
       val danceNow    = if (repairSupport.isDefined) Dance.All else dance
-      val decision    =
+      // against static defence alone, everybody burns the same target down instead of splitting over shields
+      val modeNow  = if (threatPoints.nonEmpty && threatPoints.forall(_.speed == 0)) FocusMode.Weakest else focusMode
+      val decision =
         decide(
           shooter,
           threatPoints,
@@ -104,7 +106,7 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
           speedRatio = speedRatio,
           dance = danceNow,
           groundWalkable = terrainWalkable,
-          mode = focusMode,
+          mode = modeNow,
           meleeStandoff = meleeStandoff,
           fallBackWhenTargeted = inTankGroup && targeted,
           rally = rally,

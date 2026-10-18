@@ -136,6 +136,10 @@ object KitingPolicy {
     if (threats.isEmpty) Free
     // the attack animation runs until the shot is released; once the reload has started the unit may move again
     else if (me.firing && me.cooldown == 0) Hold
+    // hurt, with repair waiting outside: stay out and mend, even with the weapon ready — returning on reload
+    // alone accumulates damage faster than the SCVs can take it off between shots
+    else if (repairRally.isDefined && turrets.nonEmpty && !insideTurrets && me.cooldown <= lead)
+      if (me.at.distanceTo(repairRally.get) > CohesionRadius) Approach(repairRally.get) else Hold
     else if (me.cooldown == 0) Shoot(target(me, threats, committed, mode).id)
     else if (me.cooldown <= lead && threats.exists(t => me.at.distanceTo(t.at) <= me.range))
       Shoot(target(me, threats, committed, mode).id)
@@ -153,7 +157,7 @@ object KitingPolicy {
         dance == Dance.Aimed && turrets.exists(_.aimsAtMe))
     )
       retreatPoint(me, turrets, walkable, step, repairRally.orElse(rally)).map(Retreat(_)).getOrElse(Hold)
-    // hurt, with repair waiting: fly to it and stay there until mended instead of returning on reload alone
+    // hurt and reloading outside the reach, with repair waiting: spend the reload flying to it
     else if (repairRally.isDefined && turrets.nonEmpty)
       if (me.at.distanceTo(repairRally.get) > CohesionRadius) Approach(repairRally.get) else Hold
     // fire, go back over a cliff: ground enemies have to go around while the flyer reloads above unwalkable ground
