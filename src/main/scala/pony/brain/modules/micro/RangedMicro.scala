@@ -97,7 +97,10 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
         val next = nextPassPhase(passPhase, members, support, frame - passSince)
         if (next != passPhase) {
           if (traceDecisions)
-            NativeMatchEvidence.trace("kite-pass", s"phase=$passPhase->$next members=${members.size}")
+            NativeMatchEvidence.trace(
+            "kite-pass",
+            s"phase=$passPhase->$next members=${members.size} of=${ownUnits.allByType[MobileRangeWeapon].size} support=$support"
+          )
           if (next == PassPhase.Diving) firedThisPass.clear()
           passPhase = next
           passSince = frame
