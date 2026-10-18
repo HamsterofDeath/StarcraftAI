@@ -70,7 +70,15 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
     private var lastDecision   = ""
     private var shootDecidedAt = Option.empty[Int]
     private var lastCooldown   = 0
+
+    /** The static defence this unit last danced with, so a mended flyer finds its way back to the fight. */
+    private var lastTurret     = Option.empty[Point]
     override def describeShort = "Ranged micro"
+
+    override def onStealUnit(): Unit = {
+      super.onStealUnit()
+      lastTurret = None
+    }
 
     override def toOrder(what: Objective) = {
       val me    = this.unit
@@ -95,7 +103,9 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
       val repairRally = if (hurt) repairSupport else None
       val danceNow    = if (repairSupport.isDefined) Dance.All else dance
       // against static defence alone, everybody burns the same target down instead of splitting over shields
-      val modeNow  = if (threatPoints.nonEmpty && threatPoints.forall(_.speed == 0)) FocusMode.Weakest else focusMode
+      val modeNow = if (threatPoints.nonEmpty && threatPoints.forall(_.speed == 0)) FocusMode.Weakest else focusMode
+      threatPoints.filter(t => t.speed == 0 && t.reach > 0).minByOption(t => shooter.at.distanceTo(t.at))
+        .foreach(t => lastTurret = Some(t.at))
       val decision =
         decide(
           shooter,
@@ -152,6 +162,12 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
         }
       }
       decision match {
+        // mended at the SCVs, beyond the range where the cannons count as threats: fly back to the fight
+        case Free if repairSupport.isDefined && !hurt && lastTurret.isDefined =>
+          val turret = lastTurret.get
+          val scale  = shooter.range * ApproachFraction / shooter.at.distanceTo(turret)
+          val to     = Point(turret.x + (shooter.at.x - turret.x) * scale, turret.y + (shooter.at.y - turret.y) * scale)
+          Orders.MoveToTile(me, MapTilePosition.shared(to.x.toInt / 32, to.y.toInt / 32)).toList
         case Free                        => Nil
         case Hold                        => Orders.NoUpdate(me).toList
         case Shoot(_) if shootByStopping => Orders.Stop(me).toList
