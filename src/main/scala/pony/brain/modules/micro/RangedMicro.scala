@@ -85,7 +85,7 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
         val support = ownUnits.allByType[SCV]
           .exists(s => s.isInGame && !s.isBeingCreated && position(s).distanceTo(at) <= 24 * 32)
         val members = ownUnits.allByType[MobileRangeWeapon].filter { a =>
-          a.isInGame && a.nativeUnit.isFlying && position(a).distanceTo(at) <= 24 * 32
+          a.isInGame && a.nativeUnit.isFlying && position(a).distanceTo(at) <= 48 * 32
         }.map { a =>
           PassMember(
             inside = position(a).distanceTo(at) - reach < StandOff,

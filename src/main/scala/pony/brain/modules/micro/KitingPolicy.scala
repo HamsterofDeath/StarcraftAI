@@ -114,7 +114,7 @@ object KitingPolicy {
             if (support && members.exists(_.hurt)) Mending else Forming
           } else Exiting
         case Mending =>
-          if (!support || members.exists(!_.hurt)) Forming else Mending
+          if (!support || !members.exists(_.hurt) || phaseFrames >= 960) Forming else Mending
       }
   }
 

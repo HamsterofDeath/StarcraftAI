@@ -154,6 +154,8 @@ class KitingPolicyTest extends Specification with MustMatchers {
       (nextPassPhase(Exiting, fit.copy(hurt = true) +: flight.tail, support = true, phaseFrames = 10) === Mending) and
       (nextPassPhase(Exiting, fit.copy(hurt = true) +: flight.tail, support = false, phaseFrames = 10) === Forming) and
       (nextPassPhase(Mending, flight.map(_.copy(hurt = true)), support = true, phaseFrames = 10) === Mending) and
+      // mending lasts while anybody is still hurt, not until the first fit member shows up
+      (nextPassPhase(Mending, fit.copy(hurt = true) +: flight.tail, support = true, phaseFrames = 10) === Mending) and
       (nextPassPhase(Mending, flight, support = true, phaseFrames = 10) === Forming) and
       // a dive that never completes is abandoned
       (nextPassPhase(Diving, flight.map(_.copy(inside = true)), support = true, phaseFrames = MaxDiveFrames) ===
