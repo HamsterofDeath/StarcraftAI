@@ -261,8 +261,8 @@ object KitingPolicy {
   val OverwhelmRatio = 3.0
 
   /** Whether `allies` shooters of `myDps` each overwhelm static defence answering with `theirDps` in total. */
-  def overwhelms(allies: Int, myDps: Double, theirDps: Double): Boolean =
-    theirDps <= 0 || allies * myDps >= OverwhelmRatio * theirDps
+  def overwhelms(allies: Int, myDps: Double, theirDps: Double, ratio: Double = OverwhelmRatio): Boolean =
+    theirDps <= 0 || allies * myDps >= ratio * theirDps
 
   /** A point just outside the focus enemy's reach on the way to it, if the shooter is farther out than that. */
   def standoff(me: Shooter, focus: Threat): Option[Point] = {
