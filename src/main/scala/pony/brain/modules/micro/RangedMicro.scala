@@ -75,7 +75,7 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
     private var lastCooldown   = 0
 
     /** The static defence this unit last danced with, so a mended flyer finds its way back to the fight. */
-    private var lastTurret = Option.empty[Point]
+    private var lastTurret = Option.empty[(Point, Double)]
 
     /** Shots fired since this unit last stood outside static defence reach: a group pass ends after one volley. */
     private var shotsThisPass  = 0
@@ -113,7 +113,7 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
       // against static defence alone, everybody burns the same target down instead of splitting over shields
       val modeNow = if (threatPoints.nonEmpty && threatPoints.forall(_.speed == 0)) FocusMode.Weakest else focusMode
       threatPoints.filter(t => t.speed == 0 && t.reach > 0).minByOption(t => shooter.at.distanceTo(t.at))
-        .foreach(t => lastTurret = Some(t.at))
+        .foreach(t => lastTurret = Some(t.at -> t.reach))
       val insideNow = threatPoints.exists(t =>
         t.speed == 0 && t.reach > 0 && shooter.at.distanceTo(t.at) - t.reach < StandOff
       )
@@ -181,11 +181,12 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
         }
       }
       decision match {
-        // mended at the SCVs, beyond the range where the cannons count as threats: fly back to the fight
+        // mended at the SCVs, beyond the range where the cannons count as threats: fly back to the standoff
+        // outside their reach and rejoin the pass there — never alone into weapon range
         case Free if repairSupport.isDefined && !hurt && lastTurret.isDefined =>
-          val turret = lastTurret.get
-          val scale  = shooter.range * ApproachFraction / shooter.at.distanceTo(turret)
-          val to     = Point(turret.x + (shooter.at.x - turret.x) * scale, turret.y + (shooter.at.y - turret.y) * scale)
+          val (turret, reach) = lastTurret.get
+          val scale           = (reach + StandOff) / shooter.at.distanceTo(turret)
+          val to = Point(turret.x + (shooter.at.x - turret.x) * scale, turret.y + (shooter.at.y - turret.y) * scale)
           Orders.MoveToTile(me, MapTilePosition.shared(to.x.toInt / 32, to.y.toInt / 32)).toList
         case Free                        => Nil
         case Hold                        => Orders.NoUpdate(me).toList
