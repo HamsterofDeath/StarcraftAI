@@ -53,12 +53,58 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
   private val committedDamage = mutable.HashMap.empty[Int, Double]
   private var commitmentFrame = -1
 
+  /** The shared pass rhythm against static defence (KitingPolicy.nextPassPhase), owned here for the whole flight. */
+  private var passPhase: PassPhase = PassPhase.Forming
+  private var passFrame            = -1
+  private var passSince            = 0
+  private val firedThisPass        = mutable.HashSet.empty[Int]
+  private var passTurret           = Option.empty[(Point, Double)]
+
   private def commitments(frame: Int) = {
     if (commitmentFrame != frame) {
       committedDamage.clear()
       commitmentFrame = frame
     }
     committedDamage
+  }
+
+  private def badlyHurt(n: bwapi.Unit) =
+    (n.getHitPoints + n.getShields) * 4 < (n.getType.maxHitPoints + n.getType.maxShields) * 3
+
+  /**
+    * Advance the shared pass phase once per frame from the flight around the current static target, and hand
+    * back the phase for this frame. Members are the flyers within reach of the fight; support means an SCV
+    * waits close enough to mend them.
+    */
+  private def updatePass(frame: Int, caller: MobileRangeWeapon, threats: Seq[Threat]): PassPhase = {
+    threats.filter(t => t.speed == 0 && t.reach > 0).minByOption(t => position(caller).distanceTo(t.at))
+      .foreach(t => passTurret = Some(t.at -> t.reach))
+    if (passFrame != frame) {
+      passFrame = frame
+      passTurret.foreach { (at, reach) =>
+        val support = ownUnits.allByType[SCV]
+          .exists(s => s.isInGame && !s.isBeingCreated && position(s).distanceTo(at) <= 24 * 32)
+        val members = ownUnits.allByType[MobileRangeWeapon].filter { a =>
+          a.isInGame && a.nativeUnit.isFlying && position(a).distanceTo(at) <= 24 * 32
+        }.map { a =>
+          PassMember(
+            inside = position(a).distanceTo(at) - reach < StandOff,
+            ready = a.nativeUnit.getGroundWeaponCooldown <= leadFrames,
+            hurt = badlyHurt(a.nativeUnit),
+            fired = firedThisPass.contains(a.nativeUnitId)
+          )
+        }.toSeq
+        val next = nextPassPhase(passPhase, members, support, frame - passSince)
+        if (next != passPhase) {
+          if (traceDecisions)
+            NativeMatchEvidence.trace("kite-pass", s"phase=$passPhase->$next members=${members.size}")
+          if (next == PassPhase.Diving) firedThisPass.clear()
+          passPhase = next
+          passSince = frame
+        }
+      }
+    }
+    passPhase
   }
 
   override def priority = SecondPriority.EvenMore
@@ -118,10 +164,13 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
         t.speed == 0 && t.reach > 0 && shooter.at.distanceTo(t.at) - t.reach < StandOff
       )
       if (!insideNow) shotsThisPass = 0
+      // group passes run on the shared pass rhythm: dive only in Diving, leave together in Exiting
+      val passActive = danceNow == Dance.All && me.nativeUnit.isFlying
+      val phase      = if (passActive) updatePass(frame, me, threatPoints) else PassPhase.Diving
       // one volley per pass: a second shot costs a full reload inside the reach for the same one-shot damage
-      val leaveNow = danceNow == Dance.All && shotsThisPass >= 1
+      val leaveNow = passActive && phase == PassPhase.Exiting
       // menders do not hold the pass up: waiting for them let shields regrow faster than volleys damaged them
-      val groupReady = danceNow != Dance.All || flightReady(me, threatPoints, mendingBlocks = false)
+      val groupReady = !passActive || phase == PassPhase.Diving
       val decision   =
         decide(
           shooter,
@@ -151,7 +200,10 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
 
       // a shot resets the cooldown to the weapon's full reload
       val fired = shooter.cooldown > lastCooldown
-      if (fired) shotsThisPass += 1
+      if (fired) {
+        shotsThisPass += 1
+        if (passPhase == PassPhase.Diving) firedThisPass += me.nativeUnitId
+      }
       lastCooldown = shooter.cooldown
       shootDecidedAt.foreach { decidedAt =>
         if (fired) {

@@ -16,6 +16,7 @@ class KitingPolicyTest extends Specification with MustMatchers {
        |A ready weapon attacks the closest enemy when none is in range $closestOutOfRange
        |Under weakest focus the weakest enemy wins even out of range $weakestOutOfRange
        |A flight overwhelms static defence at three times its answer $overwhelmRatio
+       |The pass rhythm forms up, dives, leaves and mends in order $passRhythm
        |A reloading unit retreats from a threat that would catch it $retreats
        |A reloading unit holds when every threat is far enough away $holds
        |A retreat never goes into unwalkable ground $avoidsWalls
@@ -126,6 +127,38 @@ class KitingPolicyTest extends Specification with MustMatchers {
   }
 
   def closestOutOfRange = decide(shooter(), Seq(zealot(1, 1400, 1024), zealot(2, 1300, 1024)), open) === Shoot(2)
+
+  def passRhythm = {
+    import PassPhase._
+    val fit    = PassMember(inside = false, ready = true, hurt = false, fired = false)
+    val flight = Seq(fit, fit, fit, fit)
+    (nextPassPhase(Forming, flight, support = true, phaseFrames = 0) === Diving) and
+      // one member still reloading: the flight keeps forming up
+      (nextPassPhase(Forming, fit.copy(ready = false) +: flight.tail, support = true, phaseFrames = 0) === Forming) and
+      // in the dive nothing leaves until every fit member has fired
+      (nextPassPhase(Diving, flight.map(_.copy(inside = true)), support = true, phaseFrames = 10) === Diving) and
+      (nextPassPhase(
+        Diving,
+        flight.map(_.copy(inside = true, fired = true)),
+        support = true,
+        phaseFrames = 10
+      ) === Exiting) and
+      // a member hurt mid-dive does not hold the exit up
+      (nextPassPhase(
+        Diving,
+        fit.copy(inside = true, hurt = true) +: flight.tail.map(_.copy(inside = true, fired = true)),
+        support = true,
+        phaseFrames = 10
+      ) === Exiting) and
+      // everybody out and one hurt, with repair waiting: mend before the next pass
+      (nextPassPhase(Exiting, fit.copy(hurt = true) +: flight.tail, support = true, phaseFrames = 10) === Mending) and
+      (nextPassPhase(Exiting, fit.copy(hurt = true) +: flight.tail, support = false, phaseFrames = 10) === Forming) and
+      (nextPassPhase(Mending, flight.map(_.copy(hurt = true)), support = true, phaseFrames = 10) === Mending) and
+      (nextPassPhase(Mending, flight, support = true, phaseFrames = 10) === Forming) and
+      // a dive that never completes is abandoned
+      (nextPassPhase(Diving, flight.map(_.copy(inside = true)), support = true, phaseFrames = MaxDiveFrames) ===
+        Exiting)
+  }
 
   def overwhelmRatio =
     // sixteen wraiths against one cannon keep firing; four against two cannons must cycle as a group

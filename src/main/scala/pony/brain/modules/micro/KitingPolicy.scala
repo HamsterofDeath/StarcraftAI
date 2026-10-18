@@ -83,6 +83,41 @@ object KitingPolicy {
     case Off, Aimed, All
   }
 
+  /**
+    * The shared rhythm of a flight passing at static defence: form up outside its reach, dive in together, leave
+    * together once every fit member has fired, mend, repeat. One organizer owns the phase for the whole flight,
+    * because per-unit gates desync into pairs that feed the guns one after another.
+    */
+  enum PassPhase {
+    case Forming, Diving, Exiting, Mending
+  }
+
+  /** A flight member as the pass rhythm sees it: inside the reach, weapon ready, badly hurt, already fired. */
+  final case class PassMember(inside: Boolean, ready: Boolean, hurt: Boolean, fired: Boolean)
+
+  /** Frames a dive may last before the flight leaves whatever state its members are in. */
+  val MaxDiveFrames = 240
+
+  def nextPassPhase(phase: PassPhase, members: Seq[PassMember], support: Boolean, phaseFrames: Int): PassPhase = {
+    import PassPhase._
+    if (members.isEmpty) Forming
+    else
+      phase match {
+        case Forming =>
+          if (members.forall(_.hurt) && support) Mending
+          else if (members.exists(!_.hurt) && members.forall(m => !m.inside && (m.ready || m.hurt))) Diving
+          else Forming
+        case Diving =>
+          if (phaseFrames >= MaxDiveFrames || members.filterNot(_.hurt).forall(_.fired)) Exiting else Diving
+        case Exiting =>
+          if (members.forall(!_.inside)) {
+            if (support && members.exists(_.hurt)) Mending else Forming
+          } else Exiting
+        case Mending =>
+          if (!support || members.exists(!_.hurt)) Forming else Mending
+      }
+  }
+
   /** Frames of extra distance kept so a threat that turns towards the shooter cannot land a hit. */
   val SafetyFrames = 6
 
