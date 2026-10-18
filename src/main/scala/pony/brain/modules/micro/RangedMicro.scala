@@ -104,9 +104,10 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
       val targeted      = threatPoints.exists(_.aimsAtMe) || me.isBeingAttacked
       // hurt flyers with SCVs waiting cycle out to them as a group and come back mended
       val repairSupport = if (me.nativeUnit.isFlying) repairRallyOf(me) else None
-      // only a badly hurt flyer makes the SCV detour; scratches ride the next pass, or shields regrow meanwhile
-      val hurt = (me.nativeUnit.getHitPoints + me.nativeUnit.getShields) * 2 <
-        me.nativeUnit.getType.maxHitPoints + me.nativeUnit.getType.maxShields
+      // a flyer under three quarters makes the SCV detour: one pass under two cannons costs about half its
+      // health, so entering hurt is how tankers die mid-pass; scratches above that ride the next pass
+      val hurt = (me.nativeUnit.getHitPoints + me.nativeUnit.getShields) * 4 <
+        (me.nativeUnit.getType.maxHitPoints + me.nativeUnit.getType.maxShields) * 3
       val repairRally = if (hurt) repairSupport else None
       val danceNow    = staticDance(me, threatPoints, shooter)
       // against static defence alone, everybody burns the same target down instead of splitting over shields
@@ -118,8 +119,9 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
       )
       if (!insideNow) shotsThisPass = 0
       // one volley per pass: a second shot costs a full reload inside the reach for the same one-shot damage
-      val leaveNow   = danceNow == Dance.All && shotsThisPass >= 1
-      val groupReady = danceNow != Dance.All || flightReady(me, threatPoints, repairSupport.isDefined)
+      val leaveNow = danceNow == Dance.All && shotsThisPass >= 1
+      // menders do not hold the pass up: waiting for them let shields regrow faster than volleys damaged them
+      val groupReady = danceNow != Dance.All || flightReady(me, threatPoints, mendingBlocks = false)
       val decision   =
         decide(
           shooter,
