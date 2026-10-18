@@ -77,7 +77,7 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
     /** The static defence this unit last danced with, so a mended flyer finds its way back to the fight. */
     private var lastTurret = Option.empty[Point]
 
-    /** Shots fired since this unit last stood outside static defence reach: a pass ends after two, or one aimed at. */
+    /** Shots fired since this unit last stood outside static defence reach: a group pass ends after one volley. */
     private var shotsThisPass  = 0
     override def describeShort = "Ranged micro"
 
@@ -117,8 +117,9 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
         t.speed == 0 && t.reach > 0 && shooter.at.distanceTo(t.at) - t.reach < StandOff
       )
       if (!insideNow) shotsThisPass = 0
-      val leaveNow   = danceNow == Dance.All && (shotsThisPass >= 2 || (shotsThisPass >= 1 && targeted))
-      val groupReady = danceNow != Dance.All || flightReady(me, threatPoints)
+      // one volley per pass: a second shot costs a full reload inside the reach for the same one-shot damage
+      val leaveNow   = danceNow == Dance.All && shotsThisPass >= 1
+      val groupReady = danceNow != Dance.All || flightReady(me, threatPoints, repairSupport.isDefined)
       val decision   =
         decide(
           shooter,
@@ -240,9 +241,10 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
 
   /**
     * Whether every flyer of this unit's flight is ready to go in together: weapon about ready, already shooting, or
-    * out mending (badly hurt ones do not hold the pass up). Ground shooters never wait for a flight.
+    * out mending. A badly hurt flyer holds the pass up while repair waits for it (`mendingBlocks`), so the
+    * flight goes in at full strength; without repair it is left behind. Ground shooters never wait.
     */
-  private def flightReady(me: MobileRangeWeapon, threats: Seq[Threat]): Boolean = {
+  private def flightReady(me: MobileRangeWeapon, threats: Seq[Threat], mendingBlocks: Boolean): Boolean = {
     val turrets = threats.filter(t => t.speed == 0 && t.reach > 0)
     if (!me.nativeUnit.isFlying || turrets.isEmpty) true
     else {
@@ -252,7 +254,7 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
         !ally.isInGame || ally.nativeUnitId == me.nativeUnitId || !n.isFlying ||
         position(ally).distanceTo(at) > ConsiderRadius ||
         n.getGroundWeaponCooldown <= leadFrames ||
-        (n.getHitPoints + n.getShields) * 2 < n.getType.maxHitPoints + n.getType.maxShields ||
+        (!mendingBlocks && (n.getHitPoints + n.getShields) * 2 < n.getType.maxHitPoints + n.getType.maxShields) ||
         turrets.exists(t => position(ally).distanceTo(t.at) <= shooterOf(ally, Nil).range)
       }
     }
