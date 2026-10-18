@@ -254,6 +254,16 @@ object KitingPolicy {
       }.nextOption()
     }
 
+  /**
+    * How many times the flight's damage per frame must beat the static defence's before only the targeted unit
+    * steps out (Dance.Aimed) and the rest keep firing; below it the flight goes in and out as a group (Dance.All).
+    */
+  val OverwhelmRatio = 3.0
+
+  /** Whether `allies` shooters of `myDps` each overwhelm static defence answering with `theirDps` in total. */
+  def overwhelms(allies: Int, myDps: Double, theirDps: Double): Boolean =
+    theirDps <= 0 || allies * myDps >= OverwhelmRatio * theirDps
+
   /** A point just outside the focus enemy's reach on the way to it, if the shooter is farther out than that. */
   def standoff(me: Shooter, focus: Threat): Option[Point] = {
     val desired  = focus.reach + StandOff
@@ -278,7 +288,8 @@ object KitingPolicy {
   /**
     * Focus fire without overkill: among enemies in range, the one with the least durability left after the damage other
     * shooters already committed this frame, skipping enemies whose committed damage already kills them; without an
-    * enemy in range, the closest one.
+    * enemy in range, the closest one — except under weakest focus, where the weakest overall keeps a whole
+    * flight burning the same static target down instead of splitting over shields that regrow.
     */
   def target(
       me: Shooter,
@@ -308,7 +319,8 @@ object KitingPolicy {
           )
         case FocusMode.Damage => pool.maxBy(t => (t.focus.shotDamage, -shotsLeft(t)))
       }
-    } else threats.minBy(t => me.at.distanceTo(t.at))
+    } else if (mode == FocusMode.Weakest) threats.minBy(t => (left(t), me.at.distanceTo(t.at)))
+    else threats.minBy(t => me.at.distanceTo(t.at))
   }
 
   /**

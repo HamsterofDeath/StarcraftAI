@@ -105,7 +105,7 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
       val hurt = (me.nativeUnit.getHitPoints + me.nativeUnit.getShields) * 2 <
         me.nativeUnit.getType.maxHitPoints + me.nativeUnit.getType.maxShields
       val repairRally = if (hurt) repairSupport else None
-      val danceNow    = if (repairSupport.isDefined) Dance.All else dance
+      val danceNow    = staticDance(me, threatPoints, shooter)
       // against static defence alone, everybody burns the same target down instead of splitting over shields
       val modeNow = if (threatPoints.nonEmpty && threatPoints.forall(_.speed == 0)) FocusMode.Weakest else focusMode
       threatPoints.filter(t => t.speed == 0 && t.reach > 0).minByOption(t => shooter.at.distanceTo(t.at))
@@ -114,8 +114,8 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
         t.speed == 0 && t.reach > 0 && shooter.at.distanceTo(t.at) - t.reach < StandOff
       )
       if (!insideNow) shotsThisPass = 0
-      val leaveNow   = shotsThisPass >= 2 || (shotsThisPass >= 1 && targeted)
-      val groupReady = flightReady(me, threatPoints)
+      val leaveNow   = danceNow == Dance.All && (shotsThisPass >= 2 || (shotsThisPass >= 1 && targeted))
+      val groupReady = danceNow != Dance.All || flightReady(me, threatPoints)
       val decision   =
         decide(
           shooter,
@@ -217,7 +217,25 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
   }
 
   /**
-    * Whether every flyer of this unit's flight is ready to go in together: weapon about ready, already inside, or
+    * The dance against static defence alone, scaled by how badly the shooters around outgun it (KitingPolicy
+    * .overwhelms): an overwhelming flight keeps firing while only the targeted unit steps out; anything less
+    * goes in and out as a group. Anything but static defence keeps the configured dance.
+    */
+  private def staticDance(me: MobileRangeWeapon, threats: Seq[Threat], shooter: Shooter): Dance = {
+    val turrets = threats.filter(t => t.speed == 0 && t.reach > 0)
+    if (turrets.isEmpty || !threats.forall(_.speed == 0)) dance
+    else {
+      val allies = ownUnits.allByType[MobileRangeWeapon]
+        .count(a => a.isInGame && position(a).distanceTo(shooter.at) <= ConsiderRadius)
+      val focus  = turrets.minBy(t => shooter.at.distanceTo(t.at))
+      val weapon = weaponAgainst(me.nativeUnit.getType, targetFlies = false)
+      val myDps  = focus.focus.shotDamage / math.max(1, weapon.damageCooldown)
+      if (overwhelms(math.max(1, allies), myDps, turrets.map(_.focus.dps).sum)) Dance.Aimed else Dance.All
+    }
+  }
+
+  /**
+    * Whether every flyer of this unit's flight is ready to go in together: weapon about ready, already shooting, or
     * out mending (badly hurt ones do not hold the pass up). Ground shooters never wait for a flight.
     */
   private def flightReady(me: MobileRangeWeapon, threats: Seq[Threat]): Boolean = {
@@ -231,7 +249,7 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
         position(ally).distanceTo(at) > ConsiderRadius ||
         n.getGroundWeaponCooldown <= leadFrames ||
         (n.getHitPoints + n.getShields) * 2 < n.getType.maxHitPoints + n.getType.maxShields ||
-        turrets.exists(t => position(ally).distanceTo(t.at) - t.reach < StandOff)
+        turrets.exists(t => position(ally).distanceTo(t.at) <= shooterOf(ally, Nil).range)
       }
     }
   }

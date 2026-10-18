@@ -14,6 +14,8 @@ class KitingPolicyTest extends Specification with MustMatchers {
        |A reloading unit attacks a target in range shortly before the reload ends $leadAttack
        |A ready weapon focuses the weakest enemy in range $weakestInRange
        |A ready weapon attacks the closest enemy when none is in range $closestOutOfRange
+       |Under weakest focus the weakest enemy wins even out of range $weakestOutOfRange
+       |A flight overwhelms static defence at three times its answer $overwhelmRatio
        |A reloading unit retreats from a threat that would catch it $retreats
        |A reloading unit holds when every threat is far enough away $holds
        |A retreat never goes into unwalkable ground $avoidsWalls
@@ -123,6 +125,19 @@ class KitingPolicyTest extends Specification with MustMatchers {
   }
 
   def closestOutOfRange = decide(shooter(), Seq(zealot(1, 1400, 1024), zealot(2, 1300, 1024)), open) === Shoot(2)
+
+  def overwhelmRatio =
+    // sixteen wraiths against one cannon keep firing; four against two cannons must cycle as a group
+    (overwhelms(16, 8.0 / 30, 15.0 / 22) must beTrue) and
+      (overwhelms(4, 8.0 / 30, 2 * 15.0 / 22) must beFalse) and
+      (overwhelms(1, 0.0, 0.0) must beTrue)
+
+  def weakestOutOfRange = {
+    val near = Threat(1, Point(1400, 1024), 200, reach = 258, speed = 0)
+    val hurt = Threat(2, Point(1500, 1024), 120, reach = 258, speed = 0)
+    (target(shooter(), Seq(near, hurt), mode = FocusMode.Weakest).id === 2) and
+      (target(shooter(), Seq(near, hurt), mode = FocusMode.Threat).id === 1)
+  }
 
   def retreats = {
     val me     = shooter(cooldown = 20)
