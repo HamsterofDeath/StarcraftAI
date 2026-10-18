@@ -28,6 +28,9 @@ class KitingPolicyTest extends Specification with MustMatchers {
        |The shooter ranged enemies aim at falls back while it reloads $targetedFallback
        |A reloading unit closes in on a target that cannot hit back $approachHarmless
        |A reloading unit does not close in on a melee enemy that would reach it $noApproachIntoDanger
+       |A reloading unit moves into free-shot range of an enemy it outranges $annoyClosesIn
+       |No free shot where another enemy covers the approach $annoyStaysOut
+       |A free shot never pulls a shooter out of a fight already in range $annoyKeepsFightingInRange
        |The unit static defence shoots at leaves its reach after firing $leavesTurretReach
        |Units static defence ignores keep firing from inside its reach $staysWhenNotAimedAt
        |With Dance.All every reloading unit leaves the reach of static defence, with Dance.Off none $danceModes
@@ -202,6 +205,34 @@ class KitingPolicyTest extends Specification with MustMatchers {
   }
 
   def noApproachIntoDanger = decide(slowShooter(25), Seq(zealot(1, 1300, 1024)), open) === Hold
+
+  /** A zealot east of the wraith below, beyond its range but well inside the range it outranges the zealot by. */
+  private val annoyedZealot = Threat(1, Point(1400, 1024), 160, reach = 36, speed = 4, ground = true)
+
+  def annoyClosesIn = {
+    // a dragoon far behind the zealot can fight back in principle, so only the annoy case closes in here
+    val dragoon = Threat(2, Point(1900, 1024), 180, reach = 170, speed = 5, ground = true)
+    decide(wraith.copy(cooldown = 20), Seq(annoyedZealot, dragoon), open) match {
+      case Approach(to) =>
+        (to.distanceTo(annoyedZealot.at) must be_<(190.0)) and
+          (to.distanceTo(annoyedZealot.at) must be_>(36.0 + 4 * (20 + SafetyFrames))) and
+          (to.distanceTo(dragoon.at) - 170 must be_>(5.0 * (20 + SafetyFrames)))
+      case other => other === Approach(Point(0, 0))
+    }
+  }
+
+  def annoyStaysOut = {
+    // the dragoon stands by the zealot: every point in range of the zealot is inside the dragoon's approach
+    val dragoon = Threat(2, Point(1450, 1024), 180, reach = 170, speed = 5, ground = true)
+    decide(wraith.copy(cooldown = 20), Seq(annoyedZealot, dragoon), open) === Hold
+  }
+
+  def annoyKeepsFightingInRange = {
+    // already in range of the dragoon: the far zealot's free shot must not pull the shooter out of this fight
+    val me      = Shooter(Point(1024, 1024), 190, cooldown = 20, firing = false, speed = 5)
+    val dragoon = Threat(2, Point(1150, 1024), 180, reach = 170, speed = 5, ground = true)
+    decide(me, Seq(dragoon, annoyedZealot), open) === Hold
+  }
 
   /** A wraith-like shooter facing a photon cannon 240 pixels to the east. */
   private val wraith = Shooter(Point(1024, 1024), 190, cooldown = 25, firing = false, speed = 6.67)

@@ -162,7 +162,9 @@ object KitingPolicy {
         .map(Retreat(_)).getOrElse(Hold)
     // the targets cannot fight back: use the reload to stay in range of the focus target
     else if (threats.forall(_.reach == 0)) approach(me, focus).map(Approach(_)).getOrElse(Hold)
-    else Hold
+    // annoy: something can be hit from where nothing hits back before the next shot: spend the reload getting there
+    else annoyPoint(me, threats, walkable).map(Approach(_)).getOrElse(Hold)
+    // (annoyPoint already falls back to Hold where no free shot exists)
   }
 
   /** Under threat focus fire, an enemy this few shots from death counts this much more: kills end its damage. */
@@ -191,6 +193,38 @@ object KitingPolicy {
   val ApproachFraction = 0.85
 
   /** A point at a comfortable fraction of the shooter's range from the target, if the shooter is farther away. */
+  /** Pixels of slack inside its own range and outside an enemy's approach a free shot keeps. */
+  val AnnoySlack = 16.0
+
+  /**
+    * Annoy: a walkable point inside the shooter's range of an enemy it outranges, far enough out that no enemy can
+    * hit the shooter there before its next shot — free damage, however little, mostly for long-range ground units
+    * and flyers over enemies that cannot reach them. Nothing when the shooter cannot move (a sieged tank already
+    * sits where it sits), when something is already in range to shoot at, or when an enemy's approach during the
+    * reload covers the whole band inside the shooter's range.
+    */
+  def annoyPoint(me: Shooter, threats: Seq[Threat], walkable: Point => Boolean): Option[Point] =
+    if (me.speed <= 0 || threats.exists(t => me.at.distanceTo(t.at) <= me.range)) None
+    else {
+      val victims = threats.filter(t => t.reach < me.range).sortBy(t => me.at.distanceTo(t.at))
+      victims.iterator.flatMap { victim =>
+        // the closest the shooter may stand to the victim and still not be hit before its next shot
+        val keepOut = victim.reach + victim.speed * (me.cooldown + SafetyFrames)
+        val desired = math.max(me.range * ApproachFraction, keepOut + AnnoySlack)
+        if (desired > me.range - AnnoySlack) None
+        else {
+          val distance = me.at.distanceTo(victim.at)
+          val scale    = desired / distance
+          val p        = Point(
+            victim.at.x + (me.at.x - victim.at.x) * scale,
+            victim.at.y + (me.at.y - victim.at.y) * scale
+          )
+          if (walkable(p) && threats.forall(t => gap(p, t) > t.speed * (me.cooldown + SafetyFrames))) Some(p)
+          else None
+        }
+      }.nextOption()
+    }
+
   def approach(me: Shooter, focus: Threat): Option[Point] = {
     val desired  = me.range * ApproachFraction
     val distance = me.at.distanceTo(focus.at)

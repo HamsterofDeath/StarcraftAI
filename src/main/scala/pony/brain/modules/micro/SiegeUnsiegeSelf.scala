@@ -40,6 +40,14 @@ class SiegeUnsiegeSelf(universe: Universe) extends DefaultBehaviour[Tank](univer
       def anyRangedEnemy =
         enemies.exists(e => !e.isHarmlessNow && e.nativeUnit.getType.groundWeapon.maxRange > 32)
 
+      // annoy: a single ranged enemy inside siege reach that the tank outranges is free damage once sieged
+      def outrangedInSiegeReach =
+        enemies.exists { e =>
+          !e.isHarmlessNow && e.nativeUnit.getType.groundWeapon.maxRange > 32 &&
+          !e.centerTile.distanceToIsMore(this.unit.centerTile, 12) &&
+          e.centerTile.distanceToIsMore(this.unit.centerTile, 2)
+        }
+
       def siegeableInRange = {
         buildingInRange || (anyRangedEnemy && enemies.iterator.filterNot(_.isHarmlessNow).take(2).size >= 2)
       }
@@ -62,13 +70,13 @@ class SiegeUnsiegeSelf(universe: Universe) extends DefaultBehaviour[Tank](univer
           Orders.TechOnSelf(this.unit, TankSiegeMode).toList
         }
       } else {
-        if (buildingInRange || (siegeableInRange && !botheredByMelee)) {
+        if (buildingInRange || ((siegeableInRange || outrangedInSiegeReach) && !botheredByMelee)) {
           if (!siegeOrderAnnounced) {
             siegeOrderAnnounced = true
             NativeMatchEvidence.trace(
               "siege-order",
               s"unit=${this.unit.nativeUnitId} buildings=${buildings.size} buildingInRange=$buildingInRange " +
-                s"enemies=${enemies.size} ranged=$anyRangedEnemy at=${this.unit.currentTile}"
+                s"enemies=${enemies.size} ranged=$anyRangedEnemy annoy=$outrangedInSiegeReach at=${this.unit.currentTile}"
             )
           }
           Orders.TechOnSelf(this.unit, TankSiegeMode).toList
