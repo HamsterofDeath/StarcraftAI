@@ -97,6 +97,8 @@ object KitingPolicy {
     * @param groundWalkable where ground units can stand: a flyer reloads above the rest, where they cannot follow
     * @param repairRally  where repair waits for this hurt shooter: it leaves static defence towards that point and
     *                     stays out until mended instead of returning the moment its weapon is ready again
+    * @param leaveNow     this pass against static defence is spent: leave its reach even with the weapon ready
+    * @param groupReady   the rest of the flight is ready to go in; while not, hold the standoff outside the reach
     */
   def decide(
       me: Shooter,
@@ -112,6 +114,8 @@ object KitingPolicy {
       fallBackWhenTargeted: Boolean = false,
       rally: Option[Point] = None,
       repairRally: Option[Point] = None,
+      leaveNow: Boolean = false,
+      groupReady: Boolean = true,
       mode: FocusMode = FocusMode.Weakest
   ): Decision = {
     val runFrom = outranged(me, threats, speedRatio)
@@ -140,6 +144,12 @@ object KitingPolicy {
     // alone accumulates damage faster than the SCVs can take it off between shots
     else if (repairRally.isDefined && turrets.nonEmpty && !insideTurrets && me.cooldown <= lead)
       if (me.at.distanceTo(repairRally.get) > CohesionRadius) Approach(repairRally.get) else Hold
+    // the pass is spent (shots fired, or this shooter is the one under fire): leave even with the weapon ready
+    else if (leaveNow && insideTurrets)
+      retreatPoint(me, turrets, walkable, step, repairRally.orElse(rally)).map(Retreat(_)).getOrElse(Hold)
+    // the rest of the flight is not ready: hold the standoff outside the reach instead of going in alone
+    else if (!groupReady && repairRally.isEmpty && turrets.nonEmpty && !insideTurrets)
+      standoff(me, focus).map(Approach(_)).getOrElse(Hold)
     else if (me.cooldown == 0) Shoot(target(me, threats, committed, mode).id)
     else if (me.cooldown <= lead && threats.exists(t => me.at.distanceTo(t.at) <= me.range))
       Shoot(target(me, threats, committed, mode).id)
@@ -243,6 +253,17 @@ object KitingPolicy {
         }
       }.nextOption()
     }
+
+  /** A point just outside the focus enemy's reach on the way to it, if the shooter is farther out than that. */
+  def standoff(me: Shooter, focus: Threat): Option[Point] = {
+    val desired  = focus.reach + StandOff
+    val distance = me.at.distanceTo(focus.at)
+    if (distance <= desired + 16) None
+    else {
+      val scale = desired / distance
+      Some(Point(focus.at.x + (me.at.x - focus.at.x) * scale, focus.at.y + (me.at.y - focus.at.y) * scale))
+    }
+  }
 
   def approach(me: Shooter, focus: Threat): Option[Point] = {
     val desired  = me.range * ApproachFraction

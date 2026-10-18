@@ -72,7 +72,10 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
     private var lastCooldown   = 0
 
     /** The static defence this unit last danced with, so a mended flyer finds its way back to the fight. */
-    private var lastTurret     = Option.empty[Point]
+    private var lastTurret = Option.empty[Point]
+
+    /** Shots fired since this unit last stood outside static defence reach: a pass ends after two, or one aimed at. */
+    private var shotsThisPass  = 0
     override def describeShort = "Ranged micro"
 
     override def onStealUnit(): Unit = {
@@ -98,7 +101,8 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
       val targeted      = threatPoints.exists(_.aimsAtMe) || me.isBeingAttacked
       // hurt flyers with SCVs waiting cycle out to them as a group and come back mended
       val repairSupport = if (me.nativeUnit.isFlying) repairRallyOf(me) else None
-      val hurt          = me.nativeUnit.getHitPoints + me.nativeUnit.getShields <
+      // only a badly hurt flyer makes the SCV detour; scratches ride the next pass, or shields regrow meanwhile
+      val hurt = (me.nativeUnit.getHitPoints + me.nativeUnit.getShields) * 2 <
         me.nativeUnit.getType.maxHitPoints + me.nativeUnit.getType.maxShields
       val repairRally = if (hurt) repairSupport else None
       val danceNow    = if (repairSupport.isDefined) Dance.All else dance
@@ -106,7 +110,13 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
       val modeNow = if (threatPoints.nonEmpty && threatPoints.forall(_.speed == 0)) FocusMode.Weakest else focusMode
       threatPoints.filter(t => t.speed == 0 && t.reach > 0).minByOption(t => shooter.at.distanceTo(t.at))
         .foreach(t => lastTurret = Some(t.at))
-      val decision =
+      val insideNow = threatPoints.exists(t =>
+        t.speed == 0 && t.reach > 0 && shooter.at.distanceTo(t.at) - t.reach < StandOff
+      )
+      if (!insideNow) shotsThisPass = 0
+      val leaveNow   = shotsThisPass >= 2 || (shotsThisPass >= 1 && targeted)
+      val groupReady = flightReady(me, threatPoints)
+      val decision   =
         decide(
           shooter,
           threatPoints,
@@ -120,7 +130,9 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
           meleeStandoff = meleeStandoff,
           fallBackWhenTargeted = inTankGroup && targeted,
           rally = rally,
-          repairRally = repairRally
+          repairRally = repairRally,
+          leaveNow = leaveNow,
+          groupReady = groupReady
         )
       decision match {
         case Shoot(id) =>
@@ -133,6 +145,7 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
 
       // a shot resets the cooldown to the weapon's full reload
       val fired = shooter.cooldown > lastCooldown
+      if (fired) shotsThisPass += 1
       lastCooldown = shooter.cooldown
       shootDecidedAt.foreach { decidedAt =>
         if (fired) {
@@ -200,6 +213,26 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
       val length      = math.hypot(dx, dy)
       if (length == 0) Some(center)
       else Some(Point(center.x + dx / length * 96, center.y + dy / length * 96))
+    }
+  }
+
+  /**
+    * Whether every flyer of this unit's flight is ready to go in together: weapon about ready, already inside, or
+    * out mending (badly hurt ones do not hold the pass up). Ground shooters never wait for a flight.
+    */
+  private def flightReady(me: MobileRangeWeapon, threats: Seq[Threat]): Boolean = {
+    val turrets = threats.filter(t => t.speed == 0 && t.reach > 0)
+    if (!me.nativeUnit.isFlying || turrets.isEmpty) true
+    else {
+      val at = position(me)
+      ownUnits.allByType[MobileRangeWeapon].forall { ally =>
+        val n = ally.nativeUnit
+        !ally.isInGame || ally.nativeUnitId == me.nativeUnitId || !n.isFlying ||
+        position(ally).distanceTo(at) > ConsiderRadius ||
+        n.getGroundWeaponCooldown <= leadFrames ||
+        (n.getHitPoints + n.getShields) * 2 < n.getType.maxHitPoints + n.getType.maxShields ||
+        turrets.exists(t => position(ally).distanceTo(t.at) - t.reach < StandOff)
+      }
     }
   }
 

@@ -39,6 +39,9 @@ class KitingPolicyTest extends Specification with MustMatchers {
        |A hurt shooter flies to its repair point instead of returning $hurtToRepair
        |A hurt shooter waits at its repair point $waitsAtRepair
        |A hurt shooter with a ready weapon still waits for repair $hurtReadyWeaponWaits
+       |A spent pass leaves static defence reach even with the weapon ready $spentPassLeaves
+       |A shooter whose flight is not ready holds the standoff $waitsForFlight
+       |Waiting for the flight never blocks flying to repair $repairBeatsWaiting
        |Static defence the unit outranges is fought from outside its reach $outrangedTurret
        |A reloading flyer backs off over a cliff from ground enemies that would catch it $flyerOverCliff
        |Without unwalkable ground nearby a reloading flyer holds against faster ground enemies $flyerHoldsInTheOpen
@@ -279,6 +282,33 @@ class KitingPolicyTest extends Specification with MustMatchers {
     val atRepair = wraith.copy(cooldown = 0, at = Point(720, 1024))
     (decide(atRepair, Seq(far), open) === Shoot(1)) and
       (decide(atRepair, Seq(far), open, repairRally = Some(Point(700, 1024))) === Hold)
+  }
+
+  def spentPassLeaves = {
+    val inside = wraith.copy(cooldown = 0)
+    (decide(inside, Seq(cannon(aimsAtMe = false)), open) === Shoot(1)) and
+      (decide(inside, Seq(cannon(aimsAtMe = false)), open, leaveNow = true) must beLike { case Retreat(_) => ok })
+  }
+
+  def waitsForFlight = {
+    val far = cannon(aimsAtMe = true, x = 1324)
+    (decide(wraith.copy(cooldown = 0), Seq(far), open, groupReady = false) must beLike {
+      case Approach(to) => (to.x must be_>(1024.0)) and
+          (to.distanceTo(far.at) must beCloseTo(282.0, 6.significantFigures))
+    }) and
+      (decide(wraith.copy(cooldown = 0, at = Point(1032, 1024)), Seq(far), open, groupReady = false) === Hold) and
+      (decide(wraith.copy(cooldown = 0), Seq(far), open) === Shoot(1))
+  }
+
+  def repairBeatsWaiting = {
+    val far = cannon(aimsAtMe = true, x = 1324)
+    decide(
+      wraith.copy(cooldown = 20),
+      Seq(far),
+      open,
+      groupReady = false,
+      repairRally = Some(Point(700, 1024))
+    ) === Approach(Point(700, 1024))
   }
 
   def waitsAtRepair = {
