@@ -21,28 +21,31 @@ object MapUnit {
   /** Owner, hit points, shields and energy are given. */
   private val ValidProperties = 0x0f
 
-  val Marine        = 0
-  val Ghost         = 1
-  val Vulture       = 2
-  val Goliath       = 3
-  val SiegeTank     = 5
-  val Scv           = 7
-  val Wraith        = 8
-  val ScienceVessel = 9
-  val Battlecruiser = 12
-  val Firebat       = 32
-  val Medic         = 34
-  val Zergling      = 37
-  val Zealot        = 65
-  val Dragoon       = 66
-  val Corsair       = 60
-  val HighTemplar   = 67
-  val Archon        = 68
-  val Scout         = 70
-  val Reaver        = 83
-  val Pylon         = 156
-  val PhotonCannon  = 162
-  val StartLocation = 214
+  val Marine          = 0
+  val Ghost           = 1
+  val Vulture         = 2
+  val Goliath         = 3
+  val SiegeTank       = 5
+  val Scv             = 7
+  val Wraith          = 8
+  val ScienceVessel   = 9
+  val Battlecruiser   = 12
+  val SpiderMine      = 13
+  val SiegeTankSieged = 30
+  val Hydralisk       = 38
+  val Firebat         = 32
+  val Medic           = 34
+  val Zergling        = 37
+  val Zealot          = 65
+  val Dragoon         = 66
+  val Corsair         = 60
+  val HighTemplar     = 67
+  val Archon          = 68
+  val Scout           = 70
+  val Reaver          = 83
+  val Pylon           = 156
+  val PhotonCannon    = 162
+  val StartLocation   = 214
 
   def atTile(unitId: Int, owner: Int, tileX: Int, tileY: Int) = MapUnit(unitId, owner, tileX * 32 + 16, tileY * 32 + 16)
 }

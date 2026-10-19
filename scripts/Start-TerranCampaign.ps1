@@ -12,8 +12,8 @@ param(
  [int]$BankMinerals = 1000,
  [int]$BankGas = 300,
  [int]$RequiredFields = 2,
- [int]$MinScoutFighters = 6,
- [int]$MinScouts = 1,
+ [int]$MinScoutFighters = 3,
+ [int]$MinScouts = 2,
  # A field at or below this fraction of its minerals is mined out; at or below the healthy fraction the next command
  # center is requested.
  [double]$FieldUsefulFraction = 0.05,

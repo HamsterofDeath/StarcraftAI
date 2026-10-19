@@ -455,9 +455,11 @@ class TerranCampaignTest extends Specification with MustMatchers {
       visited(near = 5, army = 10, framesSinceLaunch = 0),
       visited(near = 4, army = 10, framesSinceLaunch = VisitFrames),
       visited(near = 0, army = 10, framesSinceLaunch = VisitFrames + 1),
-      visited(near = 0, army = 0, framesSinceLaunch = 0)
+      visited(near = 0, army = 0, framesSinceLaunch = 0),
+      visited(near = VisitSquad, army = 80, framesSinceLaunch = 0),
+      visited(near = VisitSquad - 1, army = 80, framesSinceLaunch = 0)
     ) ===
-      (Vector(far, mid, near), Vector(near, mid, far), 0, 1, 2, true, false, true, false)
+      (Vector(far, mid, near), Vector(near, mid, far), 0, 1, 2, true, false, true, false, true, false)
   }
   def huntScans = {
     import HuntSweep._

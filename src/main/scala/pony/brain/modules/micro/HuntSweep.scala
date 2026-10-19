@@ -26,21 +26,24 @@ private[pony] object HuntSweep {
   val VisitTiles = 10
 
   /** Frames after which a hunt point counts as visited however far the army got: it may be out of reach. */
-  val VisitFrames = 24 * 180
+  val VisitFrames = 24 * 120
+
+  /** A squad of this many at a hunt point counts as having looked there, however large the army behind it is. */
+  val VisitSquad = 12
 
   /**
     * A hunt point is done once half the army stands near it, or after VisitFrames. The campaign army never disbands by
     * itself, so waiting for it to end held a 74-unit army on one empty point for 32 minutes (game 4 vs Zerg, a82be0c).
     */
   def visited(near: Int, army: Int, framesSinceLaunch: Int): Boolean =
-    framesSinceLaunch > VisitFrames || army > 0 && near * 2 >= army
+    framesSinceLaunch > VisitFrames || near >= VisitSquad || army > 0 && near * 2 >= army
 
   /**
-    * Comsats with this much energy sweep hunt points nobody looks at (UseComsat), and keep two sweeps for hidden
+    * Comsats with this much energy sweep hunt points nobody looks at (UseComsat), and keep one sweep for hidden
     * enemies. In game 4 vs Zerg on af1b88d the army of 46 spent the full 180 seconds on each of the empty hunt points
     * (5,85) and (5,120) while five comsats had not swept since frame 36025.
     */
-  val ScanMana = 150
+  val ScanMana = 100
 
   /** A swept hunt point shows what stands there this many frames after the sweep is cast... */
   val ScanShownFrames = 48

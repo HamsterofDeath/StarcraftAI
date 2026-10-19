@@ -5,6 +5,8 @@ import pony.e2e.mpq.{MpqArchive, MpqWriter}
 
 import java.nio.file.{Files, Path, Paths}
 
+import bwapi.UnitType
+
 /**
   * Writes the end-to-end scenario maps: `sbt "runMain pony.e2e.GenerateE2EMaps <template.scx> <outDir>"`. The template
   * must be a Badlands map such as AIIDE's (2)Destination.scx; it provides the verification code and the defaults.
@@ -28,21 +30,27 @@ object GenerateE2EMaps {
     def value: Double = minerals + 1.5 * gas
   }
 
-  val Marine  = Side(MapUnit.Marine, "marine", "mar", UmsScenario.Terran, 50, 0)
-  val Firebat = Side(MapUnit.Firebat, "firebat", "bat", UmsScenario.Terran, 50, 25)
-  val Vulture = Side(MapUnit.Vulture, "vulture", "vul", UmsScenario.Terran, 75, 0)
-  val Goliath = Side(MapUnit.Goliath, "goliath", "gol", UmsScenario.Terran, 100, 50)
-  val Tank    = Side(MapUnit.SiegeTank, "tank", "tnk", UmsScenario.Terran, 150, 100)
-  val Wraith  = Side(MapUnit.Wraith, "wraith", "wra", UmsScenario.Terran, 150, 100)
-  val Zealot  = Side(MapUnit.Zealot, "zealot", "zea", UmsScenario.Protoss, 100, 0)
-  val Dragoon = Side(MapUnit.Dragoon, "dragoon", "drg", UmsScenario.Protoss, 125, 50)
-  val Scv     = Side(MapUnit.Scv, "scv", "scv", UmsScenario.Terran, 50, 0)
-  val Medic   = Side(MapUnit.Medic, "medic", "med", UmsScenario.Terran, 50, 25)
-  val Cruiser = Side(MapUnit.Battlecruiser, "battlecruiser", "bcr", UmsScenario.Terran, 400, 300)
-  val Scout   = Side(MapUnit.Scout, "scout", "sco", UmsScenario.Protoss, 275, 125)
-  val Archon  = Side(MapUnit.Archon, "archon", "arc", UmsScenario.Protoss, 100, 300)
-  val Vessel  = Side(MapUnit.ScienceVessel, "vessel", "ves", UmsScenario.Terran, 100, 225)
-  val Templar = Side(MapUnit.HighTemplar, "templar", "tem", UmsScenario.Protoss, 50, 150)
+  val Marine    = Side(MapUnit.Marine, "marine", "mar", UmsScenario.Terran, 50, 0)
+  val Firebat   = Side(MapUnit.Firebat, "firebat", "bat", UmsScenario.Terran, 50, 25)
+  val Vulture   = Side(MapUnit.Vulture, "vulture", "vul", UmsScenario.Terran, 75, 0)
+  val Goliath   = Side(MapUnit.Goliath, "goliath", "gol", UmsScenario.Terran, 100, 50)
+  val Tank      = Side(MapUnit.SiegeTank, "tank", "tnk", UmsScenario.Terran, 150, 100)
+  val Wraith    = Side(MapUnit.Wraith, "wraith", "wra", UmsScenario.Terran, 150, 100)
+  val Zealot    = Side(MapUnit.Zealot, "zealot", "zea", UmsScenario.Protoss, 100, 0)
+  val Dragoon   = Side(MapUnit.Dragoon, "dragoon", "drg", UmsScenario.Protoss, 125, 50)
+  val Scv       = Side(MapUnit.Scv, "scv", "scv", UmsScenario.Terran, 50, 0)
+  val Medic     = Side(MapUnit.Medic, "medic", "med", UmsScenario.Terran, 50, 25)
+  val Cruiser   = Side(MapUnit.Battlecruiser, "battlecruiser", "bcr", UmsScenario.Terran, 400, 300)
+  val Scout     = Side(MapUnit.Scout, "scout", "sco", UmsScenario.Protoss, 275, 125)
+  val Archon    = Side(MapUnit.Archon, "archon", "arc", UmsScenario.Protoss, 100, 300)
+  val Vessel    = Side(MapUnit.ScienceVessel, "vessel", "ves", UmsScenario.Terran, 100, 225)
+  val Templar   = Side(MapUnit.HighTemplar, "templar", "tem", UmsScenario.Protoss, 50, 150)
+  val Zergling  = Side(MapUnit.Zergling, "zergling", "zlg", UmsScenario.Zerg, 25, 0)
+  val Hydralisk = Side(MapUnit.Hydralisk, "hydralisk", "hyd", UmsScenario.Zerg, 75, 25)
+
+  /** The same tanks and vultures with their ability researched; map names keep the two apart. */
+  val TankWithSiege    = Tank.copy(code = "stnk")
+  val VultureWithMines = Vulture.copy(code = "mvul")
 
   /** Resources each side fields in a pure-versus-pure matchup. */
   val MatchupBudget = 1200
@@ -198,7 +206,7 @@ object GenerateE2EMaps {
         )
       ),
       Trigger(Seq(0), Seq(Trigger.commandsAtMost(1, MapUnit.PhotonCannon, 0)), Seq(Trigger.victory)),
-      Trigger(Seq(0), Seq(Trigger.commandsAtMost(0, ours.unitId, 0)), Seq(Trigger.defeat)),
+      Trigger(Seq(0), defeatConditions(ours), Seq(Trigger.defeat)),
       Trigger(Seq(0), Seq(Trigger.elapsedSeconds(timeoutSeconds)), Seq(Trigger.defeat))
     ),
     groundTiles = BadlandsDirt
@@ -217,6 +225,15 @@ object GenerateE2EMaps {
       MapUnit(MapUnit.PhotonCannon, 1, TurretColumn * 32, 32 * 32 + (2 * i - (count - 1)) * 32)
     }
   }
+
+  /** Defeat once every attacker is dead; tanks count in both modes, so sieging the last one is not losing it. */
+  private def defeatConditions(ours: Side) =
+    if (ours.unitId == MapUnit.SiegeTank)
+      Seq(
+        Trigger.commandsAtMost(0, MapUnit.SiegeTank, 0),
+        Trigger.commandsAtMost(0, MapUnit.SiegeTankSieged, 0)
+      )
+    else Seq(Trigger.commandsAtMost(0, ours.unitId, 0))
 
   def cannonFileName(ours: Side, n: Int, cannons: Int, support: Option[(Side, Int)] = None): String = {
     val name = s"${ours.code}$n${support.fold("")((s, k) => s"-${s.code}$k")}-$CannonCode$cannons"
@@ -256,8 +273,10 @@ object GenerateE2EMaps {
   }.toMap
 
   /** Tech ids in the PTEx section. */
-  val EmpShockwave = 2
-  val PsionicStorm = 19
+  val EmpShockwave    = 2
+  val SpiderMinesTech = 3
+  val TankSiegeTech   = 5
+  val PsionicStorm    = 19
 
   /**
     * Science Vessels with EMP and full energy, two Battlecruisers to finish the job, against Archons (all shields) and
@@ -274,7 +293,72 @@ object GenerateE2EMaps {
     ).toMap
   }
 
-  val All: Map[String, UmsScenario] = VultureScaling ++ TerranVsProtoss ++ TerranVsCannons ++ FocusFire ++ Emp
+  /**
+    * Tanks and vultures with siege mode and spider mines researched, in the same matchups that run without them above,
+    * so the two result sets compare directly. The mixed pair runs with and without both techs.
+    */
+  val Abilities: Map[String, UmsScenario] = {
+    val siege = Seq(0 -> TankSiegeTech)
+    val mines = Seq(0 -> SpiderMinesTech)
+    Seq(
+      fileName(TankWithSiege, 4, Zealot, 12) -> micro(TankWithSiege, 4, Zealot, 12, timeoutSeconds = 600)
+        .copy(researched = siege),
+      fileName(TankWithSiege, 4, Dragoon, 6) -> micro(TankWithSiege, 4, Dragoon, 6, timeoutSeconds = 600)
+        .copy(researched = siege),
+      fileName(TankWithSiege, 3, Zealot, 6) -> micro(TankWithSiege, 3, Zealot, 6, timeoutSeconds = 600)
+        .copy(researched = siege),
+      cannonFileName(TankWithSiege, 3, 2)      -> cannons(TankWithSiege, 3, 2).copy(researched = siege),
+      fileName(VultureWithMines, 4, Zealot, 6) -> micro(VultureWithMines, 4, Zealot, 6, timeoutSeconds = 600)
+        .copy(researched = mines),
+      fileName(VultureWithMines, 8, Zealot, 12) -> micro(VultureWithMines, 8, Zealot, 12, timeoutSeconds = 600)
+        .copy(researched = mines),
+      fileName(VultureWithMines, 4, Zergling, 12) -> micro(VultureWithMines, 4, Zergling, 12, timeoutSeconds = 600)
+        .copy(researched = mines),
+      fileName(VultureWithMines, 6, Hydralisk, 6) -> micro(VultureWithMines, 6, Hydralisk, 6, timeoutSeconds = 600)
+        .copy(researched = mines),
+      mixedFileName(Seq(Tank -> 3, Vulture -> 4), Seq(Zealot -> 8, Dragoon -> 4)) ->
+        mixed(Seq(Tank -> 3, Vulture -> 4), Seq(Zealot -> 8, Dragoon -> 4)),
+      mixedFileName(Seq(TankWithSiege -> 3, VultureWithMines -> 4), Seq(Zealot -> 8, Dragoon -> 4)) ->
+        mixed(
+          Seq(TankWithSiege -> 3, VultureWithMines -> 4),
+          Seq(Zealot        -> 8, Dragoon          -> 4),
+          researched = siege ++ mines
+        )
+    ).toMap
+  }
+
+  /** Four tanks start sieged behind a line of eight spider mines, `mineDistance` tiles ahead of the tanks (0: none). */
+  def siegeLine(mineDistance: Int, theirs: Side, m: Int, timeoutSeconds: Int = 300): UmsScenario = {
+    val mines = if (mineDistance <= 0) Nil
+    else
+      (0 until 8).map { i =>
+        MapUnit(MapUnit.SpiderMine, 0, (12 + mineDistance) * 32 + 16, 32 * 32 + 16 + (2 * i - 7) * 32)
+      }
+    UmsScenario(
+      name = s"e2e frm$mineDistance-${theirs.code}$m",
+      description =
+        s"Sieged tanks behind mines $mineDistance tiles ahead must kill all ${theirs.word}s within $timeoutSeconds seconds.",
+      widthTiles = 64,
+      heightTiles = 64,
+      botRace = UmsScenario.Terran,
+      opponentRace = theirs.race,
+      units = Seq(MapUnit.atTile(MapUnit.StartLocation, 0, 8, 32), MapUnit.atTile(MapUnit.StartLocation, 1, 56, 32)) ++
+        block(MapUnit.SiegeTankSieged, 0, 4, 12) ++ mines ++ block(theirs.unitId, 1, m, 52),
+      locations = Seq(Location.aroundTile(BotArea, "Bot area", 12, 32, 4)),
+      triggers = opponentAttacks ++ botResult(timeoutSeconds),
+      groundTiles = BadlandsDirt,
+      researched = Seq(0 -> TankSiegeTech, 0 -> SpiderMinesTech)
+    )
+  }
+
+  /** The siege line at every mine distance, against chargers and against ranged units that outrange the mines. */
+  val SiegeFormation: Map[String, UmsScenario] = (for {
+    distance    <- Seq(0, 3, 4, 5, 6, 7, 8, 9)
+    (theirs, m) <- Seq(Zealot -> 12, Dragoon -> 6)
+  } yield s"frm$distance-${theirs.code}$m" -> siegeLine(distance, theirs, m)).toMap
+
+  val All: Map[String, UmsScenario] =
+    VultureScaling ++ TerranVsProtoss ++ TerranVsCannons ++ FocusFire ++ Emp ++ Abilities ++ SiegeFormation
 
   private[e2e] def opponentAttacks = Seq(
     Trigger(
@@ -293,6 +377,32 @@ object GenerateE2EMaps {
     Trigger(Seq(0), Seq(Trigger.elapsedSeconds(timeoutSeconds)), Seq(Trigger.defeat))
   )
 
+  /** Hit points plus shields of every unit type, by the UNIT ids scenarios are built from. */
+  private val UnitTypesById      = UnitType.values.map(t => t.id -> t).toMap
+  private val DurabilityByUnitId = UnitTypesById.map((id, t) => id -> (t.maxHitPoints + t.maxShields))
+
+  /** The durability one side of a scenario starts with: the damage the other side can remove from it at most. */
+  def initialDurability(scenario: UmsScenario, owner: Int): Int = scenario.units.iterator
+    .filter(u => u.owner == owner && u.unitId != MapUnit.StartLocation)
+    .map(u => DurabilityByUnitId.getOrElse(u.unitId, 0))
+    .sum
+
+  /** The starting durability of every scenario, for runners that score a game by damage removed and taken. */
+  /** The starting durability in buildings alone, whose survivors a final snapshot may never have seen. */
+  def initialBuildingDurability(scenario: UmsScenario, owner: Int): Int = scenario.units.iterator
+    .filter(u =>
+      u.owner == owner && u.unitId != MapUnit.StartLocation && UnitTypesById.get(u.unitId).exists(_.isBuilding)
+    )
+    .map(u => DurabilityByUnitId.getOrElse(u.unitId, 0))
+    .sum
+
+  def scenarioMetricsJson(scenarios: Map[String, UmsScenario]): String = scenarios.toVector.sortBy(_._1).map {
+    (name, scenario) =>
+      s"""{"map":"$name","ownInitialDurability":${initialDurability(scenario, 0)},""" +
+        s""""enemyInitialDurability":${initialDurability(scenario, 1)},""" +
+        s""""enemyBuildingInitialDurability":${initialBuildingDurability(scenario, 1)}}"""
+  }.mkString("[\n", ",\n", "\n]\n")
+
   def write(scenario: UmsScenario, template: ChkFile, target: Path): Unit = {
     Files.createDirectories(target.getParent)
     Files.write(target, MpqWriter.write(Seq(InspectMap.ScenarioPath -> scenario.build(template).bytes)))
@@ -300,8 +410,11 @@ object GenerateE2EMaps {
 
   def main(args: Array[String]): Unit = {
     val template = ChkFile.parse(MpqArchive.open(Paths.get(args(0))).read(InspectMap.ScenarioPath))
+    val out      = Paths.get(args(1))
+    Files.createDirectories(out)
+    Files.writeString(out.resolve("scenario-metrics.json"), scenarioMetricsJson(All))
     All.foreach { case (fileName, scenario) =>
-      val target = Paths.get(args(1)).resolve(fileName + ".scx")
+      val target = out.resolve(fileName + ".scx")
       write(scenario, template, target)
       println(s"wrote $target (${Files.size(target)} bytes)")
     }

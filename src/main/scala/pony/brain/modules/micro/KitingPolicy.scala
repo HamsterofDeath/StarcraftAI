@@ -106,6 +106,9 @@ object KitingPolicy {
       speedRatio: Double = 1.25,
       dance: Dance = Dance.Aimed,
       groundWalkable: Point => Boolean = _ => true,
+      meleeStandoff: Double = ContactSlack,
+      fallBackWhenTargeted: Boolean = false,
+      rally: Option[Point] = None,
       mode: FocusMode = FocusMode.Weakest
   ): Decision = {
     val runFrom = outranged(me, threats, speedRatio)
@@ -118,6 +121,11 @@ object KitingPolicy {
     // ground units that can hit a flyer and would reach it before its reload ends
     def chasers = threats.filter(t =>
       t.ground && t.reach > 0 && t.speed > 0 &&
+        gap(me.at, t) <= t.speed * (me.cooldown + SafetyFrames)
+    )
+    // mobile ranged enemies that can hit this shooter before its reload ends
+    def rangedChasers = threats.filter(t =>
+      t.speed > 0 && t.reach > MeleeReach &&
         gap(me.at, t) <= t.speed * (me.cooldown + SafetyFrames)
     )
     lazy val overCliff =
@@ -135,6 +143,10 @@ object KitingPolicy {
       retreatPoint(me, turrets, walkable, step).map(Retreat(_)).getOrElse(Hold)
     // fire, go back over a cliff: ground enemies have to go around while the flyer reloads above unwalkable ground
     else if (overCliff.isDefined) Retreat(overCliff.get)
+    // fire, fall back: the shooter the ranged enemies are firing at gives ground while it reloads; they must
+    // stop to shoot and then catch up again, and the next shooter in line takes their fire instead
+    else if (fallBackWhenTargeted && rangedChasers.nonEmpty)
+      retreatPoint(me, rangedChasers, walkable, step, rally).map(Retreat(_)).getOrElse(Hold)
     // kite: clearly faster and longer-ranged, so stepping out of reach costs nothing
     else if (runFrom.exists(t => gap(me.at, t) <= t.speed * (me.cooldown + SafetyFrames))) {
       retreatPoint(
@@ -145,8 +157,9 @@ object KitingPolicy {
       ).map(Retreat(_)).getOrElse(Shoot(target(me, threats, committed, mode).id))
     }
     // maximum damage: too slow to kite, so only the unit in melee contact gives way and drags its attacker along
-    else if (melee.exists(t => gap(me.at, t) <= ContactSlack))
-      retreatPoint(me, melee, walkable, step / 2).map(Retreat(_)).getOrElse(Hold)
+    else if (melee.exists(t => gap(me.at, t) <= meleeStandoff))
+      retreatPoint(me, melee, walkable, if (meleeStandoff > ContactSlack) step else step / 2, rally)
+        .map(Retreat(_)).getOrElse(Hold)
     // the targets cannot fight back: use the reload to stay in range of the focus target
     else if (threats.forall(_.reach == 0)) approach(me, focus).map(Approach(_)).getOrElse(Hold)
     else Hold
@@ -167,6 +180,12 @@ object KitingPolicy {
 
   /** An enemy this close to its reach is in contact. */
   val ContactSlack = 8.0
+
+  /** A rally point this many pixels away still counts as staying with the group. */
+  val CohesionRadius = 64.0
+
+  /** How much each pixel beyond the cohesion radius costs a retreat point, against the distance it gains. */
+  val CohesionWeight = 0.5
 
   /** Fraction of its range a shooter keeps to the focus target while reloading. */
   val ApproachFraction = 0.85
@@ -222,10 +241,19 @@ object KitingPolicy {
     * The walkable point one `step` away that keeps the largest distance to the nearest threat, preferring open ground so
     * the shooter does not run itself into a wall or a corner.
     */
-  def retreatPoint(me: Shooter, threats: Seq[Threat], walkable: Point => Boolean, step: Double): Option[Point] = {
+  def retreatPoint(
+      me: Shooter,
+      threats: Seq[Threat],
+      walkable: Point => Boolean,
+      step: Double,
+      rally: Option[Point] = None
+  ): Option[Point] = {
     (0 until Directions).iterator.map(i => me.at.towards(2 * math.Pi * i / Directions, step))
       .filter(p => walkable(p) && walkable(Point((p.x + me.at.x) / 2, (p.y + me.at.y) / 2)))
-      .map(p => p -> (threats.map(t => gap(p, t)).min - crampedPenalty(p, walkable, step)))
+      .map { p =>
+        val cohesion = rally.fold(0.0)(r => math.max(0.0, p.distanceTo(r) - CohesionRadius) * CohesionWeight)
+        p -> (threats.map(t => gap(p, t)).min - crampedPenalty(p, walkable, step) - cohesion)
+      }
       .maxByOption(_._2)
       .map(_._1)
   }

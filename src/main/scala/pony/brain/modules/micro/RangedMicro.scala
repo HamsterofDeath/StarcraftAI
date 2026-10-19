@@ -5,7 +5,7 @@ package micro
 
 import pony.combat.{ArmedBuilding, MobileRangeWeapon}
 import pony.geometry.MapTilePosition
-import pony.units.{CanDie, Mobile, WrapsUnit}
+import pony.units.{CanDie, Mobile, Tank, WrapsUnit}
 
 import bwapi.{UnitType, WeaponType}
 import pony.brain.modules.micro.KitingPolicy._
@@ -30,6 +30,9 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
 
   /** Weapons up to this range (pixels) are melee; their units do not get ranged micro. */
   private val MeleeRange = 32
+
+  /** Edge-to-edge distance unsieged tanks start keeping from melee enemies while they reload. */
+  private val TankMeleeStandoff = 160.0
 
   private val shootByStopping = sys.props.get("twailight.kiteShot").contains("stop")
   private val traceDecisions  = sys.props.get("twailight.traceKite").contains("true")
@@ -76,21 +79,29 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
         attached = true
         NativeMatchEvidence.trace("kite-attached", s"unit=${me.nativeUnitId} type=${me.nativeUnit.getType}")
       }
-      val targets   = targetsAround(me)
-      val shooter   = shooterOf(me, targets.map(_._1))
-      val passable  = if (me.nativeUnit.isFlying) insideMap else walkable
-      val committed = commitments(frame)
-      val decision  =
+      val targets       = targetsAround(me)
+      val shooter       = shooterOf(me, targets.map(_._1))
+      val passable      = if (me.nativeUnit.isFlying) insideMap else walkable
+      val committed     = commitments(frame)
+      val threatPoints  = targets.map(_._2)
+      val inTankGroup   = me.isInstanceOf[Tank] && !me.nativeUnit.isSieged
+      val meleeStandoff = if (inTankGroup) TankMeleeStandoff else ContactSlack
+      val rally         = if (inTankGroup) tankRally(me, threatPoints) else None
+      val targeted      = threatPoints.exists(_.aimsAtMe) || me.isBeingAttacked
+      val decision      =
         decide(
           shooter,
-          targets.map(_._2),
+          threatPoints,
           passable,
           lead = leadFrames,
           committed = committed.toMap,
           speedRatio = speedRatio,
           dance = dance,
           groundWalkable = terrainWalkable,
-          mode = focusMode
+          mode = focusMode,
+          meleeStandoff = meleeStandoff,
+          fallBackWhenTargeted = inTankGroup && targeted,
+          rally = rally
         )
       decision match {
         case Shoot(id) =>
@@ -145,6 +156,27 @@ class RangedMicro(universe: Universe) extends DefaultBehaviour[MobileRangeWeapon
   }
 
   private def position(u: WrapsUnit) = Point(u.nativeUnit.getX.toDouble, u.nativeUnit.getY.toDouble)
+
+  /**
+    * The point a group of unsieged tanks falls back through together: their centre shifted one retreat step away
+    * from the enemies they can see, so their individual retreats converge instead of fanning out.
+    */
+  private def tankRally(me: MobileRangeWeapon, threats: Seq[Threat]): Option[Point] = {
+    val at     = position(me)
+    val allies = ownUnits.allByType[Tank]
+      .filter(t => t.isInGame && !t.isBeingCreated && position(t).distanceTo(at) <= ConsiderRadius)
+      .toVector
+    if (allies.size < 2 || threats.isEmpty) None
+    else {
+      val center =
+        Point(allies.map(t => position(t).x).sum / allies.size, allies.map(t => position(t).y).sum / allies.size)
+      val enemyCenter = Point(threats.map(_.at.x).sum / threats.size, threats.map(_.at.y).sum / threats.size)
+      val (dx, dy)    = (center.x - enemyCenter.x, center.y - enemyCenter.y)
+      val length      = math.hypot(dx, dy)
+      if (length == 0) Some(center)
+      else Some(Point(center.x + dx / length * 96, center.y + dy / length * 96))
+    }
+  }
 
   private def radius(t: UnitType) = (t.dimensionLeft + t.dimensionRight + 1) / 2.0
 

@@ -23,6 +23,9 @@ class KitingPolicyTest extends Specification with MustMatchers {
        |A shooter does not run from an enemy that is about as fast $noRetreatFromFasterEnemy
        |Focus fire skips an enemy whose committed damage already kills it $noOverkill
        |A unit too slow to kite steps back only when a melee enemy is in contact $stepBack
+       |With a melee standoff it starts back long before contact, with a full step $meleeStandoffStartsEarly
+       |A retreat with a rally point goes back through the group instead of fanning out $rallyCohesion
+       |The shooter ranged enemies aim at falls back while it reloads $targetedFallback
        |A reloading unit closes in on a target that cannot hit back $approachHarmless
        |A reloading unit does not close in on a melee enemy that would reach it $noApproachIntoDanger
        |The unit static defence shoots at leaves its reach after firing $leavesTurretReach
@@ -164,6 +167,30 @@ class KitingPolicyTest extends Specification with MustMatchers {
       case Retreat(to) => to.distanceTo(Point(1024, 1024)) must be_<(60.0)
       case other       => other === Retreat(Point(0, 0))
     }) and (decide(slowShooter(15), Seq(nearby), open) === Hold)
+  }
+
+  def meleeStandoffStartsEarly = {
+    val nearby = zealot(1, 1100, 1024) // gap 40
+    (decide(slowShooter(15), Seq(nearby), open) === Hold) and
+      (decide(slowShooter(15), Seq(nearby), open, meleeStandoff = 160) match {
+        case Retreat(to) => to.distanceTo(Point(1024, 1024)) must be_>(60.0)
+        case other       => other === Retreat(Point(0, 0))
+      })
+  }
+
+  def rallyCohesion =
+    retreatPoint(slowShooter(15), Seq(zealot(1, 1088, 1024)), open, step = 96, rally = Some(Point(928, 928))) match {
+      case Some(to) => to.y must be_<(1024.0)
+      case other    => other === Some(Point(0, 0))
+    }
+
+  def targetedFallback = {
+    val dragoon = Threat(1, Point(1200, 1024), 180, reach = 170, speed = 5, aimsAtMe = true, ground = true)
+    (decide(slowShooter(20), Seq(dragoon), open) === Hold) and
+      (decide(slowShooter(20), Seq(dragoon), open, fallBackWhenTargeted = true) match {
+        case Retreat(to) => to.x must be_<(1024.0)
+        case other       => other === Retreat(Point(0, 0))
+      })
   }
 
   def approachHarmless = {

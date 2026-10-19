@@ -13,26 +13,40 @@ class SiegeUnsiegeSelf(universe: Universe) extends DefaultBehaviour[Tank](univer
 
   override def forceRepeatedCommands = true
 
-  override def priority = SecondPriority.EvenMore
+  override def priority = SecondPriority.Max
 
   override protected def wrapBase(unit: Tank) = new SingleUnitBehaviour[Tank](unit, meta) {
 
     override def preconditionOk = upgrades.hasResearched(TankSiegeMode)
 
+    private var wasSieged           = this.unit.isSieged
+    private var siegeOrderAnnounced = false
+
     override def toOrder(what: Objective) = {
+      if (this.unit.isSieged != wasSieged) {
+        siegeOrderAnnounced = false
+        wasSieged = this.unit.isSieged
+        NativeMatchEvidence.trace(
+          "siege-change",
+          s"unit=${this.unit.nativeUnitId} sieged=$wasSieged at=${this.unit.currentTile}"
+        )
+      }
       val enemies = this.unit.surroundings.mediumEnemyGroundUnits
       // a lifted Terran building is out of a tank's reach and must not hold it sieged over a razed main
       val buildings = this.unit.surroundings.mediumEnemyBuildings.filterNot(_.isFloating)
 
-      def buildingInRange = buildings.exists(_.area.distanceTo(this.unit.currentTile) <= 11)
+      def buildingInRange = buildings.exists(_.area.distanceTo(this.unit.currentTile) <= 12)
+
+      def anyRangedEnemy =
+        enemies.exists(e => !e.isHarmlessNow && e.nativeUnit.getType.groundWeapon.maxRange > 32)
 
       def siegeableInRange = {
-        buildingInRange || enemies.iterator.filterNot(_.isHarmlessNow).take(4).size >= 3
+        buildingInRange || (anyRangedEnemy && enemies.iterator.filterNot(_.isHarmlessNow).take(2).size >= 2)
       }
 
       def anyCloseButNotTooClose = {
         enemies.exists { e =>
-          !e.isHarmlessNow && e.centerTile.distanceToIsMore(this.unit.centerTile, 4)
+          !e.isHarmlessNow && e.centerTile.distanceToIsMore(this.unit.centerTile, 2)
         }
       }
 
@@ -40,7 +54,7 @@ class SiegeUnsiegeSelf(universe: Universe) extends DefaultBehaviour[Tank](univer
       if (this.unit.isSieged) {
         val staySieged = {
           val hasTargets = buildingInRange || anyCloseButNotTooClose
-          hasTargets && !botheredByMelee
+          hasTargets
         }
         if (staySieged) {
           Nil
@@ -48,7 +62,15 @@ class SiegeUnsiegeSelf(universe: Universe) extends DefaultBehaviour[Tank](univer
           Orders.TechOnSelf(this.unit, TankSiegeMode).toList
         }
       } else {
-        if (siegeableInRange && !botheredByMelee) {
+        if (buildingInRange || (siegeableInRange && !botheredByMelee)) {
+          if (!siegeOrderAnnounced) {
+            siegeOrderAnnounced = true
+            NativeMatchEvidence.trace(
+              "siege-order",
+              s"unit=${this.unit.nativeUnitId} buildings=${buildings.size} buildingInRange=$buildingInRange " +
+                s"enemies=${enemies.size} ranged=$anyRangedEnemy at=${this.unit.currentTile}"
+            )
+          }
           Orders.TechOnSelf(this.unit, TankSiegeMode).toList
         } else {
           Nil

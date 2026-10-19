@@ -75,11 +75,46 @@ foreach ($ownedPid in @($receipt.botPid, $receipt.gamePid)) {
   Get-Process -Id $ownedPid -ErrorAction SilentlyContinue | Stop-Process -Force
 }
 $elapsed = (Get-Date) - $started
+$metricsByMap = @{}
+$metricsFile = Join-Path $Repository 'e2e/maps/scenario-metrics.json'
+if (Test-Path -LiteralPath $metricsFile) {
+  (Get-Content -LiteralPath $metricsFile -Raw | ConvertFrom-Json) | ForEach-Object { $metricsByMap[$_.map] = $_ }
+}
 $rows = for ($i = 0; $i -lt $plan.Count; $i++) {
   $r = Read-Result $resultFiles[$i]
+  $mapName = [IO.Path]::GetFileNameWithoutExtension($plan[$i])
+  $metric = $metricsByMap[$mapName]
+  $ownInitialDurability = if ($metric) { [double]$metric.ownInitialDurability } else { $null }
+  $enemyInitialDurability = if ($metric) { [double]$metric.enemyInitialDurability } else { $null }
+  $enemyBuildingInitialDurability = if ($metric -and $metric.PSObject.Properties.Name -contains 'enemyBuildingInitialDurability') {
+    [double]$metric.enemyBuildingInitialDurability
+  } else { 0 }
+  $ownAllDurability = if ($r -and $r.selfAllForces) { [double]$r.selfAllForces.durability } else { $null }
+  $enemyAllDurability = if ($r -and $r.enemyAllForces) { [double]$r.enemyAllForces.durability } else { $null }
+  $damageDealt = if ($null -ne $enemyInitialDurability -and $null -ne $enemyAllDurability) {
+    [math]::Max(0, $enemyInitialDurability - $enemyAllDurability)
+  } else { $null }
+  $damageTaken = if ($null -ne $ownInitialDurability -and $null -ne $ownAllDurability) {
+    [math]::Max(0, $ownInitialDurability - $ownAllDurability)
+  } else { $null }
+  if ($enemyBuildingInitialDurability -gt 0 -and $enemyAllDurability -eq 0 -and $r.status -ne 'win') {
+    # A final snapshot that never saw the buildings cannot prove they were destroyed.
+    $damageDealt = $null
+  }
+  $netDamage = if ($null -ne $damageDealt -and $null -ne $damageTaken) { $damageDealt - $damageTaken } else { $null }
+  $damageDealtPct = if ($enemyInitialDurability -gt 0 -and $null -ne $damageDealt) {
+    [math]::Round(100 * $damageDealt / $enemyInitialDurability, 1)
+  } else { $null }
+  $damageTakenPct = if ($ownInitialDurability -gt 0 -and $null -ne $damageTaken) {
+    [math]::Round(100 * $damageTaken / $ownInitialDurability, 1)
+  } else { $null }
   [pscustomobject]@{
-    game = $i + 1; map = [IO.Path]::GetFileNameWithoutExtension($plan[$i])
+    game = $i + 1; map = $mapName
     status = if ($r) { $r.status } else { 'no-result' }; frames = $r.nativeFrame
+    damageDealt = $damageDealt; damageTaken = $damageTaken; netDamage = $netDamage
+    damageDealtPct = $damageDealtPct; damageTakenPct = $damageTakenPct
+    ownInitialDurability = $ownInitialDurability; enemyInitialDurability = $enemyInitialDurability
+    ownAllDurability = $ownAllDurability; enemyAllDurability = $enemyAllDurability
     ownUnits = $r.selfForces.units; ownDurability = $r.selfForces.durability
     enemyUnits = $r.enemyForces.units; enemyDurability = $r.enemyForces.durability
   }

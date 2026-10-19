@@ -20,12 +20,16 @@ private[pony] object WallPosts {
   /**
     * Rows behind the wall, in tiles from its centre: infantry close enough to shoot over it, Vultures a step back,
     * tanks out of reach of a Dragoon with its range upgrade (six tiles) standing at the wall's far side, yet within
-    * their twelve-tile siege range of the ground in front of it.
+    * their twelve-tile siege range of the ground in front of it. The mine line stands eight tiles ahead of the
+    * tanks (TankDepth + ApproachDepth): in the frm0-9 siege-line sweep, eight was the only distance at which
+    * four sieged tanks behind eight mines beat twelve charging Zealots every time (10/10; nine tiles 4/10,
+    * three tiles 0/10) and kept the most tank hit points against Dragoons; the previous 12.5 tiles left the
+    * mines at the very edge of siege range.
     */
   val InfantryDepth = 3.0
   val VultureDepth  = 4.5
-  val TankDepth     = 8.5
-  val ApproachDepth = 4.0
+  val TankDepth     = 7.0
+  val ApproachDepth = 1.0
 
   final case class Layout(posts: Map[Role, Vector[(Double, Double)]], approach: Vector[(Double, Double)])
 
@@ -46,7 +50,7 @@ private[pony] object WallPosts {
         Role.Vulture -> row(VultureDepth, Seq(-0.75, 0.75, -2.25, 2.25, -3.75, 3.75, 0, -1.5)),
         Role.Tank    -> row(TankDepth, Seq(0, -2.5, 2.5, -5, 5))
       ),
-      row(-ApproachDepth, Seq(0, -2.5, 2.5))
+      row(-ApproachDepth, Seq(0, -2, 2, -4, 4))
     )
   }
 }
